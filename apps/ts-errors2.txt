@@ -1,0 +1,5 @@
+src/main/index.ts(312,58): error TS6133: 'sessionId' is declared but its value is never read.
+src/renderer/src/components/ChatView/ChatView.tsx(21,7): error TS2448: Block-scoped variable 'messages' used before its declaration.
+src/renderer/src/components/ChatView/ChatView.tsx(21,7): error TS2454: Variable 'messages' is used before being assigned.
+src/renderer/src/hooks/usePiDriver.ts(24,9): error TS6198: All destructured elements are unused.
+src/renderer/src/stores/workspace-store.ts(47,37): error TS2339: Property 'lastActiveAt' does not exist on type 'WorkspaceData'.

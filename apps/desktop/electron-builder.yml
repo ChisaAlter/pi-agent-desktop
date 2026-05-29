@@ -1,0 +1,39 @@
+# Electron Builder Configuration
+
+appId: com.pi-desktop.desktop
+productName: Pi Desktop
+asar: true
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.*'
+  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!build_output.txt'
+win:
+  executableName: Pi Desktop
+  sign: false
+  signingHashAlgorithms: []
+  forceCodeSigning: false
+  signAndEditExecutable: false
+  signDlls: false
+nsis:
+  artifactName: ${name}-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+mac:
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: false
+linux:
+  target:
+    - AppImage
+  maintainer: pi-desktop
+  category: Utility
+npmRebuild: false

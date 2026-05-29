@@ -1,0 +1,21 @@
+{
+  "name": "pi-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pi Agent Desktop Application - A Windows desktop app for Pi CLI",
+  "keywords": ["pi", "agent", "desktop", "electron", "ai"],
+  "license": "MIT",
+  "author": "Your Name",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "dev": "pnpm -r run dev",
+    "build": "pnpm -r run build",
+    "lint": "pnpm -r run lint",
+    "test": "pnpm -r run test",
+    "clean": "pnpm -r run clean",
+    "typecheck": "pnpm -r run typecheck"
+  }
+}

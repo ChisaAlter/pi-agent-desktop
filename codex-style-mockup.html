@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pi Desktop - Codex Style</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #0d0d0d;
+            color: #e5e5e5;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Codex风格布局 */
+        .app-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* 左侧工具栏 - 项目文件夹管理 */
+        .sidebar {
+            width: 56px;
+            background: #1a1a1a;
+            border-right: 1px solid #2d2d2d;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 12px 0;
+            gap: 8px;
+        }
+
+        .sidebar-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            color: #888;
+            font-size: 18px;
+        }
+
+        .sidebar-icon:hover {
+            background: #2d2d2d;
+            color: #fff;
+        }
+
+        .sidebar-icon.active {
+            background: #2563eb;
+            color: #fff;
+        }
+
+        .sidebar-divider {
+            width: 24px;
+            height: 1px;
+            background: #2d2d2d;
+            margin: 4px 0;
+        }
+
+        /* 主内容区 */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        /* 顶部导航 - 线程信息 */
+        .header {
+            height: 48px;
+            background: #141414;
+            border-bottom: 1px solid #2d2d2d;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .thread-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: #1e1e1e;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #a0a0a0;
+        }
+
+        .thread-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header-button {
+            padding: 6px 12px;
+            background: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 6px;
+            color: #a0a0a0;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .header-button:hover {
+            background: #252525;
+            color: #fff;
+        }
+
+        .header-button.primary {
+            background: #2563eb;
+            border-color: #2563eb;
+            color: #fff;
+        }
+
+        .header-button.primary:hover {
+            background: #1d4ed8;
+        }
+
+        /* 中间内容区 */
+        .content-area {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* 左侧线程列表 */
+        .thread-list {
+            width: 240px;
+            background: #141414;
+            border-right: 1px solid #2d2d2d;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .thread-list-header {
+            padding: 16px;
+            border-bottom: 1px solid #2d2d2d;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .thread-list-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e5e5e5;
+        }
+
+        .new-thread-button {
+            width: 28px;
+            height: 28px;
+            background: #2563eb;
+            border: none;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s ease;
+        }
+
+        .new-thread-button:hover {
+            background: #1d4ed8;
+        }
+
+        .thread-items {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .thread-item {
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            margin-bottom: 4px;
+        }
+
+        .thread-item:hover {
+            background: #1e1e1e;
+        }
+
+        .thread-item.active {
+            background: #1e3a5f;
+            border-left: 3px solid #2563eb;
+        }
+
+        .thread-item-title {
+            font-size: 13px;
+            font-weight: 500;
+            color: #e5e5e5;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .thread-item-preview {
+            font-size: 12px;
+            color: #666;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .thread-item-time {
+            font-size: 11px;
+            color: #555;
+            margin-top: 4px;
+        }
+
+        /* 聊天区域 */
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        .welcome-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            text-align: center;
+        }
+
+        .welcome-logo {
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, #2563eb, #7c3aed);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 24px;
+        }
+
+        .welcome-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #e5e5e5;
+            margin-bottom: 12px;
+        }
+
+        .welcome-subtitle {
+            font-size: 15px;
+            color: #888;
+            max-width: 480px;
+            line-height: 1.6;
+        }
+
+        /* 消息样式 */
+        .message {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+            max-width: 100%;
+        }
+
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 13px;
+            flex-shrink: 0;
+        }
+
+        .message.user .message-avatar {
+            background: #2563eb;
+            color: #fff;
+        }
+
+        .message.ai .message-avatar {
+            background: #1e1e1e;
+            color: #a0a0a0;
+            border: 1px solid #333;
+        }
+
+        .message-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .message-role {
+            font-size: 13px;
+            font-weight: 600;
+            color: #e5e5e5;
+        }
+
+        .message-time {
+            font-size: 12px;
+            color: #555;
+        }
+
+        .message-text {
+            font-size: 14px;
+            line-height: 1.7;
+            color: #d4d4d4;
+        }
+
+        .message-text p {
+            margin-bottom: 12px;
+        }
+
+        .message-text code {
+            background: #1e1e1e;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            color: #e5e5e5;
+        }
+
+        .message-text pre {
+            background: #1a1a1a;
+            border: 1px solid #2d2d2d;
+            border-radius: 8px;
+            padding: 16px;
+            margin: 12px 0;
+            overflow-x: auto;
+        }
+
+        .message-text pre code {
+            background: none;
+            padding: 0;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        /* 工具调用卡片 */
+        .tool-call {
+            background: #1a1a1a;
+            border: 1px solid #2d2d2d;
+            border-radius: 8px;
+            margin-top: 12px;
+            overflow: hidden;
+        }
+
+        .tool-call-header {
+            padding: 10px 14px;
+            background: #1e1e1e;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #888;
+        }
+
+        .tool-call-icon {
+            color: #2563eb;
+        }
+
+        .tool-call-content {
+            padding: 14px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #a0a0a0;
+            background: #141414;
+        }
+
+        /* 输入区域 */
+        .input-area {
+            padding: 16px 24px 24px;
+            background: #0d0d0d;
+        }
+
+        .input-container {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 12px;
+        }
+
+        .message-input {
+            flex: 1;
+            padding: 14px 16px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 10px;
+            color: #e5e5e5;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            resize: none;
+            transition: all 0.15s ease;
+            min-height: 48px;
+        }
+
+        .message-input:focus {
+            outline: none;
+            border-color: #2563eb;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+        }
+
+        .message-input::placeholder {
+            color: #555;
+        }
+
+        .send-button {
+            padding: 14px 24px;
+            background: #2563eb;
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            white-space: nowrap;
+        }
+
+        .send-button:hover {
+            background: #1d4ed8;
+        }
+
+        .send-button:disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        /* 底部控制栏 */
+        .input-controls {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .control-button {
+            padding: 6px 12px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 6px;
+            color: #888;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .control-button:hover {
+            background: #252525;
+            color: #fff;
+        }
+
+        .model-selector {
+            padding: 6px 12px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 6px;
+            color: #888;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .model-selector:hover {
+            background: #252525;
+            color: #fff;
+        }
+
+        .thinking-depth {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .thinking-label {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .thinking-options {
+            display: flex;
+            gap: 4px;
+        }
+
+        .thinking-option {
+            padding: 4px 10px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 4px;
+            color: #888;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .thinking-option:hover {
+            background: #252525;
+            color: #fff;
+        }
+
+        .thinking-option.active {
+            background: #2563eb;
+            border-color: #2563eb;
+            color: #fff;
+        }
+
+        /* 右侧面板 - 终端/差异 */
+        .right-panel {
+            width: 400px;
+            background: #141414;
+            border-left: 1px solid #2d2d2d;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-tabs {
+            display: flex;
+            border-bottom: 1px solid #2d2d2d;
+        }
+
+        .panel-tab {
+            flex: 1;
+            padding: 12px 16px;
+            background: transparent;
+            border: none;
+            color: #666;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            text-align: center;
+        }
+
+        .panel-tab:hover {
+            color: #888;
+            background: #1a1a1a;
+        }
+
+        .panel-tab.active {
+            color: #e5e5e5;
+            border-bottom: 2px solid #2563eb;
+        }
+
+        .panel-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        /* 终端样式 */
+        .terminal {
+            background: #0d0d0d;
+            border: 1px solid #2d2d2d;
+            border-radius: 8px;
+            padding: 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #a0a0a0;
+        }
+
+        .terminal-line {
+            margin-bottom: 4px;
+        }
+
+        .terminal-prompt {
+            color: #22c55e;
+        }
+
+        .terminal-command {
+            color: #e5e5e5;
+        }
+
+        .terminal-output {
+            color: #666;
+        }
+
+        /* 差异样式 */
+        .diff-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+        }
+
+        .diff-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e5e5e5;
+        }
+
+        .diff-stats {
+            display: flex;
+            gap: 12px;
+            font-size: 12px;
+        }
+
+        .diff-additions {
+            color: #22c55e;
+        }
+
+        .diff-deletions {
+            color: #ef4444;
+        }
+
+        .diff-file {
+            background: #1a1a1a;
+            border: 1px solid #2d2d2d;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+
+        .diff-file-header {
+            padding: 10px 14px;
+            background: #1e1e1e;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 13px;
+            color: #a0a0a0;
+        }
+
+        .diff-file-status {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+
+        .status-modified {
+            background: rgba(245, 158, 11, 0.2);
+            color: #f59e0b;
+        }
+
+        .status-added {
+            background: rgba(34, 197, 94, 0.2);
+            color: #22c55e;
+        }
+
+        .status-deleted {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        .diff-content {
+            padding: 14px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .diff-line {
+            display: flex;
+            padding: 2px 0;
+        }
+
+        .diff-line-number {
+            width: 40px;
+            color: #555;
+            text-align: right;
+            padding-right: 12px;
+            flex-shrink: 0;
+        }
+
+        .diff-line-content {
+            flex: 1;
+            white-space: pre;
+            overflow-x: auto;
+        }
+
+        .diff-line.addition {
+            background: rgba(34, 197, 94, 0.1);
+            color: #22c55e;
+        }
+
+        .diff-line.deletion {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+        }
+
+        /* 滚动条样式 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #444;
+        }
+
+        /* 动画 */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message {
+            animation: fadeIn 0.2s ease-out;
+        }
+
+        /* 状态栏 */
+        .status-bar {
+            height: 28px;
+            background: #141414;
+            border-top: 1px solid #2d2d2d;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            font-size: 11px;
+            color: #555;
+        }
+
+        .status-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .status-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+
+        .status-dot.connected {
+            background: #22c55e;
+        }
+
+        .status-dot.disconnected {
+            background: #ef4444;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- 左侧工具栏 -->
+        <aside class="sidebar">
+            <div class="sidebar-icon active" title="项目">
+                <span>📁</span>
+            </div>
+            <div class="sidebar-icon" title="搜索">
+                <span>🔍</span>
+            </div>
+            <div class="sidebar-icon" title="Git">
+                <span>🌿</span>
+            </div>
+            <div class="sidebar-divider"></div>
+            <div class="sidebar-icon" title="终端">
+                <span>⌨️</span>
+            </div>
+            <div class="sidebar-icon" title="扩展">
+                <span>🧩</span>
+            </div>
+            <div class="sidebar-divider"></div>
+            <div class="sidebar-icon" title="设置">
+                <span>⚙️</span>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <!-- 顶部导航 -->
+            <header class="header">
+                <div class="header-left">
+                    <div class="thread-indicator">
+                        <span class="thread-dot"></span>
+                        <span>线程 #1 - 活动中</span>
+                    </div>
+                    <span style="color: #555; font-size: 13px;">我的项目</span>
+                </div>
+                <div class="header-right">
+                    <button class="header-button">暂停</button>
+                    <button class="header-button">终止</button>
+                    <button class="header-button primary">新建线程</button>
+                </div>
+            </header>
+
+            <!-- 内容区 -->
+            <div class="content-area">
+                <!-- 线程列表 -->
+                <div class="thread-list">
+                    <div class="thread-list-header">
+                        <span class="thread-list-title">线程</span>
+                        <button class="new-thread-button">+</button>
+                    </div>
+                    <div class="thread-items">
+                        <div class="thread-item active">
+                            <div class="thread-item-title">API接口优化</div>
+                            <div class="thread-item-preview">优化用户认证接口的性能...</div>
+                            <div class="thread-item-time">2分钟前</div>
+                        </div>
+                        <div class="thread-item">
+                            <div class="thread-item-title">数据库迁移</div>
+                            <div class="thread-item-preview">将SQLite迁移到PostgreSQL...</div>
+                            <div class="thread-item-time">1小时前</div>
+                        </div>
+                        <div class="thread-item">
+                            <div class="thread-item-title">前端组件重构</div>
+                            <div class="thread-item-preview">重构用户列表组件...</div>
+                            <div class="thread-item-time">昨天</div>
+                        </div>
+                        <div class="thread-item">
+                            <div class="thread-item-title">错误处理改进</div>
+                            <div class="thread-item-preview">添加全局错误处理中间件...</div>
+                            <div class="thread-item-time">2天前</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 聊天区域 -->
+                <div class="chat-area">
+                    <div class="messages-container">
+                        <!-- 欢迎屏幕 -->
+                        <div class="welcome-screen">
+                            <div class="welcome-logo">Pi</div>
+                            <h2 class="welcome-title">开始新的任务</h2>
+                            <p class="welcome-subtitle">
+                                描述您想要构建或修改的内容，Pi 将为您创建一个独立的工作环境。
+                                每个任务都在隔离的线程中运行，支持并行处理多个任务。
+                            </p>
+                        </div>
+
+                        <!-- 示例消息 -->
+                        <div class="message user">
+                            <div class="message-avatar">U</div>
+                            <div class="message-content">
+                                <div class="message-header">
+                                    <span class="message-role">您</span>
+                                    <span class="message-time">14:32</span>
+                                </div>
+                                <div class="message-text">
+                                    <p>请帮我优化这个API接口的性能，目前响应时间太慢了。</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="message ai">
+                            <div class="message-avatar">Pi</div>
+                            <div class="message-content">
+                                <div class="message-header">
+                                    <span class="message-role">Pi</span>
+                                    <span class="message-time">14:33</span>
+                                </div>
+                                <div class="message-text">
+                                    <p>我来分析一下这个API接口的性能问题。首先让我查看一下相关代码。</p>
+                                    
+                                    <div class="tool-call">
+                                        <div class="tool-call-header">
+                                            <span class="tool-call-icon">📖</span>
+                                            <span>读取文件</span>
+                                        </div>
+                                        <div class="tool-call-content">
+                                            src/api/users.ts
+                                        </div>
+                                    </div>
+
+                                    <p>根据分析，我发现以下几个性能瓶颈：</p>
+                                    
+                                    <p>1. 数据库查询没有使用索引<br>
+                                    2. N+1查询问题<br>
+                                    3. 缺少缓存机制</p>
+
+                                    <p>我建议使用以下优化策略：</p>
+                                    
+                                    <pre><code>// 1. 添加数据库索引
+CREATE INDEX idx_users_email ON users(email);
+
+// 2. 使用JOIN替代多次查询
+SELECT u.*, p.* 
+FROM users u 
+JOIN profiles p ON u.id = p.user_id 
+WHERE u.id IN (?);
+
+// 3. 添加Redis缓存
+const cached = await redis.get(`user:${id}`);
+if (cached) return JSON.parse(cached);</code></pre>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="message user">
+                            <div class="message-avatar">U</div>
+                            <div class="message-content">
+                                <div class="message-header">
+                                    <span class="message-role">您</span>
+                                    <span class="message-time">14:34</span>
+                                </div>
+                                <div class="message-text">
+                                    <p>好的，请帮我实施这些优化。</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="message ai">
+                            <div class="message-avatar">Pi</div>
+                            <div class="message-content">
+                                <div class="message-header">
+                                    <span class="message-role">Pi</span>
+                                    <span class="message-time">14:35</span>
+                                </div>
+                                <div class="message-text">
+                                    <p>好的，我将开始实施优化。首先修改数据库查询：</p>
+                                    
+                                    <div class="tool-call">
+                                        <div class="tool-call-header">
+                                            <span class="tool-call-icon">✏️</span>
+                                            <span>编辑文件</span>
+                                        </div>
+                                        <div class="tool-call-content">
+                                            src/api/users.ts (3处修改)
+                                        </div>
+                                    </div>
+
+                                    <p>然后添加缓存层：</p>
+                                    
+                                    <div class="tool-call">
+                                        <div class="tool-call-header">
+                                            <span class="tool-call-icon">✏️</span>
+                                            <span>编辑文件</span>
+                                        </div>
+                                        <div class="tool-call-content">
+                                            src/cache/redis.ts (新建)
+                                        </div>
+                                    </div>
+
+                                    <p>优化完成！现在API响应时间应该从 <code>800ms</code> 降低到 <code>120ms</code> 左右。</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 输入区域 -->
+                    <div class="input-area">
+                        <div class="input-container">
+                            <div class="input-wrapper">
+                                <textarea 
+                                    class="message-input" 
+                                    placeholder="描述您的任务... (Shift+Enter 换行)"
+                                    rows="1"
+                                ></textarea>
+                                <button class="send-button">发送</button>
+                            </div>
+                            <div class="input-controls">
+                                <div class="control-group">
+                                    <button class="control-button">
+                                        <span>📎</span>
+                                        <span>附加文件</span>
+                                    </button>
+                                    <button class="control-button">
+                                        <span>📋</span>
+                                        <span>粘贴代码</span>
+                                    </button>
+                                    <div class="model-selector">
+                                        <span>🤖</span>
+                                        <span>mimo-v2.5-pro</span>
+                                        <span>▼</span>
+                                    </div>
+                                </div>
+                                <div class="thinking-depth">
+                                    <span class="thinking-label">思考深度：</span>
+                                    <div class="thinking-options">
+                                        <button class="thinking-option">快速</button>
+                                        <button class="thinking-option active">标准</button>
+                                        <button class="thinking-option">深度</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右侧面板 -->
+                <aside class="right-panel">
+                    <div class="panel-tabs">
+                        <button class="panel-tab active">终端</button>
+                        <button class="panel-tab">差异</button>
+                        <button class="panel-tab">文件</button>
+                    </div>
+                    <div class="panel-content">
+                        <!-- 终端内容 -->
+                        <div class="terminal">
+                            <div class="terminal-line">
+                                <span class="terminal-prompt">$</span>
+                                <span class="terminal-command"> npm run build</span>
+                            </div>
+                            <div class="terminal-line terminal-output">
+                                > pi-desktop@0.1.0 build
+                            </div>
+                            <div class="terminal-line terminal-output">
+                                > electron-vite build
+                            </div>
+                            <div class="terminal-line terminal-output" style="color: #22c55e;">
+                                ✓ Build completed in 2.3s
+                            </div>
+                            <div class="terminal-line">
+                                <span class="terminal-prompt">$</span>
+                                <span class="terminal-command"> git status</span>
+                            </div>
+                            <div class="terminal-line terminal-output">
+                                On branch main
+                            </div>
+                            <div class="terminal-line terminal-output">
+                                Changes to be committed:
+                            </div>
+                            <div class="terminal-line terminal-output" style="color: #22c55e;">
+                                modified: src/api/users.ts
+                            </div>
+                            <div class="terminal-line terminal-output" style="color: #22c55e;">
+                                new file: src/cache/redis.ts
+                            </div>
+                        </div>
+
+                        <!-- 差异内容 -->
+                        <div style="margin-top: 24px;">
+                            <div class="diff-header">
+                                <span class="diff-title">代码变更</span>
+                                <div class="diff-stats">
+                                    <span class="diff-additions">+42 行</span>
+                                    <span class="diff-deletions">-18 行</span>
+                                </div>
+                            </div>
+
+                            <div class="diff-file">
+                                <div class="diff-file-header">
+                                    <span>src/api/users.ts</span>
+                                    <span class="diff-file-status status-modified">已修改</span>
+                                </div>
+                                <div class="diff-content">
+                                    <div class="diff-line addition">
+                                        <span class="diff-line-number">15</span>
+                                        <span class="diff-line-content">+ const cache = new RedisCache();</span>
+                                    </div>
+                                    <div class="diff-line addition">
+                                        <span class="diff-line-number">16</span>
+                                        <span class="diff-line-content">+ </span>
+                                    </div>
+                                    <div class="diff-line deletion">
+                                        <span class="diff-line-number">17</span>
+                                        <span class="diff-line-content">- const users = await db.query('SELECT * FROM users');</span>
+                                    </div>
+                                    <div class="diff-line addition">
+                                        <span class="diff-line-number">17</span>
+                                        <span class="diff-line-content">+ const users = await db.query(</span>
+                                    </div>
+                                    <div class="diff-line addition">
+                                        <span class="diff-line-number">18</span>
+                                        <span class="diff-line-content">+   'SELECT u.*, p.* FROM users u JOIN profiles p ON u.id = p.user_id'</span>
+                                    </div>
+                                    <div class="diff-line addition">
+                                        <span class="diff-line-number">19</span>
+                                        <span class="diff-line-content">+ );</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
+            </div>
+
+            <!-- 状态栏 -->
+            <footer class="status-bar">
+                <div class="status-left">
+                    <div class="status-indicator">
+                        <span class="status-dot connected"></span>
+                        <span>已连接</span>
+                    </div>
+                    <span>C:\Users\48818\Projects\my-project</span>
+                </div>
+                <div class="status-right">
+                    <span>mimo-v2.5-pro</span>
+                    <span>上下文: 12,345 tokens</span>
+                    <span>Pi Desktop v0.2.0</span>
+                </div>
+            </footer>
+        </main>
+    </div>
+</body>
+</html>
