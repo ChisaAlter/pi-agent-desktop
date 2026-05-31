@@ -59,6 +59,25 @@ export interface AppSettings {
   piConfig?: PiConfig;
 }
 
+// Pi Driver 状态
+export interface PiStatus {
+  installed: boolean;
+  localVersion: string | null;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  executablePath: string | null;
+  installMethod: string;
+  configExists: boolean;
+  defaultProvider: string | null;
+  defaultModel: string | null;
+}
+
+export interface PiInstallProgress {
+  stage: 'downloading' | 'installing' | 'verifying' | 'done' | 'error';
+  message: string;
+  percent?: number;
+}
+
 // Pi event types for IPC communication
 export type PiEventType = 'text_start' | 'text_delta' | 'turn_end' | 'error' | 'toolcall_start' | 'toolcall_end';
 

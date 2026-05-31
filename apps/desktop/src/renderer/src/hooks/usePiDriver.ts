@@ -2,12 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSessionStore, Message } from '../stores/session-store';
-
-interface PiDriverStatus {
-  isRunning: boolean;
-  pid?: number;
-  workspacePath: string;
-}
+import type { PiDriverStatus } from '../types';
 
 interface UsePiDriverReturn {
   isConnected: boolean;
@@ -33,7 +28,7 @@ export function usePiDriver(): UsePiDriverReturn {
         if (window.piAPI) {
           const status = await window.piAPI.getStatus();
           setStatus(status);
-          setIsConnected(status.isRunning);
+          setIsConnected(status.installed);
         }
       } catch (error) {
         console.error('Failed to get Pi status:', error);
@@ -42,7 +37,7 @@ export function usePiDriver(): UsePiDriverReturn {
     };
     
     checkStatus();
-    const interval = setInterval(checkStatus, 5000);
+    const interval = setInterval(checkStatus, 30000);
     
     return () => clearInterval(interval);
   }, []);

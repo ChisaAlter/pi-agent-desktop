@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useSettingsStore } from '../../stores/settings-store';
+import { PiStatusPanel } from '../PiStatusPanel';
 
 export function SettingsPanel(): React.JSX.Element {
   const { settings, isOpen, closeSettings, updateSettings, resetSettings, piModels } = useSettingsStore();
@@ -197,6 +198,9 @@ export function SettingsPanel(): React.JSX.Element {
             
             {activeTab === 'piagent' && (
               <div className="space-y-6">
+                {/* Pi CLI 状态管理 */}
+                <PiStatusPanel />
+
                 <h3 className="text-base font-medium text-[#1a1a1a]">Pi Agent 配置</h3>
                 
                 {piFullConfig ? (

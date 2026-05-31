@@ -10,7 +10,7 @@
 
 import { spawn, execSync, type ChildProcess } from 'child_process';
 import { existsSync, readFileSync, readdirSync } from 'fs';
-import { join, delimiter } from 'path';
+import { join } from 'path';
 import { homedir, platform } from 'os';
 import { EventEmitter } from 'events';
 
@@ -87,8 +87,13 @@ const COMMON_PATHS = platform() === 'win32'
 // ── 主类 ────────────────────────────────────────────────────────
 
 export class PiDriver extends EventEmitter {
-  private cachedStatus: PiStatus | null = null;
+  private _cachedStatus: PiStatus | null = null;
   private npmProcess: ChildProcess | null = null;
+
+  /** 获取上次检测的缓存状态 */
+  get cachedStatus(): PiStatus | null {
+    return this._cachedStatus;
+  }
 
   constructor() {
     super();
@@ -142,7 +147,7 @@ export class PiDriver extends EventEmitter {
       console.warn('[PiDriver] Failed to fetch latest version:', err);
     }
 
-    this.cachedStatus = result;
+    this._cachedStatus = result;
     return result;
   }
 
@@ -176,7 +181,7 @@ export class PiDriver extends EventEmitter {
       result.localVersion = this.getLocalVersion(detection.path);
     }
 
-    this.cachedStatus = result;
+    this._cachedStatus = result;
     return result;
   }
 
@@ -215,7 +220,7 @@ export class PiDriver extends EventEmitter {
 
       child.on('close', (code) => {
         if (code === 0) {
-          this.cachedStatus = null;
+          this._cachedStatus = null;
           this.emitProgress('done', 'Pi CLI 已卸载');
           resolve();
         } else {
@@ -431,7 +436,7 @@ export class PiDriver extends EventEmitter {
             this.emitProgress('done', action === 'install'
               ? `Pi CLI v${version || '?'} 安装成功`
               : `Pi CLI 已更新至 v${version || '?'}`);
-            this.cachedStatus = null; // 清除缓存
+            this._cachedStatus = null; // 清除缓存
             resolve();
           } else {
             const msg = '安装似乎成功但找不到 pi 可执行文件，请检查 npm global bin 是否在 PATH 中';

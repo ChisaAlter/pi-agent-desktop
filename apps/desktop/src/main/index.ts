@@ -3,14 +3,38 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import { join } from 'path';
 import { is } from '@electron-toolkit/utils';
-import { spawn, execSync } from 'child_process';
+import { spawn, execSync, type ChildProcess } from 'child_process';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { homedir } from 'os';
 import Store from 'electron-store';
+import { detectProject } from './project-detector';
+import { buildFileTree } from './file-tree';
+import { MessagingGateway } from './messaging/gateway';
+import { GatewayConfig } from './messaging/types';
+import { PiDriver, type PiInstallProgress } from './pi-driver';
 
 let mainWindow: BrowserWindow | null = null;
 let piAgentConfig: PiAgentConfig | null = null;
 let currentPiProcess: ReturnType<typeof spawn> | null = null;
+let gateway: MessagingGateway | null = null;
+let piDriver: PiDriver | null = null;
+
+// 终端进程管理
+const terminalProcesses = new Map<string, ChildProcess>();
+
+// 获取默认 shell
+function getDefaultShell(): string {
+  if (process.platform === 'win32') {
+    // 优先 PowerShell，回退到 cmd
+    try {
+      execSync('where powershell.exe', { stdio: 'ignore' });
+      return 'powershell.exe';
+    } catch {
+      return 'cmd.exe';
+    }
+  }
+  return process.env.SHELL || '/bin/bash';
+}
 
 // Pi Agent 配置结构（从 ~/.pi/agent/ 读取）
 interface PiAgentModel {
@@ -245,10 +269,23 @@ function createWindow(): void {
   }
 }
 
-// Initialize Pi Driver — 不再使用持久进程，改为按需 --print 模式
+// Initialize Pi Driver — 检测本地 Pi CLI 并设置事件监听
 function initializePiDriver(): void {
-  console.log('Pi Driver ready (pipe mode per prompt)');
-  // 持久进程不再使用，每次 prompt 独立 spawn
+  piDriver = new PiDriver();
+
+  // 监听安装/更新进度，转发给渲染进程
+  piDriver.on('progress', (progress: PiInstallProgress) => {
+    mainWindow?.webContents.send('pi:install-progress', progress);
+  });
+
+  // 启动时自动检测（异步，不阻塞）
+  piDriver.detect().then(status => {
+    console.log(`[PiDriver] Detection: installed=${status.installed}, version=${status.localVersion}, latest=${status.latestVersion}, update=${status.updateAvailable}`);
+    // 通知渲染进程状态已更新
+    mainWindow?.webContents.send('pi:status-changed', status);
+  }).catch(err => {
+    console.warn('[PiDriver] Detection failed:', err);
+  });
 }
 
 // Git status helper
@@ -309,7 +346,7 @@ function getGitStatus(workspacePath: string): { branch: string; modified: string
 
 // IPC Handlers
 function setupIPC(): void {
-  // Pi CLI — 使用 --print 管道模式，每次独立运行
+  // Pi CLI — 使用 --mode json 结构化事件流模式，每次独立运行
   ipcMain.handle('pi:prompt', async (_, message: string, _sessionId?: string) => {
     const provider = piAgentConfig?.defaultProvider || 'mimo';
     const model = piAgentConfig?.defaultModel || 'mimo-v2.5-pro';
@@ -318,8 +355,8 @@ function setupIPC(): void {
     
     return new Promise<void>((resolve, reject) => {
       try {
-        // --print 模式不需要 session，因为是一次性处理
-        const args = ['--provider', provider, '--model', model, '--print'];
+        // --mode json 输出结构化 JSONL 事件流，--print 让 pi 从 stdin 读取输入
+        const args = ['--provider', provider, '--model', model, '--mode', 'json', '--print'];
 
         // 构建命令字符串，避免 shell: true 时的参数拼接问题
         const command = `pi ${args.map(a => `"${a}"`).join(' ')}`;
@@ -334,35 +371,62 @@ function setupIPC(): void {
         // 保存进程引用以便中止
         currentPiProcess = proc;
 
-        let fullResponse = '';
-
-        // 先发送 text_start 事件，让渲染进程准备好接收
+        // 兼容层：发送 text_start 给旧的 pi:event 监听器
         if (mainWindow && mainWindow.webContents) {
-          console.log('[Main] Sending text_start event');
           mainWindow.webContents.send('pi:event', { type: 'text_start' });
-        } else {
-          console.error('[Main] mainWindow or webContents not available');
         }
 
-        // 标记是否已经发送了 turn_end 事件
+        // 标记是否已经发送了 turn_end 兼容事件
         let turnEnded = false;
-        const sendTurnEnd = () => {
+        const sendTurnEndCompat = () => {
           if (!turnEnded) {
             turnEnded = true;
             mainWindow?.webContents.send('pi:event', { type: 'turn_end' });
           }
         };
 
+        // JSONL 行缓冲：stdout 可能不按行边界到达，需要拼接
+        let buffer = '';
+
         proc.stdout?.on('data', (data: Buffer) => {
-          const text = data.toString();
-          console.log('[Main] stdout data received, length:', text.length);
-          fullResponse += text;
-          // 实时推送文字给渲染进程
-          if (mainWindow && mainWindow.webContents) {
-            mainWindow.webContents.send('pi:event', {
-              type: 'text_delta',
-              text: text
-            });
+          buffer += data.toString();
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // 保留不完整的最后一行
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const event = JSON.parse(line);
+              // 转发完整的结构化事件给渲染进程
+              if (mainWindow && mainWindow.webContents) {
+                mainWindow.webContents.send('pi:json-event', event);
+              }
+
+              // 兼容层：将关键事件也映射到旧的 pi:event 通道
+              if (event.type === 'message_update' && event.assistantMessageEvent) {
+                const sub = event.assistantMessageEvent;
+                if (sub.type === 'text_delta' && sub.delta) {
+                  mainWindow?.webContents.send('pi:event', {
+                    type: 'text_delta',
+                    text: sub.delta
+                  });
+                }
+              } else if (event.type === 'tool_execution_start') {
+                mainWindow?.webContents.send('pi:event', {
+                  type: 'toolcall_start',
+                  tool: event.toolName,
+                  input: event.args
+                });
+              } else if (event.type === 'tool_execution_end') {
+                mainWindow?.webContents.send('pi:event', {
+                  type: 'toolcall_end',
+                  tool: event.toolName,
+                  result: event.result
+                });
+              }
+            } catch (e) {
+              console.error('[Main] Failed to parse Pi JSON line:', (e as Error).message, line.substring(0, 120));
+            }
           }
         });
 
@@ -371,12 +435,24 @@ function setupIPC(): void {
         });
 
         proc.on('close', (code) => {
-          console.log('[Main] Process closed with code:', code);
+          console.log('[Main] Pi process closed with code:', code);
           currentPiProcess = null;
-          // 延迟发送 turn_end，确保所有 text_delta 事件都已处理
+
+          // 处理缓冲区中最后一行（可能没有换行符结尾）
+          if (buffer.trim()) {
+            try {
+              const event = JSON.parse(buffer);
+              if (mainWindow && mainWindow.webContents) {
+                mainWindow.webContents.send('pi:json-event', event);
+              }
+            } catch {
+              // 忽略无法解析的尾部数据
+            }
+          }
+
+          // 延迟发送兼容 turn_end，确保所有事件都已推送
           setTimeout(() => {
-            console.log('[Main] Sending turn_end event');
-            sendTurnEnd();
+            sendTurnEndCompat();
           }, 100);
           if (code === 0) {
             resolve();
@@ -390,7 +466,7 @@ function setupIPC(): void {
             type: 'error',
             message: error.message
           });
-          sendTurnEnd();
+          sendTurnEndCompat();
           reject(error);
         });
 
@@ -403,18 +479,57 @@ function setupIPC(): void {
     });
   });
 
+  // ── Pi Driver 管理 ───────────────────────────────────────────────
+
   ipcMain.handle('pi:status', async () => {
-    return {
-      isRunning: true, // pipe 模式总是可用
-      workspacePath: process.cwd(),
-      provider: piAgentConfig?.defaultProvider || null,
-      model: piAgentConfig?.defaultModel || null
-    };
+    if (!piDriver) return { installed: false, error: 'PiDriver not initialized' };
+    // 优先用缓存，否则同步检测
+    return piDriver.detectSync();
+  });
+
+  ipcMain.handle('pi:refresh-status', async () => {
+    if (!piDriver) throw new Error('PiDriver not initialized');
+    const status = await piDriver.detect();
+    return status;
+  });
+
+  ipcMain.handle('pi:install', async () => {
+    if (!piDriver) throw new Error('PiDriver not initialized');
+    await piDriver.install();
+    return piDriver.detectSync();
+  });
+
+  ipcMain.handle('pi:update', async () => {
+    if (!piDriver) throw new Error('PiDriver not initialized');
+    await piDriver.update();
+    return piDriver.detectSync();
+  });
+
+  ipcMain.handle('pi:uninstall', async () => {
+    if (!piDriver) throw new Error('PiDriver not initialized');
+    await piDriver.uninstall();
+    return piDriver.detectSync();
+  });
+
+  ipcMain.handle('pi:cancel-operation', async () => {
+    piDriver?.cancelOperation();
   });
 
   ipcMain.handle('pi:stop', async () => {
     if (currentPiProcess) {
-      currentPiProcess.kill('SIGTERM');
+      const proc = currentPiProcess;
+      proc.kill('SIGTERM');
+      // 等待进程实际退出（最多 3 秒）
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => {
+          proc.kill('SIGKILL');
+          resolve();
+        }, 3000);
+        proc.on('close', () => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
       currentPiProcess = null;
     }
     mainWindow?.webContents.send('pi:event', { type: 'turn_end' });
@@ -494,6 +609,62 @@ function setupIPC(): void {
   // Git status
   ipcMain.handle('git:status', async (_, workspacePath: string) => {
     return getGitStatus(workspacePath);
+  });
+
+  // Git diff (指定文件或全部)
+  ipcMain.handle('git:diff', async (_, workspacePath: string, filePath?: string) => {
+    try {
+      const cmd = filePath ? `git diff "${filePath}"` : 'git diff';
+      return execSync(cmd, { cwd: workspacePath, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+    } catch {
+      return '';
+    }
+  });
+
+  // Git staged diff
+  ipcMain.handle('git:diff-staged', async (_, workspacePath: string) => {
+    try {
+      return execSync('git diff --staged', { cwd: workspacePath, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+    } catch {
+      return '';
+    }
+  });
+
+  // Git add
+  ipcMain.handle('git:add', async (_, workspacePath: string, files: string[]) => {
+    const filesArg = files.map(f => `"${f}"`).join(' ');
+    execSync(`git add ${filesArg}`, { cwd: workspacePath });
+  });
+
+  // Git commit
+  ipcMain.handle('git:commit', async (_, workspacePath: string, message: string) => {
+    const escaped = message.replace(/"/g, '\\"').replace(/\n/g, '\\n');
+    return execSync(`git commit -m "${escaped}"`, { cwd: workspacePath, encoding: 'utf-8' });
+  });
+
+  // Git log (最近 N 条)
+  ipcMain.handle('git:log', async (_, workspacePath: string, count: number = 20) => {
+    try {
+      const format = '--pretty=format:{"hash":"%h","author":"%an","date":"%ai","message":"%s"}';
+      const output = execSync(`git log ${format} -n ${count}`, { cwd: workspacePath, encoding: 'utf-8' });
+      return output.split('\n').filter(l => l.trim()).map(l => JSON.parse(l));
+    } catch {
+      return [];
+    }
+  });
+
+  // Git branches
+  ipcMain.handle('git:branches', async (_, workspacePath: string) => {
+    try {
+      const output = execSync('git branch -a', { cwd: workspacePath, encoding: 'utf-8' });
+      return output.split('\n').filter(l => l.trim()).map(l => ({
+        name: l.replace(/^\*?\s+/, '').trim(),
+        isCurrent: l.startsWith('*'),
+        isRemote: l.includes('remotes/')
+      }));
+    } catch {
+      return [];
+    }
   });
 
   // Settings
@@ -623,6 +794,133 @@ function setupIPC(): void {
       return [];
     }
   });
+
+  // ── Messaging Gateway IPC ────────────────────────────────────────
+
+  ipcMain.handle('gateway:status', async () => {
+    return gateway?.getStatus() || [];
+  });
+
+  ipcMain.handle('gateway:connect', async (_, platform: string) => {
+    if (!gateway) {
+      const config: GatewayConfig = {
+        wechat: { enabled: true },
+        feishu: { enabled: true },
+        qq: { enabled: true },
+        autoReply: false,
+        replyMode: 'pi',
+      };
+      gateway = new MessagingGateway(config);
+      if (mainWindow) gateway.setMainWindow(mainWindow);
+    }
+    return await gateway.connectPlatform(platform);
+  });
+
+  ipcMain.handle('gateway:disconnect', async (_, platform: string) => {
+    await gateway?.disconnectPlatform(platform);
+  });
+
+  ipcMain.handle('gateway:send', async (_, platform: string, chatId: string, content: string) => {
+    if (!gateway) throw new Error('Gateway not initialized');
+    await gateway.sendReply(platform, chatId, content);
+  });
+
+  ipcMain.handle('gateway:messages', async () => {
+    return gateway?.getMessageHistory() || [];
+  });
+
+  ipcMain.handle('gateway:config', async (_, config: Partial<GatewayConfig>) => {
+    gateway?.updateConfig(config);
+  });
+
+  // ── Terminal IPC Handlers ──────────────────────────────────────────
+
+  // ── Project Detection & File Tree ────────────────────────────────
+  ipcMain.handle('project:detect', async (_, workspacePath: string) => {
+    return detectProject(workspacePath);
+  });
+
+  ipcMain.handle('project:file-tree', async (_, workspacePath: string, maxDepth?: number) => {
+    return buildFileTree(workspacePath, maxDepth || 3);
+  });
+
+  ipcMain.handle('terminal:create', (_event, terminalId: string) => {
+    // 如果已存在同 ID 的进程，先关闭
+    const existing = terminalProcesses.get(terminalId);
+    if (existing) {
+      existing.kill();
+      terminalProcesses.delete(terminalId);
+    }
+
+    const shell = getDefaultShell();
+    const shellArgs = process.platform === 'win32' ? [] : [];
+
+    console.log(`[Terminal] Creating shell: ${shell} (id=${terminalId})`);
+
+    const child = spawn(shell, shellArgs, {
+      cwd: process.cwd(),
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, TERM: 'xterm-256color' },
+      windowsHide: true,
+    });
+
+    terminalProcesses.set(terminalId, child);
+
+    child.stdout?.on('data', (data: Buffer) => {
+      mainWindow?.webContents.send('terminal:output', {
+        id: terminalId,
+        data: data.toString(),
+      });
+    });
+
+    child.stderr?.on('data', (data: Buffer) => {
+      mainWindow?.webContents.send('terminal:output', {
+        id: terminalId,
+        data: data.toString(),
+      });
+    });
+
+    child.on('close', (code) => {
+      console.log(`[Terminal] Process closed: id=${terminalId}, code=${code}`);
+      terminalProcesses.delete(terminalId);
+      mainWindow?.webContents.send('terminal:exit', {
+        id: terminalId,
+        code,
+      });
+    });
+
+    child.on('error', (err) => {
+      console.error(`[Terminal] Process error: id=${terminalId}`, err.message);
+      mainWindow?.webContents.send('terminal:output', {
+        id: terminalId,
+        data: `\x1b[31mError: ${err.message}\x1b[0m\r\n`,
+      });
+    });
+
+    return true;
+  });
+
+  ipcMain.handle('terminal:input', (_event, terminalId: string, data: string) => {
+    const child = terminalProcesses.get(terminalId);
+    if (child && child.stdin && !child.stdin.destroyed) {
+      child.stdin.write(data);
+    }
+  });
+
+  ipcMain.handle('terminal:resize', (_event, terminalId: string, cols: number, rows: number) => {
+    // child_process 不直接支持 resize，但记录日志
+    // 若将来切换到 node-pty，可以调用 pty.resize(cols, rows)
+    console.log(`[Terminal] Resize: id=${terminalId}, cols=${cols}, rows=${rows}`);
+  });
+
+  ipcMain.handle('terminal:close', (_event, terminalId: string) => {
+    const child = terminalProcesses.get(terminalId);
+    if (child) {
+      child.kill();
+      terminalProcesses.delete(terminalId);
+      console.log(`[Terminal] Closed: id=${terminalId}`);
+    }
+  });
 }
 
 // App lifecycle
@@ -657,6 +955,25 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  // 清理消息网关
+  if (gateway) {
+    gateway.destroy();
+    gateway = null;
+  }
+
+  // 清理 Pi Driver
+  if (piDriver) {
+    piDriver.destroy();
+    piDriver = null;
+  }
+
+  // 清理所有终端进程
+  for (const [id, child] of terminalProcesses) {
+    console.log(`[Terminal] Killing terminal process: ${id}`);
+    child.kill();
+  }
+  terminalProcesses.clear();
+
   if (process.platform !== 'darwin') {
     app.quit();
   }
