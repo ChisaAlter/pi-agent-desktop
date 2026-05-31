@@ -25,6 +25,11 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "tsc --noEmit && electron-vite build",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win nsis portable zip",
+    "dist:mac": "npm run build && electron-builder --mac dmg zip",
+    "dist:linux": "npm run build && electron-builder --linux AppImage deb tar.gz",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "make-icon": "node scripts/make-icon.js"
@@ -40,11 +45,55 @@
     "remark-gfm": "^4.0.1",
     "zustand": "^5.0.0"
   },
+  "build": {
+    "appId": "com.ayuayue.pi-desktop",
+    "productName": "pi-desktop",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "out/main/index.js"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable",
+        "zip"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "tar.gz"
+      ],
+      "category": "Development"
+    }
+  },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "electron": "^38.0.0",
+    "electron-builder": "^26.8.1",
     "typescript": "^5.9.0",
     "vite": "^7.0.0"
   }

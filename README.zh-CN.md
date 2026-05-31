@@ -132,7 +132,19 @@ pi --version
 pi --mode rpc
 ```
 
-## 快速开始
+## 下载安装
+
+预构建安装包会在 GitHub Release 中自动发布：
+
+```txt
+https://github.com/ayuayue/pi-desktop/releases
+```
+
+Release 资源由 GitHub Actions 自动打包，目标平台包括 Windows、macOS 和 Linux。
+
+> 注意：pi-desktop 需要你单独安装 `pi` 命令，并确保它已经加入系统 `PATH`。
+
+## 从源码运行
 
 ```bash
 git clone https://github.com/ayuayue/pi-desktop.git
@@ -168,6 +180,20 @@ npm run typecheck
 
 ```bash
 npm run build
+```
+
+### 本地打包
+
+```bash
+npm run dist
+```
+
+按平台打包：
+
+```bash
+npm run dist:win
+npm run dist:mac
+npm run dist:linux
 ```
 
 ### 生成图标资源

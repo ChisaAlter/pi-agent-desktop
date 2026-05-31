@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { isValidElement, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { createPreviewApi } from "./previewApi";
@@ -428,7 +428,19 @@ function ChatBubble(props: { message: ChatMessage }) {
   const isTool = message.role === "tool";
   const label = message.role === "assistant" ? "pi" : message.role;
   const detailText = typeof message.meta?.detailText === "string" ? message.meta.detailText : JSON.stringify(message.meta ?? {}, null, 2);
-  return <article data-message-id={message.id} className={isUser ? "chat-message mine" : `chat-message ${message.role}`}><div className="msg-avatar">{isUser ? "我" : label.slice(0, 1).toUpperCase()}</div><div className="msg-content"><div className="msg-name"><span>{label}</span><time>{formatTime(message.timestamp)}</time></div><div className="msg-bubble markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]}>{message.text}</ReactMarkdown>{expanded && <pre className="tool-detail">{detailText}</pre>}</div><div className="msg-actions"><button onClick={() => navigator.clipboard.writeText(expanded && isTool ? detailText : message.text)}>复制</button>{isTool && <button onClick={() => setExpanded(value => !value)}>{expanded ? "收起详情" : "查看详情"}</button>}</div></div></article>;
+  return <article data-message-id={message.id} className={isUser ? "chat-message mine" : `chat-message ${message.role}`}><div className="msg-avatar">{isUser ? "我" : label.slice(0, 1).toUpperCase()}</div><div className="msg-content"><div className="msg-name"><span>{label}</span><time>{formatTime(message.timestamp)}</time></div><div className="msg-bubble markdown-body"><ReactMarkdown remarkPlugins={[remarkGfm]} components={{ pre: CodeBlock }}>{message.text}</ReactMarkdown>{expanded && <pre className="tool-detail">{detailText}</pre>}</div><div className="msg-actions"><button onClick={() => navigator.clipboard.writeText(expanded && isTool ? detailText : message.text)}>复制</button>{isTool && <button onClick={() => setExpanded(value => !value)}>{expanded ? "收起详情" : "查看详情"}</button>}</div></div></article>;
+}
+
+function CodeBlock(props: React.HTMLAttributes<HTMLPreElement>) {
+  const text = extractText(props.children);
+  return <div className="code-block-wrap"><button className="code-copy" onClick={() => navigator.clipboard.writeText(text)}>复制代码</button><pre {...props}>{props.children}</pre></div>;
+}
+
+function extractText(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(extractText).join("");
+  if (isValidElement<{ children?: ReactNode }>(node)) return extractText(node.props.children);
+  return "";
 }
 
 function formatTime(timestamp: number) {

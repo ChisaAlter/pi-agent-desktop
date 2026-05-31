@@ -625,6 +625,10 @@ body.is-resizing {
   border-radius: 8px;
   background: #f5f7fa;
 }
+.code-block-wrap { position: relative; margin: 10px 0; }
+.code-block-wrap pre { margin: 0; padding-top: 34px; }
+.code-copy { position: absolute; top: 6px; right: 6px; z-index: 1; border: 1px solid #dde5ef; border-radius: 6px; background: rgba(255,255,255,.92); color: #657183; padding: 3px 8px; font-size: 12px; }
+.code-copy:hover { color: #0aad0a; border-color: #b8e8b8; background: #f3fff3; }
 .markdown-body table {
   display: block;
   max-width: 100%;

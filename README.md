@@ -132,7 +132,19 @@ pi --version
 pi --mode rpc
 ```
 
-## Getting Started
+## Download
+
+Prebuilt packages are published from tagged releases:
+
+```txt
+https://github.com/ayuayue/pi-desktop/releases
+```
+
+Available release assets are built by GitHub Actions for Windows, macOS, and Linux.
+
+> Note: pi-desktop requires the `pi` command to be installed separately and available in your system `PATH`.
+
+## Getting Started from Source
 
 ```bash
 git clone https://github.com/ayuayue/pi-desktop.git
@@ -166,6 +178,20 @@ npm run typecheck
 
 ```bash
 npm run build
+```
+
+### Package locally
+
+```bash
+npm run dist
+```
+
+Platform-specific package commands:
+
+```bash
+npm run dist:win
+npm run dist:mac
+npm run dist:linux
 ```
 
 ### Generate icon asset
