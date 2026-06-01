@@ -478,7 +478,9 @@ export interface ToolCall {
     args: Record<string, unknown>;
 }
 
-export type RiskLevel = "high" | "edit" | "read";
+// RiskLevel 从 shared-types 引入, 保持单一来源
+export type { RiskLevel } from "@shared/approval";
+import type { RiskLevel } from "@shared/approval";
 
 export interface Classification {
     risk: RiskLevel;
@@ -1056,7 +1058,7 @@ export async function loadApprovalExtension() {
 
 ```typescript
 /**
- * 占位 — Task 8 替换为真实的事件桥接
+ * Stub — Task 8 replaces with real implementation
  */
 export async function extensionUIRequest(_req: any): Promise<boolean> {
     // TODO: 实现真实的 extension_ui_request 桥接
@@ -1388,6 +1390,41 @@ setupChatIpc(registry);
 // ... in app.on('window-all-closed'):
 registry?.disposeAll();
 ```
+
+- [ ] **Step 3.5: 在 chat.ipc.ts 接 Pi 扩展的 deferred/review 事件**
+
+Task 7 的 Pi 扩展用 `app.emit("approval:deferred", ...)` 和 `app.emit("approval:review", ...)` 通知 main。需要在 `setupChatIpc` 里订阅, 写进 PendingEdits 并推到 renderer:
+
+`apps/desktop/src/main/ipc/chat.ipc.ts` 顶部加 import + 实例化:
+
+```typescript
+import { PendingEdits } from "../services/approval/pending-edits";
+import { readFile } from "fs/promises";
+import { join } from "path";
+import { diffWordsWithSpace } from "diff"; // 或简单行 diff
+
+const pendingEdits = new PendingEdits();
+
+// 订阅扩展发的事件
+app.on("approval:deferred", (payload: { toolName: string; filePath: string; args: any; toolCallId: string }) => {
+    const changeId = pendingEdits.track(payload.toolCallId, payload.toolName as "write" | "edit", payload.filePath, payload.args);
+    send("approval:deferred", workspaceId, { changeId, toolCallId: payload.toolCallId, filePath: payload.filePath, op: payload.toolName, timestamp: Date.now() });
+});
+
+app.on("approval:review", async (payload: { toolName: string; filePath: string; toolCallId: string }) => {
+    const change = pendingEdits.list().find((c) => c.toolCallId === payload.toolCallId);
+    if (!change) return;
+    let newContent = "";
+    try {
+        newContent = await readFile(join(ws.path, payload.filePath), "utf-8");
+    } catch {}
+    const diff = generateUnifiedDiff(change.oldString ?? "", newContent, payload.filePath);
+    pendingEdits.review(change.id, diff, newContent);
+    send("approval:review", workspaceId, { changeId: change.id, toolCallId: change.toolCallId, filePath: payload.filePath, diff, newContent, timestamp: Date.now() });
+});
+```
+
+`generateUnifiedDiff` 是简单 helper (用 `diff` 库或手写)。实现可以放 `apps/desktop/src/main/utils/diff.ts` (M1 允许简单实现)。
 
 - [ ] **Step 4: TypeScript 编译**
 
