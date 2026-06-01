@@ -6,6 +6,8 @@ import { is } from '@electron-toolkit/utils';
 import { execFileSync, execSync } from 'child_process';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { homedir } from 'os';
+import yaml from 'js-yaml';
+import log from 'electron-log/main';
 import Store from 'electron-store';
 import { detectProject } from './project-detector';
 import { buildFileTree } from './file-tree';
@@ -16,6 +18,7 @@ import { setupChatIpc } from './ipc/chat.ipc';
 import { setupFilesIpc } from './ipc/files.ipc';
 import { setupSkillsIpc } from './ipc/skills.ipc';
 import { setupTerminalIpc } from './ipc/terminal.ipc';
+import { workspaceCreateSchema, settingsSetSchema, gitCommitSchema, gitAddSchema } from './ipc/schemas';
 import { ptyManager } from './services/shell/pty-manager';
 import { setupAutoUpdater } from './services/updater';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
@@ -52,6 +55,9 @@ interface PiAgentConfig {
 }
 
 const PI_AGENT_DIR = join(homedir(), '.pi', 'agent');
+
+// M7: 启动横幅 — 让 electron-log 文件里有清晰入口, 便于排查崩溃
+log.info(`[Main] Pi Desktop starting (electron ${process.versions.electron}, node ${process.versions.node})`);
 
 // 从本地 Pi Agent 配置目录加载配置
 function loadPiAgentConfig(): PiAgentConfig | null {
@@ -97,7 +103,7 @@ function loadPiAgentConfig(): PiAgentConfig | null {
     const modelsYmlPath = join(PI_AGENT_DIR, 'models.yml');
     if (existsSync(modelsYmlPath)) {
       const ymlContent = readFileSync(modelsYmlPath, 'utf-8');
-      const ymlProviders = parseSimpleYamlProviders(ymlContent);
+      const ymlProviders = loadYamlProviders(ymlContent);
       for (const yp of ymlProviders) {
         if (!providers.find(p => p.id === yp.id)) {
           providers.push(yp);
@@ -116,66 +122,52 @@ function loadPiAgentConfig(): PiAgentConfig | null {
 
     return { defaultProvider, defaultModel, providers };
   } catch (e) {
-    console.error('Failed to load Pi Agent config:', e);
+    log.error('Failed to load Pi Agent config:', e);
     return null;
   }
 }
 
-// 简单 YAML providers 解析器（仅解析 Pi models.yml 格式）
-function parseSimpleYamlProviders(content: string): PiAgentConfig['providers'] {
+// Parse Pi models.yml into PiAgentConfig['providers'] using js-yaml.
+// (replaces an earlier 60-line hand-written regex parser; removed 2026-06-01)
+function loadYamlProviders(content: string): PiAgentConfig['providers'] {
+  const data = yaml.load(content) as { providers?: Record<string, unknown> } | null;
+  if (!data || typeof data !== 'object' || !data.providers) return [];
+
   const result: PiAgentConfig['providers'] = [];
-  const lines = content.split('\n');
-  let currentProvider: { id: string; name: string; baseUrl: string; models: PiAgentModel[] } | null = null;
-  let currentModel: Partial<PiAgentModel> | null = null;
+  for (const [providerId, raw] of Object.entries(data.providers)) {
+    const pd = raw as {
+      name?: string;
+      baseUrl?: string;
+      models?: Array<Record<string, unknown>>;
+    };
+    if (!pd || typeof pd !== 'object') continue;
 
-  for (const line of lines) {
-    // provider 顶级键 (如 "  longcat:")
-    const providerMatch = line.match(/^ {2}(\w[\w-]{0,}):$/);
-    if (providerMatch && !line.includes('baseUrl') && !line.includes('apiKey') && !line.includes('api:')) {
-      if (currentProvider && currentModel) {
-        currentProvider.models.push(currentModel as PiAgentModel);
-        currentModel = null;
-      }
-      if (currentProvider) result.push(currentProvider);
-      currentProvider = { id: providerMatch[1], name: providerMatch[1], baseUrl: '', models: [] };
-      continue;
-    }
+    const models: PiAgentModel[] = Array.isArray(pd.models)
+      ? pd.models
+          .filter((m): m is Record<string, unknown> => !!m && typeof m === 'object' && typeof m.id === 'string')
+          .map((m) => {
+            const ctxRaw = m.contextWindow;
+            const tokensRaw = m.maxTokens;
+            return {
+              id: m.id as string,
+              name: typeof m.name === 'string' ? m.name : (m.id as string),
+              provider: providerId,
+              providerName: typeof pd.name === 'string' ? pd.name : providerId,
+              contextWindow: typeof ctxRaw === 'number' ? ctxRaw : undefined,
+              maxTokens: typeof tokensRaw === 'number' ? tokensRaw : undefined,
+              reasoning: Boolean(m.reasoning),
+              input: Array.isArray(m.input) ? (m.input as string[]) : undefined
+            };
+          })
+      : [];
 
-    if (!currentProvider) continue;
-
-    const trimmed = line.trim();
-    // baseUrl
-    if (trimmed.startsWith('baseUrl:')) {
-      currentProvider.baseUrl = trimmed.replace('baseUrl:', '').trim();
-      continue;
-    }
-    // name
-    if (trimmed.startsWith('name:') && currentProvider.name === currentProvider.id) {
-      currentProvider.name = trimmed.replace('name:', '').trim();
-      continue;
-    }
-    // 模型项
-    const modelMatch = line.match(/^\s+- id:\s*(.+)/);
-    if (modelMatch) {
-      if (currentModel && currentModel.id) {
-        currentProvider.models.push(currentModel as PiAgentModel);
-      }
-      currentModel = { id: modelMatch[1], name: modelMatch[1], provider: currentProvider.id, providerName: currentProvider.name };
-      continue;
-    }
-    // 模型属性
-    if (currentModel) {
-      if (trimmed.startsWith('name:')) currentModel.name = trimmed.replace('name:', '').trim();
-      if (trimmed.startsWith('contextWindow:')) currentModel.contextWindow = parseInt(trimmed.replace('contextWindow:', '').trim());
-      if (trimmed.startsWith('maxTokens:')) currentModel.maxTokens = parseInt(trimmed.replace('maxTokens:', '').trim());
-      if (trimmed.startsWith('reasoning:')) currentModel.reasoning = trimmed.includes('true');
-    }
+    result.push({
+      id: providerId,
+      name: typeof pd.name === 'string' ? pd.name : providerId,
+      baseUrl: typeof pd.baseUrl === 'string' ? pd.baseUrl : undefined,
+      models
+    });
   }
-
-  if (currentModel && currentModel.id && currentProvider) {
-    currentProvider.models.push(currentModel as PiAgentModel);
-  }
-  if (currentProvider) result.push(currentProvider);
 
   return result;
 }
@@ -272,11 +264,11 @@ function initializePiDriver(): void {
 
   // 启动时自动检测（异步，不阻塞）
   piDriver.detect().then(status => {
-    console.log(`[PiDriver] Detection: installed=${status.installed}, version=${status.localVersion}, latest=${status.latestVersion}, update=${status.updateAvailable}`);
+    log.info(`[PiDriver] Detection: installed=${status.installed}, version=${status.localVersion}, latest=${status.latestVersion}, update=${status.updateAvailable}`);
     // 通知渲染进程状态已更新
     mainWindow?.webContents.send('pi:status-changed', status);
   }).catch(err => {
-    console.warn('[PiDriver] Detection failed:', err);
+    log.warn('[PiDriver] Detection failed:', err);
   });
 }
 
@@ -331,7 +323,7 @@ function getGitStatus(workspacePath: string): { branch: string; modified: string
 
     return { branch, modified, added, deleted, untracked, ahead, behind };
   } catch (error) {
-    console.error('Git status error:', error);
+    log.error('Git status error:', error);
     return null;
   }
 }
@@ -415,6 +407,7 @@ function setupIPC(): void {
   });
 
   ipcMain.handle('workspace:create', async (_, name: string, path: string) => {
+    workspaceCreateSchema.parse([name, path]);
     const workspace = {
       id: Date.now().toString(),
       name,
@@ -434,7 +427,7 @@ function setupIPC(): void {
 
   ipcMain.handle('workspace:select', async (_, path: string) => {
     // Pipe 模式无需重启持久进程，直接返回成功
-    console.log('Workspace selected:', path);
+    log.info('Workspace selected:', path);
   });
 
   ipcMain.handle('workspace:select-directory', async () => {
@@ -496,12 +489,14 @@ function setupIPC(): void {
 
   // Git add — 参数化, 杜绝文件路径 shell 注入
   ipcMain.handle('git:add', async (_, workspacePath: string, files: string[]) => {
+    gitAddSchema.parse([workspacePath, files]);
     if (files.length === 0) return;
     execFileSync('git', ['add', '--', ...files], { cwd: workspacePath });
   });
 
   // Git commit — 参数化, message 走 argv 不会被 shell 解析
   ipcMain.handle('git:commit', async (_, workspacePath: string, message: string) => {
+    gitCommitSchema.parse([workspacePath, message]);
     return execFileSync('git', ['commit', '-m', message], { cwd: workspacePath, encoding: 'utf-8' });
   });
 
@@ -536,6 +531,7 @@ function setupIPC(): void {
   });
 
   ipcMain.handle('settings:set', async (_, settings: Partial<AppSettings>) => {
+    settingsSetSchema.parse([settings]);
     const current = store.get('settings');
     const updated = { ...current, ...settings };
     store.set('settings', updated);
@@ -635,7 +631,7 @@ function setupIPC(): void {
 
       return skills;
     } catch (error) {
-      console.error('Failed to list skills:', error);
+      log.error('Failed to list skills:', error);
       return [];
     }
   });
@@ -653,7 +649,7 @@ function setupIPC(): void {
         type: 'provider' as const
       }));
     } catch (error) {
-      console.error('Failed to list plugins:', error);
+      log.error('Failed to list plugins:', error);
       return [];
     }
   });
@@ -681,7 +677,7 @@ app.whenReady().then(() => {
   // 先加载 Pi 配置，再初始化
   piAgentConfig = loadPiAgentConfig();
   if (piAgentConfig) {
-    console.log(`Pi config loaded: provider=${piAgentConfig.defaultProvider}, model=${piAgentConfig.defaultModel}, ${piAgentConfig.providers.length} providers`);
+    log.info(`Pi config loaded: provider=${piAgentConfig.defaultProvider}, model=${piAgentConfig.defaultModel}, ${piAgentConfig.providers.length} providers`);
     // 更新 electron-store 默认设置与 Pi 配置同步
     const currentSettings = store.get('settings');
     if (currentSettings.provider === 'openai' && currentSettings.model === 'gpt-4') {
@@ -693,7 +689,7 @@ app.whenReady().then(() => {
       });
     }
   } else {
-    console.log('No Pi Agent config found, using defaults');
+    log.info('No Pi Agent config found, using defaults');
   }
 
   createWindow();
@@ -708,6 +704,8 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  log.info('[Main] All windows closed, cleaning up resources');
+
   // 清理 Pi Driver
   if (piDriver) {
     piDriver.destroy();

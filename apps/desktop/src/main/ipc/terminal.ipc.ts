@@ -4,6 +4,7 @@
 
 import { ipcMain, BrowserWindow } from "electron";
 import { ptyManager } from "../services/shell/pty-manager";
+import { terminalInputSchema } from "./schemas";
 
 export function setupTerminalIpc(): void {
     const send = (channel: string, id: string, payload: unknown) => {
@@ -31,6 +32,7 @@ export function setupTerminalIpc(): void {
     });
 
     ipcMain.handle("terminal:input", (_event, id: string, data: string) => {
+        terminalInputSchema.parse([id, data]);
         ptyManager.write(id, data);
     });
 

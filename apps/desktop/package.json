@@ -13,7 +13,9 @@
     "package:publish": "electron-builder build --win --publish onTagOrRelease",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx",
-    "test": "vitest --run"
+    "test": "vitest --run",
+    "e2e": "playwright test",
+    "e2e:build": "electron-vite build && playwright test"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.75.5",
@@ -30,13 +32,16 @@
     "react-dom": "^19.0.0",
     "react-markdown": "^9.0.0",
     "rehype-highlight": "^7.0.0",
+    "zod": "^3.23.8",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
     "@electron-toolkit/utils": "^3.0.0",
     "@tailwindcss/postcss": "^4.0.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
+    "@types/js-yaml": "^4.0.9",
     "@types/jsdom": "^21.1.7",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -46,6 +51,7 @@
     "electron-builder": "^25.0.0",
     "electron-vite": "^2.0.0",
     "eslint": "^9.0.0",
+    "js-yaml": "^4.2.0",
     "jsdom": "^29.1.1",
     "postcss": "^8.4.0",
     "sharp": "^0.34.5",
