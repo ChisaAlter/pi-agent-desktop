@@ -60,3 +60,25 @@ temp/
 # Local configuration
 .local
 .local.*
+
+# Agent / IDE state
+.codebuddy/
+.cursor/
+.idea/
+.vscode/
+
+# Stale artifacts (M5 cleanup)
+*.tserrors.txt
+ts-errors*.txt
+app-output.log
+test-*.js
+test-*.ps1
+test-screenshot*.png
+screenshot*.png
+# Mockup HTMLs should live in docs/design-archive/ not root
+/cox*-mockup.html
+/pi-desktop-*-design.html
+/ui-design-mockup.html
+
+# package-lock.json (we use pnpm)
+package-lock.json

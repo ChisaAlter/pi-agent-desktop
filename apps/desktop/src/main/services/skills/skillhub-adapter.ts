@@ -42,7 +42,7 @@ export async function searchSkills(query: string, limit = 20): Promise<SkillInfo
     const args = ["search", query, "--json", "--search-limit", String(limit)];
     try {
         const { stdout } = await execFile("skillhub", args, { timeout: 30_000 });
-        return parseSearchOutput(stdout);
+        return parseSearchOutput(String(stdout ?? ""));
     } catch (err) {
         throw new Error(`skillhub search failed: ${(err as Error).message}`);
     }
@@ -51,9 +51,9 @@ export async function searchSkills(query: string, limit = 20): Promise<SkillInfo
 export async function listInstalled(): Promise<string[]> {
     try {
         const { stdout } = await execFile("skillhub", ["list"], { timeout: 10_000 });
-        const trimmed = stdout.trim();
+        const trimmed = String(stdout ?? "").trim();
         if (!trimmed || trimmed.startsWith("No installed")) return [];
-        return trimmed.split("\n").map((s) => s.trim()).filter(Boolean);
+        return trimmed.split("\n").map((s: string) => s.trim()).filter(Boolean);
     } catch (err) {
         throw new Error(`skillhub list failed: ${(err as Error).message}`);
     }
