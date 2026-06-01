@@ -7,9 +7,9 @@ type PiEvent = { type: string } & Record<string, unknown>;
 // Expose protected methods that allow the renderer process to use
 // ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('piAPI', {
-  // Send a prompt to Pi CLI
-  sendPrompt: (message: string, sessionId?: string) => {
-    return ipcRenderer.invoke('pi:prompt', message, sessionId);
+  // M1: Send a prompt to a specific workspace's Pi session (long-lived)
+  sendPrompt: (workspaceId: string, message: string) => {
+    return ipcRenderer.invoke('pi:send', workspaceId, message);
   },
 
   // Listen for Pi events
@@ -90,7 +90,38 @@ contextBridge.exposeInMainWorld('piAPI', {
     };
   },
 
-  // Stop Pi Driver
+  // M1: Approval flow
+  respondApproval: (requestId: string, approved: boolean) => {
+    ipcRenderer.send('approval:respond', requestId, approved);
+  },
+  onApprovalRequest: (callback: (req: { requestId: string; method: string; title: string; message?: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, req: any) => callback(req);
+    ipcRenderer.on('approval:request', handler);
+    return () => {
+      ipcRenderer.removeListener('approval:request', handler);
+    };
+  },
+  onApprovalDeferred: (callback: (deferred: { changeId: string; toolCallId: string; filePath: string; op: string; timestamp: number }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { workspaceId: string; payload: any }) => callback(data.payload);
+    ipcRenderer.on('approval:deferred', handler);
+    return () => {
+      ipcRenderer.removeListener('approval:deferred', handler);
+    };
+  },
+  onApprovalReview: (callback: (review: { changeId: string; toolCallId: string; filePath: string; diff: string; newContent: string; timestamp: number }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { workspaceId: string; payload: any }) => callback(data.payload);
+    ipcRenderer.on('approval:review', handler);
+    return () => {
+      ipcRenderer.removeListener('approval:review', handler);
+    };
+  },
+
+  // M1: Git undo (撤销 file_edit 类改动)
+  gitUndo: (workspacePath: string, filePath: string) => {
+    return ipcRenderer.invoke('git:undo', workspacePath, filePath);
+  },
+
+  // Stop Pi Driver (now M1: calls session.abort via pi:stop)
   stop: () => {
     return ipcRenderer.invoke('pi:stop');
   },

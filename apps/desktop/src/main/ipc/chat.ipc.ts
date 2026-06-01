@@ -3,6 +3,7 @@
 // 走 AgentSession 长连接 + ApprovalInterceptor + EventBridge
 
 import { ipcMain, BrowserWindow, type BrowserWindow as BrowserWindowType } from "electron";
+import { execSync } from "child_process";
 import { WorkspaceRegistry } from "../services/pi-session/registry";
 import { createEventBridge } from "../services/pi-session/event-bridge";
 import { createApprovalInterceptor } from "../services/approval/interceptor";
@@ -74,5 +75,20 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         if (!deps.registry.has(ws.id)) return;
         const wsSession = await deps.registry.get(ws.id, ws.path);
         wsSession.session.abort();
+    });
+
+    // M1: Git undo (撤销 file_edit 类改动)
+    ipcMain.handle("git:undo", async (_event, workspacePath: string, filePath: string) => {
+        try {
+            // 先试 git checkout (tracked file)
+            execSync(`git checkout -- "${filePath}"`, { cwd: workspacePath, stdio: "ignore" });
+        } catch {
+            // fallback: rm (untracked new file)
+            try {
+                execSync(`rm "${filePath}"`, { cwd: workspacePath, stdio: "ignore" });
+            } catch {
+                // ignore
+            }
+        }
     });
 }
