@@ -1,5 +1,5 @@
-// Hooks barrel export
+// Hooks barrel export (M7: re-exports all M1-M6 hooks)
 
-export { usePiDriver } from './usePiDriver';
 export { useSession } from './useSession';
-export { useGit } from './useGit';
+export { useCommandPalette } from './useCommandPalette';
+export { useMentions } from './useMentions';

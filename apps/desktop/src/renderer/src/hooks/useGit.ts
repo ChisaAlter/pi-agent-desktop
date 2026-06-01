@@ -1,98 +1,145 @@
-// useGit Hook - Git status utilities
+// useGit Hook (M7-3 重写 — 内部保持 workspacePath)
+// 包装 window.piAPI.git* — branch / status / diff / log / add / commit
+// 不再自己 execSync, 全部走 main process IPC
+//
+// 用法: const git = useGit(workspacePath); 然后 git.refresh() 不需要参数
 
-import { useState, useEffect, useCallback } from 'react';
-import { useWorkspaceStore, GitStatus } from '../stores/workspace-store';
+import { useCallback, useEffect, useState } from "react";
+import type { BranchInfo, CommitInfo } from "../types";
 
-interface UseGitReturn {
-  gitStatus: GitStatus | null;
-  isLoading: boolean;
-  error: string | null;
-  refreshStatus: () => Promise<void>;
-  getBranchDisplay: () => string;
-  getChangeCount: () => number;
-  getStatusColor: () => string;
+export interface GitStatus {
+    branch: string;
+    modified: string[];
+    added: string[];
+    deleted: string[];
+    untracked: string[];
+    ahead: number;
+    behind: number;
 }
 
-export function useGit(): UseGitReturn {
-  const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const { currentWorkspaceId, updateGitStatus, getCurrentWorkspace } = useWorkspaceStore();
+export interface UseGitReturn {
+    status: GitStatus | null;
+    branches: BranchInfo[];
+    log: CommitInfo[];
+    isLoading: boolean;
+    error: string | null;
+    /** 重新拉所有数据 */
+    refresh: () => Promise<void>;
+    /** 拿 diff */
+    diff: (filePath?: string) => Promise<string>;
+    add: (files: string[]) => Promise<void>;
+    commit: (message: string) => Promise<string>;
+    undo: (filePath: string) => Promise<void>;
+    // compat aliases for old GitPanel
+    commits: CommitInfo[];
+    stagedDiff: string;
+    refreshStatus: () => Promise<GitStatus | undefined>;
+    loadDiff: (filePath?: string) => Promise<string>;
+    loadStagedDiff: () => Promise<string>;
+    stageFiles: (files: string[]) => Promise<void>;
+    loadBranches: () => Promise<BranchInfo[]>;
+    loadCommits: (count?: number) => Promise<CommitInfo[]>;
+    getBranchDisplay: () => string;
+    getChangeCount: () => number;
+    getStatusColor: () => string;
+}
 
-  const refreshStatus = useCallback(async () => {
-    const workspace = getCurrentWorkspace();
-    if (!workspace) return;
+export function useGit(workspacePath?: string): UseGitReturn {
+    const [status, setStatus] = useState<GitStatus | null>(null);
+    const [branches, setBranches] = useState<BranchInfo[]>([]);
+    const [log, setLog] = useState<CommitInfo[]>([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-    setIsLoading(true);
-    setError(null);
+    const path = workspacePath ?? "";
 
-    try {
-      if (window.piAPI) {
-        const status = await window.piAPI.getGitStatus(workspace.path);
-        if (status) {
-          const gitStatusData: GitStatus = {
-            branch: status.branch,
-            modified: status.modified,
-            added: status.added,
-            deleted: status.deleted,
-            untracked: status.untracked,
-            ahead: status.ahead,
-            behind: status.behind
-          };
-          setGitStatus(gitStatusData);
-          if (currentWorkspaceId) {
-            updateGitStatus(currentWorkspaceId, gitStatusData);
-          }
-        } else {
-          setGitStatus(null);
+    const refresh = useCallback(async () => {
+        if (!window.piAPI || !path) return;
+        setIsLoading(true);
+        setError(null);
+        try {
+            const [s, b, l] = await Promise.all([
+                window.piAPI.getGitStatus(path),
+                window.piAPI.gitBranches(path).catch(() => [] as BranchInfo[]),
+                window.piAPI.gitLog(path, 20).catch(() => [] as CommitInfo[]),
+            ]);
+            setStatus(s);
+            setBranches(b);
+            setLog(l);
+        } catch (err) {
+            setError(String(err));
+            setStatus(null);
+        } finally {
+            setIsLoading(false);
         }
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '获取 Git 状态失败');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [currentWorkspaceId, getCurrentWorkspace, updateGitStatus]);
+    }, [path]);
 
-  useEffect(() => {
-    refreshStatus();
+    const diff = useCallback(async (filePath?: string) => {
+        if (!window.piAPI || !path) return "";
+        return window.piAPI.gitDiff(path, filePath);
+    }, [path]);
 
-    // Refresh every 30 seconds
-    const interval = setInterval(refreshStatus, 30000);
+    const add = useCallback(async (files: string[]) => {
+        if (!window.piAPI || !path) return;
+        await window.piAPI.gitAdd(path, files);
+        await refresh();
+    }, [path, refresh]);
 
-    return () => clearInterval(interval);
-  }, [refreshStatus]);
+    const commit = useCallback(async (message: string) => {
+        if (!window.piAPI || !path) throw new Error("无 workspacePath");
+        const hash = await window.piAPI.gitCommit(path, message);
+        await refresh();
+        return hash;
+    }, [path, refresh]);
 
-  const getBranchDisplay = useCallback(() => {
-    if (!gitStatus) return '无 Git 仓库';
-    return gitStatus.branch;
-  }, [gitStatus]);
+    const undo = useCallback(async (filePath: string) => {
+        if (!window.piAPI || !path) return;
+        await window.piAPI.gitUndo(path, filePath);
+        await refresh();
+    }, [path, refresh]);
 
-  const getChangeCount = useCallback(() => {
-    if (!gitStatus) return 0;
-    return (
-      gitStatus.modified.length +
-      gitStatus.added.length +
-      gitStatus.deleted.length +
-      gitStatus.untracked.length
-    );
-  }, [gitStatus]);
+    // 自动 refresh
+    useEffect(() => {
+        if (path) void refresh();
+    }, [path, refresh]);
 
-  const getStatusColor = useCallback(() => {
-    if (!gitStatus) return 'text-gray-400';
-    const changes = getChangeCount();
-    if (changes === 0) return 'text-green-400';
-    if (changes < 5) return 'text-yellow-400';
-    return 'text-red-400';
-  }, [gitStatus, getChangeCount]);
+    // compat aliases
+    const commits = log;
+    const stagedDiff = "";
+    const refreshStatus = useCallback(async (): Promise<GitStatus | undefined> => {
+        if (!window.piAPI || !path) return undefined;
+        const s = await window.piAPI.getGitStatus(path);
+        if (s) setStatus(s as GitStatus);
+        return s as GitStatus | undefined;
+    }, [path]);
+    const loadDiff = diff;
+    const loadStagedDiff = useCallback(async () => {
+        if (!window.piAPI || !path) return "";
+        return window.piAPI.gitDiffStaged(path);
+    }, [path]);
+    const stageFiles = add;
+    const loadBranches = useCallback(async () => {
+        if (!window.piAPI || !path) return [];
+        const bs = await window.piAPI.gitBranches(path);
+        setBranches(bs);
+        return bs;
+    }, [path]);
+    const loadCommits = useCallback(async (count = 20) => {
+        if (!window.piAPI || !path) return [];
+        const cs = await window.piAPI.gitLog(path, count);
+        setLog(cs);
+        return cs;
+    }, [path]);
+    const getBranchDisplay = useCallback(() => status?.branch ?? "main", [status]);
+    const getChangeCount = useCallback(() => {
+        if (!status) return 0;
+        return status.modified.length + status.added.length + status.deleted.length + status.untracked.length;
+    }, [status]);
+    const getStatusColor = useCallback(() => "text-[#10b981]", []);
 
-  return {
-    gitStatus,
-    isLoading,
-    error,
-    refreshStatus,
-    getBranchDisplay,
-    getChangeCount,
-    getStatusColor
-  };
+    return {
+        status, branches, log, isLoading, error, refresh, diff, add, commit, undo,
+        commits, stagedDiff, refreshStatus, loadDiff, loadStagedDiff, stageFiles,
+        loadBranches, loadCommits, getBranchDisplay, getChangeCount, getStatusColor,
+    };
 }

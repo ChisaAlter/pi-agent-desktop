@@ -6,6 +6,8 @@ export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  /** AI 思考过程（流式事件中的 thinking_delta 累积） */
+  thinking?: string;
   timestamp: Date;
   toolCalls?: ToolCall[];
 }
@@ -41,6 +43,10 @@ interface SessionState {
   updateMessage: (sessionId: string, messageId: string, updates: Partial<Message>) => void;
   addToolCall: (sessionId: string, messageId: string, toolCall: ToolCall) => void;
   updateToolCall: (sessionId: string, messageId: string, toolCallId: string, updates: Partial<ToolCall>) => void;
+  /** 添加流式完成的消息（来自 usePiStream） */
+  addStreamingMessage: (sessionId: string, message: Message) => void;
+  /** 更新流式内容（实时追加 thinking / text） */
+  updateStreamingContent: (sessionId: string, messageId: string, content: Partial<Message>) => void;
   getCurrentSession: () => Session | null;
   getSessionMessages: (sessionId: string) => Message[];
 }
@@ -194,6 +200,38 @@ export const useSessionStore = create<SessionState>((set, get) => {
   getSessionMessages: (sessionId: string) => {
     const session = get().sessions.find(s => s.id === sessionId);
     return session?.messages || [];
+  },
+
+  addStreamingMessage: (sessionId: string, message: Message) => {
+    // 等价于 addMessage，但语义上区分流式完成的消息
+    set(state => ({
+      sessions: state.sessions.map(session =>
+        session.id === sessionId
+          ? {
+              ...session,
+              messages: [...session.messages, message],
+              updatedAt: new Date()
+            }
+          : session
+      )
+    }));
+  },
+
+  updateStreamingContent: (sessionId: string, messageId: string, content: Partial<Message>) => {
+    // 等价于 updateMessage，但语义上区分流式内容更新
+    set(state => ({
+      sessions: state.sessions.map(session =>
+        session.id === sessionId
+          ? {
+              ...session,
+              messages: session.messages.map(msg =>
+                msg.id === messageId ? { ...msg, ...content } : msg
+              ),
+              updatedAt: new Date()
+            }
+          : session
+      )
+    }));
   }
   };
 });

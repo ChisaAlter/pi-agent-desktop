@@ -4,13 +4,17 @@ import React, { useState, useEffect } from 'react';
 import { useWorkspaceStore } from '../../stores/workspace-store';
 import { useSessionStore } from '../../stores/session-store';
 import { useSettingsStore } from '../../stores/settings-store';
+import { useThreadStore } from '../../stores/thread-store';
+import { ThreadList } from './ThreadList';
 
 export function Sidebar(): React.JSX.Element {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [activeTab, setActiveTab] = useState<'workspaces' | 'sessions'>('workspaces');
+  const [activeTab, setActiveTab] = useState<'workspaces' | 'sessions' | 'threads'>('workspaces');
   const { workspaces, currentWorkspaceId, setCurrentWorkspace, addWorkspace } = useWorkspaceStore();
   const { sessions, currentSessionId, setCurrentSession, createSession, deleteSession } = useSessionStore();
   const { openSettings } = useSettingsStore();
+  // Thread store available for future integration
+  void useThreadStore;
 
   // Load workspaces from main process on mount
   useEffect(() => {
@@ -30,6 +34,7 @@ export function Sidebar(): React.JSX.Element {
       }
     };
     loadWorkspaces();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only
   }, []);
 
   const handleNewWorkspace = async () => {
@@ -80,20 +85,20 @@ export function Sidebar(): React.JSX.Element {
   const currentWorkspaceSessions = sessions.filter(s => s.workspaceId === currentWorkspaceId);
 
   return (
-    <aside className={`${isCollapsed ? 'w-16' : 'w-64'} bg-gray-800 border-r border-gray-700 flex flex-col transition-all duration-300`}>
+    <aside className={`${isCollapsed ? 'w-16' : 'w-64'} bg-white border-r border-[#e5e5e5] flex flex-col transition-all duration-300`}>
       {/* Header */}
-      <div className="h-14 border-b border-gray-700 flex items-center justify-between px-4">
+      <div className="h-14 border-b border-[#e5e5e5] flex items-center justify-between px-4">
         {!isCollapsed && (
           <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-[#1a1a1a] rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-sm">Pi</span>
             </div>
-            <span className="font-semibold">Pi 桌面</span>
+            <span className="font-semibold text-[#1a1a1a]">Pi 桌面</span>
           </div>
         )}
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+          className="p-2 hover:bg-[#f0f0f0] rounded-lg transition-colors text-[#666666]"
         >
           {isCollapsed ? '→' : '←'}
         </button>
@@ -101,13 +106,13 @@ export function Sidebar(): React.JSX.Element {
 
       {/* Tabs */}
       {!isCollapsed && (
-        <div className="flex border-b border-gray-700">
+        <div className="flex border-b border-[#e5e5e5] overflow-x-auto">
           <button
             onClick={() => setActiveTab('workspaces')}
             className={`flex-1 py-2 px-4 text-sm font-medium ${
               activeTab === 'workspaces'
-                ? 'text-blue-400 border-b-2 border-blue-400'
-                : 'text-gray-400 hover:text-white'
+                ? 'text-[#1a1a1a] border-b-2 border-[#1a1a1a]'
+                : 'text-[#999999] hover:text-[#1a1a1a]'
             }`}
           >
             工作区
@@ -116,18 +121,28 @@ export function Sidebar(): React.JSX.Element {
             onClick={() => setActiveTab('sessions')}
             className={`flex-1 py-2 px-4 text-sm font-medium ${
               activeTab === 'sessions'
-                ? 'text-blue-400 border-b-2 border-blue-400'
-                : 'text-gray-400 hover:text-white'
+                ? 'text-[#1a1a1a] border-b-2 border-[#1a1a1a]'
+                : 'text-[#999999] hover:text-[#1a1a1a]'
             }`}
           >
             会话
+          </button>
+          <button
+            onClick={() => setActiveTab('threads')}
+            className={`flex-1 py-2 px-4 text-sm font-medium ${
+              activeTab === 'threads'
+                ? 'text-[#1a1a1a] border-b-2 border-[#1a1a1a]'
+                : 'text-[#999999] hover:text-[#1a1a1a]'
+            }`}
+          >
+            线程
           </button>
         </div>
       )}
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-2">
-        {activeTab === 'workspaces' ? (
+        {activeTab === 'workspaces' && (
           <div className="space-y-1">
             {workspaces.map((workspace) => (
               <div
@@ -135,12 +150,12 @@ export function Sidebar(): React.JSX.Element {
                 onClick={() => handleSelectWorkspace(workspace.id)}
                 className={`p-2 rounded-lg cursor-pointer ${
                   workspace.id === currentWorkspaceId
-                    ? 'bg-blue-600 text-white'
-                    : 'hover:bg-gray-700 text-gray-300'
+                    ? 'bg-[#f0f0f0] text-[#1a1a1a]'
+                    : 'hover:bg-[#f0f0f0] text-[#1a1a1a]'
                 }`}
               >
                 {isCollapsed ? (
-                  <div className="w-8 h-8 bg-gray-600 rounded-lg flex items-center justify-center">
+                  <div className="w-8 h-8 bg-[#f0f0f0] rounded-lg flex items-center justify-center">
                     <span className="text-sm font-medium">
                       {workspace.name.charAt(0)}
                     </span>
@@ -148,7 +163,7 @@ export function Sidebar(): React.JSX.Element {
                 ) : (
                   <div>
                     <div className="font-medium">{workspace.name}</div>
-                    <div className="text-xs opacity-70 truncate">{workspace.path}</div>
+                    <div className="text-xs text-[#999999] truncate">{workspace.path}</div>
                   </div>
                 )}
               </div>
@@ -157,13 +172,14 @@ export function Sidebar(): React.JSX.Element {
             {!isCollapsed && (
               <button
                 onClick={handleNewWorkspace}
-                className="w-full p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors text-sm text-left"
+                className="w-full p-2 text-[#999999] hover:text-[#1a1a1a] hover:bg-[#f0f0f0] rounded-lg transition-colors text-sm text-left"
               >
                 + 新建工作区
               </button>
             )}
           </div>
-        ) : (
+        )}
+        {activeTab === 'sessions' && (
           <div className="space-y-1">
             {currentWorkspaceSessions.map((session) => (
               <div
@@ -171,19 +187,19 @@ export function Sidebar(): React.JSX.Element {
                 onClick={() => setCurrentSession(session.id)}
                 className={`group p-2 rounded-lg cursor-pointer ${
                   session.id === currentSessionId
-                    ? 'bg-blue-600 text-white'
-                    : 'hover:bg-gray-700 text-gray-300'
+                    ? 'bg-[#f0f0f0] text-[#1a1a1a]'
+                    : 'hover:bg-[#f0f0f0] text-[#1a1a1a]'
                 }`}
               >
                 {isCollapsed ? (
-                  <div className="w-8 h-8 bg-gray-600 rounded-lg flex items-center justify-center">
+                  <div className="w-8 h-8 bg-[#f0f0f0] rounded-lg flex items-center justify-center">
                     <span className="text-sm">💬</span>
                   </div>
                 ) : (
                   <div className="flex items-center justify-between">
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate">{session.title}</div>
-                      <div className="text-xs opacity-70">{formatTime(session.updatedAt)}</div>
+                      <div className="text-xs text-[#999999]">{formatTime(session.updatedAt)}</div>
                     </div>
                     <button
                       onClick={(e) => {
@@ -200,7 +216,7 @@ export function Sidebar(): React.JSX.Element {
             ))}
 
             {currentWorkspaceSessions.length === 0 && !isCollapsed && (
-              <div className="text-center text-gray-500 text-sm py-4">
+              <div className="text-center text-[#999999] text-sm py-4">
                 暂无会话
               </div>
             )}
@@ -208,21 +224,24 @@ export function Sidebar(): React.JSX.Element {
             {!isCollapsed && (
               <button
                 onClick={handleNewSession}
-                className="w-full p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors text-sm text-left"
+                className="w-full p-2 text-[#999999] hover:text-[#1a1a1a] hover:bg-[#f0f0f0] rounded-lg transition-colors text-sm text-left"
               >
                 + 新会话
               </button>
             )}
           </div>
         )}
+        {activeTab === 'threads' && (
+          <ThreadList isCollapsed={isCollapsed} />
+        )}
       </div>
 
       {/* Footer */}
       {!isCollapsed && (
-        <div className="border-t border-gray-700 p-4">
+        <div className="border-t border-[#e5e5e5] p-4">
           <button
             onClick={openSettings}
-            className="w-full py-2 px-4 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors text-sm"
+            className="w-full py-2 px-4 bg-[#f0f0f0] text-[#1a1a1a] rounded-lg hover:bg-[#e5e5e5] transition-colors text-sm"
           >
             设置
           </button>

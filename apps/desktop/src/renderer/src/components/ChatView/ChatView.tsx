@@ -1,7 +1,7 @@
 // 聊天主区域 - 欢迎屏幕 + 消息列表 + 输入框
 
 import React, { useRef, useEffect } from 'react';
-import { usePiDriver } from '../../hooks/usePiDriver';
+import { usePiStream } from '../../hooks/usePiStream';
 import { useSessionStore } from '../../stores/session-store';
 import { useWorkspaceStore } from '../../stores/workspace-store';
 import { MessageBubble } from './MessageBubble';
@@ -9,7 +9,13 @@ import { ChatInput } from './ChatInput';
 
 export function ChatView(): React.JSX.Element {
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { isConnected, isProcessing, sendMessage, stopProcessing } = usePiDriver();
+  const {
+    isStreaming,
+    isConnected,
+    streamingMessageId,
+    startStreaming,
+    stopStreaming,
+  } = usePiStream();
   const { getCurrentSession, createSession } = useSessionStore();
   const { getCurrentWorkspace } = useWorkspaceStore();
 
@@ -27,7 +33,8 @@ export function ChatView(): React.JSX.Element {
   }, [currentSession, currentWorkspace, createSession]);
 
   const handleSend = async (message: string) => {
-    await sendMessage(message);
+    if (!currentWorkspace) return;
+    await startStreaming(currentWorkspace.id, message);
   };
 
   const messages = currentSession?.messages || [];
@@ -87,11 +94,15 @@ export function ChatView(): React.JSX.Element {
           /* 消息列表 */
           <div className="p-6 space-y-6">
             {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
+              <MessageBubble
+                key={message.id}
+                message={message}
+                isStreaming={isStreaming && message.id === streamingMessageId}
+              />
             ))}
 
-            {/* 处理中指示器 */}
-            {isProcessing && (
+            {/* 流式处理中指示器（仅在没有 assistant 消息占位符时显示） */}
+            {isStreaming && !streamingMessageId && (
               <div className="flex justify-start">
                 <div className="flex items-start gap-3">
                   <div className="w-8 h-8 rounded-full bg-[#1a1a1a] flex items-center justify-center flex-shrink-0">
@@ -103,7 +114,7 @@ export function ChatView(): React.JSX.Element {
                       <div className="w-2 h-2 bg-[#999] rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
                       <div className="w-2 h-2 bg-[#999] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
                       <button
-                        onClick={stopProcessing}
+                        onClick={stopStreaming}
                         className="ml-3 text-xs text-[#666] hover:text-[#1a1a1a] transition-colors"
                       >
                         停止
@@ -122,9 +133,9 @@ export function ChatView(): React.JSX.Element {
       {/* 输入区域 */}
       <ChatInput
         isConnected={isConnected}
-        isProcessing={isProcessing}
+        isProcessing={isStreaming}
         onSend={handleSend}
-        onStop={stopProcessing}
+        onStop={stopStreaming}
       />
     </div>
   );

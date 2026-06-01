@@ -1,1 +1,1 @@
-export { FloatingPanel } from './FloatingPanel';
+export { TaskSidebar } from './TaskSidebar';

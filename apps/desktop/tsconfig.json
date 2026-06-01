@@ -2,10 +2,9 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "./dist",
-    "rootDir": ".",
-    "composite": true,
+    "composite": false,
     "jsx": "react-jsx"
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "out"]
+  "include": ["src/**/*", "../../packages/shared-types/src/**/*"],
+  "exclude": ["node_modules", "dist", "out", "**/__tests__/**"]
 }

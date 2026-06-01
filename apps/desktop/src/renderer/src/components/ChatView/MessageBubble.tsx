@@ -4,12 +4,15 @@ import React from 'react';
 import { Message } from '../../stores/session-store';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { CommandCard } from './CommandCard';
+import { ThinkingBlock } from './ThinkingBlock';
 
 interface MessageBubbleProps {
   message: Message;
+  /** 是否仍在流式接收中 */
+  isStreaming?: boolean;
 }
 
-export function MessageBubble({ message }: MessageBubbleProps): React.JSX.Element {
+export function MessageBubble({ message, isStreaming = false }: MessageBubbleProps): React.JSX.Element {
   const isUser = message.role === 'user';
   
   return (
@@ -28,22 +31,42 @@ export function MessageBubble({ message }: MessageBubbleProps): React.JSX.Elemen
           </div>
           
           {/* 消息内容 */}
-          <div className={`rounded-2xl px-4 py-3 ${
+          <div className={`rounded-2xl ${
             isUser 
-              ? 'bg-[#1a1a1a] text-white' 
-              : 'bg-white border border-[#e5e5e5] text-[#1a1a1a]'
+              ? 'bg-[#1a1a1a] text-white px-4 py-3' 
+              : 'bg-white border border-[#e5e5e5] text-[#1a1a1a] px-4 py-3'
           }`}>
             {isUser ? (
-              <div className="whitespace-pre-wrap text-sm">{message.content}</div>
+              <div className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</div>
             ) : (
-              <div className="text-sm">
-                <MarkdownRenderer content={message.content} />
-              </div>
+              <>
+                {/* 思考过程（可折叠） */}
+                {message.thinking && (
+                  <ThinkingBlock
+                    content={message.thinking}
+                    isStreaming={isStreaming && !message.content}
+                  />
+                )}
+
+                {/* 正文内容 */}
+                {message.content && (
+                  <div className="text-sm leading-relaxed">
+                    <MarkdownRenderer content={message.content} />
+                  </div>
+                )}
+
+                {/* 流式状态下显示打字光标（尚无内容时） */}
+                {isStreaming && !message.content && !message.thinking && (
+                  <div className="flex items-center gap-2 py-1">
+                    <span className="inline-block w-0.5 h-4 bg-[#1a1a1a] animate-pulse" />
+                  </div>
+                )}
+              </>
             )}
             
             {/* 工具调用 */}
             {message.toolCalls && message.toolCalls.length > 0 && (
-              <div className="mt-3 space-y-2">
+              <div className={`space-y-2 ${isUser ? 'mt-3' : 'mt-4'}`}>
                 {message.toolCalls.map((toolCall) => (
                   <CommandCard key={toolCall.id} toolCall={toolCall} />
                 ))}

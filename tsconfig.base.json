@@ -20,7 +20,9 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@pi-desktop/*": ["packages/*/src"]
+      "@pi-desktop/*": ["packages/*/src"],
+      "@shared": ["packages/shared-types/src"],
+      "@shared/*": ["packages/shared-types/src/*"]
     }
   },
   "exclude": ["node_modules", "dist", "build", "out"]

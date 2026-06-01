@@ -57,6 +57,36 @@ release/
 tmp/
 temp/
 
+# Playwright e2e output (traces, screenshots, last-run.json, etc.)
+apps/desktop/e2e-output/
+apps/desktop/playwright-report/
+apps/desktop/test-results/
+
 # Local configuration
 .local
 .local.*
+
+# Agent / IDE state
+.codebuddy/
+.cursor/
+.idea/
+.vscode/
+
+# Stale artifacts (M5 cleanup)
+*.tserrors.txt
+ts-errors*.txt
+ts-errors-*.txt
+app-output.log
+build-current.txt
+lint-current.txt
+test-*.js
+test-*.ps1
+test-screenshot*.png
+screenshot*.png
+# Mockup HTMLs should live in docs/design-archive/ not root
+/cox*-mockup.html
+/pi-desktop-*-design.html
+/ui-design-mockup.html
+
+# package-lock.json (we use pnpm)
+package-lock.json

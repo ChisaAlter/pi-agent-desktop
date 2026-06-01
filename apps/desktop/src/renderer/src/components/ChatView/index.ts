@@ -7,3 +7,4 @@ export { MarkdownRenderer } from './MarkdownRenderer';
 export { CodeBlock } from './CodeBlock';
 export { CommandCard } from './CommandCard';
 export { ToolCallCard } from './ToolCallCard';
+export { ThinkingBlock } from './ThinkingBlock';

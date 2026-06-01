@@ -97,6 +97,7 @@ export function PiStatusPanel(): React.JSX.Element {
     setupListeners();
     checkStatus();
     return () => cleanupListeners();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only
   }, []);
 
   const isInstalled = status?.installed ?? false;

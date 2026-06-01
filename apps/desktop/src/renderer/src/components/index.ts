@@ -1,10 +1,6 @@
-// Components barrel export
+// Components barrel export (M6: only M1-M5 working components)
 
-export * from './ChatView';
-export * from './IconBar';
-export * from './ProjectPanel';
-export * from './FloatingPanel';
-export * from './Settings';
-export * from './GitPanel';
-export * from './PiStatusPanel';
 export * from './common';
+export { CommandPalette, type CommandMode } from './CommandPalette/CommandPalette';
+export { SkillsPanel } from './SkillsPanel/SkillsPanel';
+export { TerminalPanel } from './Terminal/TerminalPanel';

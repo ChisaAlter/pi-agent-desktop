@@ -1,156 +1,173 @@
 # Pi Desktop
 
-A Windows desktop application for Pi Agent, providing a graphical interface to interact with Pi CLI.
+> An open-source Windows desktop GUI for [Pi](https://github.com/earendil-works/pi-coding-agent) — the AI coding agent CLI.
+> Built with Electron 34 + React 19 + TypeScript 5.
+
+## What is this?
+
+Pi Desktop wraps the [Pi CLI](https://github.com/earendil-works/pi-coding-agent) in a polished, Codex-style graphical interface. It preserves Pi's signature extensibility (Skills, Providers, Plugins via [SkillHub](https://skillhub.cn)) while giving it a first-class chat, file context, terminal, and approval flow.
 
 ## Features
 
-- **Chat Interface**: Similar to ChatGPT with Markdown rendering and code highlighting
-- **Multi-Workspace Management**: Create, switch, and manage multiple project workspaces
-- **Session History**: Persistent session storage with history restoration
-- **Tool Call Visualization**: View AI tool calls (read/write/edit/bash) with code diff comparison
-- **Model Switching**: Configure and switch between different AI models/providers
-- **Git Integration**: Display current Git branch, changed files, and basic Git operations
-- **Extensible**: Plugin system for extending functionality
+- **Long-lived Pi sessions** per workspace (in-process `AgentSession`)
+- **Tiered approval flow** — high-risk tools prompt, file edits get post-hoc diff with undo
+- **@ file references** with fuzzy search popover
+- **Image paste** with attachment chips
+- **Ctrl+K Command Palette** — file search / history / commands
+- **SkillHub integration** — browse, search, install, enable/disable community skills
+- **Multi-tab terminal** with real PTY (node-pty + xterm.js) — resize, ANSI colors, TUI apps work
+- **Auto-update** from GitHub Releases (electron-updater)
+- **Tiered classifier** — 20+ risk patterns for bash / write / edit / read
 
 ## Tech Stack
 
-- **Frontend**: React 19 + TypeScript + Vite 6
-- **Desktop Framework**: Electron 34
-- **Styling**: Tailwind CSS 4
-- **State Management**: Zustand
-- **Build Tool**: electron-vite
-- **Package Manager**: pnpm (monorepo workspace)
+- **Frontend**: React 19 + TypeScript 5 + Vite 6 + Tailwind CSS 4
+- **State**: Zustand 5
+- **Desktop**: Electron 34 + electron-vite
+- **Terminal**: node-pty + xterm.js
+- **Markdown**: react-markdown + rehype-highlight
+- **Diff**: diff2html
+- **Storage**: electron-store
+- **Test**: vitest 2 + @testing-library/react
+- **CI**: GitHub Actions
+- **Auto-update**: electron-updater (GitHub Releases)
+- **Package Manager**: pnpm 9 (monorepo)
 
 ## Prerequisites
 
-- Node.js >= 18.0.0
-- pnpm >= 9.0.0
-- Pi CLI installed and available in PATH
+- **Node.js** >= 22.19.0 (Electron 34 bundled)
+- **pnpm** >= 9.0.0
+- **Windows 10/11** (v1.0 Windows-only; macOS / Linux in v1.1+)
+- **Pi CLI** installed and on PATH: <https://github.com/earendil-works/pi-coding-agent>
+- **SkillHub CLI** (optional, for skill marketplace): see [SkillHub install](https://skillhub.cn/install/skillhub.md)
 
 ## Getting Started
 
-### 1. Install Dependencies
-
 ```bash
+# 1. Clone and install
+git clone https://github.com/yourusername/pi-desktop.git
+cd pi-desktop
 pnpm install
-```
 
-### 2. Build Packages
-
-```bash
+# 2. Build all packages
 pnpm -r run build
+
+# 3. Start the app in dev mode
+pnpm --filter @pi-desktop/desktop dev
 ```
 
-### 3. Start Development
-
-```bash
-# Start the desktop app in development mode
-cd apps/desktop
-pnpm run dev
-```
-
-### 4. Build for Production
-
-```bash
-# Build the desktop app
-cd apps/desktop
-pnpm run build
-
-# Package for Windows
-pnpm run package
-```
+The Electron window opens. Pick a workspace directory, type a message, hit Enter.
 
 ## Project Structure
 
 ```
 pi-desktop/
 ├── apps/
-│   └── desktop/          # Electron desktop application
+│   └── desktop/                 # Electron main app
 │       ├── src/
-│       │   ├── main/     # Electron main process
-│       │   ├── preload/  # Preload scripts
-│       │   └── renderer/ # React renderer process
-│       └── ...
+│       │   ├── main/             # Main process
+│       │   │   ├── ipc/          # IPC route layer (chat, files, skills, terminal)
+│       │   │   ├── services/     # Business logic
+│       │   │   │   ├── pi-session/    # AgentSession wrapper
+│       │   │   │   ├── approval/      # Classifier + interceptor
+│       │   │   │   ├── search/        # File scanner
+│       │   │   │   ├── skills/        # SkillHub adapter
+│       │   │   │   └── shell/         # node-pty manager
+│       │   │   └── index.ts      # App entry + setup
+│       │   ├── preload/          # contextBridge API
+│       │   └── renderer/         # React UI
+│       │       ├── components/   # ChatView / SkillsPanel / TerminalPanel / etc.
+│       │       ├── stores/       # Zustand stores
+│       │       └── utils/        # Fuzzy match, mention parser, etc.
 ├── packages/
-│   ├── pi-driver/        # Pi CLI driver package
-│   └── shared-types/     # Shared TypeScript types
-├── scripts/              # Development scripts
-└── ...
+│   └── shared-types/             # Cross-process TypeScript types
+├── docs/
+│   ├── superpowers/
+│   │   ├── specs/                # Design specs (M1, M2, M3, M4, M5)
+│   │   └── plans/                # Implementation plans
+│   └── spikes/                   # Spike notes (Pi protocol exploration)
+└── .github/
+    └── workflows/                # CI + release
 ```
 
 ## Development
 
-### Running in Development Mode
-
 ```bash
-# From the root directory
-pnpm run dev
-```
+# Run all tests (102+ tests)
+pnpm -r test
 
-This will:
-1. Install dependencies if needed
-2. Build all packages
-3. Start the desktop app with hot-reload
+# Typecheck
+pnpm -r typecheck
 
-### Building Packages
+# Lint
+pnpm -r lint
 
-```bash
-# Build all packages
-pnpm -r run build
+# Build a specific package
+pnpm --filter @pi-desktop/desktop build
 
-# Build specific package
-pnpm --filter @pi-desktop/pi-driver run build
-```
-
-### Type Checking
-
-```bash
-# Check types across all packages
-pnpm -r run typecheck
+# Package as Windows installer
+pnpm --filter @pi-desktop/desktop package:publish
 ```
 
 ## Configuration
 
 ### Pi CLI
 
-The app communicates with Pi CLI using JSON-RPC over stdio. Make sure Pi CLI is installed and accessible:
+Pi Desktop reads Pi configuration from `~/.pi/agent/` automatically (no need to set API keys in the app). See [Pi's documentation](https://github.com/earendil-works/pi-coding-agent) for setup.
+
+### SkillHub (optional)
+
+For skill marketplace:
 
 ```bash
-pi --version
+curl -fsSL https://skillhub.cn/install/install.sh | bash
 ```
 
-### Environment Variables
+The Skills panel will detect it on startup.
 
-Create a `.env` file in the `apps/desktop` directory for local configuration:
+## Architecture
 
-```env
-# Example
-VITE_API_KEY=your_api_key_here
+Three layers + one persistent process per workspace:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ Renderer (React 19)                                       │
+│  ├─ 3-column layout: LeftNav | Chat/Skills | RightPanel   │
+│  ├─ Zustand stores                                         │
+│  └─ contextBridge: window.piAPI / window.shellAPI          │
+└────────────────┬─────────────────────────────────────────┘
+                 │ typed IPC
+┌────────────────┴─────────────────────────────────────────┐
+│ Main Process (Electron)                                    │
+│  ├─ WorkspaceRegistry (one AgentSession per workspace)    │
+│  ├─ ApprovalInterceptor (tiered tool approval)           │
+│  ├─ EventBridge (Pi events → renderer)                    │
+│  ├─ SkillHub adapter (CLI wrapper)                        │
+│  ├─ PtyManager (node-pty terminal)                       │
+│  └─ AutoUpdater (GitHub Releases)                         │
+└────────────────┬─────────────────────────────────────────┘
+                 │ in-process
+┌────────────────┴─────────────────────────────────────────┐
+│ External: Pi CLI (AgentSession) + node-pty shells          │
+└─────────────────────────────────────────────────────────┘
 ```
 
-## Packaging
+## Roadmap
 
-### Windows
-
-```bash
-cd apps/desktop
-pnpm run package
-```
-
-This will create a Windows installer in the `release` directory.
-
-### Configuration
-
-Edit `electron-builder.yml` to customize packaging options.
+- **v1.0** (current): Windows, tiered approval, @ mentions, Skills, terminal
+- **v1.1**: macOS / Linux support, real Pi extension (pre-block tools), Monaco Skill editor
+- **v2.0**: Code signing, multi-window, optional cloud sync
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, conventions, and how to submit PRs.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE).
+
+## Acknowledgments
+
+- Built on top of [Pi](https://github.com/earendil-works/pi-coding-agent) by Mario Zechner
+- Inspired by [OpenAI Codex Desktop](https://openai.com/index/openai-codex/) and the [Mavis Code](https://mavis.local) UI language
+- Skills powered by [SkillHub](https://skillhub.cn)

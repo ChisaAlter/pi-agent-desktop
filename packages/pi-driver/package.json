@@ -1,8 +1,0 @@
-{
-  "name": "@pi-desktop/pi-driver",
-  "version": "0.1.0",
-  "private": true,
-  "description": "Pi CLI driver for Pi Desktop",
-  "main": "src/index.ts",
-  "types": "src/index.ts"
-}

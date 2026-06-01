@@ -33,19 +33,19 @@ export function SessionList({ isCollapsed }: SessionListProps): React.JSX.Elemen
           onClick={() => switchSession(session.id)}
           className={`p-2 rounded-lg cursor-pointer transition-colors group ${
             session.id === currentSessionId
-              ? 'bg-blue-600 text-white'
-              : 'hover:bg-gray-700 text-gray-300'
+              ? 'bg-[#f0f0f0] text-[#1a1a1a]'
+              : 'hover:bg-[#f0f0f0] text-[#1a1a1a]'
           }`}
         >
           {isCollapsed ? (
-            <div className="w-8 h-8 bg-gray-600 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-[#f0f0f0] rounded-lg flex items-center justify-center">
               <span className="text-sm">💬</span>
             </div>
           ) : (
             <div className="flex items-center justify-between">
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{getSessionTitle(session)}</div>
-                <div className="text-xs opacity-70">
+                <div className="text-xs text-[#999999]">
                   {formatTimestamp(new Date(session.updatedAt))}
                 </div>
               </div>
@@ -64,7 +64,7 @@ export function SessionList({ isCollapsed }: SessionListProps): React.JSX.Elemen
       {!isCollapsed && (
         <button
           onClick={() => createSession()}
-          className="w-full p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors text-sm"
+          className="w-full p-2 text-[#999999] hover:text-[#1a1a1a] hover:bg-[#f0f0f0] rounded-lg transition-colors text-sm"
         >
           + New Session
         </button>

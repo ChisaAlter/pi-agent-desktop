@@ -7,9 +7,9 @@ type PiEvent = { type: string } & Record<string, unknown>;
 // Expose protected methods that allow the renderer process to use
 // ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('piAPI', {
-  // Send a prompt to Pi CLI
-  sendPrompt: (message: string, sessionId?: string) => {
-    return ipcRenderer.invoke('pi:prompt', message, sessionId);
+  // M1: Send a prompt to a specific workspace's Pi session (long-lived)
+  sendPrompt: (workspaceId: string, message: string) => {
+    return ipcRenderer.invoke('pi:send', workspaceId, message);
   },
 
   // Listen for Pi events
@@ -90,7 +90,38 @@ contextBridge.exposeInMainWorld('piAPI', {
     };
   },
 
-  // Stop Pi Driver
+  // M1: Approval flow
+  respondApproval: (requestId: string, approved: boolean) => {
+    ipcRenderer.send('approval:respond', requestId, approved);
+  },
+  onApprovalRequest: (callback: (req: { requestId: string; method: string; title: string; message?: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, req: any) => callback(req);
+    ipcRenderer.on('approval:request', handler);
+    return () => {
+      ipcRenderer.removeListener('approval:request', handler);
+    };
+  },
+  onApprovalDeferred: (callback: (deferred: { changeId: string; toolCallId: string; filePath: string; op: string; timestamp: number }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { workspaceId: string; payload: any }) => callback(data.payload);
+    ipcRenderer.on('approval:deferred', handler);
+    return () => {
+      ipcRenderer.removeListener('approval:deferred', handler);
+    };
+  },
+  onApprovalReview: (callback: (review: { changeId: string; toolCallId: string; filePath: string; diff: string; newContent: string; timestamp: number }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: { workspaceId: string; payload: any }) => callback(data.payload);
+    ipcRenderer.on('approval:review', handler);
+    return () => {
+      ipcRenderer.removeListener('approval:review', handler);
+    };
+  },
+
+  // M1: Git undo (撤销 file_edit 类改动)
+  gitUndo: (workspacePath: string, filePath: string) => {
+    return ipcRenderer.invoke('git:undo', workspacePath, filePath);
+  },
+
+  // Stop Pi Driver (now M1: calls session.abort via pi:stop)
   stop: () => {
     return ipcRenderer.invoke('pi:stop');
   },
@@ -132,11 +163,27 @@ contextBridge.exposeInMainWorld('piAPI', {
   listPlugins: () => ipcRenderer.invoke('pi:list-plugins'),
   getFullConfig: () => ipcRenderer.invoke('pi:get-full-config'),
 
-  // Terminal
-  createTerminal: (terminalId: string) => ipcRenderer.invoke('terminal:create', terminalId),
+  // M2: 文件搜索 (给 @ 引用和 CommandPalette 用)
+  filesList: (workspacePath: string, query?: string) =>
+    ipcRenderer.invoke('files:list', workspacePath, query),
+
+  // M3: Skills 面板 (SkillHub 集成)
+  skillsCheck: () => ipcRenderer.invoke('skills:check'),
+  skillsSearch: (query: string) => ipcRenderer.invoke('skills:search', query),
+  skillsInstalled: () => ipcRenderer.invoke('skills:installed'),
+  skillsInstall: (slug: string) => ipcRenderer.invoke('skills:install', slug),
+  skillsUninstall: (slug: string) => ipcRenderer.invoke('skills:uninstall', slug),
+  skillsToggle: (slug: string, enabled: boolean) =>
+    ipcRenderer.invoke('skills:toggle', slug, enabled),
+  skillsGithubImport: (url: string) => ipcRenderer.invoke('skills:github-import', url),
+
+  // Terminal (M4: node-pty)
+  createTerminal: (opts: { id?: string; cwd?: string; cols?: number; rows?: number }) =>
+    ipcRenderer.invoke('terminal:create', opts),
   terminalInput: (terminalId: string, data: string) => ipcRenderer.invoke('terminal:input', terminalId, data),
   terminalResize: (terminalId: string, cols: number, rows: number) => ipcRenderer.invoke('terminal:resize', terminalId, cols, rows),
   closeTerminal: (terminalId: string) => ipcRenderer.invoke('terminal:close', terminalId),
+  listTerminals: () => ipcRenderer.invoke('terminal:list'),
 
   onTerminalOutput: (terminalId: string, callback: (data: string) => void) => {
     const subscription = (_event: Electron.IpcRendererEvent, payload: { id: string; data: string }) => {
@@ -159,21 +206,6 @@ contextBridge.exposeInMainWorld('piAPI', {
     ipcRenderer.on('terminal:exit', subscription);
     return () => {
       ipcRenderer.removeListener('terminal:exit', subscription);
-    };
-  },
-
-  // Messaging Gateway
-  gatewayStatus: () => ipcRenderer.invoke('gateway:status'),
-  gatewayConnect: (platform: string) => ipcRenderer.invoke('gateway:connect', platform),
-  gatewayDisconnect: (platform: string) => ipcRenderer.invoke('gateway:disconnect', platform),
-  gatewaySend: (platform: string, chatId: string, content: string) => ipcRenderer.invoke('gateway:send', platform, chatId, content),
-  gatewayMessages: () => ipcRenderer.invoke('gateway:messages'),
-  gatewayConfig: (config: any) => ipcRenderer.invoke('gateway:config', config),
-  onGatewayMessage: (callback: (msg: any) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, msg: any) => callback(msg);
-    ipcRenderer.on('gateway:message', handler);
-    return () => {
-      ipcRenderer.removeListener('gateway:message', handler);
     };
   },
 });

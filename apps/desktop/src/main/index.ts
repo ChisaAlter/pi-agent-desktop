@@ -3,38 +3,33 @@
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import { join } from 'path';
 import { is } from '@electron-toolkit/utils';
-import { spawn, execSync, type ChildProcess } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { homedir } from 'os';
+import yaml from 'js-yaml';
+import log from 'electron-log/main';
 import Store from 'electron-store';
 import { detectProject } from './project-detector';
 import { buildFileTree } from './file-tree';
-import { MessagingGateway } from './messaging/gateway';
-import { GatewayConfig } from './messaging/types';
 import { PiDriver, type PiInstallProgress } from './pi-driver';
+import { WorkspaceRegistry } from './services/pi-session/registry';
+import { PendingEdits } from './services/approval/pending-edits';
+import { setupChatIpc } from './ipc/chat.ipc';
+import { setupFilesIpc } from './ipc/files.ipc';
+import { setupSkillsIpc } from './ipc/skills.ipc';
+import { setupTerminalIpc } from './ipc/terminal.ipc';
+import { workspaceCreateSchema, settingsSetSchema, gitCommitSchema, gitAddSchema } from './ipc/schemas';
+import { ptyManager } from './services/shell/pty-manager';
+import { setupAutoUpdater } from './services/updater';
+import { clearAllPendingApprovals } from './services/approval/approval-bridge';
 
 let mainWindow: BrowserWindow | null = null;
 let piAgentConfig: PiAgentConfig | null = null;
-let currentPiProcess: ReturnType<typeof spawn> | null = null;
-let gateway: MessagingGateway | null = null;
 let piDriver: PiDriver | null = null;
 
-// 终端进程管理
-const terminalProcesses = new Map<string, ChildProcess>();
-
-// 获取默认 shell
-function getDefaultShell(): string {
-  if (process.platform === 'win32') {
-    // 优先 PowerShell，回退到 cmd
-    try {
-      execSync('where powershell.exe', { stdio: 'ignore' });
-      return 'powershell.exe';
-    } catch {
-      return 'cmd.exe';
-    }
-  }
-  return process.env.SHELL || '/bin/bash';
-}
+// M1: 长连接 Pi session 管理
+const piRegistry = new WorkspaceRegistry();
+const piPendingEdits = new PendingEdits();
 
 // Pi Agent 配置结构（从 ~/.pi/agent/ 读取）
 interface PiAgentModel {
@@ -60,6 +55,9 @@ interface PiAgentConfig {
 }
 
 const PI_AGENT_DIR = join(homedir(), '.pi', 'agent');
+
+// M7: 启动横幅 — 让 electron-log 文件里有清晰入口, 便于排查崩溃
+log.info(`[Main] Pi Desktop starting (electron ${process.versions.electron}, node ${process.versions.node})`);
 
 // 从本地 Pi Agent 配置目录加载配置
 function loadPiAgentConfig(): PiAgentConfig | null {
@@ -105,7 +103,7 @@ function loadPiAgentConfig(): PiAgentConfig | null {
     const modelsYmlPath = join(PI_AGENT_DIR, 'models.yml');
     if (existsSync(modelsYmlPath)) {
       const ymlContent = readFileSync(modelsYmlPath, 'utf-8');
-      const ymlProviders = parseSimpleYamlProviders(ymlContent);
+      const ymlProviders = loadYamlProviders(ymlContent);
       for (const yp of ymlProviders) {
         if (!providers.find(p => p.id === yp.id)) {
           providers.push(yp);
@@ -124,66 +122,52 @@ function loadPiAgentConfig(): PiAgentConfig | null {
 
     return { defaultProvider, defaultModel, providers };
   } catch (e) {
-    console.error('Failed to load Pi Agent config:', e);
+    log.error('Failed to load Pi Agent config:', e);
     return null;
   }
 }
 
-// 简单 YAML providers 解析器（仅解析 Pi models.yml 格式）
-function parseSimpleYamlProviders(content: string): PiAgentConfig['providers'] {
+// Parse Pi models.yml into PiAgentConfig['providers'] using js-yaml.
+// (replaces an earlier 60-line hand-written regex parser; removed 2026-06-01)
+function loadYamlProviders(content: string): PiAgentConfig['providers'] {
+  const data = yaml.load(content) as { providers?: Record<string, unknown> } | null;
+  if (!data || typeof data !== 'object' || !data.providers) return [];
+
   const result: PiAgentConfig['providers'] = [];
-  const lines = content.split('\n');
-  let currentProvider: { id: string; name: string; baseUrl: string; models: PiAgentModel[] } | null = null;
-  let currentModel: Partial<PiAgentModel> | null = null;
+  for (const [providerId, raw] of Object.entries(data.providers)) {
+    const pd = raw as {
+      name?: string;
+      baseUrl?: string;
+      models?: Array<Record<string, unknown>>;
+    };
+    if (!pd || typeof pd !== 'object') continue;
 
-  for (const line of lines) {
-    // provider 顶级键 (如 "  longcat:")
-    const providerMatch = line.match(/^  (\w[\w-]*):$/);
-    if (providerMatch && !line.includes('baseUrl') && !line.includes('apiKey') && !line.includes('api:')) {
-      if (currentProvider && currentModel) {
-        currentProvider.models.push(currentModel as PiAgentModel);
-        currentModel = null;
-      }
-      if (currentProvider) result.push(currentProvider);
-      currentProvider = { id: providerMatch[1], name: providerMatch[1], baseUrl: '', models: [] };
-      continue;
-    }
+    const models: PiAgentModel[] = Array.isArray(pd.models)
+      ? pd.models
+          .filter((m): m is Record<string, unknown> => !!m && typeof m === 'object' && typeof m.id === 'string')
+          .map((m) => {
+            const ctxRaw = m.contextWindow;
+            const tokensRaw = m.maxTokens;
+            return {
+              id: m.id as string,
+              name: typeof m.name === 'string' ? m.name : (m.id as string),
+              provider: providerId,
+              providerName: typeof pd.name === 'string' ? pd.name : providerId,
+              contextWindow: typeof ctxRaw === 'number' ? ctxRaw : undefined,
+              maxTokens: typeof tokensRaw === 'number' ? tokensRaw : undefined,
+              reasoning: Boolean(m.reasoning),
+              input: Array.isArray(m.input) ? (m.input as string[]) : undefined
+            };
+          })
+      : [];
 
-    if (!currentProvider) continue;
-
-    const trimmed = line.trim();
-    // baseUrl
-    if (trimmed.startsWith('baseUrl:')) {
-      currentProvider.baseUrl = trimmed.replace('baseUrl:', '').trim();
-      continue;
-    }
-    // name
-    if (trimmed.startsWith('name:') && currentProvider.name === currentProvider.id) {
-      currentProvider.name = trimmed.replace('name:', '').trim();
-      continue;
-    }
-    // 模型项
-    const modelMatch = line.match(/^\s+- id:\s*(.+)/);
-    if (modelMatch) {
-      if (currentModel && currentModel.id) {
-        currentProvider.models.push(currentModel as PiAgentModel);
-      }
-      currentModel = { id: modelMatch[1], name: modelMatch[1], provider: currentProvider.id, providerName: currentProvider.name };
-      continue;
-    }
-    // 模型属性
-    if (currentModel) {
-      if (trimmed.startsWith('name:')) currentModel.name = trimmed.replace('name:', '').trim();
-      if (trimmed.startsWith('contextWindow:')) currentModel.contextWindow = parseInt(trimmed.replace('contextWindow:', '').trim());
-      if (trimmed.startsWith('maxTokens:')) currentModel.maxTokens = parseInt(trimmed.replace('maxTokens:', '').trim());
-      if (trimmed.startsWith('reasoning:')) currentModel.reasoning = trimmed.includes('true');
-    }
+    result.push({
+      id: providerId,
+      name: typeof pd.name === 'string' ? pd.name : providerId,
+      baseUrl: typeof pd.baseUrl === 'string' ? pd.baseUrl : undefined,
+      models
+    });
   }
-
-  if (currentModel && currentModel.id && currentProvider) {
-    currentProvider.models.push(currentModel as PiAgentModel);
-  }
-  if (currentProvider) result.push(currentProvider);
 
   return result;
 }
@@ -280,11 +264,11 @@ function initializePiDriver(): void {
 
   // 启动时自动检测（异步，不阻塞）
   piDriver.detect().then(status => {
-    console.log(`[PiDriver] Detection: installed=${status.installed}, version=${status.localVersion}, latest=${status.latestVersion}, update=${status.updateAvailable}`);
+    log.info(`[PiDriver] Detection: installed=${status.installed}, version=${status.localVersion}, latest=${status.latestVersion}, update=${status.updateAvailable}`);
     // 通知渲染进程状态已更新
     mainWindow?.webContents.send('pi:status-changed', status);
   }).catch(err => {
-    console.warn('[PiDriver] Detection failed:', err);
+    log.warn('[PiDriver] Detection failed:', err);
   });
 }
 
@@ -339,144 +323,34 @@ function getGitStatus(workspacePath: string): { branch: string; modified: string
 
     return { branch, modified, added, deleted, untracked, ahead, behind };
   } catch (error) {
-    console.error('Git status error:', error);
+    log.error('Git status error:', error);
     return null;
   }
 }
 
 // IPC Handlers
 function setupIPC(): void {
-  // Pi CLI — 使用 --mode json 结构化事件流模式，每次独立运行
-  ipcMain.handle('pi:prompt', async (_, message: string, _sessionId?: string) => {
-    const provider = piAgentConfig?.defaultProvider || 'mimo';
-    const model = piAgentConfig?.defaultModel || 'mimo-v2.5-pro';
-    
-    console.log('[Main] pi:prompt called with message:', message.substring(0, 50) + '...');
-    
-    return new Promise<void>((resolve, reject) => {
-      try {
-        // --mode json 输出结构化 JSONL 事件流，--print 让 pi 从 stdin 读取输入
-        const args = ['--provider', provider, '--model', model, '--mode', 'json', '--print'];
+  // M1: 替换老的 pi:prompt (一次性 spawn), 走 AgentSession 长连接
+  setupChatIpc({
+    registry: piRegistry,
+    pendingEdits: piPendingEdits,
+    getWorkspace: (id: string) => store.get('workspaces').find((w) => w.id === id),
+    getDefaultWorkspace: () => {
+      const ws = store.get('workspaces');
+      return ws.length > 0 ? ws[0] : undefined;
+    },
+  });
 
-        // 构建命令字符串，避免 shell: true 时的参数拼接问题
-        const command = `pi ${args.map(a => `"${a}"`).join(' ')}`;
-        console.log('[Main] Spawning command:', command);
-        
-        const proc = spawn(command, [], {
-          cwd: process.cwd(),
-          stdio: ['pipe', 'pipe', 'pipe'],
-          shell: true
-        });
+  // M2: 文件搜索 (给 @ 引用和 CommandPalette 用)
+  setupFilesIpc();
 
-        // 保存进程引用以便中止
-        currentPiProcess = proc;
-
-        // 兼容层：发送 text_start 给旧的 pi:event 监听器
-        if (mainWindow && mainWindow.webContents) {
-          mainWindow.webContents.send('pi:event', { type: 'text_start' });
-        }
-
-        // 标记是否已经发送了 turn_end 兼容事件
-        let turnEnded = false;
-        const sendTurnEndCompat = () => {
-          if (!turnEnded) {
-            turnEnded = true;
-            mainWindow?.webContents.send('pi:event', { type: 'turn_end' });
-          }
-        };
-
-        // JSONL 行缓冲：stdout 可能不按行边界到达，需要拼接
-        let buffer = '';
-
-        proc.stdout?.on('data', (data: Buffer) => {
-          buffer += data.toString();
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || ''; // 保留不完整的最后一行
-
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const event = JSON.parse(line);
-              // 转发完整的结构化事件给渲染进程
-              if (mainWindow && mainWindow.webContents) {
-                mainWindow.webContents.send('pi:json-event', event);
-              }
-
-              // 兼容层：将关键事件也映射到旧的 pi:event 通道
-              if (event.type === 'message_update' && event.assistantMessageEvent) {
-                const sub = event.assistantMessageEvent;
-                if (sub.type === 'text_delta' && sub.delta) {
-                  mainWindow?.webContents.send('pi:event', {
-                    type: 'text_delta',
-                    text: sub.delta
-                  });
-                }
-              } else if (event.type === 'tool_execution_start') {
-                mainWindow?.webContents.send('pi:event', {
-                  type: 'toolcall_start',
-                  tool: event.toolName,
-                  input: event.args
-                });
-              } else if (event.type === 'tool_execution_end') {
-                mainWindow?.webContents.send('pi:event', {
-                  type: 'toolcall_end',
-                  tool: event.toolName,
-                  result: event.result
-                });
-              }
-            } catch (e) {
-              console.error('[Main] Failed to parse Pi JSON line:', (e as Error).message, line.substring(0, 120));
-            }
-          }
-        });
-
-        proc.stderr?.on('data', (data: Buffer) => {
-          console.error('Pi stderr:', data.toString().substring(0, 200));
-        });
-
-        proc.on('close', (code) => {
-          console.log('[Main] Pi process closed with code:', code);
-          currentPiProcess = null;
-
-          // 处理缓冲区中最后一行（可能没有换行符结尾）
-          if (buffer.trim()) {
-            try {
-              const event = JSON.parse(buffer);
-              if (mainWindow && mainWindow.webContents) {
-                mainWindow.webContents.send('pi:json-event', event);
-              }
-            } catch {
-              // 忽略无法解析的尾部数据
-            }
-          }
-
-          // 延迟发送兼容 turn_end，确保所有事件都已推送
-          setTimeout(() => {
-            sendTurnEndCompat();
-          }, 100);
-          if (code === 0) {
-            resolve();
-          } else {
-            reject(new Error(`Pi exited with code ${code}`));
-          }
-        });
-
-        proc.on('error', (error) => {
-          mainWindow?.webContents.send('pi:event', {
-            type: 'error',
-            message: error.message
-          });
-          sendTurnEndCompat();
-          reject(error);
-        });
-
-        // 写入用户消息并关闭 stdin（触发 --print 处理）
-        proc.stdin?.write(message + '\n');
-        proc.stdin?.end();
-      } catch (error) {
-        reject(error);
-      }
-    });
+  // M3: Skills 面板 (SkillHub 集成)
+  setupSkillsIpc({
+    getWorkspacePath: () => {
+      const ws = store.get('workspaces');
+      return ws.length > 0 ? ws[0].path : undefined;
+    },
+    getStateFile: () => join(app.getPath('userData'), 'skills-state.json'),
   });
 
   // ── Pi Driver 管理 ───────────────────────────────────────────────
@@ -515,25 +389,7 @@ function setupIPC(): void {
     piDriver?.cancelOperation();
   });
 
-  ipcMain.handle('pi:stop', async () => {
-    if (currentPiProcess) {
-      const proc = currentPiProcess;
-      proc.kill('SIGTERM');
-      // 等待进程实际退出（最多 3 秒）
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(() => {
-          proc.kill('SIGKILL');
-          resolve();
-        }, 3000);
-        proc.on('close', () => {
-          clearTimeout(timer);
-          resolve();
-        });
-      });
-      currentPiProcess = null;
-    }
-    mainWindow?.webContents.send('pi:event', { type: 'turn_end' });
-  });
+  // 注: pi:stop 已经在 setupChatIpc 里注册 (M1 走 session.abort 而不是 SIGKILL)
 
   // Workspace management
   ipcMain.handle('workspace:list', async () => {
@@ -551,6 +407,7 @@ function setupIPC(): void {
   });
 
   ipcMain.handle('workspace:create', async (_, name: string, path: string) => {
+    workspaceCreateSchema.parse([name, path]);
     const workspace = {
       id: Date.now().toString(),
       name,
@@ -570,7 +427,7 @@ function setupIPC(): void {
 
   ipcMain.handle('workspace:select', async (_, path: string) => {
     // Pipe 模式无需重启持久进程，直接返回成功
-    console.log('Workspace selected:', path);
+    log.info('Workspace selected:', path);
   });
 
   ipcMain.handle('workspace:select-directory', async () => {
@@ -611,11 +468,11 @@ function setupIPC(): void {
     return getGitStatus(workspacePath);
   });
 
-  // Git diff (指定文件或全部)
+  // Git diff (指定文件或全部) — 参数化执行
   ipcMain.handle('git:diff', async (_, workspacePath: string, filePath?: string) => {
     try {
-      const cmd = filePath ? `git diff "${filePath}"` : 'git diff';
-      return execSync(cmd, { cwd: workspacePath, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+      const args = filePath ? ['diff', '--', filePath] : ['diff'];
+      return execFileSync('git', args, { cwd: workspacePath, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
     } catch {
       return '';
     }
@@ -624,29 +481,30 @@ function setupIPC(): void {
   // Git staged diff
   ipcMain.handle('git:diff-staged', async (_, workspacePath: string) => {
     try {
-      return execSync('git diff --staged', { cwd: workspacePath, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+      return execFileSync('git', ['diff', '--staged'], { cwd: workspacePath, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
     } catch {
       return '';
     }
   });
 
-  // Git add
+  // Git add — 参数化, 杜绝文件路径 shell 注入
   ipcMain.handle('git:add', async (_, workspacePath: string, files: string[]) => {
-    const filesArg = files.map(f => `"${f}"`).join(' ');
-    execSync(`git add ${filesArg}`, { cwd: workspacePath });
+    gitAddSchema.parse([workspacePath, files]);
+    if (files.length === 0) return;
+    execFileSync('git', ['add', '--', ...files], { cwd: workspacePath });
   });
 
-  // Git commit
+  // Git commit — 参数化, message 走 argv 不会被 shell 解析
   ipcMain.handle('git:commit', async (_, workspacePath: string, message: string) => {
-    const escaped = message.replace(/"/g, '\\"').replace(/\n/g, '\\n');
-    return execSync(`git commit -m "${escaped}"`, { cwd: workspacePath, encoding: 'utf-8' });
+    gitCommitSchema.parse([workspacePath, message]);
+    return execFileSync('git', ['commit', '-m', message], { cwd: workspacePath, encoding: 'utf-8' });
   });
 
-  // Git log (最近 N 条)
+  // Git log (最近 N 条) — count 是 number, 安全
   ipcMain.handle('git:log', async (_, workspacePath: string, count: number = 20) => {
     try {
       const format = '--pretty=format:{"hash":"%h","author":"%an","date":"%ai","message":"%s"}';
-      const output = execSync(`git log ${format} -n ${count}`, { cwd: workspacePath, encoding: 'utf-8' });
+      const output = execFileSync('git', ['log', format, '-n', String(count)], { cwd: workspacePath, encoding: 'utf-8' });
       return output.split('\n').filter(l => l.trim()).map(l => JSON.parse(l));
     } catch {
       return [];
@@ -656,7 +514,7 @@ function setupIPC(): void {
   // Git branches
   ipcMain.handle('git:branches', async (_, workspacePath: string) => {
     try {
-      const output = execSync('git branch -a', { cwd: workspacePath, encoding: 'utf-8' });
+      const output = execFileSync('git', ['branch', '-a'], { cwd: workspacePath, encoding: 'utf-8' });
       return output.split('\n').filter(l => l.trim()).map(l => ({
         name: l.replace(/^\*?\s+/, '').trim(),
         isCurrent: l.startsWith('*'),
@@ -673,6 +531,7 @@ function setupIPC(): void {
   });
 
   ipcMain.handle('settings:set', async (_, settings: Partial<AppSettings>) => {
+    settingsSetSchema.parse([settings]);
     const current = store.get('settings');
     const updated = { ...current, ...settings };
     store.set('settings', updated);
@@ -772,7 +631,7 @@ function setupIPC(): void {
 
       return skills;
     } catch (error) {
-      console.error('Failed to list skills:', error);
+      log.error('Failed to list skills:', error);
       return [];
     }
   });
@@ -790,47 +649,9 @@ function setupIPC(): void {
         type: 'provider' as const
       }));
     } catch (error) {
-      console.error('Failed to list plugins:', error);
+      log.error('Failed to list plugins:', error);
       return [];
     }
-  });
-
-  // ── Messaging Gateway IPC ────────────────────────────────────────
-
-  ipcMain.handle('gateway:status', async () => {
-    return gateway?.getStatus() || [];
-  });
-
-  ipcMain.handle('gateway:connect', async (_, platform: string) => {
-    if (!gateway) {
-      const config: GatewayConfig = {
-        wechat: { enabled: true },
-        feishu: { enabled: true },
-        qq: { enabled: true },
-        autoReply: false,
-        replyMode: 'pi',
-      };
-      gateway = new MessagingGateway(config);
-      if (mainWindow) gateway.setMainWindow(mainWindow);
-    }
-    return await gateway.connectPlatform(platform);
-  });
-
-  ipcMain.handle('gateway:disconnect', async (_, platform: string) => {
-    await gateway?.disconnectPlatform(platform);
-  });
-
-  ipcMain.handle('gateway:send', async (_, platform: string, chatId: string, content: string) => {
-    if (!gateway) throw new Error('Gateway not initialized');
-    await gateway.sendReply(platform, chatId, content);
-  });
-
-  ipcMain.handle('gateway:messages', async () => {
-    return gateway?.getMessageHistory() || [];
-  });
-
-  ipcMain.handle('gateway:config', async (_, config: Partial<GatewayConfig>) => {
-    gateway?.updateConfig(config);
   });
 
   // ── Terminal IPC Handlers ──────────────────────────────────────────
@@ -844,83 +665,11 @@ function setupIPC(): void {
     return buildFileTree(workspacePath, maxDepth || 3);
   });
 
-  ipcMain.handle('terminal:create', (_event, terminalId: string) => {
-    // 如果已存在同 ID 的进程，先关闭
-    const existing = terminalProcesses.get(terminalId);
-    if (existing) {
-      existing.kill();
-      terminalProcesses.delete(terminalId);
-    }
+  // M4: Terminal IPC 走 node-pty (替换老 child_process.spawn 模式)
+  setupTerminalIpc();
 
-    const shell = getDefaultShell();
-    const shellArgs = process.platform === 'win32' ? [] : [];
-
-    console.log(`[Terminal] Creating shell: ${shell} (id=${terminalId})`);
-
-    const child = spawn(shell, shellArgs, {
-      cwd: process.cwd(),
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, TERM: 'xterm-256color' },
-      windowsHide: true,
-    });
-
-    terminalProcesses.set(terminalId, child);
-
-    child.stdout?.on('data', (data: Buffer) => {
-      mainWindow?.webContents.send('terminal:output', {
-        id: terminalId,
-        data: data.toString(),
-      });
-    });
-
-    child.stderr?.on('data', (data: Buffer) => {
-      mainWindow?.webContents.send('terminal:output', {
-        id: terminalId,
-        data: data.toString(),
-      });
-    });
-
-    child.on('close', (code) => {
-      console.log(`[Terminal] Process closed: id=${terminalId}, code=${code}`);
-      terminalProcesses.delete(terminalId);
-      mainWindow?.webContents.send('terminal:exit', {
-        id: terminalId,
-        code,
-      });
-    });
-
-    child.on('error', (err) => {
-      console.error(`[Terminal] Process error: id=${terminalId}`, err.message);
-      mainWindow?.webContents.send('terminal:output', {
-        id: terminalId,
-        data: `\x1b[31mError: ${err.message}\x1b[0m\r\n`,
-      });
-    });
-
-    return true;
-  });
-
-  ipcMain.handle('terminal:input', (_event, terminalId: string, data: string) => {
-    const child = terminalProcesses.get(terminalId);
-    if (child && child.stdin && !child.stdin.destroyed) {
-      child.stdin.write(data);
-    }
-  });
-
-  ipcMain.handle('terminal:resize', (_event, terminalId: string, cols: number, rows: number) => {
-    // child_process 不直接支持 resize，但记录日志
-    // 若将来切换到 node-pty，可以调用 pty.resize(cols, rows)
-    console.log(`[Terminal] Resize: id=${terminalId}, cols=${cols}, rows=${rows}`);
-  });
-
-  ipcMain.handle('terminal:close', (_event, terminalId: string) => {
-    const child = terminalProcesses.get(terminalId);
-    if (child) {
-      child.kill();
-      terminalProcesses.delete(terminalId);
-      console.log(`[Terminal] Closed: id=${terminalId}`);
-    }
-  });
+  // M5: Auto-updater (从 GitHub Releases 拉, 仅在 packaged 模式跑)
+  setupAutoUpdater({ getMainWindow: () => mainWindow });
 }
 
 // App lifecycle
@@ -928,7 +677,7 @@ app.whenReady().then(() => {
   // 先加载 Pi 配置，再初始化
   piAgentConfig = loadPiAgentConfig();
   if (piAgentConfig) {
-    console.log(`Pi config loaded: provider=${piAgentConfig.defaultProvider}, model=${piAgentConfig.defaultModel}, ${piAgentConfig.providers.length} providers`);
+    log.info(`Pi config loaded: provider=${piAgentConfig.defaultProvider}, model=${piAgentConfig.defaultModel}, ${piAgentConfig.providers.length} providers`);
     // 更新 electron-store 默认设置与 Pi 配置同步
     const currentSettings = store.get('settings');
     if (currentSettings.provider === 'openai' && currentSettings.model === 'gpt-4') {
@@ -940,7 +689,7 @@ app.whenReady().then(() => {
       });
     }
   } else {
-    console.log('No Pi Agent config found, using defaults');
+    log.info('No Pi Agent config found, using defaults');
   }
 
   createWindow();
@@ -955,11 +704,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  // 清理消息网关
-  if (gateway) {
-    gateway.destroy();
-    gateway = null;
-  }
+  log.info('[Main] All windows closed, cleaning up resources');
 
   // 清理 Pi Driver
   if (piDriver) {
@@ -967,12 +712,13 @@ app.on('window-all-closed', () => {
     piDriver = null;
   }
 
-  // 清理所有终端进程
-  for (const [id, child] of terminalProcesses) {
-    console.log(`[Terminal] Killing terminal process: ${id}`);
-    child.kill();
-  }
-  terminalProcesses.clear();
+  // M1: 清理所有 Pi session (每个 workspace 一个)
+  clearAllPendingApprovals();
+  piPendingEdits.clear();
+  piRegistry.disposeAll();
+
+  // 清理所有终端进程 (M4: 走 ptyManager)
+  ptyManager.closeAll();
 
   if (process.platform !== 'darwin') {
     app.quit();
