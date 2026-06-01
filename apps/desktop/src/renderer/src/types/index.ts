@@ -3,7 +3,9 @@
 export type { PiEvent as PiJsonEvent } from './pi-events';
 
 export interface PiAPI {
-  sendPrompt: (message: string, sessionId?: string) => Promise<void>;
+  // M1: Chat (长连接, 走 workspace)
+  sendPrompt: (workspaceId: string, message: string) => Promise<void>;
+  stop: (workspaceId?: string) => Promise<void>;
   onEvent: (callback: (event: PiEvent) => void) => (() => void) | undefined;
   onError: (callback: (error: string) => void) => (() => void) | undefined;
   onPiJsonEvent: (callback: (event: Record<string, unknown>) => void) => (() => void);
@@ -15,17 +17,19 @@ export interface PiAPI {
   cancelPiOperation: () => Promise<void>;
   onPiStatusChanged: (callback: (status: PiDriverStatus) => void) => (() => void);
   onPiInstallProgress: (callback: (progress: PiInstallProgress) => void) => (() => void);
-  stop: () => Promise<void>;
+
   // Workspace
   listWorkspaces: () => Promise<WorkspaceData[]>;
   createWorkspace: (name: string, path: string) => Promise<WorkspaceData>;
   deleteWorkspace: (id: string) => Promise<void>;
   selectWorkspace: (path: string) => Promise<void>;
   selectDirectory: () => Promise<string | null>;
+
   // Session
   listSessions: () => Promise<SessionData[]>;
   createSession: (workspaceId: string, title?: string) => Promise<SessionData>;
   deleteSession: (id: string) => Promise<void>;
+
   // Git
   getGitStatus: (workspacePath: string) => Promise<GitStatusData | null>;
   gitDiff: (workspacePath: string, filePath?: string) => Promise<string>;
@@ -34,15 +38,41 @@ export interface PiAPI {
   gitCommit: (workspacePath: string, message: string) => Promise<string>;
   gitLog: (workspacePath: string, count?: number) => Promise<CommitInfo[]>;
   gitBranches: (workspacePath: string) => Promise<BranchInfo[]>;
+  // M1: Git undo (M3 用了, M1 引入)
+  gitUndo: (workspacePath: string, filePath: string) => Promise<void>;
+
   // Settings
   getSettings: () => Promise<AppSettingsData>;
   setSettings: (settings: Partial<AppSettingsData>) => Promise<AppSettingsData>;
+
   // Pi Config
   loadPiConfig: () => Promise<PiConfigData>;
-  // Skills & Plugins
+
+  // Skills & Plugins (M3 接入 SkillHub, 替代老的 listSkills)
   listSkills: () => Promise<SkillData[]>;
   listPlugins: () => Promise<PluginData[]>;
   getFullConfig: () => Promise<PiFullConfigData>;
+
+  // M3: Skills 面板 (SkillHub 集成)
+  skillsCheck: () => Promise<boolean>;
+  skillsSearch: (query: string) => Promise<Array<{
+    slug: string; name: string; description: string; version: string; source?: string;
+  }>>;
+  skillsInstalled: () => Promise<Array<{ slug: string; enabled: boolean }>>;
+  skillsInstall: (slug: string) => Promise<{ success: boolean }>;
+  skillsUninstall: (slug: string) => Promise<{ success: boolean }>;
+  skillsToggle: (slug: string, enabled: boolean) => Promise<{ success: boolean }>;
+  skillsGithubImport: (url: string) => Promise<{ url: string; message: string }>;
+
+  // M2: 文件搜索
+  filesList: (workspacePath: string, query?: string) => Promise<string[]>;
+
+  // M1: Approval flow
+  respondApproval: (requestId: string, approved: boolean) => void;
+  onApprovalRequest: (callback: (req: { requestId: string; method: string; title: string; message?: string }) => void) => () => void;
+  onApprovalDeferred: (callback: (d: { changeId: string; toolCallId: string; filePath: string; op: string; timestamp: number }) => void) => () => void;
+  onApprovalReview: (callback: (r: { changeId: string; toolCallId: string; filePath: string; diff: string; newContent: string; timestamp: number }) => void) => () => void;
+
   // Terminal
   createTerminal: (terminalId: string) => Promise<boolean>;
   terminalInput: (terminalId: string, data: string) => Promise<void>;
@@ -50,9 +80,11 @@ export interface PiAPI {
   closeTerminal: (terminalId: string) => Promise<void>;
   onTerminalOutput: (terminalId: string, callback: (data: string) => void) => () => void;
   onTerminalExit: (terminalId: string, callback: (code: number | null) => void) => () => void;
+
   // Project detection & file tree
   detectProject: (workspacePath: string) => Promise<ProjectInfo>;
   getFileTree: (workspacePath: string, maxDepth?: number) => Promise<FileTreeNode>;
+
   // Messaging Gateway
   gatewayStatus: () => Promise<PlatformStatus[]>;
   gatewayConnect: (platform: string) => Promise<PlatformStatus>;
