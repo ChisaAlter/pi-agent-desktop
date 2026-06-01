@@ -19,6 +19,7 @@ import { setupFilesIpc } from './ipc/files.ipc';
 import { setupSkillsIpc } from './ipc/skills.ipc';
 import { setupTerminalIpc } from './ipc/terminal.ipc';
 import { ptyManager } from './services/shell/pty-manager';
+import { setupAutoUpdater } from './services/updater';
 import { app } from 'electron';
 import { join } from 'path';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
@@ -714,6 +715,9 @@ function setupIPC(): void {
 
   // M4: Terminal IPC 走 node-pty (替换老 child_process.spawn 模式)
   setupTerminalIpc();
+
+  // M5: Auto-updater (从 GitHub Releases 拉, 仅在 packaged 模式跑)
+  setupAutoUpdater({ getMainWindow: () => mainWindow });
 }
 
 // App lifecycle
