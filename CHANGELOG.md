@@ -4,6 +4,16 @@
 
 All notable changes to pi-desktop are documented here.
 
+## v0.2.0 - 2026-06-01
+
+### Added
+- Session rename: right-click a session card in the history drawer to rename inline (Enter confirms, Esc cancels). Persists via sessionName metadata in the JSONL file.
+- Built-in slash command suggestions: type `/` to see 12 pi built-in commands (session, tree, clone, compact, copy, export, share, settings, reload, hotkeys, login, logout) alongside extension-registered commands.
+
+### Improved
+- Filtered redundant built-in commands (/new, /model, /resume, /fork) that already have dedicated desktop UI.
+- Removed /name command in favor of the new session rename UI.
+
 ## v0.1.9 - 2026-06-01
 
 ### Added

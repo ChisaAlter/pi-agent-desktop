@@ -4,6 +4,16 @@
 
 这里记录 pi-desktop 各版本的重要变化。
 
+## v0.2.0 - 2026-06-01
+
+### 新增
+- 历史会话重命名：右键点击会话卡片即可内联重命名（Enter 确认，Esc 取消），通过 JSONL 文件头部 sessionName 元数据持久化。
+- 内置斜杠命令建议：输入 `/` 可看到 12 个 pi 内置命令（session、tree、clone、compact、copy、export、share、settings、reload、hotkeys、login、logout），与扩展注册的命令合并显示。
+
+### 优化
+- 过滤掉桌面端已有独立 UI 的冗余内置命令（/new、/model、/resume、/fork）。
+- 移除 /name 命令，改用新的历史会话重命名 UI。
+
 ## v0.1.9 - 2026-06-01
 
 ### 新增
