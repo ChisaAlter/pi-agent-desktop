@@ -70,26 +70,16 @@ apps/desktop/src/renderer/src/
 
 - [ ] **Step 1: 写最小验证脚本**
 
-在 `apps/desktop/` 下建 `scripts/spike-pi-inprocess.mjs`:
+在 `apps/desktop/scripts/spike-pi-inprocess.mjs`:
 
 ```javascript
-import { AgentSession, createAgentSession } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, getAgentDir } from "@earendil-works/pi-coding-agent";
 
-const services = await createAgentSessionServices({
-    cwd: process.cwd(),
-    modelRegistry: new ModelRegistry(),
-});
-
-const session = await createAgentSessionFromServices(services, {
-    cwd: process.cwd(),
-});
-
-session.subscribe((event) => {
-    console.log("[event]", event.type, JSON.stringify(event).slice(0, 200));
-});
-
-await session.prompt("Say 'hello' in one word");
-await new Promise((r) => setTimeout(r, 5000));
+console.log("[spike] agentDir =", getAgentDir());
+const { session } = await createAgentSession({ cwd: process.cwd() });
+session.subscribe((e) => console.log("[event]", e.type, e.subtype ?? "", e.delta ? JSON.stringify(e.delta).slice(0, 50) : ""));
+await session.prompt("Reply with exactly 'pong'");
+await new Promise((r) => setTimeout(r, 30000));
 session.dispose();
 ```
 
@@ -101,11 +91,13 @@ Expected: 看到 `agent_start`, 多个 `message_update` (text_delta), `agent_end
 - [ ] **Step 3: 记录发现到 spike 笔记**
 
 新建 `docs/spikes/2026-06-01-pi-inprocess.md`, 记录:
-- AgentSession 创建需要的最小依赖 (cwd, modelRegistry, services)
+- AgentSession 创建需要的最小参数 (只需 `cwd`)
 - subscribe 事件的实际类型
-- 跑通需要的 env vars (API key 等)
+- 是否需要 API key env (一般从 `~/.pi/agent/auth.json` 读)
 
 如果跑不通: 退到 `RpcClient` + 子进程方案, 在 spike 笔记里说明。
+
+**✅ 实际跑通 (2026-06-01)**: 见 `docs/spikes/2026-06-01-pi-inprocess.md`. API 是 `createAgentSession({cwd})` (不是 plan 草稿时的 `createAgentSessionFromServices`). 11 个扩展自动加载. 事件流完整.
 
 ---
 
@@ -765,13 +757,11 @@ import { describe, it, expect, vi } from "vitest";
 import { createWorkspaceSession } from "../factory";
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
-    createAgentSessionServices: vi.fn().mockResolvedValue({}),
-    createAgentSessionFromServices: vi.fn().mockResolvedValue({
-        prompt: vi.fn(),
-        subscribe: vi.fn(),
-        dispose: vi.fn(),
+    createAgentSession: vi.fn().mockResolvedValue({
+        session: { prompt: vi.fn(), subscribe: vi.fn(), dispose: vi.fn() },
+        extensionsResult: { extensions: [] },
     }),
-    ModelRegistry: vi.fn(),
+    getAgentDir: vi.fn().mockReturnValue("~/.pi/agent"),
 }));
 
 describe("createWorkspaceSession", () => {
@@ -779,7 +769,6 @@ describe("createWorkspaceSession", () => {
         const session = await createWorkspaceSession({
             workspaceId: "ws_1",
             workspacePath: "/tmp/test",
-            modelId: "claude-sonnet-4-20250514",
         });
         expect(session).toBeDefined();
         expect(session.workspaceId).toBe("ws_1");
@@ -797,7 +786,7 @@ Expected: FAIL
 `apps/desktop/src/main/services/pi-session/factory.ts`:
 
 ```typescript
-import { createAgentSessionServices, createAgentSessionFromServices, ModelRegistry, type AgentSession } from "@earendil-works/pi-coding-agent";
+import { createAgentSession, type AgentSession } from "@earendil-works/pi-coding-agent";
 import { loadApprovalExtension } from "../../extensions/pi-approval";
 import { join } from "path";
 import { mkdirSync } from "fs";
@@ -816,22 +805,14 @@ export interface CreateSessionOpts {
 }
 
 export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<WorkspaceSession> {
-    // 每个 workspace 独立 session 目录
-    const sessionDir = join(opts.workspacePath, ".pi-desktop", "sessions");
-    mkdirSync(sessionDir, { recursive: true });
+    mkdirSync(opts.workspacePath, { recursive: true });
 
-    const services = await createAgentSessionServices({
+    // 加载审批扩展 (Task 7) — 通过 sessionStartEvent 注入
+    const sessionStartEvent = await loadApprovalExtension();
+
+    const { session } = await createAgentSession({
         cwd: opts.workspacePath,
-        modelRegistry: new ModelRegistry(),
-    });
-
-    // 加载审批扩展 (Task 7)
-    const approvalExt = await loadApprovalExtension();
-
-    const session = await createAgentSessionFromServices(services, {
-        cwd: opts.workspacePath,
-        sessionDir,
-        customExtensions: [approvalExt],
+        sessionStartEvent,
     });
 
     return {
@@ -841,6 +822,8 @@ export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<W
     };
 }
 ```
+
+**注意**: 真实扩展通过 `pi-extension` 加载机制 (settings.json 的 `packages`) 走, 不在 factory 里 inject. 审批我们走 IPC 拦截 + `app.emit` 模式, 不需要写到扩展里. Task 5 的 `loadApprovalExtension` 简化为直接返回 `undefined` (我们用 IPC 拦截做审批, 不需要 Pi 扩展).
 
 - [ ] **Step 4: 跑测试通过 (mock 模式下)**
 
