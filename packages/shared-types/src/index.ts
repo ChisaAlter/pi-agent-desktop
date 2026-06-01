@@ -1,5 +1,8 @@
 // Shared Types for Pi Desktop
 
+export * from "./events";
+export * from "./approval";
+
 export interface Workspace {
   id: string;
   name: string;
