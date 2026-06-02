@@ -1,4 +1,5 @@
 // Session Store - Manages chat sessions and messages
+// v1.0.5: 内部类型保持本地 (Date) 避免下游连锁改; input/output 仍是 unknown 收窄
 
 import { create } from 'zustand';
 
@@ -15,11 +16,20 @@ export interface Message {
 export interface ToolCall {
   id: string;
   name: string;
-  input: any;
-  output?: any;
+  input: unknown;
+  output?: unknown;
   status: 'pending' | 'running' | 'completed' | 'error';
   startTime: Date;
   endTime?: Date;
+}
+
+export interface Session {
+  id: string;
+  title: string;
+  workspaceId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  messages: Message[];
 }
 
 export interface Session {

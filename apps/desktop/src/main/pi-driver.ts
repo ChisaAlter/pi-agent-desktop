@@ -367,8 +367,9 @@ export class PiDriver extends EventEmitter {
       const child = spawn(npm, ['show', PI_NPM_PACKAGE, 'version'], {
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: platform() === 'win32',
+        // @types/node 的 SpawnOptions 没有 timeout, 用 as 扩 (Node 18+ 支持)
         timeout: 15000,
-      } as any);
+      } as Parameters<typeof spawn>[2]);
 
       let stdout = '';
       let stderr = '';

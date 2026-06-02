@@ -78,6 +78,20 @@ export function CommandCard({ toolCall, commandCount = 1 }: CommandCardProps): R
     }
   };
   
+  // 提前把 input 序列化: TS strict 下 unknown 在 JSX child 位置需要 narrow
+  const inputStr: string | null =
+    toolCall.input === null || toolCall.input === undefined
+      ? null
+      : typeof toolCall.input === "string"
+        ? toolCall.input
+        : JSON.stringify(toolCall.input, null, 2);
+  const outputStr: string | null =
+    toolCall.output === null || toolCall.output === undefined
+      ? null
+      : typeof toolCall.output === "string"
+        ? toolCall.output
+        : JSON.stringify(toolCall.output, null, 2);
+
   return (
     <div className="bg-[#f5f5f5] rounded-lg border border-[#e5e5e5] overflow-hidden">
       {/* Header */}
@@ -126,20 +140,17 @@ export function CommandCard({ toolCall, commandCount = 1 }: CommandCardProps): R
       {isExpanded && (
         <div className="border-t border-[#e5e5e5] p-3">
           {/* Input */}
-          {toolCall.input && (
+          {inputStr !== null ? (
             <div className="mb-3">
               <div className="text-xs text-[#666666] mb-1 font-medium">输入：</div>
               <pre className="bg-white p-2 rounded text-xs overflow-x-auto border border-[#e5e5e5]">
-                {typeof toolCall.input === 'string' 
-                  ? toolCall.input 
-                  : JSON.stringify(toolCall.input, null, 2)
-                }
+                {inputStr}
               </pre>
             </div>
-          )}
+          ) : null}
           
           {/* Output */}
-          {toolCall.output && (
+          {outputStr !== null ? (
             <div>
               <div className="text-xs text-[#666666] mb-1 font-medium">输出：</div>
               {(toolCall.name === 'edit' || toolCall.name === 'write') &&
@@ -150,14 +161,11 @@ export function CommandCard({ toolCall, commandCount = 1 }: CommandCardProps): R
                 </div>
               ) : (
                 <pre className="bg-white p-2 rounded text-xs overflow-x-auto max-h-40 overflow-y-auto border border-[#e5e5e5]">
-                  {typeof toolCall.output === 'string'
-                    ? toolCall.output
-                    : JSON.stringify(toolCall.output, null, 2)
-                  }
+                  {outputStr}
                 </pre>
               )}
             </div>
-          )}
+          ) : null}
           
           {/* Duration */}
           {toolCall.startTime && toolCall.endTime && (

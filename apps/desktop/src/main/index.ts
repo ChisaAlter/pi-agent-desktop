@@ -83,16 +83,16 @@ function loadPiAgentConfig(): PiAgentConfig | null {
       const modelsData = JSON.parse(readFileSync(modelsJsonPath, 'utf-8'));
       if (modelsData.providers) {
         for (const [providerId, providerData] of Object.entries(modelsData.providers)) {
-          const pd = providerData as any;
-          const models: PiAgentModel[] = (pd.models || []).map((m: any) => ({
-            id: m.id,
-            name: m.name || m.id,
+          const pd = providerData as { name?: string; baseUrl?: string; models?: Array<Record<string, unknown>> };
+          const models: PiAgentModel[] = (pd.models || []).map((m) => ({
+            id: String(m.id),
+            name: typeof m.name === 'string' ? m.name : String(m.id),
             provider: providerId,
             providerName: pd.name || providerId,
-            contextWindow: m.contextWindow,
-            maxTokens: m.maxTokens,
-            reasoning: m.reasoning,
-            input: m.input
+            contextWindow: typeof m.contextWindow === 'number' ? m.contextWindow : undefined,
+            maxTokens: typeof m.maxTokens === 'number' ? m.maxTokens : undefined,
+            reasoning: Boolean(m.reasoning),
+            input: Array.isArray(m.input) ? m.input as string[] : undefined
           }));
           providers.push({ id: providerId, name: pd.name || providerId, baseUrl: pd.baseUrl, models });
         }

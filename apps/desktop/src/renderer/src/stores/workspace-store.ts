@@ -1,4 +1,5 @@
 // Workspace Store - Manages workspaces
+// v1.0.5: 本地类型保留 (Date) 避免下游连锁改; lastActiveAt 用类型守卫
 
 import { create } from 'zustand';
 
@@ -25,7 +26,7 @@ export interface GitStatus {
 interface WorkspaceState {
   workspaces: Workspace[];
   currentWorkspaceId: string | null;
-  
+
   // Actions
   addWorkspace: (name: string, path: string) => Workspace;
   removeWorkspace: (workspaceId: string) => void;
@@ -41,12 +42,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
     try {
       if (window.piAPI) {
         const wsList = await window.piAPI.listWorkspaces();
-        const workspaces = wsList.map(ws => ({
-          ...ws,
-          createdAt: new Date(ws.createdAt),
-          lastActiveAt: new Date((ws as any).lastActiveAt || ws.createdAt)
-        }));
-        set({ workspaces, currentWorkspaceId: workspaces[0]?.id || null });
+        const workspaces = wsList.map((ws) => {
+          const w = ws as { id: string; name: string; path: string; createdAt: number; lastActiveAt?: number };
+          return {
+            id: w.id,
+            name: w.name,
+            path: w.path,
+            createdAt: new Date(w.createdAt),
+            lastActiveAt: new Date(typeof w.lastActiveAt === "number" ? w.lastActiveAt : w.createdAt),
+          };
+        });
+        set({ workspaces, currentWorkspaceId: workspaces[0]?.id ?? null });
       }
     } catch (e) {
       console.error('Failed to load workspaces:', e);

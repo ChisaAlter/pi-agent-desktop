@@ -1,5 +1,7 @@
 // Skills Store (M3 Task M3-3)
 // Zustand store for Skills panel
+// v1.0.5: PiAPI 在 @shared 里把 skillsCheck/Search/Installed 都标 Promise<unknown>,
+// 这里用本地 interface 收窄 (主进程 IPC 还没强类型化, 后续 zod 化)
 
 import { create } from "zustand";
 import type { SkillInfo } from "../../../main/services/skills/skillhub-adapter";
@@ -33,6 +35,17 @@ interface SkillsState {
     toggleSkill: (slug: string, enabled: boolean) => Promise<void>;
 }
 
+// 窄化主进程 IPC 返回 (Promise<unknown> → 实际形状)
+function narrowCheck(v: unknown): boolean {
+    return typeof v === "boolean" ? v : Boolean(v);
+}
+function narrowSearch(v: unknown): SkillInfo[] {
+    return Array.isArray(v) ? (v as SkillInfo[]) : [];
+}
+function narrowInstalled(v: unknown): InstalledSkill[] {
+    return Array.isArray(v) ? (v as InstalledSkill[]) : [];
+}
+
 export const useSkillsStore = create<SkillsState>((set, get) => ({
     skillhubAvailable: null,
     marketQuery: "",
@@ -46,7 +59,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
 
     checkAvailability: async () => {
         try {
-            const available = (await window.piAPI?.skillsCheck()) ?? false;
+            const available = narrowCheck(await window.piAPI?.skillsCheck());
             set({ skillhubAvailable: available });
         } catch {
             set({ skillhubAvailable: false });
@@ -61,7 +74,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
         }
         set({ marketLoading: true, error: null });
         try {
-            const results = (await window.piAPI?.skillsSearch(q)) ?? [];
+            const results = narrowSearch(await window.piAPI?.skillsSearch(q));
             set({ marketResults: results, marketLoading: false });
         } catch (err) {
             set({ error: (err as Error).message, marketLoading: false });
@@ -71,7 +84,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     refreshInstalled: async () => {
         set({ installedLoading: true, error: null });
         try {
-            const installed = (await window.piAPI?.skillsInstalled()) ?? [];
+            const installed = narrowInstalled(await window.piAPI?.skillsInstalled());
             set({ installed, installedLoading: false });
         } catch (err) {
             set({ error: (err as Error).message, installedLoading: false });

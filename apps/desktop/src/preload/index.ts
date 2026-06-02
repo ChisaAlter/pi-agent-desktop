@@ -1,221 +1,138 @@
 // Electron Preload Script - Secure API Bridge
+// v1.0.5: 返回类型用 @shared/PiAPI 强类型化, 去掉所有 :any / as any
 
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
+import type {
+    PiStatus,
+    PiInstallProgress,
+    ApprovalRequest,
+    DeferredEdit,
+    FileReview,
+    PiEvent,
+} from "@shared";
 
-type PiEvent = { type: string } & Record<string, unknown>;
-
-// Expose protected methods that allow the renderer process to use
-// ipcRenderer without exposing the entire object
-contextBridge.exposeInMainWorld('piAPI', {
-  // M1: Send a prompt to a specific workspace's Pi session (long-lived)
-  sendPrompt: (workspaceId: string, message: string) => {
-    return ipcRenderer.invoke('pi:send', workspaceId, message);
-  },
-
-  // Listen for Pi events
-  onEvent: (callback: (event: PiEvent) => void) => {
-    const subscription = (_event: Electron.IpcRendererEvent, event: PiEvent) => callback(event);
-    ipcRenderer.on('pi:event', subscription);
-    
-    // Return unsubscribe function
+// 内部 helper: 把 ipcRenderer.on 的 (_event, payload) 签名转成 (payload)
+type UnsubFn = () => void;
+function subscribe<T>(channel: string, cb: (payload: T) => void): UnsubFn {
+    const handler = (_e: IpcRendererEvent, payload: T): void => cb(payload);
+    ipcRenderer.on(channel, handler);
     return () => {
-      ipcRenderer.removeListener('pi:event', subscription);
+        ipcRenderer.removeListener(channel, handler);
     };
-  },
+}
 
-  // Listen for Pi errors
-  onError: (callback: (error: string) => void) => {
-    const subscription = (_event: Electron.IpcRendererEvent, error: string) => callback(error);
-    ipcRenderer.on('pi:error', subscription);
-    
-    return () => {
-      ipcRenderer.removeListener('pi:error', subscription);
-    };
-  },
-  // Listen for structured Pi JSON events (--mode json)
-  onPiJsonEvent: (callback: (event: Record<string, unknown>) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, data: Record<string, unknown>) => callback(data);
-    ipcRenderer.on('pi:json-event', handler);
-    return () => {
-      ipcRenderer.removeListener('pi:json-event', handler);
-    };
-  },
+type PiAPI = import("@shared").PiAPI;
+type NodeAPI = import("@shared").NodeAPI;
 
+const piAPI: PiAPI = {
+    // M1: 长连接 Pi session
+    sendPrompt: (workspaceId, message) => ipcRenderer.invoke("pi:send", workspaceId, message),
 
-  // Get Pi Driver status (full detection)
-  getStatus: () => {
-    return ipcRenderer.invoke('pi:status');
-  },
+    onEvent: (cb) => subscribe<PiEvent>("pi:event", cb),
+    onError: (cb) => subscribe<string>("pi:error", cb),
+    onPiJsonEvent: (cb) => subscribe<Record<string, unknown>>("pi:json-event", cb),
 
-  // Refresh Pi status (async, checks remote version)
-  refreshPiStatus: () => {
-    return ipcRenderer.invoke('pi:refresh-status');
-  },
+    // Pi Driver 状态
+    getStatus: () => ipcRenderer.invoke("pi:status") as Promise<PiStatus>,
+    refreshPiStatus: () => ipcRenderer.invoke("pi:refresh-status") as Promise<PiStatus>,
+    installPi: () => ipcRenderer.invoke("pi:install") as Promise<PiStatus>,
+    updatePi: () => ipcRenderer.invoke("pi:update") as Promise<PiStatus>,
+    uninstallPi: () => ipcRenderer.invoke("pi:uninstall") as Promise<PiStatus>,
+    cancelPiOperation: () => ipcRenderer.invoke("pi:cancel-operation"),
 
-  // Install Pi CLI
-  installPi: () => {
-    return ipcRenderer.invoke('pi:install');
-  },
+    onPiStatusChanged: (cb) => subscribe<PiStatus>("pi:status-changed", cb),
+    onPiInstallProgress: (cb) => subscribe<PiInstallProgress>("pi:install-progress", cb),
 
-  // Update Pi CLI
-  updatePi: () => {
-    return ipcRenderer.invoke('pi:update');
-  },
+    // M1: Approval flow
+    respondApproval: (requestId, approved) => {
+        ipcRenderer.send("approval:respond", requestId, approved);
+    },
+    onApprovalRequest: (cb) => subscribe<ApprovalRequest>("approval:request", cb),
+    onApprovalDeferred: (cb) => subscribe<DeferredEdit>("approval:deferred", cb),
+    onApprovalReview: (cb) => subscribe<FileReview>("approval:review", cb),
 
-  // Uninstall Pi CLI
-  uninstallPi: () => {
-    return ipcRenderer.invoke('pi:uninstall');
-  },
+    // Git
+    gitUndo: (workspacePath, filePath) =>
+        ipcRenderer.invoke("git:undo", workspacePath, filePath),
 
-  // Cancel ongoing install/update operation
-  cancelPiOperation: () => {
-    return ipcRenderer.invoke('pi:cancel-operation');
-  },
+    // Pi stop
+    stop: () => ipcRenderer.invoke("pi:stop"),
 
-  // Listen for Pi status changes
-  onPiStatusChanged: (callback: (status: any) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, status: any) => callback(status);
-    ipcRenderer.on('pi:status-changed', handler);
-    return () => {
-      ipcRenderer.removeListener('pi:status-changed', handler);
-    };
-  },
+    // Workspace
+    listWorkspaces: () => ipcRenderer.invoke("workspace:list"),
+    createWorkspace: (name, path) => ipcRenderer.invoke("workspace:create", name, path),
+    deleteWorkspace: (id) => ipcRenderer.invoke("workspace:delete", id),
+    selectWorkspace: (path) => ipcRenderer.invoke("workspace:select", path),
+    selectDirectory: () => ipcRenderer.invoke("workspace:select-directory"),
 
-  // Listen for Pi install/update progress
-  onPiInstallProgress: (callback: (progress: any) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, progress: any) => callback(progress);
-    ipcRenderer.on('pi:install-progress', handler);
-    return () => {
-      ipcRenderer.removeListener('pi:install-progress', handler);
-    };
-  },
+    // Session
+    listSessions: () => ipcRenderer.invoke("session:list"),
+    createSession: (workspaceId, title) => ipcRenderer.invoke("session:create", workspaceId, title),
+    deleteSession: (id) => ipcRenderer.invoke("session:delete", id),
 
-  // M1: Approval flow
-  respondApproval: (requestId: string, approved: boolean) => {
-    ipcRenderer.send('approval:respond', requestId, approved);
-  },
-  onApprovalRequest: (callback: (req: { requestId: string; method: string; title: string; message?: string }) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, req: any) => callback(req);
-    ipcRenderer.on('approval:request', handler);
-    return () => {
-      ipcRenderer.removeListener('approval:request', handler);
-    };
-  },
-  onApprovalDeferred: (callback: (deferred: { changeId: string; toolCallId: string; filePath: string; op: string; timestamp: number }) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, data: { workspaceId: string; payload: any }) => callback(data.payload);
-    ipcRenderer.on('approval:deferred', handler);
-    return () => {
-      ipcRenderer.removeListener('approval:deferred', handler);
-    };
-  },
-  onApprovalReview: (callback: (review: { changeId: string; toolCallId: string; filePath: string; diff: string; newContent: string; timestamp: number }) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, data: { workspaceId: string; payload: any }) => callback(data.payload);
-    ipcRenderer.on('approval:review', handler);
-    return () => {
-      ipcRenderer.removeListener('approval:review', handler);
-    };
-  },
+    // Git
+    getGitStatus: (workspacePath) => ipcRenderer.invoke("git:status", workspacePath),
+    gitDiff: (workspacePath, filePath) =>
+        ipcRenderer.invoke("git:diff", workspacePath, filePath),
+    gitDiffStaged: (workspacePath) => ipcRenderer.invoke("git:diff-staged", workspacePath),
+    gitAdd: (workspacePath, files) => ipcRenderer.invoke("git:add", workspacePath, files),
+    gitCommit: (workspacePath, message) => ipcRenderer.invoke("git:commit", workspacePath, message),
+    gitLog: (workspacePath, count) => ipcRenderer.invoke("git:log", workspacePath, count),
+    gitBranches: (workspacePath) => ipcRenderer.invoke("git:branches", workspacePath),
 
-  // M1: Git undo (撤销 file_edit 类改动)
-  gitUndo: (workspacePath: string, filePath: string) => {
-    return ipcRenderer.invoke('git:undo', workspacePath, filePath);
-  },
+    // Project detection
+    detectProject: (workspacePath) => ipcRenderer.invoke("project:detect", workspacePath),
+    getFileTree: (workspacePath, maxDepth) =>
+        ipcRenderer.invoke("project:file-tree", workspacePath, maxDepth),
 
-  // Stop Pi Driver (now M1: calls session.abort via pi:stop)
-  stop: () => {
-    return ipcRenderer.invoke('pi:stop');
-  },
+    // Settings
+    getSettings: () => ipcRenderer.invoke("settings:get"),
+    setSettings: (settings) => ipcRenderer.invoke("settings:set", settings),
+    loadPiConfig: () => ipcRenderer.invoke("settings:load-pi-config"),
+    getFullConfig: () => ipcRenderer.invoke("pi:get-full-config"),
 
-  // Workspace management
-  listWorkspaces: () => ipcRenderer.invoke('workspace:list'),
-  createWorkspace: (name: string, path: string) => ipcRenderer.invoke('workspace:create', name, path),
-  deleteWorkspace: (id: string) => ipcRenderer.invoke('workspace:delete', id),
-  selectWorkspace: (path: string) => ipcRenderer.invoke('workspace:select', path),
-  selectDirectory: () => ipcRenderer.invoke('workspace:select-directory'),
+    // Skills & Plugins
+    listSkills: () => ipcRenderer.invoke("pi:list-skills"),
+    listPlugins: () => ipcRenderer.invoke("pi:list-plugins"),
 
-  // Session management
-  listSessions: () => ipcRenderer.invoke('session:list'),
-  createSession: (workspaceId: string, title?: string) => ipcRenderer.invoke('session:create', workspaceId, title),
-  deleteSession: (id: string) => ipcRenderer.invoke('session:delete', id),
+    // M2: 文件搜索
+    filesList: (workspacePath, query) => ipcRenderer.invoke("files:list", workspacePath, query),
 
-  // Git
-  getGitStatus: (workspacePath: string) => ipcRenderer.invoke('git:status', workspacePath),
-  gitDiff: (workspacePath: string, filePath?: string) => ipcRenderer.invoke('git:diff', workspacePath, filePath),
-  gitDiffStaged: (workspacePath: string) => ipcRenderer.invoke('git:diff-staged', workspacePath),
-  gitAdd: (workspacePath: string, files: string[]) => ipcRenderer.invoke('git:add', workspacePath, files),
-  gitCommit: (workspacePath: string, message: string) => ipcRenderer.invoke('git:commit', workspacePath, message),
-  gitLog: (workspacePath: string, count?: number) => ipcRenderer.invoke('git:log', workspacePath, count),
-  gitBranches: (workspacePath: string) => ipcRenderer.invoke('git:branches', workspacePath),
+    // M3: SkillHub
+    skillsCheck: () => ipcRenderer.invoke("skills:check"),
+    skillsSearch: (query) => ipcRenderer.invoke("skills:search", query),
+    skillsInstalled: () => ipcRenderer.invoke("skills:installed"),
+    skillsInstall: (slug) => ipcRenderer.invoke("skills:install", slug),
+    skillsUninstall: (slug) => ipcRenderer.invoke("skills:uninstall", slug),
+    skillsToggle: (slug, enabled) => ipcRenderer.invoke("skills:toggle", slug, enabled),
+    skillsGithubImport: (url) => ipcRenderer.invoke("skills:github-import", url),
 
-  // Project detection & file tree
-  detectProject: (workspacePath: string) => ipcRenderer.invoke('project:detect', workspacePath),
-  getFileTree: (workspacePath: string, maxDepth?: number) => ipcRenderer.invoke('project:file-tree', workspacePath, maxDepth),
+    // M4: Terminal
+    createTerminal: (opts) => ipcRenderer.invoke("terminal:create", opts),
+    terminalInput: (terminalId, data) => ipcRenderer.invoke("terminal:input", terminalId, data),
+    terminalResize: (terminalId, cols, rows) =>
+        ipcRenderer.invoke("terminal:resize", terminalId, cols, rows),
+    closeTerminal: (terminalId) => ipcRenderer.invoke("terminal:close", terminalId),
+    listTerminals: () => ipcRenderer.invoke("terminal:list"),
 
-  // Settings
-  getSettings: () => ipcRenderer.invoke('settings:get'),
-  setSettings: (settings: Record<string, unknown>) => ipcRenderer.invoke('settings:set', settings),
+    onTerminalOutput: (terminalId, cb) =>
+        subscribe<{ id: string; data: string }>("terminal:output", (payload) => {
+            if (payload.id === terminalId) cb(payload.data);
+        }),
+    onTerminalExit: (terminalId, cb) =>
+        subscribe<{ id: string; code: number | null }>("terminal:exit", (payload) => {
+            if (payload.id === terminalId) cb(payload.code);
+        }),
+};
 
-  // Pi Config — 读取本地 Pi Agent 配置
-  loadPiConfig: () => ipcRenderer.invoke('settings:load-pi-config'),
+const nodeAPI: NodeAPI = {
+    platform: process.platform,
+    versions: {
+        node: process.versions.node,
+        chrome: process.versions.chrome,
+        electron: process.versions.electron,
+    },
+};
 
-  // Skills & Plugins
-  listSkills: () => ipcRenderer.invoke('pi:list-skills'),
-  listPlugins: () => ipcRenderer.invoke('pi:list-plugins'),
-  getFullConfig: () => ipcRenderer.invoke('pi:get-full-config'),
-
-  // M2: 文件搜索 (给 @ 引用和 CommandPalette 用)
-  filesList: (workspacePath: string, query?: string) =>
-    ipcRenderer.invoke('files:list', workspacePath, query),
-
-  // M3: Skills 面板 (SkillHub 集成)
-  skillsCheck: () => ipcRenderer.invoke('skills:check'),
-  skillsSearch: (query: string) => ipcRenderer.invoke('skills:search', query),
-  skillsInstalled: () => ipcRenderer.invoke('skills:installed'),
-  skillsInstall: (slug: string) => ipcRenderer.invoke('skills:install', slug),
-  skillsUninstall: (slug: string) => ipcRenderer.invoke('skills:uninstall', slug),
-  skillsToggle: (slug: string, enabled: boolean) =>
-    ipcRenderer.invoke('skills:toggle', slug, enabled),
-  skillsGithubImport: (url: string) => ipcRenderer.invoke('skills:github-import', url),
-
-  // Terminal (M4: node-pty)
-  createTerminal: (opts: { id?: string; cwd?: string; cols?: number; rows?: number }) =>
-    ipcRenderer.invoke('terminal:create', opts),
-  terminalInput: (terminalId: string, data: string) => ipcRenderer.invoke('terminal:input', terminalId, data),
-  terminalResize: (terminalId: string, cols: number, rows: number) => ipcRenderer.invoke('terminal:resize', terminalId, cols, rows),
-  closeTerminal: (terminalId: string) => ipcRenderer.invoke('terminal:close', terminalId),
-  listTerminals: () => ipcRenderer.invoke('terminal:list'),
-
-  onTerminalOutput: (terminalId: string, callback: (data: string) => void) => {
-    const subscription = (_event: Electron.IpcRendererEvent, payload: { id: string; data: string }) => {
-      if (payload.id === terminalId) {
-        callback(payload.data);
-      }
-    };
-    ipcRenderer.on('terminal:output', subscription);
-    return () => {
-      ipcRenderer.removeListener('terminal:output', subscription);
-    };
-  },
-
-  onTerminalExit: (terminalId: string, callback: (code: number | null) => void) => {
-    const subscription = (_event: Electron.IpcRendererEvent, payload: { id: string; code: number | null }) => {
-      if (payload.id === terminalId) {
-        callback(payload.code);
-      }
-    };
-    ipcRenderer.on('terminal:exit', subscription);
-    return () => {
-      ipcRenderer.removeListener('terminal:exit', subscription);
-    };
-  },
-});
-
-// Expose a limited set of node APIs
-contextBridge.exposeInMainWorld('nodeAPI', {
-  platform: process.platform,
-  versions: {
-    node: process.versions.node,
-    chrome: process.versions.chrome,
-    electron: process.versions.electron
-  }
-});
+contextBridge.exposeInMainWorld("piAPI", piAPI);
+contextBridge.exposeInMainWorld("nodeAPI", nodeAPI);

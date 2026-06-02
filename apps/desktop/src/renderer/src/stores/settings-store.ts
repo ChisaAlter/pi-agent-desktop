@@ -1,19 +1,10 @@
 // Settings Store - Manages application settings
+// v1.0.5: AppSettings / PiModelInfo 跟 @shared 重复, 改用 re-export + 本地 alias 保留 store 旧代码
 
 import { create } from 'zustand';
+import type { AppSettings } from '@shared';
 
-export interface AppSettings {
-  theme: 'dark' | 'light';
-  fontSize: number;
-  model: string;
-  provider: string;
-  apiKey?: string;
-  temperature: number;
-  maxTokens: number;
-  autoSave: boolean;
-  showLineNumbers: boolean;
-  wordWrap: boolean;
-}
+export type { AppSettings };
 
 export interface PiModelInfo {
   id: string;
@@ -24,11 +15,17 @@ export interface PiModelInfo {
   maxTokens?: number;
 }
 
+/** loadPiConfig 返的形状 (主进程 settings:load-pi-config 还没强类型化, 临时结构) */
+interface PiConfigPayload {
+  models?: PiModelInfo[];
+  currentModel?: { model: string; provider: string } | null;
+}
+
 interface SettingsState {
   settings: AppSettings;
   isOpen: boolean;
   piModels: PiModelInfo[] | null;
-  
+
   // Actions
   updateSettings: (updates: Partial<AppSettings>) => void;
   resetSettings: () => void;
@@ -73,18 +70,18 @@ export const useSettingsStore = create<SettingsState>((set) => {
     loadPiConfig: async () => {
       try {
         if (window.piAPI && window.piAPI.loadPiConfig) {
-          const config = await window.piAPI.loadPiConfig();
+          const config = (await window.piAPI.loadPiConfig()) as PiConfigPayload;
           if (config.models && config.models.length > 0) {
             set({ piModels: config.models });
           }
           // 如果 Pi 配置中有当前模型信息，自动更新
           if (config.currentModel) {
-            set(state => ({
+            set((state) => ({
               settings: {
                 ...state.settings,
                 model: config.currentModel!.model,
-                provider: config.currentModel!.provider
-              }
+                provider: config.currentModel!.provider,
+              },
             }));
           }
         }
@@ -94,7 +91,7 @@ export const useSettingsStore = create<SettingsState>((set) => {
     },
 
     updateSettings: (updates: Partial<AppSettings>) => {
-      set(state => {
+      set((state) => {
         const newSettings = { ...state.settings, ...updates };
         if (window.piAPI) {
           window.piAPI.setSettings(updates).catch(console.error);
@@ -111,7 +108,7 @@ export const useSettingsStore = create<SettingsState>((set) => {
     },
 
     toggleSettings: () => {
-      set(state => ({ isOpen: !state.isOpen }));
+      set((state) => ({ isOpen: !state.isOpen }));
     },
 
     openSettings: () => {
@@ -120,6 +117,6 @@ export const useSettingsStore = create<SettingsState>((set) => {
 
     closeSettings: () => {
       set({ isOpen: false });
-    }
+    },
   };
 });

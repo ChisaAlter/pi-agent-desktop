@@ -1,11 +1,13 @@
 // Approval Interceptor (M1 Task 7)
 // 拦截 session 事件, 决定要不要发审批, 拒绝时调 session.abort()
 // 已知限制: abort 杀整个 turn, 不能单工具. M3+ 可升级为真 Pi 扩展.
+// v1.0.5: event 类型用 @shared/events PiEvent (之前是 :any)
 
 import { classifyToolCall } from "./classifier";
 import { requestApproval } from "./approval-bridge";
 import { readFile } from "fs/promises";
 import { join } from "path";
+import type { PiEvent, PiToolExecutionStart, PiToolExecutionEnd } from "@shared/events";
 import type { PendingEdits } from "./pending-edits";
 
 export interface InterceptorDeps {
@@ -16,19 +18,28 @@ export interface InterceptorDeps {
 }
 
 export interface ApprovalInterceptor {
-    handleEvent: (event: any) => Promise<void>;
+    handleEvent: (event: PiEvent) => Promise<void>;
+}
+
+function asToolStart(e: PiEvent): PiToolExecutionStart | null {
+    return e.type === "tool_execution_start" ? e : null;
+}
+function asToolEnd(e: PiEvent): PiToolExecutionEnd | null {
+    return e.type === "tool_execution_end" ? e : null;
 }
 
 export function createApprovalInterceptor(workspaceId: string, deps: InterceptorDeps): ApprovalInterceptor {
     return {
-        async handleEvent(event: any) {
+        async handleEvent(event: PiEvent) {
             if (!event || typeof event !== "object") return;
 
-            if (event.type === "tool_execution_start") {
-                const { toolName, args, toolCallId } = event;
+            const start = asToolStart(event);
+            if (start) {
+                const { toolName, args, toolCallId } = start;
                 if (!toolName) return;
-
-                const c = classifyToolCall({ name: toolName, args: args ?? {} });
+                const safeArgs: Record<string, unknown> =
+                    (args as Record<string, unknown> | undefined) ?? {};
+                const c = classifyToolCall({ name: toolName, args: safeArgs });
                 if (c.risk === "read") return;
 
                 if (c.risk === "high") {
@@ -45,7 +56,7 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
 
                 if (c.risk === "edit") {
                     const filePath = String(
-                        args.file_path ?? args.path ?? args.filePath ?? ""
+                        safeArgs.file_path ?? safeArgs.path ?? safeArgs.filePath ?? ""
                     );
                     if (!filePath) return;
                     const changeId = deps.pendingEdits.track(
@@ -53,9 +64,15 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                         toolName as "write" | "edit",
                         filePath,
                         {
-                            content: args.content ?? args.file_text,
-                            old_string: args.old_string ?? args.oldString,
-                            new_string: args.new_string ?? args.newString,
+                            content: typeof safeArgs.content === "string" ? safeArgs.content
+                                : typeof safeArgs.file_text === "string" ? safeArgs.file_text
+                                : undefined,
+                            old_string: typeof safeArgs.old_string === "string" ? safeArgs.old_string
+                                : typeof safeArgs.oldString === "string" ? safeArgs.oldString
+                                : undefined,
+                            new_string: typeof safeArgs.new_string === "string" ? safeArgs.new_string
+                                : typeof safeArgs.newString === "string" ? safeArgs.newString
+                                : undefined,
                         }
                     );
                     deps.send("approval:deferred", workspaceId, {
@@ -69,8 +86,9 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                 }
             }
 
-            if (event.type === "tool_execution_end") {
-                const { toolName, toolCallId } = event;
+            const end = asToolEnd(event);
+            if (end) {
+                const { toolName, toolCallId } = end;
                 if (toolName !== "write" && toolName !== "edit") return;
                 const change = deps.pendingEdits.list().find((c) => c.toolCallId === toolCallId);
                 if (!change) return;

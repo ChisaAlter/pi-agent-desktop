@@ -2,10 +2,12 @@
 // 多 workspace 编排: workspaceId -> AgentSession 映射
 // 每次 get() 复用 session; 首次创建时 lazy-init bridge + interceptor + 订阅一次
 // (修复 v1.0 之前的订阅泄漏: 每次 pi:send 都新建 + 订阅, 永不取消)
+// v1.0.5: event 类型用 @shared/events PiEvent, 去掉 as any
 
 import { createWorkspaceSession, type WorkspaceSession } from "./factory";
 import { createEventBridge, type IpcSender } from "./event-bridge";
 import { createApprovalInterceptor } from "../approval/interceptor";
+import type { PiEvent } from "@shared/events";
 import type { PendingEdits } from "../approval/pending-edits";
 
 /** 内部存储: session + 已初始化的 bridge/interceptor/subscription */
@@ -17,12 +19,6 @@ interface WorkspaceEntry {
 export class WorkspaceRegistry {
     private entries = new Map<string, WorkspaceEntry>();
 
-    /**
-     * 获取 workspace session. 首次调用会:
-     * 1. 创建 AgentSession
-     * 2. 创建 EventBridge + ApprovalInterceptor
-     * 3. 订阅一次 Pi 事件 (后续调用复用)
-     */
     async get(
         workspaceId: string,
         workspacePath: string,
@@ -36,7 +32,6 @@ export class WorkspaceRegistry {
         const entry: WorkspaceEntry = { session, subscribed: false };
         this.entries.set(workspaceId, entry);
 
-        // 懒初始化 bridge + interceptor + subscription (只在 send/pendingEdits 齐备时)
         if (send && pendingEdits) {
             this.ensureSubscribed(entry, workspaceId, workspacePath, pendingEdits, send);
         }
@@ -48,7 +43,6 @@ export class WorkspaceRegistry {
         return this.entries.has(workspaceId);
     }
 
-    /** 补齐 subscription (用于 stop 后重新 send 的场景) */
     private ensureSubscribed(
         entry: WorkspaceEntry,
         workspaceId: string,
@@ -65,14 +59,17 @@ export class WorkspaceRegistry {
             workspacePath,
         });
         // 订阅事件: 先过 interceptor (决策), 再过 bridge (推 renderer)
-        entry.session.session.subscribe(async (event) => {
+        // 外部包 @earendil-works/pi-coding-agent 的 subscribe 签名是 (cb: (event: unknown) => void)
+        // 这里把它当 PiEvent 用 (类型安全)
+        entry.session.session.subscribe(async (rawEvent) => {
+            const event = rawEvent as unknown as PiEvent;
             try {
-                await interceptor.handleEvent(event as any);
+                await interceptor.handleEvent(event);
             } catch (err) {
                 console.error("[chat.ipc] interceptor error:", err);
             }
             try {
-                bridge.handleEvent(event as any);
+                bridge.handleEvent(event);
             } catch (err) {
                 console.error("[chat.ipc] event-bridge error:", err);
             }

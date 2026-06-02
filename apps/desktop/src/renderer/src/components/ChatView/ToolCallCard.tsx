@@ -79,20 +79,21 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps): React.JSX.Element
 
   // 从 input 中提取文件路径（如果是文件操作）
   const getFilePath = (): string | null => {
-    if (!toolCall.input) return null;
+    const input = toolCall.input as Record<string, unknown> | string | undefined;
+    if (input === undefined || input === null) return null;
     if (toolCall.name === 'read' || toolCall.name === 'write' || toolCall.name === 'edit') {
-      if (typeof toolCall.input === 'object' && toolCall.input.file_path) {
-        return toolCall.input.file_path;
+      if (typeof input === 'object' && typeof input.file_path === 'string') {
+        return input.file_path;
       }
-      if (typeof toolCall.input === 'object' && toolCall.input.path) {
-        return toolCall.input.path;
+      if (typeof input === 'object' && typeof input.path === 'string') {
+        return input.path;
       }
     }
     return null;
   };
 
   const filePath = getFilePath();
-  
+
   const getToolLabel = () => {
     switch (toolCall.name) {
       case 'bash': return '运行命令';
@@ -102,7 +103,21 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps): React.JSX.Element
       default: return toolCall.name;
     }
   };
-  
+
+  // 提前把 input/output 序列化为 string (TS strict 下 unknown 不能直接 JSX render)
+  const inputStr: string | null =
+    toolCall.input === null || toolCall.input === undefined
+      ? null
+      : typeof toolCall.input === "string"
+        ? toolCall.input
+        : JSON.stringify(toolCall.input, null, 2);
+  const outputStr: string | null =
+    toolCall.output === null || toolCall.output === undefined
+      ? null
+      : typeof toolCall.output === "string"
+        ? toolCall.output
+        : JSON.stringify(toolCall.output, null, 2);
+
   return (
     <div className="bg-[#f5f5f5] rounded-lg border border-[#e5e5e5] overflow-hidden">
       {/* Header */}
@@ -148,20 +163,17 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps): React.JSX.Element
       {isExpanded && (
         <div className="border-t border-[#e5e5e5] p-3">
           {/* Input */}
-          {toolCall.input && (
+          {inputStr !== null ? (
             <div className="mb-3">
               <div className="text-xs text-[#666666] mb-1 font-medium">输入：</div>
               <pre className="bg-white p-2 rounded text-xs overflow-x-auto border border-[#e5e5e5]">
-                {typeof toolCall.input === 'string' 
-                  ? toolCall.input 
-                  : JSON.stringify(toolCall.input, null, 2)
-                }
+                {inputStr}
               </pre>
             </div>
-          )}
-          
+          ) : null}
+
           {/* Output */}
-          {toolCall.output && (
+          {outputStr !== null ? (
             <div>
               <div className="text-xs text-[#666666] mb-1 font-medium">输出：</div>
               {(toolCall.name === 'edit' || toolCall.name === 'write') &&
@@ -172,14 +184,11 @@ export function ToolCallCard({ toolCall }: ToolCallCardProps): React.JSX.Element
                 </div>
               ) : (
                 <pre className="bg-white p-2 rounded text-xs overflow-x-auto max-h-40 overflow-y-auto border border-[#e5e5e5]">
-                  {typeof toolCall.output === 'string'
-                    ? toolCall.output
-                    : JSON.stringify(toolCall.output, null, 2)
-                  }
+                  {outputStr}
                 </pre>
               )}
             </div>
-          )}
+          ) : null}
           
           {/* Duration */}
           {toolCall.startTime && toolCall.endTime && (

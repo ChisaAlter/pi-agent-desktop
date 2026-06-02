@@ -7,6 +7,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { fuzzyScore } from "../../utils/fuzzy-match";
 import { useSessionStore } from "../../stores/session-store";
 import { useI18n } from "../../i18n";
+import type { FileEntry } from "@shared";
 
 export type CommandMode = "file" | "history" | "cmd";
 
@@ -44,7 +45,7 @@ export function CommandPalette({
     const [query, setQuery] = useState("");
     const [mode, setMode] = useState<CommandMode>("file");
     const [activeIdx, setActiveIdx] = useState(0);
-    const [files, setFiles] = useState<string[]>([]);
+    const [files, setFiles] = useState<FileEntry[]>([]);
     const [filesLoading, setFilesLoading] = useState(false);
     const [filesError, setFilesError] = useState<string | null>(null);
     const [filesReloadKey, setFilesReloadKey] = useState(0);
@@ -99,14 +100,14 @@ export function CommandPalette({
 
     if (mode === "file") {
         results = files
-            .map((f) => ({ f, s: fuzzyScore(f, query) }))
+            .map((f) => ({ f, s: fuzzyScore(f.path, query) }))
             .filter((x) => x.s > 0)
             .sort((a, b) => b.s - a.s)
             .slice(0, 20)
             .map((x) => ({
-                id: x.f,
-                primary: x.f,
-                onSelect: () => onSelectFile?.(x.f),
+                id: x.f.path,
+                primary: x.f.path,
+                onSelect: () => onSelectFile?.(x.f.path),
             }));
     } else if (mode === "cmd") {
         results = COMMANDS

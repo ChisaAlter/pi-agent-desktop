@@ -19,19 +19,29 @@ export interface InstalledSkill {
     enabled: boolean;
 }
 
+interface SkillhubSearchPayload {
+    results?: Array<{
+        slug?: string;
+        name?: string;
+        description?: string;
+        version?: string;
+        source?: string;
+    }>;
+}
+
 export function parseSearchOutput(stdout: string): SkillInfo[] {
-    let parsed: any;
+    let parsed: SkillhubSearchPayload;
     try {
-        parsed = JSON.parse(stdout);
+        parsed = JSON.parse(stdout) as SkillhubSearchPayload;
     } catch (err) {
         throw new Error(`skillhub search output is not valid JSON: ${(err as Error).message}`);
     }
     if (!parsed.results || !Array.isArray(parsed.results)) {
         return [];
     }
-    return parsed.results.map((r: any) => ({
-        slug: r.slug,
-        name: r.name,
+    return parsed.results.map((r) => ({
+        slug: r.slug ?? "",
+        name: r.name ?? "",
         description: r.description ?? "",
         version: r.version ?? "0.0.0",
         source: r.source,
