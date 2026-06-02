@@ -1,6 +1,17 @@
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, shell, Tray } from "electron";
+import {
+	app,
+	BrowserWindow,
+	ipcMain,
+	Menu,
+	nativeImage,
+	shell,
+	Tray,
+} from "electron";
 import { join } from "node:path";
 import { is } from "@electron-toolkit/utils";
+// 使用 ?asset 后缀导入图标，electron-vite 会在构建时将其复制到输出目录并提供正确的运行时路径
+// 这解决了打包后 build/ 目录不在 asar 中导致托盘图标丢失的问题
+import iconPath from "../../build/icon.png?asset";
 import { ipcChannels } from "../shared/ipc";
 import type { CreateAgentInput, SendPromptInput } from "../shared/types";
 import { ProjectStore } from "./projects/ProjectStore";
@@ -24,8 +35,7 @@ let piLocator: PiLocator;
 let agentManager: AgentManager;
 
 function setupTray() {
-	// 跨平台托盘图标：优先用打包后的 icon.png，Electron 会按平台自动适配尺寸
-	const iconPath = join(__dirname, "../../build/icon.png");
+	// iconPath 由 electron-vite 的 ?asset 后缀自动解析，打包后也能正确定位
 	const icon = nativeImage.createFromPath(iconPath);
 	tray = new Tray(icon.resize({ width: 16, height: 16 }));
 	tray.setToolTip("pi desktop");
@@ -60,9 +70,6 @@ function setupTray() {
 
 function createWindow() {
 	const windowOptions = settingsStore.createWindowOptions();
-	// Linux 窗口管理器不会总是读取打包元数据里的图标；运行时显式传入
-	// PNG 可以保证任务栏、窗口标题和未安装直接运行 AppImage 时都显示应用图标。
-	const iconPath = join(__dirname, "../../build/icon.png");
 
 	mainWindow = new BrowserWindow({
 		show: false,

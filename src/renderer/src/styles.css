@@ -644,7 +644,10 @@ body.is-composer-resizing {
 	padding: 0 10px;
 	white-space: nowrap;
 	font-size: 12.5px;
-	transition: background 0.15s, border-color 0.15s, color 0.15s;
+	transition:
+		background 0.15s,
+		border-color 0.15s,
+		color 0.15s;
 }
 .chat-header-actions .primary-action {
 	min-width: 96px;
@@ -673,7 +676,10 @@ body.is-composer-resizing {
 	font-size: 12.5px;
 	max-width: 200px;
 	cursor: pointer;
-	transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+	transition:
+		background 0.15s,
+		border-color 0.15s,
+		box-shadow 0.15s;
 }
 .branch-trigger:hover {
 	background: #f0fdf4;
@@ -717,7 +723,9 @@ body.is-composer-resizing {
 	border: 1px solid #e2e5eb;
 	border-radius: 10px;
 	background: #fff;
-	box-shadow: 0 12px 36px rgba(31, 35, 41, 0.14), 0 2px 6px rgba(0, 0, 0, 0.06);
+	box-shadow:
+		0 12px 36px rgba(31, 35, 41, 0.14),
+		0 2px 6px rgba(0, 0, 0, 0.06);
 	animation: branch-dropdown-in 0.15s ease-out;
 }
 @keyframes branch-dropdown-in {
@@ -1485,7 +1493,6 @@ body.is-composer-resizing .composer-resize-handle::after {
 	outline: none;
 	background: #f0fdf4;
 }
-}
 
 .modal-backdrop {
 	position: fixed;
@@ -1667,10 +1674,17 @@ body.is-composer-resizing .composer-resize-handle::after {
 }
 .settings-modal {
 	width: 420px;
+	max-height: 90vh;
+	display: flex;
+	flex-direction: column;
 	border-radius: 16px;
 	background: #fff;
 	box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
 	overflow: hidden;
+}
+.settings-panel {
+	overflow-y: auto;
+	flex: 1;
 }
 .modal-header {
 	height: 58px;

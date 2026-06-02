@@ -4,6 +4,12 @@
 
 All notable changes to pi-desktop are documented here.
 
+## v0.2.2 - 2026-06-02
+
+### Fixed
+- Fixed tray icon not showing in packaged apps by using electron-vite's `?asset` suffix for correct path resolution.
+- Fixed settings modal overflowing viewport on smaller screens by adding max-height constraint and scrollable content area.
+
 ## v0.2.1 - 2026-06-01
 
 ### Fixed
