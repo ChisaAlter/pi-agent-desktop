@@ -381,6 +381,17 @@ Week 8  ┃████ 缓冲 / 用户反馈处理           ┃
 - commit `66e3ee7`
 - **未做（留给 v1.0.8）**：PiStatusPanel / settings-store 等 React 组件接入 `useTranslateIpcError` 把 IpcError 翻译后弹 toast — 这次只定契约和 helper，不动组件
 
+### v1.0.8 — IpcError 组件接入 + store 测试（已合 master）
+- v1.0.6.1 的契约要在用户层兑现，Pi CLI 装/卸/更新/检测是最显眼的错误路径
+- **组件接入**：pi-status-store error 字段从 `string` 改为 `IpcError | string | null`；`partition()` 拆 (data | err) 分支；PiStatusPanel + Onboarding step1 用 `useTranslateIpcError()` 把 IpcError 翻译后显示，string 兜底老 throw 路径
+- **类型扩展**：`@shared` PiAPI 的 `getStatus` / `refreshPiStatus` / `installPi` / `updatePi` / `uninstallPi` 现在返 `Promise<PiStatus | IpcError>`；preload 同步；`usePiStream` 的 getStatus 返 IpcError 时视为 not connected
+- **测试覆盖（+37 个测试）**：
+  - workspace-store (12)：addWorkspace / removeWorkspace 删后 current 切换 / setCurrentWorkspace lastActiveAt / updateWorkspace / updateGitStatus / getCurrentWorkspace / deleteWorkspace 同步
+  - approval-store (14)：addChange / approve / reject / approveAll / rejectAll / clearChanges / autoApprove / waitForApproval 异步流 / generateWriteDiff / generateEditDiff
+  - pi-status-store (11)：partition IpcError 路径 / 老 throw 兜底 / install / update / uninstall / cancel 全路径
+- 验证：29 test files / 233 PASS (2 skipped, 0 fail) — 从 v1.0.6.1 的 196 增到 233，+37 新测试
+- commit `ed742b6`
+
 ## 12. v1.0.4 — i18n 基建（进行中）
 
 **目标**：让 Pi Desktop 支持中英双语切换，铺好未来更多语言的基建。
