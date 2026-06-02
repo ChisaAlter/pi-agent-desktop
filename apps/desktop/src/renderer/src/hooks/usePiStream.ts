@@ -70,19 +70,23 @@ export function usePiStream(): UsePiStreamReturn {
     }, []);
 
     // ── 事件订阅 ────────────────────────────────────────────────────────────
+    // mount-only: handleEvent 在后面定义, 用 ref 在 useEffect 前 hold 引用.
+    // ref 类型是 ((event: PiEvent) => void) | null, 每次 render 同步到 current.
+    const handleEventRef = useRef<((event: PiEvent) => void) | null>(null);
     useEffect(() => {
         if (!window.piAPI?.onEvent) return;
         const unsub = window.piAPI.onEvent((event: PiEvent) => {
-            handleEvent(event);
+            handleEventRef.current?.(event);
         });
         return () => {
             if (typeof unsub === "function") unsub();
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // ── 事件处理 ────────────────────────────────────────────────────────────
     const handleEvent = useCallback((event: PiEvent) => {
+        // 把当前 closure 写到 ref, 让上面的 useEffect (mount-only) 永远拿到最新实现
+        handleEventRef.current = handleEvent;
         switch (event.type) {
             case "agent_start":
                 setIsStreaming(true);

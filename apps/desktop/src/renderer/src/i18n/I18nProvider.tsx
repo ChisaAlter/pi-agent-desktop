@@ -2,7 +2,7 @@
 // locale 优先级: localStorage > navigator.language > DEFAULT_LOCALE
 // 切换 locale 时立刻写 localStorage + 调 i18next.changeLanguage, UI 即时更新
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import i18next from 'i18next';
 import { initReactI18next, useTranslation } from 'react-i18next';
 import { DEFAULT_LOCALE, LOCALE_STORAGE_KEY, SUPPORTED_LOCALES, type SupportedLocale } from './config';
@@ -48,17 +48,23 @@ export function I18nProvider({ children }: I18nProviderProps) {
   const { i18n, ready } = useTranslation();
   const [locale, setLocaleState] = useState<Locale>(() => (i18n.language as Locale) || DEFAULT_LOCALE);
 
+  // 故意只跑一次 (mount). 把 i18n / setLocaleState / locale 都过 ref, 避开 deps 警告
+  // 又不依赖 i18n.language 防止循环
+  const setLocaleStateRef = useRef(setLocaleState);
+  setLocaleStateRef.current = setLocaleState;
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
+  const i18nRef = useRef(i18n);
+  i18nRef.current = i18n;
   useEffect(() => {
-    // Provider 每次 mount 时从 localStorage 重读一次, 让测试隔离 + 跨实例一致
+    const i = i18nRef.current;
     const fresh = resolveInitialLocale();
-    if (fresh !== i18n.language) {
-      void i18n.changeLanguage(fresh);
+    if (fresh !== i.language) {
+      void i.changeLanguage(fresh);
     }
-    if (fresh !== locale) {
-      setLocaleState(fresh);
+    if (fresh !== localeRef.current) {
+      setLocaleStateRef.current(fresh);
     }
-    // 故意只跑一次 (mount), 不依赖 i18n.language 防止循环
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const setLocale = useCallback((next: Locale) => {

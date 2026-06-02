@@ -4,7 +4,7 @@
 // 旧架构 usePiDriver / usePiStream 老事件类型 → 新 usePiStream 用 @shared/events PiEvent
 // v1.0.4: 包了 I18nProvider 顶层, 顶部标题栏 / 状态栏 / 占位文案走 t()
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { IconBar } from "./components/IconBar/IconBar";
 import { ProjectPanel } from "./components/ProjectPanel/ProjectPanel";
@@ -63,19 +63,22 @@ function AppShell(): React.ReactElement {
         return () => clearInterval(id);
     }, [refreshStatus]);
 
+    // mount-only: 把 store action 引用存到 ref, 避免 deps 数组污染
+    const loadPiConfigRef = useRef(loadPiConfig);
+    loadPiConfigRef.current = loadPiConfig;
     useEffect(() => {
-        void loadPiConfig();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        void loadPiConfigRef.current();
     }, []);
 
     // 首启检测：localStorage 没标完成 OR 当前没 workspace → 展示引导
+    // 用 ref 模式避开 currentWorkspace 派生值的 deps 跟踪 (currentWorkspace 每次 render 都新)
+    const showOnboardingRef = useRef(setShowOnboarding);
+    showOnboardingRef.current = setShowOnboarding;
     useEffect(() => {
-        // 等 workspace 加载完（listWorkspaces 是异步）
         if (isFirstLaunch() || (!currentWorkspace && workspaces.length === 0)) {
-            setShowOnboarding(true);
+            showOnboardingRef.current(true);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [workspaces.length]);
+    }, [workspaces.length, currentWorkspace]);
 
     // 全局快捷键: 全部走中央 registry (shortcuts/registry.ts)
     // useShortcuts 在模块级单例挂一个 keydown 监听, 不会重复触发

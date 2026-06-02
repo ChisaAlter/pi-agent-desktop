@@ -15,6 +15,7 @@ import { usePiStatusStore } from "../../stores/pi-status-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { markFirstLaunchDone } from "../../utils/first-launch";
 import { useI18n } from "../../i18n";
+import { logger } from "../../utils/logger";
 
 export interface OnboardingProps {
     /** 关闭回调（完成时由父组件调用） */
@@ -78,7 +79,7 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                 await window.piAPI.selectWorkspace(path);
             }
         } catch (e) {
-            console.error("Onboarding: failed to create workspace", e);
+            logger.error("[Onboarding] failed to create workspace:", e);
         }
     }, [addWorkspace]);
 

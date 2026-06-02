@@ -34,15 +34,6 @@ export interface Session {
   messages: Message[];
 }
 
-export interface Session {
-  id: string;
-  title: string;
-  workspaceId: string;
-  createdAt: Date;
-  updatedAt: Date;
-  messages: Message[];
-}
-
 interface SessionState {
   sessions: Session[];
   currentSessionId: string | null;

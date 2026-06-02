@@ -1,10 +1,10 @@
 // Sidebar Component
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useWorkspaceStore } from '../../stores/workspace-store';
 import { useSessionStore } from '../../stores/session-store';
 import { useSettingsStore } from '../../stores/settings-store';
-import { useThreadStore } from '../../stores/thread-store';
+import { logger } from '../../utils/logger';
 import { ThreadList } from './ThreadList';
 
 export function Sidebar(): React.JSX.Element {
@@ -13,28 +13,28 @@ export function Sidebar(): React.JSX.Element {
   const { workspaces, currentWorkspaceId, setCurrentWorkspace, addWorkspace } = useWorkspaceStore();
   const { sessions, currentSessionId, setCurrentSession, createSession, deleteSession } = useSessionStore();
   const { openSettings } = useSettingsStore();
-  // Thread store available for future integration
-  void useThreadStore;
 
   // Load workspaces from main process on mount
+  // mount-only: 用 ref 持有 store workspaces 引用避开 deps 警告
+  const workspacesRef = useRef(workspaces);
+  workspacesRef.current = workspaces;
   useEffect(() => {
     const loadWorkspaces = async () => {
       try {
         if (window.piAPI) {
           const wsList = await window.piAPI.listWorkspaces();
           // Sync with store if empty
-          if (workspaces.length === 0 && wsList.length > 0) {
-            // We can't directly set the store, but we can add each workspace
+          if (workspacesRef.current.length === 0 && wsList.length > 0) {
+            // We can't 直接 set the store, but we can add each workspace
             // Since the store already has a default, we'll skip this for now
             // and rely on the store's default
           }
         }
       } catch (error) {
-        console.error('Failed to load workspaces:', error);
+        logger.error('[Sidebar] Failed to load workspaces:', error);
       }
     };
     loadWorkspaces();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only
   }, []);
 
   const handleNewWorkspace = async () => {

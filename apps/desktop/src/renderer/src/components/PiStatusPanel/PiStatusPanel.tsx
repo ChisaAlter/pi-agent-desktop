@@ -8,7 +8,7 @@
  *  - 实时进度显示
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { usePiStatusStore } from '../../stores/pi-status-store';
 import type { PiInstallProgress } from '../../types';
 
@@ -92,12 +92,17 @@ export function PiStatusPanel(): React.JSX.Element {
     cleanupListeners,
   } = usePiStatusStore();
 
-  // 组件挂载时初始化
+  // 组件挂载时初始化 (mount-only, ref 模式避开 store action deps 警告)
+  const setupListenersRef = useRef(setupListeners);
+  setupListenersRef.current = setupListeners;
+  const checkStatusRef = useRef(checkStatus);
+  checkStatusRef.current = checkStatus;
+  const cleanupListenersRef = useRef(cleanupListeners);
+  cleanupListenersRef.current = cleanupListeners;
   useEffect(() => {
-    setupListeners();
-    checkStatus();
-    return () => cleanupListeners();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only
+    setupListenersRef.current();
+    checkStatusRef.current();
+    return () => cleanupListenersRef.current();
   }, []);
 
   const isInstalled = status?.installed ?? false;

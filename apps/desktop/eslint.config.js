@@ -82,6 +82,9 @@ export default [
       "no-useless-escape": "warn",
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
+      // v1.0.7: 禁止显式 any. 测试文件 (vi.fn / mockImplementation) 在
+      // 下面 __tests__ 段单独覆盖
+      "@typescript-eslint/no-explicit-any": ["error", { ignoreRestArgs: true }],
     },
   },
   {
@@ -108,6 +111,14 @@ export default [
         api: "readonly",
         store: "readonly",
       },
+    },
+  },
+  {
+    // v1.0.7: 测试文件 (vi.fn / mockImplementation 标准用法) 豁免 no-explicit-any.
+    // 后续可逐步替换为 unknown / Mock 包装.
+    files: ["**/__tests__/**/*.ts", "**/__tests__/**/*.tsx", "src/test/**/*.ts"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
     },
   },
 ];

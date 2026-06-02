@@ -40,7 +40,7 @@ export function ModelSelector(): React.JSX.Element {
                       <div className="font-medium text-white truncate">{model.name}</div>
                       <div className="text-xs text-gray-300 mt-0.5">{model.description}</div>
                     </div>
-                    <div className="text-xs text-gray-400 ml-2 shrink-0">{(model as any).providerName || model.provider}</div>
+                    <div className="text-xs text-gray-400 ml-2 shrink-0">{model.providerName || model.provider}</div>
                   </div>
                 </div>
               ))}
@@ -90,7 +90,7 @@ export function ModelSelector(): React.JSX.Element {
         <div className="bg-gray-700 rounded-lg p-3">
           <div className="text-sm text-gray-300">
             <div className="font-medium text-white mb-1">当前模型：{selectedModel.name}</div>
-            <div>服务商：{(selectedModel as any).providerName || selectedModel.provider}</div>
+            <div>服务商：{selectedModel.providerName || selectedModel.provider}</div>
             {selectedModel.maxTokens && <div>最大 Token：{selectedModel.maxTokens.toLocaleString()}</div>}
             <div>温度参数：{settings.temperature}</div>
           </div>

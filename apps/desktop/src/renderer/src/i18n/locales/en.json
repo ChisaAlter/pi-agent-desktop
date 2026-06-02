@@ -339,6 +339,12 @@
     "piNotConnected": "Pi CLI not connected",
     "operationFailed": "Operation failed"
   },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "description": "Pi Desktop hit an uncaught error. Details:",
+    "retry": "Retry",
+    "reload": "Reload page"
+  },
   "app": {
     "shellAria": "Pi Desktop application",
     "headerAria": "Top action bar",

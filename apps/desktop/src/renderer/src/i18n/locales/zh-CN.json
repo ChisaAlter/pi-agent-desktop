@@ -337,6 +337,12 @@
     "piNotConnected": "Pi CLI 未连接",
     "operationFailed": "操作失败"
   },
+  "errorBoundary": {
+    "title": "出错了",
+    "description": "Pi Desktop 遇到了一个未捕获的错误. 详细信息:",
+    "retry": "重试",
+    "reload": "刷新页面"
+  },
   "app": {
     "shellAria": "Pi 桌面应用",
     "headerAria": "顶部操作栏",

@@ -9,7 +9,7 @@ import { useI18n, SUPPORTED_LOCALES, type Locale } from '../../i18n';
 export function SettingsPanel(): React.JSX.Element {
     const { settings, isOpen, closeSettings, updateSettings, resetSettings, piModels } = useSettingsStore();
     const [activeTab, setActiveTab] = useState<'general' | 'model' | 'piagent' | 'about'>('general');
-    const [piFullConfig, setPiFullConfig] = useState<any>(null);
+    const [piFullConfig, setPiFullConfig] = useState<Awaited<ReturnType<typeof window.piAPI.getFullConfig>> | null>(null);
     const { t, locale, setLocale } = useI18n();
 
     useEffect(() => {
@@ -351,7 +351,7 @@ export function SettingsPanel(): React.JSX.Element {
                                                 {t('settings.piagent.providers', { count: piFullConfig.providers.length })}
                                             </label>
                                             <div className="space-y-2 max-h-48 overflow-y-auto">
-                                                {piFullConfig.providers.map((provider: any) => (
+                                                {piFullConfig.providers.map((provider) => (
                                                     <div key={provider.id} className="bg-[#f5f5f5] rounded-lg p-3">
                                                         <div className="flex items-center justify-between mb-1">
                                                             <span className="text-sm font-medium text-[#1a1a1a]">{provider.name}</span>

@@ -123,7 +123,7 @@ export function SkillsMarketplace(): React.JSX.Element {
                 <div className="flex-1" />
                 <select
                     value={sort}
-                    onChange={(e) => setSort(e.target.value as any)}
+                    onChange={(e) => setSort(e.target.value as "热门" | "最新")}
                     className="text-xs px-2 py-1 bg-white border border-[#e5e5e5] rounded text-[#666]"
                 >
                     <option value="热门">热门</option>

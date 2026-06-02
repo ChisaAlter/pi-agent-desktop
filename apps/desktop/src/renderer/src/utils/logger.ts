@@ -12,30 +12,14 @@
 //   logger.error("[files.ipc] scan error", err);
 //   logger.warn("[PtyManager] write error for ${id}", err);
 
-// 在 vitest jsdom 环境 + electron-log IPC 不可用, 走 console fallback.
-// 业务代码只 import logger, 不用关心环境.
+// RendererLogger is a value (default export), 用 typeof import 拿类型
+type RendererLoggerType = typeof import("electron-log/renderer").default;
+
 type LogFn = (msg: string, ...args: unknown[]) => void;
+type Logger = { error: LogFn; warn: LogFn; info: LogFn; debug: LogFn };
 
-let logImpl: {
-    error: LogFn;
-    warn: LogFn;
-    info: LogFn;
-    debug: LogFn;
-};
-
-try {
-    // electron-log/renderer 在 jsdom 环境里会 fail (调 window.ipcRenderer 不存在)
-    // require 放 try 防止 vitest setup 卡死
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require("electron-log/renderer") as {
-        error: LogFn;
-        warn: LogFn;
-        info: LogFn;
-        debug: LogFn;
-    };
-    logImpl = mod;
-} catch {
-    logImpl = {
+function buildConsoleLogger(): Logger {
+    return {
         error: (msg, ...args) => console.error(msg, ...args),
         warn: (msg, ...args) => console.warn(msg, ...args),
         info: (msg, ...args) => console.info(msg, ...args),
@@ -43,4 +27,17 @@ try {
     };
 }
 
-export const logger: typeof logImpl = logImpl;
+// electron-log/renderer 在 jsdom 环境里调 window.ipcRenderer 会 throw.
+// 用 dynamic import 包 try/catch 降级 console. ESM top-level await 不行
+// (renderer bundle 是 sync), 所以用 side-effect import 兜底.
+let logImpl: Logger;
+try {
+    // require 在 vitest jsdom 下会 fail (electron-log/renderer 顶层就 try-调 window.ipc),
+    // 捕获后降级 console, 业务代码不感知.
+    const mod: Logger = (require("electron-log/renderer") as RendererLoggerType) as unknown as Logger;
+    logImpl = mod;
+} catch {
+    logImpl = buildConsoleLogger();
+}
+
+export const logger: Logger = logImpl;

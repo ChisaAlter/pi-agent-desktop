@@ -9,7 +9,7 @@ export function ProviderConfig(): React.JSX.Element {
 
   // 从 Pi 配置中提取 service provider 列表
   const piProviders = piModels
-    ? [...new Map(piModels.map(m => [m.provider, { id: m.provider, name: (m as any).providerName || m.provider, description: `${piModels.filter(x => x.provider === m.provider).length} 个模型` }])).values()]
+    ? [...new Map(piModels.map((m) => [m.provider, { id: m.provider, name: m.providerName || m.provider, description: `${piModels.filter(x => x.provider === m.provider).length} 个模型` }])).values()]
     : [];
 
   const providers = piProviders.length > 0 ? piProviders : [
