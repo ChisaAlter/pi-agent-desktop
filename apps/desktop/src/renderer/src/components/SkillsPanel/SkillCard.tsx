@@ -7,10 +7,11 @@ import type { SkillInfo } from "../../../../main/services/skills/skillhub-adapte
 interface SkillCardProps {
     skill: SkillInfo;
     installed?: boolean;
+    isInstalling?: boolean;
     onInstall?: () => void;
 }
 
-export function SkillCard({ skill, installed, onInstall }: SkillCardProps): React.JSX.Element {
+export function SkillCard({ skill, installed, isInstalling, onInstall }: SkillCardProps): React.JSX.Element {
     return (
         <div className="bg-white border border-[#e5e5e5] rounded-xl p-4 flex flex-col gap-2 hover:border-[#999] transition-colors">
             <div className="flex items-start justify-between gap-2">
@@ -43,9 +44,10 @@ export function SkillCard({ skill, installed, onInstall }: SkillCardProps): Reac
                 ) : onInstall ? (
                     <button
                         onClick={onInstall}
-                        className="text-xs px-3 py-1 bg-[#1a1a1a] text-white rounded hover:bg-[#333] transition-colors"
+                        disabled={isInstalling}
+                        className="text-xs px-3 py-1 bg-[#1a1a1a] text-white rounded hover:bg-[#333] transition-colors disabled:opacity-50"
                     >
-                        装
+                        {isInstalling ? "安装中..." : "装"}
                     </button>
                 ) : null}
             </div>

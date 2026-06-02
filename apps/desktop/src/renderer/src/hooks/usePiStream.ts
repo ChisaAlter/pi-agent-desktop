@@ -37,6 +37,7 @@ export interface PiStreamState {
 export interface UsePiStreamReturn extends PiStreamState {
     startStreaming: (workspaceId: string, content: string) => Promise<void>;
     stopStreaming: () => void;
+    clearError: () => void;
 }
 
 const HIGH_RISK_TOOLS = new Set(["bash", "write", "edit", "delete"]);
@@ -242,6 +243,10 @@ export function usePiStream(): UsePiStreamReturn {
         setIsStreaming(false);
     }, []);
 
+    const clearError = useCallback(() => {
+        setError(null);
+    }, []);
+
     return {
         isStreaming,
         currentThinking,
@@ -252,5 +257,6 @@ export function usePiStream(): UsePiStreamReturn {
         streamingMessageId,
         startStreaming,
         stopStreaming,
+        clearError,
     };
 }

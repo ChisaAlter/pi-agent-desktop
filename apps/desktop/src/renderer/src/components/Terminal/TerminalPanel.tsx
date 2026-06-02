@@ -163,10 +163,22 @@ export function TerminalPanel({ workspacePath, isOpen, onClose }: TerminalPanelP
                     />
                 ))}
                 {tabs.length === 0 && (
-                    <div className="flex items-center justify-center h-full text-sm text-[#999]">
+                    <div
+                        className="flex flex-col items-center justify-center h-full text-center px-4"
+                        role="status"
+                    >
+                        <svg className="w-10 h-10 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <p className="text-sm text-[#1a1a1a] mb-1 font-medium">
+                            暂无终端
+                        </p>
+                        <p className="text-xs text-[#999] mb-3">
+                            按 <kbd className="px-1.5 py-0.5 bg-[#f0f0f0] rounded text-[10px] font-mono">Ctrl + `</kbd> 或点下面按钮新建
+                        </p>
                         <button
                             onClick={() => void createTab()}
-                            className="px-4 py-2 bg-[#1a1a1a] text-white rounded hover:bg-[#333]"
+                            className="px-4 py-2 bg-[#1a1a1a] text-white rounded hover:bg-[#333] transition-colors text-sm"
                         >
                             + 新建终端
                         </button>

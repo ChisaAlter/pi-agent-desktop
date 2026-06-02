@@ -76,6 +76,45 @@ export const ProjectPanel: React.FC<ProjectPanelProps> = ({ activePanel, onSendT
   const renderContent = () => {
     switch (activePanel) {
       case 'chat':
+        // No workspace: show CTA instead of an empty project tree
+        if (!currentWorkspace) {
+          return (
+            <div
+              className="flex-1 flex flex-col items-center justify-center text-center px-6 py-10"
+              role="status"
+            >
+              <svg className="w-12 h-12 mb-3 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+              <p className="text-sm text-[#1a1a1a] mb-1 font-medium">暂无 workspace</p>
+              <p className="text-xs text-[#999] mb-4">点下面按钮选一个本地目录开始。</p>
+              <button
+                onClick={async () => {
+                  if (!window.piAPI?.selectDirectory) return;
+                  const path = await window.piAPI.selectDirectory();
+                  if (!path) return;
+                  const name = path.split(/[\\/]/).pop() || "New Workspace";
+                  try {
+                    if (window.piAPI.createWorkspace) {
+                      const ws = await window.piAPI.createWorkspace(name, path);
+                      useWorkspaceStore.getState().addWorkspace(ws.name, ws.path);
+                    } else {
+                      useWorkspaceStore.getState().addWorkspace(name, path);
+                    }
+                    if (window.piAPI.selectWorkspace) {
+                      await window.piAPI.selectWorkspace(path);
+                    }
+                  } catch (e) {
+                    console.error('ProjectPanel: failed to create workspace', e);
+                  }
+                }}
+                className="px-4 py-2 bg-[#1a1a1a] text-white rounded-lg hover:bg-[#333] transition-colors text-sm font-medium"
+              >
+                + 点这里添加 workspace
+              </button>
+            </div>
+          );
+        }
         return (
           <>
             {/* 搜索框 */}

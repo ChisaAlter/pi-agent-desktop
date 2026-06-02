@@ -1,7 +1,8 @@
 // CommandPalette (M2 Task M2-5)
 // Ctrl+K 调起的模态: 文件搜索 / 历史搜索 / 内置命令 三模式
+// 可用度-D: 文件搜索失败 → 友好错误 + 重试按钮 (a11y: role="alert")
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { fuzzyScore } from "../../utils/fuzzy-match";
 import { useSessionStore } from "../../stores/session-store";
 
@@ -36,7 +37,11 @@ export function CommandPalette({
     const [mode, setMode] = useState<CommandMode>("file");
     const [activeIdx, setActiveIdx] = useState(0);
     const [files, setFiles] = useState<string[]>([]);
+    const [filesLoading, setFilesLoading] = useState(false);
+    const [filesError, setFilesError] = useState<string | null>(null);
+    const [filesReloadKey, setFilesReloadKey] = useState(0);
     const inputRef = useRef<HTMLInputElement>(null);
+    const dialogRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (isOpen) {
@@ -47,15 +52,36 @@ export function CommandPalette({
         }
     }, [isOpen]);
 
+    // 文件搜索：loading / 错误 / 重试 (可用度-D)
     useEffect(() => {
-        if (mode === "file" && window.piAPI?.filesList) {
-            window.piAPI.filesList(workspacePath).then(setFiles);
-        }
-    }, [mode, workspacePath, isOpen]);
+        if (mode !== "file" || !window.piAPI?.filesList || !isOpen) return;
+        let cancelled = false;
+        setFilesLoading(true);
+        setFilesError(null);
+        window.piAPI
+            .filesList(workspacePath)
+            .then((list) => {
+                if (cancelled) return;
+                setFiles(list);
+                setFilesLoading(false);
+            })
+            .catch((err: unknown) => {
+                if (cancelled) return;
+                setFilesError(err instanceof Error ? err.message : String(err));
+                setFilesLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [mode, workspacePath, isOpen, filesReloadKey]);
 
     useEffect(() => {
         setActiveIdx(0);
     }, [mode, query]);
+
+    const retryFileSearch = useCallback(() => {
+        setFilesReloadKey((k) => k + 1);
+    }, []);
 
     if (!isOpen) return null;
 
@@ -110,6 +136,8 @@ export function CommandPalette({
             .map((x) => x.r);
     }
 
+    const handleClose = () => onClose();
+
     const onKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === "ArrowDown") {
             e.preventDefault();
@@ -120,15 +148,14 @@ export function CommandPalette({
         } else if (e.key === "Enter" && results[activeIdx]) {
             e.preventDefault();
             results[activeIdx].onSelect();
-            onClose();
+            handleClose();
         } else if (e.key === "Escape") {
             e.preventDefault();
-            onClose();
+            handleClose();
         } else if ((e.ctrlKey || e.metaKey) && e.key === "k") {
             e.preventDefault();
-            onClose();
+            handleClose();
         } else if (e.key === "Tab") {
-            // Tab 切换 mode
             e.preventDefault();
             const modes: CommandMode[] = ["file", "history", "cmd"];
             const idx = modes.indexOf(mode);
@@ -139,33 +166,55 @@ export function CommandPalette({
     return (
         <div
             className="fixed inset-0 z-50 flex items-start justify-center pt-32 bg-black/30 backdrop-blur-sm"
-            onClick={onClose}
+            onClick={handleClose}
         >
             <div
+                ref={dialogRef}
                 className="bg-white rounded-2xl shadow-2xl w-[640px] max-h-[500px] flex flex-col overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                aria-label="命令面板"
             >
                 {/* Mode tabs */}
-                <div className="flex items-center gap-1 px-3 pt-3 border-b border-[#e5e5e5]">
-                    {(["file", "history", "cmd"] as const).map((m) => (
-                        <button
-                            key={m}
-                            onClick={() => setMode(m)}
-                            className={`px-3 py-1.5 text-sm rounded-t-md transition-colors ${
-                                mode === m
-                                    ? "bg-[#1a1a1a] text-white"
-                                    : "text-[#666] hover:bg-[#f5f5f5]"
-                            }`}
-                        >
-                            {m === "file" ? "文件" : m === "history" ? "历史" : "命令"}
-                        </button>
-                    ))}
+                <div
+                    className="flex items-center gap-1 px-3 pt-3 border-b border-[#e5e5e5]"
+                    role="tablist"
+                    aria-label="命令面板模式"
+                >
+                    {(["file", "history", "cmd"] as const).map((m) => {
+                        const isActive = mode === m;
+                        const tabLabel = m === "file" ? "文件" : m === "history" ? "历史" : "命令";
+                        return (
+                            <button
+                                key={m}
+                                type="button"
+                                role="tab"
+                                aria-selected={isActive}
+                                aria-controls={`command-panel-tabpanel-${m}`}
+                                id={`command-panel-tab-${m}`}
+                                onClick={() => setMode(m)}
+                                className={`px-3 py-1.5 text-sm rounded-t-md transition-colors ${
+                                    isActive
+                                        ? "bg-[#1a1a1a] text-white"
+                                        : "text-[#666] hover:bg-[#f5f5f5]"
+                                }`}
+                            >
+                                {tabLabel}
+                            </button>
+                        );
+                    })}
                 </div>
 
                 {/* Search input */}
                 <div className="p-3">
+                    <label htmlFor="command-palette-search" className="sr-only">
+                        搜索
+                    </label>
                     <input
+                        id="command-palette-search"
                         ref={inputRef}
+                        type="text"
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         onKeyDown={onKeyDown}
@@ -177,12 +226,41 @@ export function CommandPalette({
                                 : "搜索命令..."
                         }
                         className="w-full px-3 py-2 bg-[#f5f5f5] border border-[#e5e5e5] rounded-lg text-sm focus:outline-none focus:border-[#1a1a1a]"
+                        aria-label="搜索命令"
+                        autoComplete="off"
+                        role="combobox"
+                        aria-expanded={results.length > 0}
+                        aria-controls="command-palette-listbox"
+                        aria-activedescendant={
+                            results[activeIdx] ? `command-palette-option-${results[activeIdx].id}` : undefined
+                        }
                     />
                 </div>
 
-                {/* Results */}
+                {/* Results — 错误 / 加载 / 空 / 列表 4 种状态 (可用度-D) */}
                 <div className="flex-1 overflow-auto px-1 pb-2 min-h-[200px]">
-                    {results.length === 0 ? (
+                    {/* 文件搜索错误 — 友好重试 */}
+                    {mode === "file" && filesError && !filesLoading ? (
+                        <div
+                            className="m-3 p-3 bg-[#fef2f2] border border-[#fecaca] rounded-lg"
+                            role="alert"
+                        >
+                            <p className="text-sm text-[#ef4444] font-medium mb-1">文件搜索失败</p>
+                            <p className="text-xs text-[#666] mb-2 break-all font-mono">
+                                {filesError}
+                            </p>
+                            <button
+                                onClick={retryFileSearch}
+                                className="px-3 py-1.5 bg-[#ef4444] text-white text-xs rounded hover:bg-[#dc2626] transition-colors"
+                            >
+                                重试
+                            </button>
+                        </div>
+                    ) : mode === "file" && filesLoading ? (
+                        <div className="px-4 py-8 text-center text-sm text-[#999]" role="status">
+                            加载中...
+                        </div>
+                    ) : results.length === 0 ? (
                         <div className="px-4 py-8 text-center text-sm text-[#999]">
                             {query
                                 ? "无匹配"
@@ -193,33 +271,54 @@ export function CommandPalette({
                                 : "输入命令名搜索"}
                         </div>
                     ) : (
-                        results.map((r, i) => (
-                            <button
-                                key={r.id}
-                                onClick={() => {
-                                    r.onSelect();
-                                    onClose();
-                                }}
-                                className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 transition-colors ${
-                                    i === activeIdx
-                                        ? "bg-[#f0f0f0]"
-                                        : "hover:bg-[#f5f5f5]"
-                                }`}
-                            >
-                                <span className="flex-1 truncate text-[#1a1a1a]">
-                                    {mode === "file" && <span className="text-[#999] mr-2">📄</span>}
-                                    {r.primary}
-                                </span>
-                                {r.secondary && (
-                                    <span className="text-xs text-[#999] font-mono">{r.secondary}</span>
-                                )}
-                            </button>
-                        ))
+                        <ul
+                            id="command-palette-listbox"
+                            role="listbox"
+                            aria-label="搜索结果"
+                            className="space-y-0.5"
+                        >
+                            {results.map((r, i) => {
+                                const isSelected = i === activeIdx;
+                                return (
+                                    <li
+                                        key={r.id}
+                                        id={`command-palette-option-${r.id}`}
+                                        role="option"
+                                        aria-selected={isSelected}
+                                        className="list-none"
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                r.onSelect();
+                                                handleClose();
+                                            }}
+                                            className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 transition-colors ${
+                                                isSelected
+                                                    ? "bg-[#f0f0f0]"
+                                                    : "hover:bg-[#f5f5f5]"
+                                            }`}
+                                        >
+                                            <span className="flex-1 truncate text-[#1a1a1a]">
+                                                {mode === "file" && <span className="text-[#999] mr-2" aria-hidden="true">📄</span>}
+                                                {r.primary}
+                                            </span>
+                                            {r.secondary && (
+                                                <span className="text-xs text-[#999] font-mono">{r.secondary}</span>
+                                            )}
+                                        </button>
+                                    </li>
+                                );
+                            })}
+                        </ul>
                     )}
                 </div>
 
                 {/* Footer hint */}
-                <div className="px-3 py-2 border-t border-[#e5e5e5] text-xs text-[#999] flex items-center gap-3">
+                <div
+                    className="px-3 py-2 border-t border-[#e5e5e5] text-xs text-[#999] flex items-center gap-3"
+                    aria-hidden="true"
+                >
                     <span>
                         <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">↑↓</kbd> 选择
                     </span>
