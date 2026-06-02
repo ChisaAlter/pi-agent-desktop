@@ -1,7 +1,9 @@
 // 输入区域 - 圆角输入框 + 附件按钮 + 模型选择 + 发送按钮
+// v1.0.4: 用户可见文案走 t()
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useSettingsStore } from '../../stores/settings-store';
+import { useI18n } from '../../i18n';
 
 interface ChatInputProps {
   isConnected: boolean;
@@ -14,7 +16,8 @@ export function ChatInput({ isConnected, isProcessing, onSend, onStop }: ChatInp
   const [inputValue, setInputValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { settings } = useSettingsStore();
-  const [permission] = useState('完全访问权限');
+  const { t } = useI18n();
+  const [permission] = useState(t('chatInput.permissionLabel'));
 
   // 自动调整 textarea 高度
   const adjustTextareaHeight = useCallback(() => {
@@ -57,11 +60,11 @@ export function ChatInput({ isConnected, isProcessing, onSend, onStop }: ChatInp
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isConnected ? '描述你想要构建或修改的内容...' : 'Pi CLI 未连接，请确保 pi 已安装并添加到系统路径'}
+            placeholder={isConnected ? t('chatInput.placeholder.ready') : t('chatInput.placeholder.noConnection')}
             className="flex-1 px-4 py-3 bg-[#f5f5f5] border border-[#e5e5e5] rounded-xl text-sm text-[#1a1a1a] placeholder:text-[#999] resize-none focus:outline-none focus:border-[#1a1a1a] disabled:opacity-50 min-h-[48px] leading-relaxed"
             rows={1}
             disabled={isProcessing || !isConnected}
-            aria-label="给 Pi 发消息"
+            aria-label={t('chatInput.send')}
           />
           <button
             type="button"
@@ -72,8 +75,8 @@ export function ChatInput({ isConnected, isProcessing, onSend, onStop }: ChatInp
                 ? 'bg-[#ef4444] hover:bg-[#dc2626] text-white'
                 : 'bg-[#1a1a1a] hover:bg-[#333] text-white disabled:opacity-30 disabled:cursor-not-allowed'
             }`}
-            aria-label={isProcessing ? '停止生成' : '发送消息'}
-            title={isProcessing ? '停止生成' : '发送消息'}
+            aria-label={isProcessing ? t('chatView.stopGeneration') : t('chatInput.send')}
+            title={isProcessing ? t('chatView.stopGeneration') : t('chatInput.send')}
           >
             {isProcessing ? (
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -94,17 +97,17 @@ export function ChatInput({ isConnected, isProcessing, onSend, onStop }: ChatInp
             <button
               type="button"
               className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f5f5f5] border border-[#e5e5e5] rounded text-xs text-[#666] hover:bg-[#f0f0f0] transition-all"
-              aria-label="添加附件"
+              aria-label={t('chatInput.addAttachment')}
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              附件
+              {t('chatInput.attachment')}
             </button>
             <div
               className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f5f5f5] border border-[#e5e5e5] rounded text-xs text-[#666] cursor-pointer hover:bg-[#f0f0f0] transition-all"
               role="listitem"
-              aria-label="权限设置"
+              aria-label={t('chatInput.permission')}
               tabIndex={0}
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -120,17 +123,17 @@ export function ChatInput({ isConnected, isProcessing, onSend, onStop }: ChatInp
             {/* 快捷键提示 */}
             <div className="flex items-center gap-1.5 text-xs text-[#999]" aria-hidden="true">
               <kbd className="px-1.5 py-0.5 bg-[#f5f5f5] border border-[#e5e5e5] rounded text-[10px] font-mono">Enter</kbd>
-              <span>发送</span>
+              <span>{t('chatInput.shortcuts.send')}</span>
               <span className="mx-1 text-[#e5e5e5]">/</span>
               <kbd className="px-1.5 py-0.5 bg-[#f5f5f5] border border-[#e5e5e5] rounded text-[10px] font-mono">Shift</kbd>
               <span>+</span>
               <kbd className="px-1.5 py-0.5 bg-[#f5f5f5] border border-[#e5e5e5] rounded text-[10px] font-mono">Enter</kbd>
-              <span>换行</span>
+              <span>{t('chatInput.shortcuts.newline')}</span>
             </div>
             <div
               className="flex items-center gap-1.5 px-3 py-1.5 bg-[#f5f5f5] border border-[#e5e5e5] rounded text-xs text-[#666] cursor-pointer hover:bg-[#f0f0f0] transition-all"
               role="listitem"
-              aria-label={`当前模型：${settings.model}`}
+              aria-label={t('chatInput.currentModel', { model: settings.model })}
               tabIndex={0}
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">

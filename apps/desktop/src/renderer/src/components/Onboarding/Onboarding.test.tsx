@@ -1,11 +1,14 @@
 // Onboarding 组件测试 (可用度-D)
 // 覆盖：3 步流程跳转、跳过、完成时写 localStorage
+// v1.0.4: 渲染时包 I18nProvider, 强制 zh-CN locale 让中文断言继续过
 
 // @vitest-environment jsdom
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import React from "react";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { Onboarding } from "./Onboarding";
+import { I18nProvider } from "../../i18n";
 
 // 共享测试用的最小 piAPI mock
 function installMockPiAPI(opts: { installed?: boolean; withWorkspaceDir?: boolean } = {}) {
@@ -59,14 +62,19 @@ function installMockPiAPI(opts: { installed?: boolean; withWorkspaceDir?: boolea
     return piAPI;
 }
 
+function renderWithI18n(ui: React.ReactElement) {
+    return render(<I18nProvider>{ui}</I18nProvider>);
+}
+
 beforeEach(() => {
-    window.localStorage.clear();
+    // jsdom 默认 navigator.language 是 'en-US', 强制 zh-CN 让中文断言继续过
+    window.localStorage.setItem("pi-desktop.locale", "zh-CN");
 });
 
 describe("Onboarding", () => {
     it("renders the first step title", async () => {
         installMockPiAPI();
-        render(<Onboarding onComplete={vi.fn()} />);
+        renderWithI18n(<Onboarding onComplete={vi.fn()} />);
         expect(await screen.findByText("检查 Pi CLI")).toBeTruthy();
         // role="dialog" + aria-modal
         const dialog = screen.getByRole("dialog");
@@ -75,7 +83,7 @@ describe("Onboarding", () => {
 
     it("advances from step 1 to step 2 when Pi is installed", async () => {
         installMockPiAPI({ installed: true });
-        render(<Onboarding onComplete={vi.fn()} />);
+        renderWithI18n(<Onboarding onComplete={vi.fn()} />);
         const next = await screen.findByText("下一步");
         fireEvent.click(next);
         expect(await screen.findByText("选择工作区")).toBeTruthy();
@@ -83,14 +91,14 @@ describe("Onboarding", () => {
 
     it("shows 'install' button when Pi is not installed", async () => {
         installMockPiAPI({ installed: false });
-        render(<Onboarding onComplete={vi.fn()} />);
+        renderWithI18n(<Onboarding onComplete={vi.fn()} />);
         expect(await screen.findByText("立即安装")).toBeTruthy();
     });
 
     it("completes the wizard and writes localStorage on finish", async () => {
         installMockPiAPI({ installed: true });
         const onComplete = vi.fn();
-        render(<Onboarding onComplete={onComplete} />);
+        renderWithI18n(<Onboarding onComplete={onComplete} />);
 
         // step 1 → 2
         fireEvent.click(await screen.findByText("下一步"));
@@ -117,7 +125,7 @@ describe("Onboarding", () => {
     it("'skip' button writes localStorage and fires onComplete", async () => {
         installMockPiAPI({ installed: true });
         const onComplete = vi.fn();
-        render(<Onboarding onComplete={onComplete} />);
+        renderWithI18n(<Onboarding onComplete={onComplete} />);
         fireEvent.click(await screen.findByText("跳过引导"));
         expect(onComplete).toHaveBeenCalled();
         expect(window.localStorage.getItem("pi-desktop:firstLaunchDone")).toBe("true");

@@ -8,8 +8,9 @@
 // 3. ? / Shift+/ 视作同一动作, 两条记录 (显示用 ? , 主键 + 备用键)
 // 4. 在 <input>/<textarea> 内容区时, 单字符快捷键 (?, Esc) 失效避免误触
 //    但修饰键组合 (Ctrl+K 等) 仍生效
+// 5. v1.0.4: category / label 用 i18n key, 由消费方 (cheatsheet 等) 调 t() 翻译
 
-export type ShortcutCategory = "导航" | "对话" | "面板" | "编辑" | "帮助";
+export type ShortcutCategoryKey = "nav" | "chat" | "panel" | "edit" | "help";
 
 /** 修饰键 + 单键的匹配规则 (不区分大小写) */
 export interface ShortcutCombo {
@@ -26,9 +27,9 @@ export interface ShortcutDef {
     id: string;
     /** 给人看的键位串, 例如 "Ctrl+K" / "?" / "Shift+/" */
     keys: string;
-    /** 动作描述 (中文) */
-    label: string;
-    category: ShortcutCategory;
+    /** i18n key (e.g. 'shortcuts.labels.open-command-palette') — 显示时 t() 翻译 */
+    labelKey: string;
+    category: ShortcutCategoryKey;
     /** 实际匹配 KeyboardEvent 的规则 */
     combo: ShortcutCombo;
     /** true 表示在 input/textarea 内不应触发 (默认 false 即修饰键组合总是生效) */
@@ -39,70 +40,70 @@ export const SHORTCUTS: readonly ShortcutDef[] = Object.freeze([
     {
         id: "open-command-palette",
         keys: "Ctrl+K",
-        label: "打开命令面板",
-        category: "导航",
+        labelKey: "shortcuts.labels.open-command-palette",
+        category: "nav",
         combo: { mod: true, key: "k" },
     },
     {
         id: "toggle-terminal",
         keys: "Ctrl+`",
-        label: "切换终端",
-        category: "面板",
+        labelKey: "shortcuts.labels.toggle-terminal",
+        category: "panel",
         combo: { mod: true, key: "`" },
     },
     {
         id: "open-settings",
         keys: "Ctrl+,",
-        label: "打开设置",
-        category: "面板",
+        labelKey: "shortcuts.labels.open-settings",
+        category: "panel",
         combo: { mod: true, key: "," },
     },
     {
         id: "new-chat",
         keys: "Ctrl+N",
-        label: "新建对话",
-        category: "对话",
+        labelKey: "shortcuts.labels.new-chat",
+        category: "chat",
         combo: { mod: true, key: "n" },
     },
     {
         id: "toggle-sidebar",
         keys: "Ctrl+B",
-        label: "切换侧栏",
-        category: "面板",
+        labelKey: "shortcuts.labels.toggle-sidebar",
+        category: "panel",
         combo: { mod: true, key: "b" },
     },
     {
         id: "show-shortcuts-question",
         keys: "?",
-        label: "打开快捷键速查",
-        category: "帮助",
+        labelKey: "shortcuts.labels.show-shortcuts-question",
+        category: "help",
         combo: { shift: true, key: "?" },
         ignoreInEditable: true,
     },
     {
         id: "show-shortcuts-question",
         keys: "Shift+/",
-        label: "打开快捷键速查",
-        category: "帮助",
+        labelKey: "shortcuts.labels.show-shortcuts-question",
+        category: "help",
         combo: { shift: true, key: "/" },
         ignoreInEditable: true,
     },
     {
         id: "close-overlay",
         keys: "Esc",
-        label: "关闭弹窗 / 模态",
-        category: "编辑",
+        labelKey: "shortcuts.labels.close-overlay",
+        category: "edit",
         combo: { key: "escape" },
         ignoreInEditable: true,
     },
 ]);
 
-/** 按 category 分组, 顺序按 SHORTCUTS 中的出现顺序稳定 */
+/** 按 category 分组, 顺序按固定枚举顺序稳定 */
 export function groupByCategory(
     shortcuts: readonly ShortcutDef[],
-): Array<{ category: ShortcutCategory; items: ShortcutDef[] }> {
-    const order: ShortcutCategory[] = ["导航", "对话", "面板", "编辑", "帮助"];
-    const buckets = new Map<ShortcutCategory, ShortcutDef[]>();
+): Array<{ category: ShortcutCategoryKey; items: ShortcutDef[] }> {
+    const order: ShortcutCategoryKey[] = ["nav", "chat", "panel", "edit", "help"];
+    const buckets = new Map<ShortcutCategoryKey, ShortcutDef[]>();
     for (const s of shortcuts) {
         if (!buckets.has(s.category)) buckets.set(s.category, []);
         buckets.get(s.category)!.push(s);

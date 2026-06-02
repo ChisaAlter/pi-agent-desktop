@@ -1,0 +1,360 @@
+{
+  "common": {
+    "close": "关闭",
+    "cancel": "取消",
+    "save": "保存",
+    "retry": "重试",
+    "next": "下一步",
+    "back": "上一步",
+    "done": "完成",
+    "skip": "跳过",
+    "confirm": "确认",
+    "search": "搜索",
+    "loading": "加载中...",
+    "noResults": "无匹配"
+  },
+  "onboarding": {
+    "step1": {
+      "title": "检查 Pi CLI",
+      "description": "Pi CLI 是 Pi Desktop 的引擎。",
+      "status": {
+        "installed": "已安装",
+        "checking": "检测中...",
+        "notFound": "未检测到",
+        "versionKnown": "本地版本: {{version}}",
+        "versionUnknown": "本地版本: 未知",
+        "notInstalled": "Pi CLI 未安装。请先安装后再继续。"
+      },
+      "install": "立即安装",
+      "installing": "安装中...",
+      "refresh": "重新检测"
+    },
+    "step2": {
+      "title": "选择工作区",
+      "description": "选一个本地目录作为默认工作区。",
+      "status": {
+        "selected": "已选择",
+        "notSelected": "未选择",
+        "selectedDetail": "{{name}} — {{path}}",
+        "hint": "点下面的按钮选一个目录。"
+      },
+      "select": "选择目录"
+    },
+    "step3": {
+      "title": "准备就绪",
+      "description": "一切就绪。点完成开始使用。",
+      "checkedOk": "检查通过",
+      "details": "Pi CLI{{version}} · 工作区{{workspace}}",
+      "workspaceSelected": ": {{name}}",
+      "noWorkspace": " 未选（可稍后在设置里加）"
+    },
+    "skip": "跳过引导",
+    "steps": {
+      "label1": "Pi CLI",
+      "label2": "工作区",
+      "label3": "完成",
+      "ariaLabel": "引导步骤"
+    }
+  },
+  "iconBar": {
+    "nav": {
+      "chat": "对话",
+      "search": "搜索",
+      "plugins": "插件",
+      "automation": "自动化",
+      "settings": "设置"
+    },
+    "mainNav": "主导航",
+    "newChat": "新建对话",
+    "newChatTooltip": "新建对话 (Ctrl+N)"
+  },
+  "shortcuts": {
+    "categories": {
+      "nav": "导航",
+      "chat": "对话",
+      "panel": "面板",
+      "edit": "编辑",
+      "help": "帮助"
+    },
+    "labels": {
+      "open-command-palette": "打开命令面板",
+      "toggle-terminal": "切换终端",
+      "open-settings": "打开设置",
+      "new-chat": "新建对话",
+      "toggle-sidebar": "切换侧栏",
+      "show-shortcuts-question": "打开快捷键速查",
+      "close-overlay": "关闭弹窗 / 模态"
+    }
+  },
+  "shortcutsCheatsheet": {
+    "title": "快捷键速查",
+    "subtitle": "按 {{open}} 随时唤起, {{close}} 关闭",
+    "closeAria": "关闭",
+    "footer": {
+      "navigate": "选择",
+      "close": "关闭",
+      "count": "{{count}} 个快捷键"
+    }
+  },
+  "commandPalette": {
+    "aria": {
+      "root": "命令面板",
+      "mode": "命令面板模式",
+      "search": "搜索命令",
+      "results": "搜索结果"
+    },
+    "modes": {
+      "file": "文件",
+      "history": "历史",
+      "command": "命令"
+    },
+    "placeholders": {
+      "file": "搜索文件...",
+      "history": "搜索历史...",
+      "command": "搜索命令..."
+    },
+    "commands": {
+      "new_chat": "新建对话",
+      "open_skills": "打开 Skills",
+      "open_settings": "打开设置",
+      "switch_workspace": "切换 workspace",
+      "toggle_terminal": "切换终端"
+    },
+    "states": {
+      "fileSearchFailed": "文件搜索失败",
+      "noFileResults": "无匹配",
+      "noHistory": "无历史对话 (开始一个新对话试试)",
+      "noFileQuery": "输入文件名搜索",
+      "noCommandQuery": "输入命令名搜索"
+    },
+    "hints": {
+      "navigate": "选择",
+      "confirm": "确认",
+      "switchMode": "切模式",
+      "close": "关闭"
+    },
+    "historyLine": "{{title}} · {{role}}"
+  },
+  "chatView": {
+    "welcome": {
+      "title": "准备好开始了吗？",
+      "subtitle": "描述你想要构建或修改的内容，Pi 会为你创建一个独立的工作环境。",
+      "cards": {
+        "newFeature": {
+          "title": "新建功能",
+          "desc": "描述你想要添加的功能"
+        },
+        "fixBug": {
+          "title": "修复问题",
+          "desc": "描述你遇到的bug"
+        },
+        "review": {
+          "title": "代码审查",
+          "desc": "让AI审查你的代码"
+        },
+        "explain": {
+          "title": "解释代码",
+          "desc": "让AI解释复杂代码"
+        }
+      }
+    },
+    "piCliMissing": {
+      "title": "Pi CLI 未检测到",
+      "description": "Pi CLI 是 Pi Desktop 的核心引擎。安装后即可开始对话。",
+      "install": "立即安装",
+      "installing": "安装",
+      "installingProgress": "安装中... {{percent}}%",
+      "installingEllipsis": "安装中...",
+      "viewDocs": "查看文档"
+    },
+    "sendFailed": {
+      "title": "发送失败",
+      "retry": "重试"
+    },
+    "streamIndicator": "Pi 正在思考...",
+    "stopGeneration": "停止生成",
+    "stop": "停止",
+    "messagesAria": "对话消息",
+    "messageAria": "{{author}} 的消息"
+  },
+  "chatInput": {
+    "placeholder": {
+      "ready": "描述你想要构建或修改的内容...",
+      "noConnection": "Pi CLI 未连接，请确认 pi 已安装并添加到系统路径"
+    },
+    "send": "发送",
+    "stop": "停止",
+    "addAttachment": "添加附件",
+    "attachment": "附件",
+    "permission": "权限设置",
+    "permissionLabel": "完全访问权限",
+    "shortcuts": {
+      "send": "发送",
+      "newline": "换行"
+    },
+    "currentModel": "当前模型: {{model}}"
+  },
+  "mentionPopover": {
+    "empty": "没有匹配的文件",
+    "prompt": "输入文件名搜索"
+  },
+  "attachmentChip": {
+    "imageAria": "图片附件: {{name}}",
+    "fileAria": "文件附件: {{name}}",
+    "remove": "移除",
+    "removeAria": "移除附件 {{name}}"
+  },
+  "messageBubble": {
+    "userAuthor": "你说",
+    "piAuthor": "Pi 说"
+  },
+  "codeBlock": {
+    "copy": "复制",
+    "copied": "已复制"
+  },
+  "toolCall": {
+    "names": {
+      "bash": "运行命令",
+      "read": "读取文件",
+      "write": "写入文件",
+      "edit": "编辑文件"
+    },
+    "input": "输入参数",
+    "output": "输出结果",
+    "elapsed": "耗时: {{seconds}}秒",
+    "status": {
+      "completed": "执行完成",
+      "running": "正在执行...",
+      "error": "执行失败",
+      "pending": "等待执行"
+    }
+  },
+  "approvalPanel": {
+    "rootAria": "文件变更审批",
+    "title": "文件变更审批",
+    "pendingCount": "{{count}} 个待审批",
+    "pendingSummary": "{{count}} 个文件待审批",
+    "allProcessed": "所有变更已处理 ({{count}} 个文件)",
+    "empty": "暂无待审批的变更",
+    "emptyHint": "AI 修改文件时将在此处显示",
+    "approve": "接受",
+    "reject": "拒绝",
+    "approveAll": "全部接受",
+    "rejectAll": "全部拒绝",
+    "clear": "清除",
+    "clearAria": "清除所有变更",
+    "autoApprove": "自动审批",
+    "autoApproveOn": "自动审批已开启",
+    "autoApproveOff": "自动审批已关闭",
+    "closePanel": "关闭审批面板",
+    "closeAria": "关闭面板",
+    "changeTypes": {
+      "new": "新建/覆盖",
+      "edit": "编辑",
+      "deleted": "删除"
+    },
+    "statusBadge": {
+      "approved": "已接受",
+      "rejected": "已拒绝"
+    }
+  },
+  "terminal": {
+    "empty": "暂无终端",
+    "emptyHint": "按 {{shortcut}} 或点下面按钮新建",
+    "newTerminal": "+ 新建终端"
+  },
+  "diffView": {
+    "filesChanged": "{{count}} 个文件变更",
+    "expand": "展开",
+    "collapse": "折叠"
+  },
+  "settings": {
+    "title": "设置",
+    "tabsAria": "设置分类",
+    "tab": {
+      "general": "通用",
+      "model": "模型",
+      "piagent": "Pi Agent",
+      "about": "关于"
+    },
+    "general": {
+      "heading": "通用设置"
+    },
+    "language": {
+      "label": "语言",
+      "description": "切换界面语言。",
+      "options": {
+        "zh-CN": "中文 (简体)",
+        "en-US": "English (US)"
+      }
+    },
+    "theme": {
+      "label": "主题",
+      "light": "浅色",
+      "dark": "深色"
+    },
+    "fontSize": {
+      "label": "字体大小: {{value}}px",
+      "aria": "字体大小"
+    },
+    "autoSave": {
+      "label": "自动保存"
+    },
+    "showLineNumbers": {
+      "label": "显示行号"
+    },
+    "wordWrap": {
+      "label": "自动换行"
+    },
+    "modelTab": {
+      "heading": "模型设置",
+      "current": "当前模型",
+      "temperature": "温度: {{value}}",
+      "temperatureAria": "温度",
+      "maxTokens": "最大 Token"
+    },
+    "piagent": {
+      "heading": "Pi Agent 配置",
+      "configPath": "配置目录",
+      "defaultProvider": "默认 Provider",
+      "defaultModel": "默认模型",
+      "notSet": "未设置",
+      "providers": "已配置的 Provider ({{count}})",
+      "modelCount": "{{count}} 个模型",
+      "loading": "加载 Pi Agent 配置中..."
+    },
+    "about": {
+      "heading": "关于 Pi 桌面",
+      "version": "版本: {{version}}",
+      "description": "Pi 桌面是一款 Windows 桌面应用程序，为 Pi Agent 提供图形化界面，方便与 Pi CLI 交互。",
+      "stack": "基于 Electron + React + TypeScript 构建。"
+    },
+    "reset": "恢复默认",
+    "resetAria": "恢复默认设置",
+    "closeAria": "关闭设置"
+  },
+  "commonErrors": {
+    "piNotConnected": "Pi CLI 未连接",
+    "operationFailed": "操作失败"
+  },
+  "app": {
+    "shellAria": "Pi 桌面应用",
+    "headerAria": "顶部操作栏",
+    "statusBarAria": "状态栏",
+    "defaultWorkspace": "默认工作区",
+    "commandPaletteAria": "打开命令面板 (Ctrl+K)",
+    "terminalTitle": "终端 (Ctrl+`)",
+    "toggleTerminalAria": "切换终端",
+    "terminal": "终端",
+    "taskPanelAria": "切换任务面板",
+    "taskPanel": "任务面板",
+    "openSettingsAria": "打开设置",
+    "connected": "已连接",
+    "disconnected": "未连接",
+    "placeholder": {
+      "search": "🔍 全局搜索 (Ctrl+K)",
+      "automation": "🤖 自动化 (v1.1)",
+      "settings": "⚙️ 设置 (点右上角'设置'按钮)"
+    }
+  }
+}

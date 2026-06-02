@@ -16,6 +16,11 @@ import React from "react";
 import axe, { type Result, type Spec } from "axe-core";
 import { IconBar } from "../components/IconBar/IconBar";
 import { MessageBubble } from "../components/ChatView/MessageBubble";
+import { I18nProvider } from "../i18n";
+
+function renderWithI18n(ui: React.ReactElement) {
+    return render(<I18nProvider>{ui}</I18nProvider>);
+}
 
 // axe-core 的 run 接受 Element | Node | string, 在 JSDOM 下需要等异步 promise
 async function runAxe(container: HTMLElement, _label: string): Promise<Result[]> {
@@ -45,6 +50,8 @@ beforeAll(() => {
             })),
         });
     }
+    // jsdom 默认 navigator.language 是 'en-US', 强制 zh-CN
+    window.localStorage.setItem("pi-desktop.locale", "zh-CN");
 });
 
 function logViolations(label: string, violations: Result[]): void {
@@ -77,7 +84,7 @@ function logViolations(label: string, violations: Result[]): void {
 
 describe("a11y baseline — 5 core components (JSDOM)", () => {
     it("IconBar: 0 critical/serious violations", async () => {
-        const { container } = render(
+        const { container } = renderWithI18n(
             <IconBar activePanel="chat" onPanelChange={() => {}} />
         );
         const violations = await runAxe(container, "IconBar");
@@ -87,7 +94,7 @@ describe("a11y baseline — 5 core components (JSDOM)", () => {
     });
 
     it("IconBar (active=search, 切换激活态): 0 critical/serious violations", async () => {
-        const { container } = render(
+        const { container } = renderWithI18n(
             <IconBar activePanel="search" onPanelChange={() => {}} />
         );
         const violations = await runAxe(container, "IconBar-search");
@@ -97,7 +104,7 @@ describe("a11y baseline — 5 core components (JSDOM)", () => {
     });
 
     it("MessageBubble (user): 0 critical/serious violations", async () => {
-        const { container } = render(
+        const { container } = renderWithI18n(
             <MessageBubble
                 message={{
                     id: "1",
@@ -114,7 +121,7 @@ describe("a11y baseline — 5 core components (JSDOM)", () => {
     });
 
     it("MessageBubble (assistant, streaming): 0 critical/serious violations", async () => {
-        const { container } = render(
+        const { container } = renderWithI18n(
             <MessageBubble
                 message={{
                     id: "2",

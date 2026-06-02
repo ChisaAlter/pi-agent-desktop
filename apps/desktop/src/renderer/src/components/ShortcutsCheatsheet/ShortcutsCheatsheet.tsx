@@ -3,9 +3,11 @@
 // 唤起: ? 或 Shift+/
 // 关闭: Esc / 点击背景 / 点击关闭按钮
 // 风格沿用 CommandPalette (dialog + 列表 + 键盘导航)
+// v1.0.4: 标题/分组/label 走 t(), category 来自 registry 的 key 翻译
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { SHORTCUTS, groupByCategory, type ShortcutDef } from "../../shortcuts/registry";
+import { useI18n } from "../../i18n";
 
 export interface ShortcutsCheatsheetProps {
     isOpen: boolean;
@@ -18,6 +20,7 @@ export function ShortcutsCheatsheet({
 }: ShortcutsCheatsheetProps): React.ReactElement | null {
     const [activeIdx, setActiveIdx] = useState(0);
     const containerRef = useRef<HTMLDivElement>(null);
+    const { t } = useI18n();
 
     const groups = useMemo(() => groupByCategory(SHORTCUTS), []);
     // 扁平化, 用于键盘上下导航
@@ -66,7 +69,7 @@ export function ShortcutsCheatsheet({
             onClick={onClose}
             role="dialog"
             aria-modal="true"
-            aria-label="快捷键速查"
+            aria-label={t("shortcutsCheatsheet.title")}
         >
             <div
                 ref={containerRef}
@@ -77,15 +80,19 @@ export function ShortcutsCheatsheet({
                 {/* Header */}
                 <div className="px-5 py-4 border-b border-[#e5e5e5] flex items-center justify-between">
                     <div>
-                        <h2 className="text-base font-semibold text-[#1a1a1a]">快捷键速查</h2>
+                        <h2 className="text-base font-semibold text-[#1a1a1a]">
+                            {t("shortcutsCheatsheet.title")}
+                        </h2>
                         <p className="text-xs text-[#999] mt-0.5">
-                            按 <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded text-[10px]">?</kbd> 随时唤起,
-                            <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded text-[10px] ml-1">Esc</kbd> 关闭
+                            {t("shortcutsCheatsheet.subtitle", {
+                                open: "?",
+                                close: "Esc",
+                            })}
                         </p>
                     </div>
                     <button
                         onClick={onClose}
-                        aria-label="关闭"
+                        aria-label={t("shortcutsCheatsheet.closeAria")}
                         className="w-8 h-8 rounded-lg flex items-center justify-center text-[#999] hover:bg-[#f5f5f5] hover:text-[#1a1a1a] transition-colors"
                     >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -99,7 +106,7 @@ export function ShortcutsCheatsheet({
                     {groups.map((g) => (
                         <section key={g.category} className="mb-4 last:mb-0">
                             <h3 className="text-[11px] font-semibold uppercase tracking-wider text-[#999] mb-1.5">
-                                {g.category}
+                                {t(`shortcuts.categories.${g.category}`)}
                             </h3>
                             <ul className="divide-y divide-[#f0f0f0]" role="list">
                                 {g.items.map((s) => {
@@ -115,7 +122,7 @@ export function ShortcutsCheatsheet({
                                                 active ? "bg-[#f0f0f0]" : ""
                                             }`}
                                         >
-                                            <span className="text-sm text-[#1a1a1a]">{s.label}</span>
+                                            <span className="text-sm text-[#1a1a1a]">{t(s.labelKey)}</span>
                                             <KeyChip keys={s.keys} />
                                         </li>
                                     );
@@ -128,12 +135,14 @@ export function ShortcutsCheatsheet({
                 {/* Footer */}
                 <div className="px-5 py-2.5 border-t border-[#e5e5e5] text-xs text-[#999] flex items-center gap-3">
                     <span>
-                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">↑↓</kbd> 选择
+                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">↑↓</kbd> {t("shortcutsCheatsheet.footer.navigate")}
                     </span>
                     <span>
-                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">Esc</kbd> 关闭
+                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">Esc</kbd> {t("shortcutsCheatsheet.footer.close")}
                     </span>
-                    <span className="ml-auto">{flat.length} 个快捷键</span>
+                    <span className="ml-auto">
+                        {t("shortcutsCheatsheet.footer.count", { count: flat.length })}
+                    </span>
                 </div>
             </div>
         </div>

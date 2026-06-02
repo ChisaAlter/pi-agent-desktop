@@ -320,4 +320,56 @@ Week 8  ┃████ 缓冲 / 用户反馈处理           ┃
 
 **关联 commit**：（提交后填入本节 e2e-framework 的 commit hash）
 
+---
+
+## 11. 进度更新（2026-06-02）
+
+### v1.0.1 — P0 hotfix（已发）
+- 修了 T01-T04 全部：CI 放水、TS 编译错、Chat IPC 泄漏、git 命令注入
+- master: `3cebfee` + `99dda33`
+
+### v1.0.2 — P1 cycle 1（已发，tag 在 origin）
+- 3 模块已收：security (zod IPC 校验) + observability (electron-log + ErrorBoundary) + perf (drive-by)
+- 1 模块部分收：e2e 框架（d951db0），实际 spec 跑分受 Electron 34 + node:sqlite 阻塞，留给 v1.1
+- 顺带：删 IM 桥（messaging/gateway T06 = 砍）、CI 恢复 lint gate
+- master: `d1e0b7e`，tag `v1.0.2`
+
+### v1.0.3 — 可用度 P1 cycle 1+2（已合 master，未发 tag / 未推 origin）
+- **可用度-D**：首启引导（3 步 wizard + localStorage 兜底）+ 空状态/加载/错误状态统一（ProjectPanel/MySkills/TerminalPanel + ChatView "立即安装" CTA + 3 处 IPC 重试）。commit `9ecb11d`
+- **可用度-A**：a11y 基线（IconBar/ChatView/MessageBubble/ChatInput/AttachmentChip/CommandPalette/Settings/ApprovalPanel/SkillsPanel/App.tsx 9 组件 + globals.css focus-visible + e2e a11y.spec.ts + JSDOM a11y-baseline 4/4 PASS）
+- **可用度-C**：快捷键中心（registry.ts 中央注册表 8 entry + useShortcuts.ts + ShortcutsCheatsheet "?" 速查面板 + Tooltip + IconBar tooltip wiring）
+- A+C 因为两个任务都改 App.tsx/IconBar/CommandPalette，shared worktree 撞车，合并到一次 commit
+- commit `d3a3b84`
+- 验证：typecheck ✓ lint ✓ 24 test files / 181 tests PASS (2 skipped, 4 个之前失败的全修)
+
+### 经验记录（写入 agent memory）
+- 并行 producer 任务共享文件（App.tsx/IconBar/CommandPalette）会在 main worktree 撞车，30min hard cap 触发后没法安全 retry。下次拆分时按文件边界分，每个 task 明确禁止改共享文件。
+- a11y 类任务范围要小（5 组件 + axe-core spec），上次塞了 9 组件 + axe-core + focus-visible + 4 test files，30min 装不下。
+
+## 12. v1.0.4 — i18n 基建（进行中）
+
+**目标**：让 Pi Desktop 支持中英双语切换，铺好未来更多语言的基建。
+
+**scope**：
+1. 接入 i18next + react-i18next + i18next-browser-languagedetector
+2. `I18nProvider` + locale 检测（`navigator.language` + localStorage 兜底）
+3. 抽取所有硬编码中文字符串到 `en.json` + `zh-CN.json`（Onboarding 3 步 + a11y 标签 + Tooltip + ShortcutsCheatsheet 8 条 + empty states + error 提示 + ChatView "立即安装" CTA）
+4. Settings 加语言切换器（zh-CN ↔ en-US）
+5. 测试：I18nProvider、locale 切换、missing key fallback
+
+**不做**：
+- 不做 RTL / 阿拉伯文（暂无需求）
+- 不做 ICU 复数（v1 字符串没复数）
+- 不动主进程（locale 只在 renderer 层处理）
+
+**预期**：
+- 单 commit `feat(i18n-foundation): i18n infrastructure + zh-CN/en-US bilingual extraction`
+- 验证：typecheck ✓ lint ✓ 新增 3-5 个测试文件 / 10-15 个测试
+- 预计耗时：~60-90 分钟
+
+## 13. v1.1+ — 跨平台 + Electron 35 bump（待 v1.0.4 后启动）
+- Electron 35+：解 e2e node:sqlite 阻塞
+- macOS 跨平台：DMG 配置 + 代码签名（Apple Developer ID $99/yr 待申请）
+- 决策点：用户说"先不发布"，所以暂缓，等 v1.0.4 + 用户反馈后再排期
+
 

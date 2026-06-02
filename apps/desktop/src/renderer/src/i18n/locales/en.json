@@ -1,0 +1,362 @@
+{
+  "common": {
+    "close": "Close",
+    "cancel": "Cancel",
+    "save": "Save",
+    "retry": "Retry",
+    "next": "Next",
+    "back": "Back",
+    "done": "Done",
+    "skip": "Skip",
+    "confirm": "Confirm",
+    "search": "Search",
+    "loading": "Loading...",
+    "noResults": "No matches"
+  },
+  "onboarding": {
+    "step1": {
+      "title": "Check Pi CLI",
+      "description": "Pi CLI is the engine behind Pi Desktop.",
+      "status": {
+        "installed": "Installed",
+        "checking": "Checking...",
+        "notFound": "Not detected",
+        "versionKnown": "Local version: {{version}}",
+        "versionUnknown": "Local version: unknown",
+        "notInstalled": "Pi CLI is not installed. Please install it first to continue."
+      },
+      "install": "Install now",
+      "installing": "Installing...",
+      "refresh": "Re-check"
+    },
+    "step2": {
+      "title": "Choose a workspace",
+      "description": "Pick a local directory to use as the default workspace.",
+      "status": {
+        "selected": "Selected",
+        "notSelected": "Not selected",
+        "selectedDetail": "{{name}} — {{path}}",
+        "hint": "Click the button below to pick a directory."
+      },
+      "select": "Select directory"
+    },
+    "step3": {
+      "title": "All set",
+      "description": "Everything is ready. Click Done to start using Pi Desktop.",
+      "checkedOk": "All checks passed",
+      "details": "Pi CLI{{version}} · Workspace{{workspace}}",
+      "workspaceSelected": ": {{name}}",
+      "noWorkspace": " not selected (you can add one later in Settings)"
+    },
+    "skip": "Skip onboarding",
+    "steps": {
+      "label1": "Pi CLI",
+      "label2": "Workspace",
+      "label3": "Done",
+      "ariaLabel": "Onboarding steps"
+    }
+  },
+  "iconBar": {
+    "nav": {
+      "chat": "Chat",
+      "search": "Search",
+      "plugins": "Plugins",
+      "automation": "Automation",
+      "settings": "Settings"
+    },
+    "mainNav": "Main navigation",
+    "newChat": "New chat",
+    "newChatTooltip": "New chat (Ctrl+N)"
+  },
+  "shortcuts": {
+    "categories": {
+      "nav": "Navigation",
+      "chat": "Chat",
+      "panel": "Panels",
+      "edit": "Edit",
+      "help": "Help"
+    },
+    "labels": {
+      "open-command-palette": "Open command palette",
+      "toggle-terminal": "Toggle terminal",
+      "open-settings": "Open settings",
+      "new-chat": "New chat",
+      "toggle-sidebar": "Toggle sidebar",
+      "show-shortcuts-question": "Show keyboard shortcuts",
+      "close-overlay": "Close overlay / modal"
+    }
+  },
+  "shortcutsCheatsheet": {
+    "title": "Keyboard shortcuts",
+    "subtitle": "Press {{open}} any time to open, {{close}} to dismiss",
+    "closeAria": "Close",
+    "footer": {
+      "navigate": "Navigate",
+      "close": "Close",
+      "count": "{{count}} shortcuts"
+    }
+  },
+  "commandPalette": {
+    "aria": {
+      "root": "Command palette",
+      "mode": "Command palette mode",
+      "search": "Search commands",
+      "results": "Search results"
+    },
+    "modes": {
+      "file": "Files",
+      "history": "History",
+      "command": "Commands"
+    },
+    "placeholders": {
+      "file": "Search files...",
+      "history": "Search history...",
+      "command": "Search commands..."
+    },
+    "commands": {
+      "new_chat": "New chat",
+      "open_skills": "Open Skills",
+      "open_settings": "Open settings",
+      "switch_workspace": "Switch workspace",
+      "toggle_terminal": "Toggle terminal"
+    },
+    "states": {
+      "fileSearchFailed": "File search failed",
+      "noFileResults": "No matches",
+      "noHistory": "No history yet (start a new chat to try)",
+      "noFileQuery": "Type a filename to search",
+      "noCommandQuery": "Type a command name to search"
+    },
+    "hints": {
+      "navigate": "Navigate",
+      "confirm": "Confirm",
+      "switchMode": "Switch mode",
+      "close": "Close"
+    },
+    "historyLine": "{{title}} · {{role}}"
+  },
+  "chatView": {
+    "welcome": {
+      "title": "Ready to get started?",
+      "subtitle": "Describe what you want to build or change, and Pi will spin up an isolated workspace for you.",
+      "cards": {
+        "newFeature": {
+          "title": "New feature",
+          "desc": "Describe the feature you want to add"
+        },
+        "fixBug": {
+          "title": "Fix a bug",
+          "desc": "Describe the bug you've hit"
+        },
+        "review": {
+          "title": "Code review",
+          "desc": "Have AI review your code"
+        },
+        "explain": {
+          "title": "Explain code",
+          "desc": "Have AI explain complex code"
+        }
+      }
+    },
+    "piCliMissing": {
+      "title": "Pi CLI not detected",
+      "description": "Pi CLI is the core engine that powers Pi Desktop. Install it to start chatting.",
+      "install": "Install now",
+      "installing": "Installing",
+      "installingProgress": "Installing... {{percent}}%",
+      "installingEllipsis": "Installing...",
+      "viewDocs": "View docs"
+    },
+    "sendFailed": {
+      "title": "Send failed",
+      "retry": "Retry"
+    },
+    "streamIndicator": "Pi is thinking...",
+    "stopGeneration": "Stop generating",
+    "stop": "Stop",
+    "messagesAria": "Conversation messages",
+    "messageAria": "Message from {{author}}"
+  },
+  "chatInput": {
+    "placeholder": {
+      "ready": "Describe what you want to build or change...",
+      "noConnection": "Pi CLI not connected. Please make sure `pi` is installed and on PATH."
+    },
+    "send": "Send",
+    "stop": "Stop",
+    "addAttachment": "Add attachment",
+    "attachment": "Attachment",
+    "permission": "Permission settings",
+    "permissionLabel": "Full access",
+    "shortcuts": {
+      "send": "Send",
+      "newline": "Newline"
+    },
+    "currentModel": "Current model: {{model}}"
+  },
+  "mentionPopover": {
+    "empty": "No matching files",
+    "prompt": "Type to search files"
+  },
+  "attachmentChip": {
+    "imageAria": "Image attachment: {{name}}",
+    "fileAria": "File attachment: {{name}}",
+    "remove": "Remove",
+    "removeAria": "Remove attachment {{name}}"
+  },
+  "messageBubble": {
+    "userAuthor": "You",
+    "piAuthor": "Pi"
+  },
+  "codeBlock": {
+    "copy": "Copy",
+    "copied": "Copied"
+  },
+  "toolCall": {
+    "names": {
+      "bash": "Run command",
+      "read": "Read file",
+      "write": "Write file",
+      "edit": "Edit file"
+    },
+    "input": "Input",
+    "output": "Output",
+    "elapsed": "Took {{seconds}}s",
+    "status": {
+      "completed": "Completed",
+      "running": "Running...",
+      "error": "Failed",
+      "pending": "Pending"
+    }
+  },
+  "approvalPanel": {
+    "rootAria": "File change approval",
+    "title": "File change approval",
+    "pendingCount": "{{count}} pending",
+    "pendingSummary": "{{count}} file(s) pending approval",
+    "allProcessed": "All changes processed ({{count}} file(s))",
+    "empty": "No pending changes",
+    "emptyHint": "AI file edits will show up here",
+    "approve": "Approve",
+    "reject": "Reject",
+    "approveAll": "Approve all",
+    "rejectAll": "Reject all",
+    "clear": "Clear",
+    "clearAria": "Clear all changes",
+    "autoApprove": "Auto-approve",
+    "autoApproveOn": "Auto-approve is on",
+    "autoApproveOff": "Auto-approve is off",
+    "closePanel": "Close approval panel",
+    "closeAria": "Close panel",
+    "changeTypes": {
+      "new": "New / overwrite",
+      "edit": "Edit",
+      "deleted": "Deleted"
+    },
+    "statusBadge": {
+      "approved": "Approved",
+      "rejected": "Rejected"
+    }
+  },
+  "terminal": {
+    "empty": "No terminal",
+    "emptyHint": "Press {{shortcut}} or click below to open one",
+    "newTerminal": "+ New terminal"
+  },
+  "diffView": {
+    "filesChanged": "{{count}} file(s) changed",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "oldFileLine": "Old file line",
+    "newFileLine": "New file line"
+  },
+  "settings": {
+    "title": "Settings",
+    "tabsAria": "Settings categories",
+    "tab": {
+      "general": "General",
+      "model": "Model",
+      "piagent": "Pi Agent",
+      "about": "About"
+    },
+    "general": {
+      "heading": "General settings"
+    },
+    "language": {
+      "label": "Language",
+      "description": "Switch the interface language.",
+      "options": {
+        "zh-CN": "中文 (简体)",
+        "en-US": "English (US)"
+      }
+    },
+    "theme": {
+      "label": "Theme",
+      "light": "Light",
+      "dark": "Dark"
+    },
+    "fontSize": {
+      "label": "Font size: {{value}}px",
+      "aria": "Font size"
+    },
+    "autoSave": {
+      "label": "Auto-save"
+    },
+    "showLineNumbers": {
+      "label": "Show line numbers"
+    },
+    "wordWrap": {
+      "label": "Word wrap"
+    },
+    "modelTab": {
+      "heading": "Model settings",
+      "current": "Current model",
+      "temperature": "Temperature: {{value}}",
+      "temperatureAria": "Temperature",
+      "maxTokens": "Max tokens"
+    },
+    "piagent": {
+      "heading": "Pi Agent configuration",
+      "configPath": "Config directory",
+      "defaultProvider": "Default provider",
+      "defaultModel": "Default model",
+      "notSet": "Not set",
+      "providers": "Configured providers ({{count}})",
+      "modelCount": "{{count}} models",
+      "loading": "Loading Pi Agent configuration..."
+    },
+    "about": {
+      "heading": "About Pi Desktop",
+      "version": "Version: {{version}}",
+      "description": "Pi Desktop is a Windows desktop application that provides a graphical interface for the Pi Agent, making it easy to interact with the Pi CLI.",
+      "stack": "Built on Electron + React + TypeScript."
+    },
+    "reset": "Reset to defaults",
+    "resetAria": "Reset to defaults",
+    "closeAria": "Close settings"
+  },
+  "commonErrors": {
+    "piNotConnected": "Pi CLI not connected",
+    "operationFailed": "Operation failed"
+  },
+  "app": {
+    "shellAria": "Pi Desktop application",
+    "headerAria": "Top action bar",
+    "statusBarAria": "Status bar",
+    "defaultWorkspace": "Default workspace",
+    "commandPaletteAria": "Open command palette (Ctrl+K)",
+    "terminalTitle": "Terminal (Ctrl+`)",
+    "toggleTerminalAria": "Toggle terminal",
+    "terminal": "Terminal",
+    "taskPanelAria": "Toggle task panel",
+    "taskPanel": "Task panel",
+    "openSettingsAria": "Open settings",
+    "connected": "Connected",
+    "disconnected": "Disconnected",
+    "placeholder": {
+      "search": "🔍 Global search (Ctrl+K)",
+      "automation": "🤖 Automation (v1.1)",
+      "settings": "⚙️ Settings (click the 'Settings' button on the top right)"
+    }
+  }
+}

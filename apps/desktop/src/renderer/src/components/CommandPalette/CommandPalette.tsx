@@ -1,10 +1,12 @@
 // CommandPalette (M2 Task M2-5)
 // Ctrl+K 调起的模态: 文件搜索 / 历史搜索 / 内置命令 三模式
 // 可用度-D: 文件搜索失败 → 友好错误 + 重试按钮 (a11y: role="alert")
+// v1.0.4: 用户可见文案 + 命令 label 走 t()
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { fuzzyScore } from "../../utils/fuzzy-match";
 import { useSessionStore } from "../../stores/session-store";
+import { useI18n } from "../../i18n";
 
 export type CommandMode = "file" | "history" | "cmd";
 
@@ -17,13 +19,19 @@ interface CommandPaletteProps {
     onRunCommand?: (cmdId: string) => void;
 }
 
-const COMMANDS = [
-    { id: "new_chat", label: "新建对话", hint: "Ctrl+N" },
-    { id: "open_skills", label: "打开 Skills", hint: "Ctrl+Shift+S" },
-    { id: "open_settings", label: "打开设置", hint: "Ctrl+," },
-    { id: "switch_workspace", label: "切换 workspace", hint: "Ctrl+P" },
-    { id: "toggle_terminal", label: "切换终端", hint: "Ctrl+`" },
-];
+interface CommandDef {
+    id: string;
+    labelKey: string;
+    hint: string;
+}
+
+const COMMANDS: readonly CommandDef[] = Object.freeze([
+    { id: "new_chat", labelKey: "commandPalette.commands.new_chat", hint: "Ctrl+N" },
+    { id: "open_skills", labelKey: "commandPalette.commands.open_skills", hint: "Ctrl+Shift+S" },
+    { id: "open_settings", labelKey: "commandPalette.commands.open_settings", hint: "Ctrl+," },
+    { id: "switch_workspace", labelKey: "commandPalette.commands.switch_workspace", hint: "Ctrl+P" },
+    { id: "toggle_terminal", labelKey: "commandPalette.commands.toggle_terminal", hint: "Ctrl+`" },
+]);
 
 export function CommandPalette({
     isOpen,
@@ -42,6 +50,7 @@ export function CommandPalette({
     const [filesReloadKey, setFilesReloadKey] = useState(0);
     const inputRef = useRef<HTMLInputElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
+    const { t } = useI18n();
 
     useEffect(() => {
         if (isOpen) {
@@ -101,12 +110,12 @@ export function CommandPalette({
             }));
     } else if (mode === "cmd") {
         results = COMMANDS
-            .map((c) => ({ c, s: fuzzyScore(c.label, query) }))
+            .map((c) => ({ c, s: fuzzyScore(t(c.labelKey), query) }))
             .filter((x) => x.s > 0)
             .sort((a, b) => b.s - a.s)
             .map((x) => ({
                 id: x.c.id,
-                primary: x.c.label,
+                primary: t(x.c.labelKey),
                 secondary: x.c.hint,
                 onSelect: () => onRunCommand?.(x.c.id),
             }));
@@ -121,7 +130,10 @@ export function CommandPalette({
                 all.push({
                     id: `${s.id}_${m.id}`,
                     primary: m.content.length > 80 ? m.content.slice(0, 80) + "..." : m.content,
-                    secondary: `${s.title} · ${m.role === "user" ? "你" : "Pi"}`,
+                    secondary: t("commandPalette.historyLine", {
+                        title: s.title,
+                        role: m.role === "user" ? t("messageBubble.userAuthor") : t("messageBubble.piAuthor"),
+                    }),
                     onSelect: () => onSelectHistory?.(s.id),
                 });
                 if (all.length >= 30) break;
@@ -174,17 +186,16 @@ export function CommandPalette({
                 onClick={(e) => e.stopPropagation()}
                 role="dialog"
                 aria-modal="true"
-                aria-label="命令面板"
+                aria-label={t("commandPalette.aria.root")}
             >
                 {/* Mode tabs */}
                 <div
                     className="flex items-center gap-1 px-3 pt-3 border-b border-[#e5e5e5]"
                     role="tablist"
-                    aria-label="命令面板模式"
+                    aria-label={t("commandPalette.aria.mode")}
                 >
                     {(["file", "history", "cmd"] as const).map((m) => {
                         const isActive = mode === m;
-                        const tabLabel = m === "file" ? "文件" : m === "history" ? "历史" : "命令";
                         return (
                             <button
                                 key={m}
@@ -200,7 +211,7 @@ export function CommandPalette({
                                         : "text-[#666] hover:bg-[#f5f5f5]"
                                 }`}
                             >
-                                {tabLabel}
+                                {t(`commandPalette.modes.${m === "cmd" ? "command" : m}`)}
                             </button>
                         );
                     })}
@@ -209,7 +220,7 @@ export function CommandPalette({
                 {/* Search input */}
                 <div className="p-3">
                     <label htmlFor="command-palette-search" className="sr-only">
-                        搜索
+                        {t("common.search")}
                     </label>
                     <input
                         id="command-palette-search"
@@ -220,13 +231,13 @@ export function CommandPalette({
                         onKeyDown={onKeyDown}
                         placeholder={
                             mode === "file"
-                                ? "搜索文件..."
+                                ? t("commandPalette.placeholders.file")
                                 : mode === "history"
-                                ? "搜索历史..."
-                                : "搜索命令..."
+                                ? t("commandPalette.placeholders.history")
+                                : t("commandPalette.placeholders.command")
                         }
                         className="w-full px-3 py-2 bg-[#f5f5f5] border border-[#e5e5e5] rounded-lg text-sm focus:outline-none focus:border-[#1a1a1a]"
-                        aria-label="搜索命令"
+                        aria-label={t("commandPalette.aria.search")}
                         autoComplete="off"
                         role="combobox"
                         aria-expanded={results.length > 0}
@@ -247,7 +258,9 @@ export function CommandPalette({
                             className="m-3 p-3 bg-[#fef2f2] border border-[#fecaca] rounded-lg"
                             role="alert"
                         >
-                            <p className="text-sm text-[#ef4444] font-medium mb-1">文件搜索失败</p>
+                            <p className="text-sm text-[#ef4444] font-medium mb-1">
+                                {t("commandPalette.states.fileSearchFailed")}
+                            </p>
                             <p className="text-xs text-[#666] mb-2 break-all font-mono">
                                 {filesError}
                             </p>
@@ -255,28 +268,28 @@ export function CommandPalette({
                                 onClick={retryFileSearch}
                                 className="px-3 py-1.5 bg-[#ef4444] text-white text-xs rounded hover:bg-[#dc2626] transition-colors"
                             >
-                                重试
+                                {t("common.retry")}
                             </button>
                         </div>
                     ) : mode === "file" && filesLoading ? (
                         <div className="px-4 py-8 text-center text-sm text-[#999]" role="status">
-                            加载中...
+                            {t("common.loading")}
                         </div>
                     ) : results.length === 0 ? (
                         <div className="px-4 py-8 text-center text-sm text-[#999]">
                             {query
-                                ? "无匹配"
+                                ? t("commandPalette.states.noFileResults")
                                 : mode === "history"
-                                ? "无历史对话 (开始一个新对话试试)"
+                                ? t("commandPalette.states.noHistory")
                                 : mode === "file"
-                                ? "输入文件名搜索"
-                                : "输入命令名搜索"}
+                                ? t("commandPalette.states.noFileQuery")
+                                : t("commandPalette.states.noCommandQuery")}
                         </div>
                     ) : (
                         <ul
                             id="command-palette-listbox"
                             role="listbox"
-                            aria-label="搜索结果"
+                            aria-label={t("commandPalette.aria.results")}
                             className="space-y-0.5"
                         >
                             {results.map((r, i) => {
@@ -322,16 +335,16 @@ export function CommandPalette({
                     aria-hidden="true"
                 >
                     <span>
-                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">↑↓</kbd> 选择
+                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">↑↓</kbd> {t("commandPalette.hints.navigate")}
                     </span>
                     <span>
-                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">↵</kbd> 确认
+                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">↵</kbd> {t("commandPalette.hints.confirm")}
                     </span>
                     <span>
-                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">Tab</kbd> 切模式
+                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">Tab</kbd> {t("commandPalette.hints.switchMode")}
                     </span>
                     <span>
-                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">Esc</kbd> 关闭
+                        <kbd className="px-1 py-0.5 bg-[#f5f5f5] rounded">Esc</kbd> {t("commandPalette.hints.close")}
                     </span>
                 </div>
             </div>

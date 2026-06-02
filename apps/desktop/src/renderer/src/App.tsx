@@ -2,6 +2,7 @@
 // 三栏布局: IconBar (左 48px) + Sidebar (左 220px) + 主区 (chat/skills/terminal) + 右浮窗 (git/approval/gateway)
 // M1-M5 所有组件 + M6 归档后重新整合的 17+ 个 UI 组件
 // 旧架构 usePiDriver / usePiStream 老事件类型 → 新 usePiStream 用 @shared/events PiEvent
+// v1.0.4: 包了 I18nProvider 顶层, 顶部标题栏 / 状态栏 / 占位文案走 t()
 
 import React, { useEffect, useMemo, useState } from "react";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
@@ -24,11 +25,22 @@ import { usePiStatusStore } from "./stores/pi-status-store";
 import { useApprovalStore } from "./stores/approval-store";
 import { isFirstLaunch } from "./utils/first-launch";
 import { useShortcuts } from "./shortcuts";
+import { I18nProvider, useI18n } from "./i18n";
 
 type Panel = "chat" | "search" | "plugins" | "automation" | "settings";
 type RightPanel = "git" | "approval" | null;
 
 function App(): React.ReactElement {
+    return (
+        <I18nProvider>
+            <ErrorBoundary>
+                <AppShell />
+            </ErrorBoundary>
+        </I18nProvider>
+    );
+}
+
+function AppShell(): React.ReactElement {
     const [activePanel, setActivePanel] = useState<Panel>("chat");
     const [showTaskSidebar, setShowTaskSidebar] = useState(true);
     const [showTerminal, setShowTerminal] = useState(false);
@@ -42,12 +54,13 @@ function App(): React.ReactElement {
     const { status, refreshStatus } = usePiStatusStore();
     const pendingApprovalCount = useApprovalStore((s) => s.changes.filter((c) => c.status === "pending").length);
     const currentWorkspace = getCurrentWorkspace();
+    const { t } = useI18n();
 
     // 启动时拉 Pi 状态
     useEffect(() => {
         void refreshStatus();
-        const t = setInterval(() => void refreshStatus(), 30000);
-        return () => clearInterval(t);
+        const id = setInterval(() => void refreshStatus(), 30000);
+        return () => clearInterval(id);
     }, [refreshStatus]);
 
     useEffect(() => {
@@ -90,191 +103,185 @@ function App(): React.ReactElement {
     useShortcuts(shortcutHandlers);
 
     return (
-        <ErrorBoundary>
-            <div className="flex h-screen bg-[#f5f5f5] text-[#1a1a1a]" role="application" aria-label="Pi 桌面应用">
-                {/* 左侧图标栏 - 48px 固定宽度 */}
-                <IconBar activePanel={activePanel} onPanelChange={setActivePanel} />
+        <div className="flex h-screen bg-[#f5f5f5] text-[#1a1a1a]" role="application" aria-label={t("app.shellAria")}>
+            {/* 左侧图标栏 - 48px 固定宽度 */}
+            <IconBar activePanel={activePanel} onPanelChange={setActivePanel} />
 
-                {/* 左侧主面板 - 可拖动调整宽度 */}
-                <ResizablePanel defaultWidth={220} minWidth={180} maxWidth={400} side="left">
-                    <ProjectPanel
-                        activePanel={activePanel}
-                        onSendToPi={(msg: string) => {
-                            if (window.piAPI && currentWorkspace) {
-                                void window.piAPI.sendPrompt(currentWorkspace.id, msg);
-                            }
-                        }}
-                    />
-                </ResizablePanel>
+            {/* 左侧主面板 - 可拖动调整宽度 */}
+            <ResizablePanel defaultWidth={220} minWidth={180} maxWidth={400} side="left">
+                <ProjectPanel
+                    activePanel={activePanel}
+                    onSendToPi={(msg: string) => {
+                        if (window.piAPI && currentWorkspace) {
+                            void window.piAPI.sendPrompt(currentWorkspace.id, msg);
+                        }
+                    }}
+                />
+            </ResizablePanel>
 
-                {/* 主聊天区域 */}
-                <main className="flex-1 flex flex-col min-w-0">
-                    {/* 顶部标题栏 */}
-                    <header className="h-12 bg-white border-b border-[#e5e5e5] flex items-center justify-between px-4 flex-shrink-0" role="banner" aria-label="顶部操作栏">
-                        <div className="flex items-center gap-2">
-                            <h1 className="text-sm font-medium">
-                                {activePanel === "chat" && "聊天"}
-                                {activePanel === "search" && "搜索"}
-                                {activePanel === "plugins" && "插件"}
-                                {activePanel === "automation" && "自动化"}
-                                {activePanel === "settings" && "设置"}
-                            </h1>
-                            <span className="text-xs text-[#999]">
-                                {currentWorkspace?.name || "默认工作区"}
-                            </span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setPaletteOpen(true)}
-                                className="px-3 py-1.5 bg-white border border-[#e5e5e5] rounded text-xs text-[#666] hover:bg-[#f0f0f0]"
-                                title="Ctrl+K"
-                                aria-label="打开命令面板 (Ctrl+K)"
-                                aria-keyshortcuts="Control+K"
-                            >
-                                <span aria-hidden="true">🔍</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setRightPanel(rightPanel === "approval" ? null : "approval")}
-                                className={`relative px-3 py-1.5 rounded text-xs transition-all flex items-center gap-1.5 ${
-                                    rightPanel === "approval"
-                                        ? "bg-[#1a1a1a] text-white"
-                                        : "bg-white border border-[#e5e5e5] text-[#666] hover:bg-[#f0f0f0]"
-                                }`}
-                                title="文件变更审批"
-                                aria-label={`文件变更审批${pendingApprovalCount > 0 ? `, ${pendingApprovalCount} 个待审批` : ''}`}
-                                aria-pressed={rightPanel === "approval"}
-                            >
-                                审批
-                                {pendingApprovalCount > 0 && (
-                                    <span
-                                        className="absolute -top-1 -right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full text-[9px] font-bold text-white bg-[#ef4444] px-1"
-                                        aria-hidden="true"
-                                    >
-                                        {pendingApprovalCount}
-                                    </span>
-                                )}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setShowTerminal((v) => !v)}
-                                className={`px-3 py-1.5 rounded text-xs transition-all ${
-                                    showTerminal
-                                        ? "bg-[#1a1a1a] text-white"
-                                        : "bg-white border border-[#e5e5e5] text-[#666] hover:bg-[#f0f0f0]"
-                                }`}
-                                title="终端 (Ctrl+`)"
-                                aria-label="切换终端"
-                                aria-pressed={showTerminal}
-                            >
-                                <span aria-hidden="true">💻</span> 终端
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setShowTaskSidebar((v) => !v)}
-                                className={`px-3 py-1.5 rounded text-xs transition-all ${
-                                    showTaskSidebar
-                                        ? "bg-[#1a1a1a] text-white"
-                                        : "bg-white border border-[#e5e5e5] text-[#666] hover:bg-[#f0f0f0]"
-                                }`}
-                                aria-label="切换任务面板"
-                                aria-pressed={showTaskSidebar}
-                            >
-                                任务面板
-                            </button>
-                            <button
-                                type="button"
-                                onClick={openSettings}
-                                className="px-3 py-1.5 bg-white border border-[#e5e5e5] rounded text-xs text-[#666] hover:bg-[#f0f0f0]"
-                                aria-label="打开设置"
-                            >
-                                设置
-                            </button>
-                        </div>
-                    </header>
-
-                    {/* 主内容 */}
-                    <div className="flex-1 overflow-hidden flex flex-col">
-                        {activePanel === "chat" ? (
-                            <>
-                                <div className="flex-1 overflow-hidden">
-                                    <ChatView />
-                                </div>
-                                {/* 终端面板 (可折叠) */}
-                                {showTerminal && (
-                                    <TerminalPanel
-                                        isOpen={showTerminal}
-                                        workspacePath={currentWorkspace?.path}
-                                        onClose={() => setShowTerminal(false)}
-                                    />
-                                )}
-                            </>
-                        ) : activePanel === "plugins" ? (
-                            <div className="flex-1 overflow-hidden">
-                                <SkillsPanel />
-                            </div>
-                        ) : (
-                            <div className="flex-1 flex items-center justify-center text-[#999] text-sm">
-                                {activePanel === "search" && "🔍 全局搜索 (Ctrl+K)"}
-                                {activePanel === "automation" && "🤖 自动化 (v1.1)"}
-                                {activePanel === "settings" && "⚙️ 设置 (点右上角'设置'按钮)"}
-                            </div>
-                        )}
+            {/* 主聊天区域 */}
+            <main className="flex-1 flex flex-col min-w-0">
+                {/* 顶部标题栏 */}
+                <header className="h-12 bg-white border-b border-[#e5e5e5] flex items-center justify-between px-4 flex-shrink-0" role="banner" aria-label={t("app.headerAria")}>
+                    <div className="flex items-center gap-2">
+                        <h1 className="text-sm font-medium">
+                            {t(`iconBar.nav.${activePanel}`)}
+                        </h1>
+                        <span className="text-xs text-[#999]">
+                            {currentWorkspace?.name || t("app.defaultWorkspace")}
+                        </span>
                     </div>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setPaletteOpen(true)}
+                            className="px-3 py-1.5 bg-white border border-[#e5e5e5] rounded text-xs text-[#666] hover:bg-[#f0f0f0]"
+                            title="Ctrl+K"
+                            aria-label={t("app.commandPaletteAria")}
+                            aria-keyshortcuts="Control+K"
+                        >
+                            <span aria-hidden="true">🔍</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setRightPanel(rightPanel === "approval" ? null : "approval")}
+                            className={`relative px-3 py-1.5 rounded text-xs transition-all flex items-center gap-1.5 ${
+                                rightPanel === "approval"
+                                    ? "bg-[#1a1a1a] text-white"
+                                    : "bg-white border border-[#e5e5e5] text-[#666] hover:bg-[#f0f0f0]"
+                            }`}
+                            title={t("approvalPanel.title")}
+                            aria-label={pendingApprovalCount > 0 ? t("approvalPanel.pendingCount", { count: pendingApprovalCount }) : t("approvalPanel.title")}
+                            aria-pressed={rightPanel === "approval"}
+                        >
+                            {t("approvalPanel.title")}
+                            {pendingApprovalCount > 0 && (
+                                <span
+                                    className="absolute -top-1 -right-1 min-w-[16px] h-4 flex items-center justify-center rounded-full text-[9px] font-bold text-white bg-[#ef4444] px-1"
+                                    aria-hidden="true"
+                                >
+                                    {pendingApprovalCount}
+                                </span>
+                            )}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setShowTerminal((v) => !v)}
+                            className={`px-3 py-1.5 rounded text-xs transition-all ${
+                                showTerminal
+                                    ? "bg-[#1a1a1a] text-white"
+                                    : "bg-white border border-[#e5e5e5] text-[#666] hover:bg-[#f0f0f0]"
+                            }`}
+                            title={t("app.terminalTitle")}
+                            aria-label={t("app.toggleTerminalAria")}
+                            aria-pressed={showTerminal}
+                        >
+                            <span aria-hidden="true">💻</span> {t("app.terminal")}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setShowTaskSidebar((v) => !v)}
+                            className={`px-3 py-1.5 rounded text-xs transition-all ${
+                                showTaskSidebar
+                                    ? "bg-[#1a1a1a] text-white"
+                                    : "bg-white border border-[#e5e5e5] text-[#666] hover:bg-[#f0f0f0]"
+                            }`}
+                            aria-label={t("app.taskPanelAria")}
+                            aria-pressed={showTaskSidebar}
+                        >
+                            {t("app.taskPanel")}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={openSettings}
+                            className="px-3 py-1.5 bg-white border border-[#e5e5e5] rounded text-xs text-[#666] hover:bg-[#f0f0f0]"
+                            aria-label={t("app.openSettingsAria")}
+                        >
+                            {t("iconBar.nav.settings")}
+                        </button>
+                    </div>
+                </header>
 
-                    {/* 状态栏 */}
-                    <footer className="h-7 bg-white border-t border-[#e5e5e5] flex items-center justify-between px-4 text-xs text-[#999] flex-shrink-0" role="contentinfo" aria-label="状态栏">
-                        <div className="flex items-center gap-3">
-                            <span className="flex items-center gap-1.5">
-                                <span className={`w-1.5 h-1.5 rounded-full ${status?.installed ? "bg-[#10b981]" : "bg-[#ef4444]"}`} />
-                                <span>{status?.installed ? "已连接" : "未连接"}</span>
-                            </span>
-                            <span>{currentWorkspace?.path ?? ""}</span>
+                {/* 主内容 */}
+                <div className="flex-1 overflow-hidden flex flex-col">
+                    {activePanel === "chat" ? (
+                        <>
+                            <div className="flex-1 overflow-hidden">
+                                <ChatView />
+                            </div>
+                            {/* 终端面板 (可折叠) */}
+                            {showTerminal && (
+                                <TerminalPanel
+                                    isOpen={showTerminal}
+                                    workspacePath={currentWorkspace?.path}
+                                    onClose={() => setShowTerminal(false)}
+                                />
+                            )}
+                        </>
+                    ) : activePanel === "plugins" ? (
+                        <div className="flex-1 overflow-hidden">
+                            <SkillsPanel />
                         </div>
-                        <span>Pi Desktop v0.1.0</span>
-                    </footer>
-                </main>
+                    ) : (
+                        <div className="flex-1 flex items-center justify-center text-[#999] text-sm">
+                            {activePanel === "search" && t("app.placeholder.search")}
+                            {activePanel === "automation" && t("app.placeholder.automation")}
+                            {activePanel === "settings" && t("app.placeholder.settings")}
+                        </div>
+                    )}
+                </div>
 
-                {/* 右侧浮窗 */}
-                {rightPanel === "approval" && (
-                    <ApprovalPanel
-                        isOpen={rightPanel === "approval"}
-                        onToggle={() => setRightPanel(null)}
-                    />
-                )}
+                {/* 状态栏 */}
+                <footer className="h-7 bg-white border-t border-[#e5e5e5] flex items-center justify-between px-4 text-xs text-[#999] flex-shrink-0" role="contentinfo" aria-label={t("app.statusBarAria")}>
+                    <div className="flex items-center gap-3">
+                        <span className="flex items-center gap-1.5">
+                            <span className={`w-1.5 h-1.5 rounded-full ${status?.installed ? "bg-[#10b981]" : "bg-[#ef4444]"}`} />
+                            <span>{status?.installed ? t("app.connected") : t("app.disconnected")}</span>
+                        </span>
+                        <span>{currentWorkspace?.path ?? ""}</span>
+                    </div>
+                    <span>Pi Desktop v0.1.0</span>
+                </footer>
+            </main>
 
-                {/* 右侧任务侧边栏 */}
-                <TaskSidebar
-                    isVisible={showTaskSidebar}
-                    onToggle={() => setShowTaskSidebar(false)}
+            {/* 右侧浮窗 */}
+            {rightPanel === "approval" && (
+                <ApprovalPanel
+                    isOpen={rightPanel === "approval"}
+                    onToggle={() => setRightPanel(null)}
                 />
+            )}
 
-                {/* 设置弹窗 */}
-                <SettingsPanel />
+            {/* 右侧任务侧边栏 */}
+            <TaskSidebar
+                isVisible={showTaskSidebar}
+                onToggle={() => setShowTaskSidebar(false)}
+            />
 
-                {/* Command Palette 模态 */}
-                <CommandPalette
-                    isOpen={paletteOpen}
-                    onClose={() => setPaletteOpen(false)}
-                    workspacePath={currentWorkspace?.path ?? ""}
-                />
+            {/* 设置弹窗 */}
+            <SettingsPanel />
 
-                {/* 快捷键速查 (按 ? 唤起) */}
-                <ShortcutsCheatsheet
-                    isOpen={showCheatsheet}
-                    onClose={() => setShowCheatsheet(false)}
-                />
+            {/* Command Palette 模态 */}
+            <CommandPalette
+                isOpen={paletteOpen}
+                onClose={() => setPaletteOpen(false)}
+                workspacePath={currentWorkspace?.path ?? ""}
+            />
 
-                {/* Pi 状态浮窗 (只在有问题时显示) */}
-                {!status?.installed && <PiStatusPanel />}
+            {/* 快捷键速查 (按 ? 唤起) */}
+            <ShortcutsCheatsheet
+                isOpen={showCheatsheet}
+                onClose={() => setShowCheatsheet(false)}
+            />
 
-                {/* 首启引导 */}
-                {showOnboarding && (
-                    <Onboarding onComplete={() => setShowOnboarding(false)} />
-                )}
-            </div>
-        </ErrorBoundary>
+            {/* Pi 状态浮窗 (只在有问题时显示) */}
+            {!status?.installed && <PiStatusPanel />}
+
+            {/* 首启引导 */}
+            {showOnboarding && (
+                <Onboarding onComplete={() => setShowOnboarding(false)} />
+            )}
+        </div>
     );
 }
 

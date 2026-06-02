@@ -10,7 +10,7 @@ export {
     dispatchShortcut,
     __resetShortcutHandlersForTest,
     type ShortcutDef,
-    type ShortcutCategory,
+    type ShortcutCategoryKey,
     type ShortcutCombo,
 } from "./registry";
 

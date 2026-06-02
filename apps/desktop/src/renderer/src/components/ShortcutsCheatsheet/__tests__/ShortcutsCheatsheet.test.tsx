@@ -1,6 +1,7 @@
 // ShortcutsCheatsheet 组件测试 (可用度-C)
 // 覆盖: 渲染 / 关闭 (Esc, 背景点击, X 按钮) / 上下导航 / 快捷键文案
 // 注意: jsdom 不识别隐式 role=option on <li> → 用 [role=option] selector
+// v1.0.4: 渲染时包 I18nProvider (默认 zh-CN, 跟原断言保持一致)
 
 // @vitest-environment jsdom
 
@@ -8,23 +9,30 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import React from "react";
 import { ShortcutsCheatsheet } from "../ShortcutsCheatsheet";
+import { I18nProvider } from "../../../i18n";
+
+function renderWithI18n(ui: React.ReactElement) {
+    return render(<I18nProvider>{ui}</I18nProvider>);
+}
 
 describe("ShortcutsCheatsheet", () => {
     let onClose: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
+        // jsdom 默认 navigator.language 是 'en-US', 强制 zh-CN 让中文断言继续过
+        window.localStorage.setItem("pi-desktop.locale", "zh-CN");
         onClose = vi.fn();
     });
 
     it("isOpen=false 时不渲染", () => {
-        const { container } = render(
+        const { container } = renderWithI18n(
             <ShortcutsCheatsheet isOpen={false} onClose={onClose} />,
         );
         expect(container.firstChild).toBeNull();
     });
 
     it("isOpen=true 时渲染 dialog + 至少 6 个 shortcut 描述", () => {
-        const { container } = render(<ShortcutsCheatsheet isOpen={true} onClose={onClose} />);
+        const { container } = renderWithI18n(<ShortcutsCheatsheet isOpen={true} onClose={onClose} />);
         const dialog = screen.getByRole("dialog", { name: "快捷键速查" });
         expect(dialog).toBeTruthy();
         // 至少 6 条 (label)
@@ -40,19 +48,19 @@ describe("ShortcutsCheatsheet", () => {
     });
 
     it("按 Esc 触发 onClose", () => {
-        render(<ShortcutsCheatsheet isOpen={true} onClose={onClose} />);
+        renderWithI18n(<ShortcutsCheatsheet isOpen={true} onClose={onClose} />);
         fireEvent.keyDown(window, { key: "Escape" });
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 
     it("点击 X 按钮触发 onClose", () => {
-        render(<ShortcutsCheatsheet isOpen={true} onClose={onClose} />);
+        renderWithI18n(<ShortcutsCheatsheet isOpen={true} onClose={onClose} />);
         fireEvent.click(screen.getByRole("button", { name: "关闭" }));
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 
     it("点击背景 (dialog 本体) 触发 onClose; 点击内容区不触发", () => {
-        const { container } = render(<ShortcutsCheatsheet isOpen={true} onClose={onClose} />);
+        const { container } = renderWithI18n(<ShortcutsCheatsheet isOpen={true} onClose={onClose} />);
         const dialog = screen.getByRole("dialog");
         // 点击 dialog 自身 = 背景
         fireEvent.click(dialog);
@@ -66,7 +74,7 @@ describe("ShortcutsCheatsheet", () => {
     });
 
     it("按 ArrowDown / ArrowUp 改变 activeIdx (视觉上 bg 变化)", () => {
-        const { container } = render(<ShortcutsCheatsheet isOpen={true} onClose={onClose} />);
+        const { container } = renderWithI18n(<ShortcutsCheatsheet isOpen={true} onClose={onClose} />);
         // jsdom 不识别 implicit role=option on <li>; 用 [role=option] selector
         const options = Array.from(container.querySelectorAll('[role="option"]'));
         expect(options.length).toBeGreaterThan(1);
@@ -84,7 +92,7 @@ describe("ShortcutsCheatsheet", () => {
     });
 
     it("分组标题 (category) 出现", () => {
-        render(<ShortcutsCheatsheet isOpen={true} onClose={onClose} />);
+        renderWithI18n(<ShortcutsCheatsheet isOpen={true} onClose={onClose} />);
         // 至少一个 category header
         expect(screen.getByText("导航")).toBeTruthy();
         expect(screen.getByText("对话")).toBeTruthy();
@@ -93,7 +101,7 @@ describe("ShortcutsCheatsheet", () => {
     });
 
     it("aria-modal 与 aria-label 正确", () => {
-        render(<ShortcutsCheatsheet isOpen={true} onClose={onClose} />);
+        renderWithI18n(<ShortcutsCheatsheet isOpen={true} onClose={onClose} />);
         const dialog = screen.getByRole("dialog");
         expect(dialog.getAttribute("aria-modal")).toBe("true");
         expect(dialog.getAttribute("aria-label")).toBe("快捷键速查");

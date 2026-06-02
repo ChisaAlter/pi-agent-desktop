@@ -1,10 +1,12 @@
 // 消息气泡 - 用户消息右侧，AI 消息左侧（黑色头像）
+// v1.0.4: author 走 t()
 
 import React from 'react';
 import { Message } from '../../stores/session-store';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { CommandCard } from './CommandCard';
 import { ThinkingBlock } from './ThinkingBlock';
+import { useI18n } from '../../i18n';
 
 interface MessageBubbleProps {
   message: Message;
@@ -13,9 +15,10 @@ interface MessageBubbleProps {
 }
 
 export function MessageBubble({ message, isStreaming = false }: MessageBubbleProps): React.JSX.Element {
+  const { t } = useI18n();
   const isUser = message.role === 'user';
   const timeText = new Date(message.timestamp).toLocaleTimeString();
-  const authorLabel = isUser ? '你说' : 'Pi 说';
+  const authorLabel = isUser ? t('messageBubble.userAuthor') : t('messageBubble.piAuthor');
   const articleLabel = `${authorLabel} · ${timeText}`;
 
   return (

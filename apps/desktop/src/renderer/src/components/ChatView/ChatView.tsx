@@ -1,4 +1,5 @@
 // 聊天主区域 - 欢迎屏幕 + 消息列表 + 输入框
+// v1.0.4: 用户可见文案走 t()
 
 import React, { useRef, useEffect } from 'react';
 import { usePiStream } from '../../hooks/usePiStream';
@@ -7,6 +8,7 @@ import { useWorkspaceStore } from '../../stores/workspace-store';
 import { usePiStatusStore } from '../../stores/pi-status-store';
 import { MessageBubble } from './MessageBubble';
 import { ChatInput } from './ChatInput';
+import { useI18n } from '../../i18n';
 
 export function ChatView(): React.JSX.Element {
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -22,6 +24,7 @@ export function ChatView(): React.JSX.Element {
   const { getCurrentSession, createSession } = useSessionStore();
   const { getCurrentWorkspace } = useWorkspaceStore();
   const { install, isOperating, progress } = usePiStatusStore();
+  const { t } = useI18n();
 
   const currentSession = getCurrentSession();
   const currentWorkspace = getCurrentWorkspace();
@@ -43,6 +46,13 @@ export function ChatView(): React.JSX.Element {
 
   const messages = currentSession?.messages || [];
 
+  const welcomeCards: Array<{ key: string; icon: string }> = [
+    { key: 'newFeature', icon: '🚀' },
+    { key: 'fixBug', icon: '🐛' },
+    { key: 'review', icon: '🔍' },
+    { key: 'explain', icon: '📖' },
+  ];
+
   return (
     <div className="flex-1 flex flex-col h-full">
       {/* 消息区域 */}
@@ -57,29 +67,28 @@ export function ChatView(): React.JSX.Element {
 
             {/* 标题 */}
             <h2 className="text-xl font-semibold text-[#1a1a1a] mb-2">
-              准备好开始了吗？
+              {t('chatView.welcome.title')}
             </h2>
 
             {/* 副标题 */}
             <p className="text-sm text-[#666] max-w-md mb-8">
-              描述你想要构建或修改的内容，Pi 会为你创建一个独立的工作环境。
+              {t('chatView.welcome.subtitle')}
             </p>
 
             {/* 操作卡片 */}
             <div className="flex flex-wrap justify-center gap-3">
-              {[
-                { icon: '🚀', title: '新建功能', desc: '描述你想要添加的功能' },
-                { icon: '🐛', title: '修复问题', desc: '描述你遇到的bug' },
-                { icon: '🔍', title: '代码审查', desc: '让AI审查你的代码' },
-                { icon: '📖', title: '解释代码', desc: '让AI解释复杂代码' },
-              ].map((card, index) => (
+              {welcomeCards.map((card) => (
                 <button
-                  key={index}
+                  key={card.key}
                   className="w-[180px] p-4 bg-white border border-[#e5e5e5] rounded-xl text-left hover:bg-[#f5f5f5] hover:border-[#d1d5db] transition-all"
                 >
                   <div className="text-xl mb-2">{card.icon}</div>
-                  <div className="text-sm font-medium text-[#1a1a1a] mb-1">{card.title}</div>
-                  <div className="text-xs text-[#999]">{card.desc}</div>
+                  <div className="text-sm font-medium text-[#1a1a1a] mb-1">
+                    {t(`chatView.welcome.cards.${card.key}.title`)}
+                  </div>
+                  <div className="text-xs text-[#999]">
+                    {t(`chatView.welcome.cards.${card.key}.desc`)}
+                  </div>
                 </button>
               ))}
             </div>
@@ -95,11 +104,11 @@ export function ChatView(): React.JSX.Element {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
                   </svg>
                   <span className="text-sm text-[#ef4444] font-medium">
-                    Pi CLI 未检测到
+                    {t('chatView.piCliMissing.title')}
                   </span>
                 </div>
                 <p className="text-xs text-[#666]">
-                  Pi CLI 是 Pi Desktop 的核心引擎。安装后即可开始对话。
+                  {t('chatView.piCliMissing.description')}
                 </p>
                 <div className="flex gap-2">
                   <button
@@ -108,14 +117,16 @@ export function ChatView(): React.JSX.Element {
                     className="flex-1 px-4 py-2 bg-[#ef4444] text-white rounded-md hover:bg-[#dc2626] transition-colors text-sm font-medium disabled:opacity-50"
                   >
                     {isOperating
-                      ? `安装中${progress?.percent != null ? ` ${progress.percent}%` : "..."}`
-                      : "立即安装"}
+                      ? progress?.percent != null
+                        ? t('chatView.piCliMissing.installingProgress', { percent: progress.percent })
+                        : t('chatView.piCliMissing.installingEllipsis')
+                      : t('chatView.piCliMissing.install')}
                   </button>
                   <button
                     onClick={() => window.open("https://github.com/badlogic/pi-mono", "_blank")}
                     className="px-4 py-2 bg-white border border-[#fecaca] text-[#666] rounded-md hover:bg-[#fef2f2] transition-colors text-sm"
                   >
-                    查看文档
+                    {t('chatView.piCliMissing.viewDocs')}
                   </button>
                 </div>
               </div>
@@ -131,14 +142,16 @@ export function ChatView(): React.JSX.Element {
                   <svg className="w-4 h-4 text-[#ef4444] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
                   </svg>
-                  <span className="text-sm text-[#ef4444] font-medium">发送失败</span>
+                  <span className="text-sm text-[#ef4444] font-medium">
+                    {t('chatView.sendFailed.title')}
+                  </span>
                 </div>
                 <p className="text-xs text-[#666] break-all font-mono">{streamError}</p>
                 <button
                   onClick={clearError}
                   className="px-4 py-2 bg-[#1a1a1a] text-white rounded-md hover:bg-[#333] transition-colors text-sm font-medium self-start"
                 >
-                  重试
+                  {t('chatView.sendFailed.retry')}
                 </button>
               </div>
             )}
@@ -149,7 +162,7 @@ export function ChatView(): React.JSX.Element {
             className="p-6 space-y-6"
             role="log"
             aria-live="polite"
-            aria-label="对话消息"
+            aria-label={t('chatView.messagesAria')}
             aria-busy={isStreaming}
           >
             {messages.map((message) => (
@@ -165,7 +178,7 @@ export function ChatView(): React.JSX.Element {
               <div
                 className="flex justify-start"
                 role="status"
-                aria-label="Pi 正在思考"
+                aria-label={t('chatView.streamIndicator')}
                 aria-busy="true"
               >
                 <div className="flex items-start gap-3">
@@ -181,9 +194,9 @@ export function ChatView(): React.JSX.Element {
                         type="button"
                         onClick={stopStreaming}
                         className="ml-3 text-xs text-[#666] hover:text-[#1a1a1a] transition-colors"
-                        aria-label="停止生成"
+                        aria-label={t('chatView.stopGeneration')}
                       >
-                        停止
+                        {t('chatView.stop')}
                       </button>
                     </div>
                   </div>

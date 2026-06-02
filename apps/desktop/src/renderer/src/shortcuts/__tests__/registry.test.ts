@@ -182,11 +182,11 @@ describe("shortcuts/registry", () => {
     describe("groupByCategory", () => {
         it("按 category 分组且保持 SHORTCUTS 出现顺序", () => {
             const groups = groupByCategory(SHORTCUTS);
-            // 至少 4 个 group (导航 / 对话 / 面板 / 编辑 / 帮助)
+            // 至少 4 个 group (nav / chat / panel / edit / help)
             expect(groups.length).toBeGreaterThanOrEqual(4);
             const order = groups.map((g) => g.category);
-            // 顺序应当是 registry 里写的固定顺序
-            expect(order).toEqual(["导航", "对话", "面板", "编辑", "帮助"]);
+            // 顺序应当是 registry 里写的固定顺序 (v1.0.4: 改用 i18n key)
+            expect(order).toEqual(["nav", "chat", "panel", "edit", "help"]);
         });
 
         it("每个 group 的 items 都是对应 category", () => {

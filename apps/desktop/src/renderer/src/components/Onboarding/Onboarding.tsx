@@ -5,17 +5,16 @@
 //   3. 开始用 (写 localStorage 标记完成，关闭模态)
 //
 // 约束：
-//   - 不做 i18n、不做动效
 //   - localStorage 写失败 try/catch 兜底
-//   - 步骤可前可跳回，无须限制（任务说"不能往前" — 实际意思是"不要
-//     让用户被锁住"，所以允许跳回，但完成前 step2/3 不可"跳过"。这里
-//     我们允许跳回，step 2/3 完成前不显示"完成"按钮）
+//   - 步骤可前可跳回
 //   - a11y: role="dialog" + aria-modal + aria-labelledby
+//   - v1.0.4: 全部用户可见文案走 t()
 
 import React, { useEffect, useState, useCallback } from "react";
 import { usePiStatusStore } from "../../stores/pi-status-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { markFirstLaunchDone } from "../../utils/first-launch";
+import { useI18n } from "../../i18n";
 
 export interface OnboardingProps {
     /** 关闭回调（完成时由父组件调用） */
@@ -32,6 +31,7 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
 
     const { status, loading, error, progress, isOperating, refreshStatus, install } = usePiStatusStore();
     const { getCurrentWorkspace, addWorkspace } = useWorkspaceStore();
+    const { t } = useI18n();
 
     const currentWorkspace = getCurrentWorkspace();
     const piInstalled = forceSkipPiCheck || status?.installed === true;
@@ -95,6 +95,18 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
         }
     }, [piInstalled]);
 
+    const title = step === 1
+        ? t("onboarding.step1.title")
+        : step === 2
+        ? t("onboarding.step2.title")
+        : t("onboarding.step3.title");
+
+    const description = step === 1
+        ? t("onboarding.step1.description")
+        : step === 2
+        ? t("onboarding.step2.description")
+        : t("onboarding.step3.description");
+
     return (
         <div
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
@@ -112,15 +124,9 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                     id="onboarding-title"
                     className="text-xl font-semibold text-[#1a1a1a] mt-6 mb-2"
                 >
-                    {step === 1 && "检查 Pi CLI"}
-                    {step === 2 && "选择工作区"}
-                    {step === 3 && "准备就绪"}
+                    {title}
                 </h2>
-                <p className="text-sm text-[#666] mb-6">
-                    {step === 1 && "Pi CLI 是 Pi Desktop 的引擎。"}
-                    {step === 2 && "选一个本地目录作为默认工作区。"}
-                    {step === 3 && "一切就绪。点完成开始使用。"}
-                </p>
+                <p className="text-sm text-[#666] mb-6">{description}</p>
 
                 {/* Step 1: Pi CLI check */}
                 {step === 1 && (
@@ -142,16 +148,18 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                                 />
                                 <span className="text-sm font-medium">
                                     {piInstalled
-                                        ? "已安装"
+                                        ? t("onboarding.step1.status.installed")
                                         : loading
-                                        ? "检测中..."
-                                        : "未检测到"}
+                                        ? t("onboarding.step1.status.checking")
+                                        : t("onboarding.step1.status.notFound")}
                                 </span>
                             </div>
                             <p className="text-xs text-[#666]">
                                 {piInstalled
-                                    ? `本地版本: ${status?.localVersion ?? "未知"}`
-                                    : "Pi CLI 未安装。请先安装后再继续。"}
+                                    ? status?.localVersion
+                                        ? t("onboarding.step1.status.versionKnown", { version: status.localVersion })
+                                        : t("onboarding.step1.status.versionUnknown")
+                                    : t("onboarding.step1.status.notInstalled")}
                             </p>
                             {error && !piInstalled && (
                                 <p className="text-xs text-[#ef4444] mt-1" role="alert">
@@ -173,7 +181,7 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                                     disabled={installing || isOperating}
                                     className="flex-1 px-4 py-2.5 bg-[#1a1a1a] text-white rounded-lg hover:bg-[#333] transition-colors text-sm font-medium disabled:opacity-50"
                                 >
-                                    {installing || isOperating ? "安装中..." : "立即安装"}
+                                    {installing || isOperating ? t("onboarding.step1.installing") : t("onboarding.step1.install")}
                                 </button>
                             )}
                             {piInstalled && (
@@ -181,16 +189,16 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                                     onClick={handleStep1Next}
                                     className="flex-1 px-4 py-2.5 bg-[#1a1a1a] text-white rounded-lg hover:bg-[#333] transition-colors text-sm font-medium"
                                 >
-                                    下一步
+                                    {t("common.next")}
                                 </button>
                             )}
                             <button
                                 onClick={() => void refreshStatus()}
                                 disabled={loading || isOperating}
                                 className="px-4 py-2.5 bg-white border border-[#e5e5e5] text-[#666] rounded-lg hover:bg-[#f5f5f5] transition-colors text-sm"
-                                title="重新检测"
+                                title={t("onboarding.step1.refresh")}
                             >
-                                重新检测
+                                {t("onboarding.step1.refresh")}
                             </button>
                         </div>
                     </div>
@@ -210,13 +218,18 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                                     }`}
                                 />
                                 <span className="text-sm font-medium">
-                                    {currentWorkspace ? "已选择" : "未选择"}
+                                    {currentWorkspace
+                                        ? t("onboarding.step2.status.selected")
+                                        : t("onboarding.step2.status.notSelected")}
                                 </span>
                             </div>
                             <p className="text-xs text-[#666]">
                                 {currentWorkspace
-                                    ? `${currentWorkspace.name} — ${currentWorkspace.path}`
-                                    : "点下面的按钮选一个目录。"}
+                                    ? t("onboarding.step2.status.selectedDetail", {
+                                          name: currentWorkspace.name,
+                                          path: currentWorkspace.path,
+                                      })
+                                    : t("onboarding.step2.status.hint")}
                             </p>
                         </div>
 
@@ -225,20 +238,20 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                                 onClick={() => void handleSelectWorkspace()}
                                 className="flex-1 px-4 py-2.5 bg-[#1a1a1a] text-white rounded-lg hover:bg-[#333] transition-colors text-sm font-medium"
                             >
-                                选择目录
+                                {t("onboarding.step2.select")}
                             </button>
                             <button
                                 onClick={() => setStep(1)}
                                 className="px-4 py-2.5 bg-white border border-[#e5e5e5] text-[#666] rounded-lg hover:bg-[#f5f5f5] transition-colors text-sm"
                             >
-                                上一步
+                                {t("common.back")}
                             </button>
                             <button
                                 onClick={() => setStep(3)}
                                 disabled={!currentWorkspace}
                                 className="px-4 py-2.5 bg-[#1a1a1a] text-white rounded-lg hover:bg-[#333] transition-colors text-sm font-medium disabled:opacity-50"
                             >
-                                下一步
+                                {t("common.next")}
                             </button>
                         </div>
                     </div>
@@ -253,12 +266,19 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                         >
                             <div className="flex items-center gap-2 mb-1">
                                 <span className="w-2 h-2 rounded-full bg-[#10b981]" />
-                                <span className="text-sm font-medium text-[#1a1a1a]">检查通过</span>
+                                <span className="text-sm font-medium text-[#1a1a1a]">
+                                    {t("onboarding.step3.checkedOk")}
+                                </span>
                             </div>
                             <p className="text-xs text-[#666]">
                                 Pi CLI
-                                {status?.localVersion ? ` (v${status.localVersion})` : ""} · 工作区
-                                {currentWorkspace ? `: ${currentWorkspace.name}` : " 未选（可稍后在设置里加）"}
+                                {status?.localVersion ? ` (v${status.localVersion})` : ""}
+                                {t("onboarding.step3.details", {
+                                    version: status?.localVersion ? ` (v${status.localVersion})` : "",
+                                    workspace: currentWorkspace
+                                        ? t("onboarding.step3.workspaceSelected", { name: currentWorkspace.name })
+                                        : t("onboarding.step3.noWorkspace"),
+                                })}
                             </p>
                         </div>
 
@@ -267,13 +287,13 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                                 onClick={() => setStep(2)}
                                 className="px-4 py-2.5 bg-white border border-[#e5e5e5] text-[#666] rounded-lg hover:bg-[#f5f5f5] transition-colors text-sm"
                             >
-                                上一步
+                                {t("common.back")}
                             </button>
                             <button
                                 onClick={handleFinish}
                                 className="flex-1 px-4 py-2.5 bg-[#1a1a1a] text-white rounded-lg hover:bg-[#333] transition-colors text-sm font-medium"
                             >
-                                完成
+                                {t("common.done")}
                             </button>
                         </div>
                     </div>
@@ -286,7 +306,7 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                         onClick={handleFinish}
                         className="text-xs text-[#999] hover:text-[#666] transition-colors"
                     >
-                        跳过引导
+                        {t("onboarding.skip")}
                     </button>
                 </div>
             </div>
@@ -297,13 +317,14 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
 // ── Sub-components ─────────────────────────────────────────────────
 
 function Stepper({ current }: { current: Step }): React.JSX.Element {
+    const { t } = useI18n();
     const steps: Array<{ id: Step; label: string }> = [
-        { id: 1, label: "Pi CLI" },
-        { id: 2, label: "工作区" },
-        { id: 3, label: "完成" },
+        { id: 1, label: t("onboarding.steps.label1") },
+        { id: 2, label: t("onboarding.steps.label2") },
+        { id: 3, label: t("onboarding.steps.label3") },
     ];
     return (
-        <ol className="flex items-center gap-2" aria-label="引导步骤">
+        <ol className="flex items-center gap-2" aria-label={t("onboarding.steps.ariaLabel")}>
             {steps.map((s, i) => {
                 const active = s.id === current;
                 const done = s.id < current;
