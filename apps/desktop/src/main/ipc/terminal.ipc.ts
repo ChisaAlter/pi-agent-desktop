@@ -1,8 +1,11 @@
 // Terminal IPC (M4 Task M4-1)
 // 包装 PtyManager, 暴露给 renderer
 // 重构老的 terminal:* IPC, 用 node-pty 替代 child_process.spawn
+// v1.0.6.1: 错误返 IpcError (code/params/fallback)
 
 import { ipcMain, BrowserWindow } from "electron";
+import log from "electron-log/main";
+import { ipcError } from "@shared";
 import { ptyManager } from "../services/shell/pty-manager";
 import { terminalInputSchema } from "./schemas";
 
@@ -22,13 +25,22 @@ export function setupTerminalIpc(): void {
         if (ptyManager.has(id)) {
             return { id, reused: true };
         }
-        await ptyManager.create({
-            id,
-            cwd: opts.cwd,
-            cols: opts.cols ?? 80,
-            rows: opts.rows ?? 24,
-        });
-        return { id, reused: false };
+        try {
+            await ptyManager.create({
+                id,
+                cwd: opts.cwd,
+                cols: opts.cols ?? 80,
+                rows: opts.rows ?? 24,
+            });
+            return { id, reused: false };
+        } catch (err) {
+            log.error("[terminal.ipc] create failed:", err);
+            return ipcError(
+                "ipcErrors.terminal.createFailed",
+                `创建终端失败: ${err instanceof Error ? err.message : String(err)}`,
+                { cwd: opts.cwd ?? process.cwd() },
+            );
+        }
     });
 
     ipcMain.handle("terminal:input", (_event, id: string, data: string) => {

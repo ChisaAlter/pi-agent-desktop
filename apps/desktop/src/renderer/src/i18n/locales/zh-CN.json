@@ -343,6 +343,47 @@
     "retry": "重试",
     "reload": "刷新页面"
   },
+  "ipcErrors": {
+    "pi": {
+      "driverNotInitialized": "Pi 驱动尚未初始化, 请重启 Pi Desktop.",
+      "detectFailed": "Pi 状态检测失败: {{message}}",
+      "installFailed": "Pi CLI 安装失败: {{message}}",
+      "updateFailed": "Pi CLI 更新失败: {{message}}",
+      "uninstallFailed": "Pi CLI 卸载失败: {{message}}"
+    },
+    "chat": {
+      "workspaceNotFound": "工作区不存在: {{id}}",
+      "promptFailed": "在 {{workspace}} 给 Pi 发消息失败: {{message}}",
+      "gitUndoFailed": "撤销 {{path}} 的文件改动失败: {{message}}"
+    },
+    "workspace": {
+      "invalidArgs": "工作区参数无效 ({{name}}, {{path}}): {{message}}",
+      "selectDirectoryFailed": "打开目录选择器失败: {{message}}"
+    },
+    "skills": {
+      "searchFailed": "搜索技能失败: {{query}} — {{message}}",
+      "listFailed": "列出已装技能失败: {{message}}",
+      "noWorkspace": "请先选择工作区再装/卸技能.",
+      "installFailed": "安装技能 {{slug}} 失败: {{message}}",
+      "uninstallFailed": "卸载技能 {{slug}} 失败: {{message}}",
+      "toggleFailed": "切换技能 {{slug}} 状态失败: {{message}}"
+    },
+    "terminal": {
+      "createFailed": "创建终端失败 (cwd: {{cwd}}): {{message}}"
+    },
+    "git": {
+      "statusFailed": "读取 {{path}} 的 git 状态失败: {{message}}",
+      "diffFailed": "读取 git diff ({{path}}) 失败: {{message}}",
+      "addFailed": "git add 失败: {{message}}",
+      "commitFailed": "git commit 失败: {{message}}",
+      "logFailed": "读取 git log 失败: {{message}}",
+      "branchesFailed": "读取 git branches 失败: {{message}}",
+      "invalidArgs": "git 参数无效: {{message}}"
+    },
+    "files": {
+      "scanFailed": "{{path}} 文件扫描失败: {{message}}"
+    }
+  },
   "app": {
     "shellAria": "Pi 桌面应用",
     "headerAria": "顶部操作栏",

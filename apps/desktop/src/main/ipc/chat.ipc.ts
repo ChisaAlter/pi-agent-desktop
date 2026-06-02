@@ -1,9 +1,12 @@
 // Chat IPC Handler (M1 Task 9)
 // 替换老的 pi:prompt / pi:stop 一次性 spawn 模式
 // 走 AgentSession 长连接 + ApprovalInterceptor + EventBridge
+// v1.0.6.1: 错误返 IpcError (code/params/fallback), 不再 throw 中文
 
 import { ipcMain, BrowserWindow, type BrowserWindow as BrowserWindowType } from "electron";
 import { execFileSync } from "child_process";
+import log from "electron-log/main";
+import { ipcError } from "@shared";
 import { WorkspaceRegistry } from "../services/pi-session/registry";
 import type { IpcSender } from "../services/pi-session/event-bridge";
 import { PendingEdits } from "../services/approval/pending-edits";
@@ -40,12 +43,28 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
 
     ipcMain.handle("pi:send", async (_event, workspaceId: string, text: string) => {
         const ws = deps.getWorkspace(workspaceId) ?? deps.getDefaultWorkspace();
-        if (!ws) throw new Error(`Workspace not found: ${workspaceId}`);
+        if (!ws) {
+            return ipcError(
+                "ipcErrors.chat.workspaceNotFound",
+                `Workspace not found: ${workspaceId}`,
+                { id: workspaceId },
+            );
+        }
 
-        // registry.get() 内部会 lazy-init: 第一次创建 session + bridge + interceptor
-        // 并只订阅一次 Pi 事件 (修复之前的订阅泄漏 + 重复处理 bug)
-        const wsSession = await deps.registry.get(ws.id, ws.path, deps.pendingEdits, send);
-        await wsSession.session.prompt(text);
+        try {
+            // registry.get() 内部会 lazy-init: 第一次创建 session + bridge + interceptor
+            // 并只订阅一次 Pi 事件 (修复之前的订阅泄漏 + 重复处理 bug)
+            const wsSession = await deps.registry.get(ws.id, ws.path, deps.pendingEdits, send);
+            await wsSession.session.prompt(text);
+            return undefined; // 显式返 void 满足 TS 全部路径 return 一致
+        } catch (err) {
+            log.error("[chat.ipc] prompt failed:", err);
+            return ipcError(
+                "ipcErrors.chat.promptFailed",
+                `Pi 消息发送失败: ${err instanceof Error ? err.message : String(err)}`,
+                { workspace: ws.name },
+            );
+        }
     });
 
     ipcMain.handle("pi:stop", async (_event, workspaceId: string) => {
@@ -63,12 +82,18 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             // 先试 git checkout (tracked file)
             execFileSync("git", ["checkout", "--", filePath], { cwd: workspacePath, stdio: "ignore" });
         } catch {
-            // fallback: rm (untracked new file) — 参数化, 安全
+            // fallback: rm (untracked new file) — 参数化, 안전
             try {
                 execFileSync("rm", [filePath], { cwd: workspacePath, stdio: "ignore" });
-            } catch {
-                // ignore
+            } catch (err) {
+                log.error("[chat.ipc] git:undo failed:", err);
+                return ipcError(
+                    "ipcErrors.chat.gitUndoFailed",
+                    `撤销文件改动失败: ${err instanceof Error ? err.message : String(err)}`,
+                    { path: filePath },
+                );
             }
         }
+        return undefined; // 显式 void 让 TS happy (handler 必须 return 一致)
     });
 }

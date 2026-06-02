@@ -22,6 +22,7 @@ import { workspaceCreateSchema, settingsSetSchema, gitCommitSchema, gitAddSchema
 import { ptyManager } from './services/shell/pty-manager';
 import { setupAutoUpdater } from './services/updater';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
+import { ipcError } from '@shared';
 
 let mainWindow: BrowserWindow | null = null;
 let piAgentConfig: PiAgentConfig | null = null;
@@ -356,10 +357,307 @@ function setupIPC(): void {
   // ── Pi Driver 管理 ───────────────────────────────────────────────
 
   ipcMain.handle('pi:status', async () => {
-    if (!piDriver) return { installed: false, error: 'PiDriver not initialized' };
+    if (!piDriver) {
+      return ipcError(
+        "ipcErrors.pi.driverNotInitialized",
+        "PiDriver 尚未初始化",
+      );
+    }
     // 优先用缓存，否则同步检测
     return piDriver.detectSync();
   });
+
+  ipcMain.handle('pi:refresh-status', async () => {
+    if (!piDriver) {
+      return ipcError(
+        "ipcErrors.pi.driverNotInitialized",
+        "PiDriver 尚未初始化",
+      );
+    }
+    try {
+      return await piDriver.detect();
+    } catch (err) {
+      log.error("[index.ts] pi:refresh-status failed:", err);
+      return ipcError(
+        "ipcErrors.pi.detectFailed",
+        `Pi 状态检测失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  });
+
+  ipcMain.handle('pi:install', async () => {
+    if (!piDriver) {
+      return ipcError(
+        "ipcErrors.pi.driverNotInitialized",
+        "PiDriver 尚未初始化",
+      );
+    }
+    try {
+      await piDriver.install();
+      return piDriver.detectSync();
+    } catch (err) {
+      log.error("[index.ts] pi:install failed:", err);
+      return ipcError(
+        "ipcErrors.pi.installFailed",
+        `安装 Pi CLI 失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  });
+
+  ipcMain.handle('pi:update', async () => {
+    if (!piDriver) {
+      return ipcError(
+        "ipcErrors.pi.driverNotInitialized",
+        "PiDriver 尚未初始化",
+      );
+    }
+    try {
+      await piDriver.update();
+      return piDriver.detectSync();
+    } catch (err) {
+      log.error("[index.ts] pi:update failed:", err);
+      return ipcError(
+        "ipcErrors.pi.updateFailed",
+        `更新 Pi CLI 失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  });
+
+  ipcMain.handle('pi:uninstall', async () => {
+    if (!piDriver) {
+      return ipcError(
+        "ipcErrors.pi.driverNotInitialized",
+        "PiDriver 尚未初始化",
+      );
+    }
+    try {
+      await piDriver.uninstall();
+      return piDriver.detectSync();
+    } catch (err) {
+      log.error("[index.ts] pi:uninstall failed:", err);
+      return ipcError(
+        "ipcErrors.pi.uninstallFailed",
+        `卸载 Pi CLI 失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  });
+
+  ipcMain.handle('pi:cancel-operation', async () => {
+    piDriver?.cancelOperation();
+  });
+
+  // 注: pi:stop 已经在 setupChatIpc 里注册 (M1 走 session.abort 而不是 SIGKILL)
+
+  // Workspace management
+  ipcMain.handle('workspace:list', async () => {
+    let workspaces = store.get('workspaces');
+    if (workspaces.length === 0) {
+      workspaces = [{
+        id: 'default',
+        name: 'Default',
+        path: process.cwd(),
+        createdAt: Date.now()
+      }];
+      store.set('workspaces', workspaces);
+    }
+    return workspaces;
+  });
+
+  ipcMain.handle('workspace:create', async (_, name: string, path: string) => {
+    try {
+      workspaceCreateSchema.parse([name, path]);
+    } catch (err) {
+      log.warn("[index.ts] workspace:create invalid args:", err);
+      return ipcError(
+        "ipcErrors.workspace.invalidArgs",
+        `工作区参数无效: ${err instanceof Error ? err.message : String(err)}`,
+        { name, path },
+      );
+    }
+    const workspace = {
+      id: Date.now().toString(),
+      name,
+      path,
+      createdAt: Date.now()
+    };
+    const workspaces = store.get('workspaces');
+    workspaces.push(workspace);
+    store.set('workspaces', workspaces);
+    return workspace;
+  });
+
+  ipcMain.handle('workspace:delete', async (_, id: string) => {
+    const workspaces = store.get('workspaces').filter(w => w.id !== id);
+    store.set('workspaces', workspaces);
+  });
+
+  ipcMain.handle('workspace:select', async (_, path: string) => {
+    // Pipe 模式无需重启持久进程，直接返回成功
+    log.info('Workspace selected:', path);
+  });
+
+  ipcMain.handle('workspace:select-directory', async () => {
+    if (!mainWindow) return null;
+    try {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory'],
+        title: 'Select Workspace Directory'
+      });
+      return result.canceled ? null : result.filePaths[0];
+    } catch (err) {
+      log.error("[index.ts] workspace:select-directory failed:", err);
+      return ipcError(
+        "ipcErrors.workspace.selectDirectoryFailed",
+        `打开目录选择器失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  });
+
+  // Session management
+  ipcMain.handle('session:list', async () => {
+    return store.get('sessions');
+  });
+
+  ipcMain.handle('session:create', async (_, workspaceId: string, title?: string) => {
+    const sessions = store.get('sessions');
+    const session = {
+      id: Date.now().toString(),
+      title: title || `Session ${sessions.length + 1}`,
+      workspaceId,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+    sessions.push(session);
+    store.set('sessions', sessions);
+    return session;
+  });
+
+  ipcMain.handle('session:delete', async (_, id: string) => {
+    const sessions = store.get('sessions').filter(s => s.id !== id);
+    store.set('sessions', sessions);
+  });
+
+  // Git status
+  ipcMain.handle('git:status', async (_, workspacePath: string) => {
+    try {
+      return getGitStatus(workspacePath);
+    } catch (err) {
+      log.error("[index.ts] git:status failed:", err);
+      return ipcError(
+        "ipcErrors.git.statusFailed",
+        `读取 git 状态失败: ${err instanceof Error ? err.message : String(err)}`,
+        { path: workspacePath },
+      );
+    }
+  });
+
+  // Git diff (指定文件或全部) — 参数化执行
+  ipcMain.handle('git:diff', async (_, workspacePath: string, filePath?: string) => {
+    try {
+      const args = filePath ? ['diff', '--', filePath] : ['diff'];
+      return execFileSync('git', args, { cwd: workspacePath, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+    } catch (err) {
+      log.error("[index.ts] git:diff failed:", err);
+      return ipcError(
+        "ipcErrors.git.diffFailed",
+        `读取 git diff 失败: ${err instanceof Error ? err.message : String(err)}`,
+        { path: filePath ?? "all" },
+      );
+    }
+  });
+
+  // Git staged diff
+  ipcMain.handle('git:diff-staged', async (_, workspacePath: string) => {
+    try {
+      return execFileSync('git', ['diff-staged'], { cwd: workspacePath, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+    } catch (err) {
+      log.error("[index.ts] git:diff-staged failed:", err);
+      return ipcError(
+        "ipcErrors.git.diffFailed",
+        `读取 staged diff 失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  });
+
+  // Git add — 参数化, 杜绝文件路径 shell 注入
+  ipcMain.handle('git:add', async (_, workspacePath: string, files: string[]) => {
+    try {
+      gitAddSchema.parse([workspacePath, files]);
+    } catch (err) {
+      log.warn("[index.ts] git:add invalid args:", err);
+      return ipcError(
+        "ipcErrors.git.invalidArgs",
+        `git add 参数无效: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (files.length === 0) return;
+    try {
+      execFileSync('git', ['add', '--', ...files], { cwd: workspacePath });
+    } catch (err) {
+      log.error("[index.ts] git:add exec failed:", err);
+      return ipcError(
+        "ipcErrors.git.addFailed",
+        `git add 失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return undefined; // 显式 void
+  });
+
+  // Git commit — 参数化, message 走 argv 不会被 shell 解析
+  ipcMain.handle('git:commit', async (_, workspacePath: string, message: string) => {
+    try {
+      gitCommitSchema.parse([workspacePath, message]);
+    } catch (err) {
+      log.warn("[index.ts] git:commit invalid args:", err);
+      return ipcError(
+        "ipcErrors.git.invalidArgs",
+        `git commit 参数无效: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    try {
+      return execFileSync('git', ['commit', '-m', message], { cwd: workspacePath, encoding: 'utf-8' });
+    } catch (err) {
+      log.error("[index.ts] git:commit exec failed:", err);
+      return ipcError(
+        "ipcErrors.git.commitFailed",
+        `git commit 失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  });
+
+  // Git log (最近 N 条) — count 是 number, 安全
+  ipcMain.handle('git:log', async (_, workspacePath: string, count: number = 20) => {
+    try {
+      const format = '--pretty=format:{"hash":"%h","author":"%an","date":"%ai","message":"%s"}';
+      const output = execFileSync('git', ['log', format, '-n', String(count)], { cwd: workspacePath, encoding: 'utf-8' });
+      return output.split('\n').filter(l => l.trim()).map(l => JSON.parse(l));
+    } catch (err) {
+      log.error("[index.ts] git:log failed:", err);
+      return ipcError(
+        "ipcErrors.git.logFailed",
+        `读取 git log 失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  });
+
+  // Git branches
+  ipcMain.handle('git:branches', async (_, workspacePath: string) => {
+    try {
+      const output = execFileSync('git', ['branch', '-a'], { cwd: workspacePath, encoding: 'utf-8' });
+      return output.split('\n').filter(l => l.trim()).map(l => ({
+        name: l.replace(/^\*?\s+/, '').trim(),
+        isCurrent: l.startsWith('*'),
+        isRemote: l.includes('remotes/')
+      }));
+    } catch (err) {
+      log.error("[index.ts] git:branches failed:", err);
+      return ipcError(
+        "ipcErrors.git.branchesFailed",
+        `读取 git branches 失败: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  });
+
 
   ipcMain.handle('pi:refresh-status', async () => {
     if (!piDriver) throw new Error('PiDriver not initialized');

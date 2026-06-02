@@ -2,3 +2,5 @@
 export { I18nProvider, useI18n } from './I18nProvider';
 export type { Locale, I18nContextValue } from './types';
 export { SUPPORTED_LOCALES, DEFAULT_LOCALE, LOCALE_STORAGE_KEY } from './config';
+// v1.0.6.1: i18n-IPC 错误本地化
+export { translateIpcError, useTranslateIpcError, isIpcError } from './IpcError';

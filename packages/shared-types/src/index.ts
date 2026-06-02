@@ -97,6 +97,34 @@ export interface PiInstallProgress {
 import type { PiEvent, PiEventType } from "./events";
 export type { PiEvent, PiEventType };
 
+// ── IPC 错误契约 (v1.0.6.1) ──────────────────────────────────────
+// 主进程 IPC handler 失败时返回 IpcError 形状, 渲染层根据 code 走 t() 翻译.
+// 不要 throw 中文 Error: 用户切到 en-US 看到的还是中文.
+export interface IpcError {
+    /** 稳定错误码, 给 t() 查 i18n 词条 (e.g. "ipcErrors.files.scanFailed") */
+    code: string;
+    /** t() 插值参数 (e.g. { path: "/tmp/foo", reason: "EACCES" }) */
+    params?: Record<string, string | number | boolean>;
+    /** 兜底中文文案, 主进程给开发期排查用. 渲染层 t() 命中时这个不显示. */
+    fallback: string;
+}
+
+/** 工厂: 构造 IpcError. 强制要求 fallback 中文, 防止漏写. */
+export function ipcError(
+    code: string,
+    fallback: string,
+    params?: Record<string, string | number | boolean>,
+): IpcError {
+    return { code, fallback, params };
+}
+
+/** 类型守卫: 判断 unknown 是否是 IpcError (供渲染层 .catch 用) */
+export function isIpcError(value: unknown): value is IpcError {
+    if (value === null || typeof value !== "object") return false;
+    const v = value as { code?: unknown; fallback?: unknown };
+    return typeof v.code === "string" && typeof v.fallback === "string";
+}
+
 // ── File + Terminal + Git ─────────────────────────────────────────
 
 export interface FileEntry {

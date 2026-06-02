@@ -345,6 +345,47 @@
     "retry": "Retry",
     "reload": "Reload page"
   },
+  "ipcErrors": {
+    "pi": {
+      "driverNotInitialized": "Pi driver is not initialized yet. Please restart Pi Desktop.",
+      "detectFailed": "Failed to detect Pi status: {{message}}",
+      "installFailed": "Failed to install Pi CLI: {{message}}",
+      "updateFailed": "Failed to update Pi CLI: {{message}}",
+      "uninstallFailed": "Failed to uninstall Pi CLI: {{message}}"
+    },
+    "chat": {
+      "workspaceNotFound": "Workspace not found: {{id}}",
+      "promptFailed": "Failed to send message to Pi in {{workspace}}: {{message}}",
+      "gitUndoFailed": "Failed to undo file change at {{path}}: {{message}}"
+    },
+    "workspace": {
+      "invalidArgs": "Invalid workspace arguments ({{name}}, {{path}}): {{message}}",
+      "selectDirectoryFailed": "Failed to open directory picker: {{message}}"
+    },
+    "skills": {
+      "searchFailed": "Skill search failed: {{query}} — {{message}}",
+      "listFailed": "Failed to list installed skills: {{message}}",
+      "noWorkspace": "Pick a workspace before installing or uninstalling skills.",
+      "installFailed": "Failed to install skill {{slug}}: {{message}}",
+      "uninstallFailed": "Failed to uninstall skill {{slug}}: {{message}}",
+      "toggleFailed": "Failed to toggle skill {{slug}}: {{message}}"
+    },
+    "terminal": {
+      "createFailed": "Failed to create terminal (cwd: {{cwd}}): {{message}}"
+    },
+    "git": {
+      "statusFailed": "Failed to read git status in {{path}}: {{message}}",
+      "diffFailed": "Failed to read git diff ({{path}}): {{message}}",
+      "addFailed": "git add failed: {{message}}",
+      "commitFailed": "git commit failed: {{message}}",
+      "logFailed": "Failed to read git log: {{message}}",
+      "branchesFailed": "Failed to read git branches: {{message}}",
+      "invalidArgs": "Invalid git arguments: {{message}}"
+    },
+    "files": {
+      "scanFailed": "File scan failed at {{path}}: {{message}}"
+    }
+  },
   "app": {
     "shellAria": "Pi Desktop application",
     "headerAria": "Top action bar",
