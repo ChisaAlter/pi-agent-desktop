@@ -392,6 +392,24 @@ Week 8  ┃████ 缓冲 / 用户反馈处理           ┃
 - 验证：29 test files / 233 PASS (2 skipped, 0 fail) — 从 v1.0.6.1 的 196 增到 233，+37 新测试
 - commit `ed742b6`
 
+### v1.0.9 — 时间格式化统一 + settings 写错误 UI 接入（已合 master）
+- v1.0.8 留下的两个尾巴收尾
+- **helper 层 (utils/format.ts)**：
+  - `toDate(unknown)` 单一入口判+转，无效输入不抛
+  - `formatTime` / `formatDateTime` / `formatDate` / `formatIso` 4 粒度
+  - `formatRelative` 6 桶（刚刚/分钟/小时/天/> 30 天退化短日期/未来时间兜底）
+  - `formatDuration` 毫秒/秒/分/进行中/负值
+  - `isValidTimestamp` / `isNumberOrUndefined` 类型守卫
+- **UI 接入 (5 文件改)**：MessageBubble / ToolCallCard / CommandCard 走 `formatTime` + `formatDuration`；Sidebar / ThreadList / useSession 走 `formatRelative` 替 3 份内联 `formatTime` (顺手干掉 useSession 英文 hardcode 残留)
+- **settings-store 写错误 UI 接入**：
+  - `lastWriteError: IpcError | string | null` 新字段
+  - `updateSettings` / `resetSettings` setSettings 返 IpcError 时写入；老 throw 路径走 catch → string
+  - SettingsPanel 顶部红条翻译后显示，`clearWriteError` 一键关，关闭面板时自动清
+- **类型守卫复用**：workspace-store `loadWorkspaces` 复用 `isNumberOrUndefined` 替 `typeof === "number"`
+- **测试 (+37)**：format.ts 27 (toDate 6 输入 / formatTime 5 命中 / formatRelative 7 桶 / formatDuration 6 边 / 类型守卫) + settings-store 10 (初始 / open/close/toggle / updateSettings 成功+IpcError+throw / reset / clear)
+- 验证：31 test files / 270 PASS (2 skipped, 0 fail) — v1.0.8 233 → 270
+- commit `9285393`
+
 ## 12. v1.0.4 — i18n 基建（进行中）
 
 **目标**：让 Pi Desktop 支持中英双语切换，铺好未来更多语言的基建。
