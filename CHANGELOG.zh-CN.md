@@ -4,6 +4,31 @@
 
 这里记录 pi-desktop 各版本的重要变化。
 
+## v0.3.0 - 2026-06-02
+
+### 新增
+- 配置管理弹窗：点击侧栏滑块图标，查看和编辑 pi 全局配置文件（`models.json`、`auth.json`、`settings.json`）。
+- Models 页签：可视化编辑器，provider 卡片 + 模型网格列表，支持新增/删除 provider 和模型，内联编辑 id、名称、contextWindow、maxTokens、reasoning。
+- Auth 页签：按 provider 查看和编辑 API Key，支持新增/删除 auth 条目，Key 支持显示/隐藏切换和一键复制。
+- Settings 页签：key-value 编辑器，自动识别类型（布尔复选框、数字输入框、复杂值 JSON 编辑）。
+- 源文件页签：直接 JSON 编辑器，支持切换文件。
+- 保存配置后自动 reload（对当前活跃 agent 调用 `agents.reload`）。
+- 聊天输入框支持 `!command` 和 `!!command` 执行 bash 命令，与 pi 终端行为一致：`!` 执行并将输出发送给 LLM，`!!` 静默执行。
+- Git 分支选择器现在同时获取本地和远程分支，新增分支数量徽章和空状态提示。
+
+### 优化
+- 所有 emoji 图标替换为 lucide-react 专业图标（Search、ChevronLeft/Right/Down、Play、Check、GitBranch、Eye/EyeOff、Trash2、Settings、Sliders）。
+- 侧栏图标（配置管理 + 设置）使用 distinct lucide-react 图标，hover 高亮。
+- Auth 和 provider 表单布局改为横向 label+input 网格，对齐更整齐。
+- API Key 输入框在 Models 和 Auth 页签均支持显示/隐藏切换和一键复制。
+- 分支下拉 z-index 和 overflow 修复，确保在 chat header 内正常显示。
+
+### 修复
+- 修复 chat header 的 Reload 按钮：之前把 `/reload` 当普通消息发给 LLM，现在调用专用的 `agents.reload` IPC 接口。
+- 修复配置管理弹窗源文件页签：切换文件时重新加载对应文件内容，不再固定显示 `settings.json`。
+- 修复分支下拉因父容器 `overflow: hidden` 被裁剪导致为空的问题。
+- 修复 BranchSelector JSX 中的 stray tab 字符可能导致渲染问题。
+
 ## v0.2.2 - 2026-06-02
 
 ### 修复

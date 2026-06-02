@@ -21,6 +21,7 @@ import { PiLocator } from "./pi/PiLocator";
 import { SessionScanner } from "./sessions/SessionScanner";
 import { SettingsStore } from "./settings/SettingsStore";
 import { GitService } from "./git/GitService";
+import { ConfigManager } from "./config/ConfigManager";
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -33,6 +34,7 @@ let settingsStore: SettingsStore;
 let gitService: GitService;
 let piLocator: PiLocator;
 let agentManager: AgentManager;
+let configManager: ConfigManager;
 
 function setupTray() {
 	// iconPath 由 electron-vite 的 ?asset 后缀自动解析，打包后也能正确定位
@@ -240,6 +242,29 @@ function registerIpc() {
 	ipcMain.handle("agents:commands", (_event, agentId: string) =>
 		agentManager.getCommands(agentId),
 	);
+
+	// ── 配置管理 ──────────────────────────────────────
+	ipcMain.handle(ipcChannels.configGetModels, () =>
+		configManager.getModelsConfig(),
+	);
+	ipcMain.handle(ipcChannels.configGetAuth, () =>
+		configManager.getAuthConfig(),
+	);
+	ipcMain.handle(ipcChannels.configGetSettings, () =>
+		configManager.getSettingsConfig(),
+	);
+	ipcMain.handle(ipcChannels.configSaveModels, (_event, data) =>
+		configManager.saveModelsConfig(data),
+	);
+	ipcMain.handle(ipcChannels.configSaveAuth, (_event, data) =>
+		configManager.saveAuthConfig(data),
+	);
+	ipcMain.handle(ipcChannels.configSaveSettings, (_event, settings) =>
+		configManager.saveSettingsConfig(settings),
+	);
+	ipcMain.handle(ipcChannels.configSaveRaw, (_event, fileName, rawJson) =>
+		configManager.saveRawConfig(fileName, rawJson),
+	);
 }
 
 app.whenReady().then(async () => {
@@ -249,6 +274,7 @@ app.whenReady().then(async () => {
 	settingsStore = new SettingsStore();
 	gitService = new GitService();
 	piLocator = new PiLocator();
+	configManager = new ConfigManager();
 	agentManager = new AgentManager(
 		(id) => projectStore.get(id),
 		() => mainWindow,

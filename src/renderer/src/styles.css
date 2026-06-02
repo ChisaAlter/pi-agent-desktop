@@ -198,6 +198,23 @@ button:disabled {
 	justify-content: space-between;
 	padding: 0 14px 0 18px;
 }
+.toolbar-actions {
+	display: flex;
+	gap: 2px;
+	align-items: center;
+}
+
+.toolbar-actions .icon-button {
+	width: 32px;
+	height: 32px;
+	border-radius: 8px;
+	transition: all 0.15s;
+}
+
+.toolbar-actions .icon-button:hover {
+	background: rgba(20, 165, 20, 0.08);
+	color: #14a514;
+}
 .app-badge {
 	display: flex;
 	align-items: center;
@@ -579,7 +596,7 @@ body.is-composer-resizing {
 	border-bottom: 1px solid #eef0f3;
 	background: linear-gradient(180deg, #fcfcfc 0%, #f8f9fa 100%);
 	min-width: 0;
-	overflow: hidden;
+	overflow: visible;
 }
 .chat-title-block {
 	min-width: 0;
@@ -610,7 +627,7 @@ body.is-composer-resizing {
 	gap: 6px;
 	align-items: center;
 	justify-content: flex-end;
-	overflow-x: auto;
+	overflow-x: visible;
 	max-width: 100%;
 	padding-bottom: 1px;
 	scrollbar-width: none;
@@ -627,9 +644,11 @@ body.is-composer-resizing {
 	border-radius: 10px;
 	background: #f5f7fa;
 	flex: 0 0 auto;
+	overflow: visible;
 }
 .branch-group {
 	position: relative;
+	overflow: visible;
 }
 .chat-header-actions button,
 .panel-action-row button,
@@ -693,6 +712,23 @@ body.is-composer-resizing {
 	color: #22c55e;
 	font-size: 14px;
 	flex-shrink: 0;
+	display: flex;
+	align-items: center;
+}
+.branch-badge {
+	font-size: 10px;
+	color: #7d8794;
+	background: #f0f3f7;
+	padding: 1px 6px;
+	border-radius: 999px;
+	font-weight: 500;
+	line-height: 16px;
+}
+.branch-empty-hint {
+	text-align: center;
+	color: #b3bac4;
+	font-size: 12px;
+	padding: 8px 10px;
 }
 .branch-label {
 	overflow: hidden;
@@ -718,7 +754,7 @@ body.is-composer-resizing {
 	max-width: 320px;
 	max-height: 280px;
 	overflow-y: auto;
-	z-index: 30;
+	z-index: 100;
 	padding: 4px;
 	border: 1px solid #e2e5eb;
 	border-radius: 10px;
@@ -1878,4 +1914,623 @@ body.is-composer-resizing .composer-resize-handle::after {
 	color: #8a9099;
 	line-height: 1.5;
 	font-size: 13px;
+}
+
+/* ── 配置管理弹窗 ─────────────────────────────────── */
+
+.config-modal {
+	width: 720px;
+	max-height: 85vh;
+	display: flex;
+	flex-direction: column;
+	border-radius: 16px;
+	background: #fff;
+	box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
+	overflow: hidden;
+}
+
+.config-tabs {
+	display: flex;
+	gap: 0;
+	border-bottom: 1px solid #edf0f2;
+	padding: 0 18px;
+}
+
+.config-tabs button {
+	height: 42px;
+	border: 0;
+	border-bottom: 2px solid transparent;
+	background: transparent;
+	color: #7d8794;
+	font-size: 13px;
+	font-weight: 500;
+	padding: 0 16px;
+	cursor: pointer;
+	transition:
+		color 0.15s,
+		border-color 0.15s;
+}
+
+.config-tabs button:hover {
+	color: #3b424c;
+}
+
+.config-tabs button.active {
+	color: #14a514;
+	border-bottom-color: #14a514;
+}
+
+.config-content {
+	flex: 1;
+	overflow-y: auto;
+	padding: 18px;
+	position: relative;
+	min-height: 320px;
+}
+
+.config-loading {
+	text-align: center;
+	color: #7d8794;
+	padding: 48px 0;
+	font-size: 13px;
+}
+
+.config-error {
+	margin-bottom: 14px;
+	padding: 10px 14px;
+	border-radius: 8px;
+	background: #fef2f2;
+	border: 1px solid #fecaca;
+	color: #dc2626;
+	font-size: 13px;
+}
+
+.config-empty {
+	text-align: center;
+	color: #b3bac4;
+	padding: 48px 0;
+	font-size: 13px;
+}
+
+.config-empty-sm {
+	text-align: center;
+	color: #b3bac4;
+	padding: 20px 0;
+	font-size: 12px;
+}
+
+.config-toast {
+	position: absolute;
+	bottom: 18px;
+	left: 50%;
+	transform: translateX(-50%);
+	background: rgba(31, 35, 41, 0.92);
+	color: #fff;
+	padding: 8px 18px;
+	border-radius: 999px;
+	font-size: 13px;
+	white-space: nowrap;
+	z-index: 10;
+	animation: fadeInUp 0.2s ease;
+}
+
+@keyframes fadeInUp {
+	from {
+		opacity: 0;
+		transform: translate(-50%, 8px);
+	}
+	to {
+		opacity: 1;
+		transform: translate(-50%, 0);
+	}
+}
+
+.config-toolbar {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 14px;
+}
+
+.config-count {
+	color: #7d8794;
+	font-size: 12px;
+}
+
+.config-btn {
+	height: 32px;
+	border: 1px solid #d7dce4;
+	border-radius: 8px;
+	background: #fff;
+	color: #3b424c;
+	font-size: 12px;
+	padding: 0 14px;
+	cursor: pointer;
+	transition: all 0.15s;
+}
+
+.config-btn:hover:not(:disabled) {
+	background: #f3f6fa;
+	border-color: #c5cbd3;
+}
+
+.config-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.config-btn.primary {
+	border-color: #14a514;
+	background: #14a514;
+	color: #fff;
+}
+
+.config-btn.primary:hover:not(:disabled) {
+	background: #129212;
+	border-color: #129212;
+}
+
+.config-btn.danger {
+	border-color: #fca5a5;
+	color: #dc2626;
+}
+
+.config-btn.danger:hover:not(:disabled) {
+	background: #fef2f2;
+}
+
+.config-btn.small {
+	height: 26px;
+	padding: 0 8px;
+	font-size: 11px;
+}
+
+.config-icon-btn {
+	width: 28px;
+	height: 28px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: #7d8794;
+	font-size: 14px;
+	cursor: pointer;
+	display: grid;
+	place-items: center;
+	transition: all 0.15s;
+}
+
+.config-icon-btn:hover {
+	background: #f0f2f4;
+	color: #3b424c;
+}
+
+.config-icon-btn.danger:hover {
+	background: #fef2f2;
+	color: #dc2626;
+}
+
+.config-add-provider-row {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	margin-bottom: 14px;
+}
+
+.config-add-provider-row input {
+	flex: 1;
+	height: 36px;
+	border: 1px solid #d7dce4;
+	border-radius: 8px;
+	padding: 0 12px;
+	font-size: 13px;
+}
+
+.config-add-provider-row input:focus {
+	outline: none;
+	border-color: #14a514;
+	box-shadow: 0 0 0 2px rgba(20, 165, 20, 0.1);
+}
+
+.config-provider-list {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.config-provider-card {
+	border: 1px solid #e5e9f0;
+	border-radius: 12px;
+	overflow: hidden;
+	transition:
+		border-color 0.15s,
+		box-shadow 0.15s;
+}
+
+.config-provider-card.expanded {
+	border-color: #14a514;
+	box-shadow: 0 0 0 2px rgba(20, 165, 20, 0.08);
+}
+
+.config-provider-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 14px 16px;
+	cursor: pointer;
+	transition: background 0.15s;
+}
+
+.config-provider-header:hover {
+	background: #f8fafc;
+}
+
+.config-provider-info {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	flex: 1;
+	min-width: 0;
+}
+
+.config-provider-name {
+	font-weight: 600;
+	font-size: 14px;
+	color: #1f2329;
+}
+
+.config-provider-badge {
+	font-size: 11px;
+	color: #7c3aed;
+	background: #f5f3ff;
+	padding: 2px 8px;
+	border-radius: 999px;
+	font-weight: 500;
+}
+
+.config-provider-url {
+	font-size: 11px;
+	color: #7d8794;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 240px;
+}
+
+.config-provider-actions {
+	display: flex;
+	gap: 4px;
+	align-items: center;
+}
+
+.config-chevron {
+	color: #b3bac4;
+	font-size: 13px;
+	margin-left: 4px;
+}
+
+.config-provider-body {
+	border-top: 1px solid #edf0f2;
+	background: #fafbfc;
+}
+
+.config-provider-form {
+	padding: 16px;
+	display: grid;
+	gap: 10px;
+}
+
+.config-form-row {
+	display: grid;
+	grid-template-columns: 90px 1fr;
+	gap: 10px;
+	align-items: center;
+}
+
+.config-form-row label {
+	font-size: 12px;
+	color: #5d6673;
+	font-weight: 500;
+	text-align: right;
+	padding-right: 4px;
+}
+
+.config-form-row input[type="text"],
+.config-form-row input[type="number"],
+.config-form-row input[type="password"] {
+	height: 36px;
+	border: 1px solid #d7dce4;
+	border-radius: 8px;
+	padding: 0 12px;
+	font-size: 13px;
+	background: #fff;
+	color: #2b3038;
+}
+
+.config-form-row input:focus {
+	outline: none;
+	border-color: #14a514;
+	box-shadow: 0 0 0 2px rgba(20, 165, 20, 0.1);
+}
+
+/* SecretInput 在 form-row 内占满右侧列 */
+.config-form-row .config-secret-input {
+	grid-column: 2;
+}
+
+.config-secret-input {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+}
+
+.config-secret-input input {
+	flex: 1;
+	height: 36px;
+	border: 1px solid #d7dce4;
+	border-radius: 8px;
+	padding: 0 12px;
+	font-size: 13px;
+	background: #fff;
+	font-family: "JetBrains Mono", "Fira Code", monospace;
+}
+
+.config-secret-input input:focus {
+	outline: none;
+	border-color: #14a514;
+	box-shadow: 0 0 0 2px rgba(20, 165, 20, 0.1);
+}
+
+.config-eye-btn {
+	width: 36px;
+	height: 36px;
+	border: 1px solid #d7dce4;
+	border-radius: 8px;
+	background: #fff;
+	cursor: pointer;
+	font-size: 15px;
+	display: grid;
+	place-items: center;
+	transition: all 0.15s;
+}
+
+.config-eye-btn:hover {
+	background: #f3f6fa;
+	border-color: #c5cbd3;
+}
+
+.config-copy-btn {
+	height: 36px;
+	padding: 0 10px;
+	border: 1px solid #d7dce4;
+	border-radius: 8px;
+	background: #fff;
+	color: #5d6673;
+	font-size: 12px;
+	cursor: pointer;
+	transition: all 0.15s;
+	white-space: nowrap;
+}
+
+.config-copy-btn:hover {
+	background: #f3f6fa;
+	border-color: #c5cbd3;
+}
+
+.config-copy-btn.copied {
+	background: #f0fdf4;
+	border-color: #14a514;
+	color: #14a514;
+}
+
+.config-models-section {
+	padding: 0 16px 16px;
+}
+
+.config-models-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 10px;
+	font-size: 13px;
+	font-weight: 500;
+	color: #5d6673;
+}
+
+.config-models-grid-header {
+	display: grid;
+	grid-template-columns: 1fr 100px 90px 90px 50px 36px;
+	gap: 8px;
+	align-items: center;
+	padding: 6px 10px;
+	font-size: 11px;
+	color: #7d8794;
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+}
+
+.config-models-grid-row {
+	display: grid;
+	grid-template-columns: 1fr 100px 90px 90px 50px 36px;
+	gap: 8px;
+	align-items: center;
+	padding: 8px 10px;
+	border: 1px solid #edf0f2;
+	border-radius: 8px;
+	margin-bottom: 6px;
+	background: #fff;
+	transition: border-color 0.15s;
+}
+
+.config-models-grid-row:hover {
+	border-color: #d7dce4;
+}
+
+.config-models-grid-row input[type="text"],
+.config-models-grid-row input[type="number"] {
+	height: 30px;
+	border: 1px solid #e5e9f0;
+	border-radius: 6px;
+	padding: 0 8px;
+	font-size: 12px;
+	background: #fff;
+	width: 100%;
+}
+
+.config-models-grid-row input:focus {
+	outline: none;
+	border-color: #14a514;
+}
+
+.config-checkbox-cell {
+	display: flex;
+	justify-content: center;
+}
+
+.config-checkbox-cell input[type="checkbox"] {
+	width: 16px;
+	height: 16px;
+	accent-color: #14a514;
+}
+
+.config-auth-list {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.config-auth-card {
+	border: 1px solid #e5e9f0;
+	border-radius: 12px;
+	overflow: hidden;
+	transition:
+		border-color 0.15s,
+		box-shadow 0.15s;
+}
+
+.config-auth-card.editing {
+	border-color: #14a514;
+	box-shadow: 0 0 0 2px rgba(20, 165, 20, 0.08);
+}
+
+.config-auth-card-header {
+	display: flex;
+	gap: 12px;
+	align-items: center;
+	padding: 14px 16px;
+	cursor: pointer;
+	transition: background 0.15s;
+}
+
+.config-auth-card-header:hover {
+	background: #f8fafc;
+}
+
+.config-auth-provider {
+	font-weight: 600;
+	font-size: 14px;
+	color: #1f2329;
+}
+
+.config-auth-key-preview {
+	flex: 1;
+	font-size: 12px;
+	color: #7d8794;
+	font-family: "JetBrains Mono", "Fira Code", monospace;
+}
+
+.config-settings-list {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.config-settings-row {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	padding: 12px 16px;
+	border: 1px solid #e5e9f0;
+	border-radius: 10px;
+	transition: border-color 0.15s;
+}
+
+.config-settings-row:hover {
+	border-color: #d7dce4;
+}
+
+.config-settings-key {
+	min-width: 180px;
+	font-size: 13px;
+	color: #2b3038;
+	font-weight: 500;
+}
+
+.config-settings-input {
+	flex: 1;
+	height: 36px;
+	border: 1px solid #d7dce4;
+	border-radius: 8px;
+	padding: 0 12px;
+	font-size: 13px;
+	background: #fff;
+	color: #2b3038;
+}
+
+.config-settings-input:focus {
+	outline: none;
+	border-color: #14a514;
+	box-shadow: 0 0 0 2px rgba(20, 165, 20, 0.1);
+}
+
+.config-checkbox-label {
+	display: flex !important;
+	flex-direction: row !important;
+	align-items: center;
+	gap: 6px !important;
+	font-size: 13px;
+	color: #3b424c;
+	cursor: pointer;
+}
+
+.config-checkbox-label input[type="checkbox"] {
+	width: 16px;
+	height: 16px;
+	accent-color: #14a514;
+}
+
+.config-raw-tab select {
+	height: 36px;
+	border: 1px solid #d7dce4;
+	border-radius: 8px;
+	padding: 0 12px;
+	font-size: 13px;
+	background: #fff;
+	cursor: pointer;
+}
+
+.config-raw-tab select:focus {
+	outline: none;
+	border-color: #14a514;
+}
+
+.config-raw-editor {
+	width: 100%;
+	min-height: 380px;
+	border: 1px solid #d7dce4;
+	border-radius: 10px;
+	padding: 16px;
+	font-family: "JetBrains Mono", "Fira Code", monospace;
+	font-size: 12.5px;
+	line-height: 1.65;
+	color: #2b3038;
+	background: #fafbfc;
+	resize: vertical;
+	tab-size: 2;
+}
+
+.config-raw-editor:focus {
+	outline: none;
+	border-color: #14a514;
+	box-shadow: 0 0 0 2px rgba(20, 165, 20, 0.1);
 }

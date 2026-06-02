@@ -9,7 +9,19 @@ import {
 } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import {
+	Settings,
+	Sliders,
+	ChevronLeft,
+	ChevronRight,
+	ChevronDown,
+	Search,
+	Play,
+	Check,
+	GitBranch,
+} from "lucide-react";
 import { createPreviewApi } from "./previewApi";
+import { ConfigModal } from "./ConfigModal";
 import type {
 	AgentRuntimeState,
 	AgentTab,
@@ -73,6 +85,7 @@ export function App() {
 	const [compacting, setCompacting] = useState(false);
 	const [drawer, setDrawer] = useState<DrawerPanel | null>(null);
 	const [settingsOpen, setSettingsOpen] = useState(false);
+	const [configOpen, setConfigOpen] = useState(false);
 	const [agentLoading, setAgentLoading] = useState<{ text: string } | null>(
 		null,
 	);
@@ -540,27 +553,42 @@ export function App() {
 				<div className="list-toolbar">
 					<div className="app-badge">
 						<LogoMark />
-						<span>pi</span>
+						<span>Pi-π</span>
 					</div>
-					<button
-						className="icon-button"
-						title="设置"
-						onClick={() => setSettingsOpen(true)}
-					>
-						⚙
-					</button>
+					<div className="toolbar-actions">
+						<button
+							className="icon-button config-icon"
+							title="配置管理"
+							onClick={() => setConfigOpen(true)}
+						>
+							<Sliders size={17} />
+						</button>
+						<button
+							className="icon-button settings-icon"
+							title="设置"
+							onClick={() => setSettingsOpen(true)}
+						>
+							<Settings size={17} />
+						</button>
+					</div>
 				</div>
 				<button
 					className="collapse-button list-collapse"
 					title={listCollapsed ? "展开列表" : "折叠列表"}
 					onClick={() => setListCollapsed((value) => !value)}
 				>
-					{listCollapsed ? "›" : "‹"}
+					{listCollapsed ? (
+						<ChevronRight size={16} />
+					) : (
+						<ChevronLeft size={16} />
+					)}
 				</button>
 
 				<div className="search-row">
 					<div className="search-box">
-						<span>⌕</span>
+						<span className="search-icon">
+							<Search size={14} />
+						</span>
 						<input
 							value={search}
 							onChange={(event) => setSearch(event.target.value)}
@@ -608,7 +636,7 @@ export function App() {
 											});
 										}}
 									>
-										▶
+										<Play size={12} />
 									</span>
 									<ProjectAvatar name={project.name} />
 									<div className="conversation-body">
@@ -711,7 +739,9 @@ export function App() {
 						</span>
 						<SessionStatus state={activeRuntimeState} />
 					</div>
-					<div className={`chat-header-actions${agentLoading ? " loading" : ""}`}>
+					<div
+						className={`chat-header-actions${agentLoading ? " loading" : ""}`}
+					>
 						{!agentLoading && (
 							<>
 								<div className="header-action-group branch-group">
@@ -727,7 +757,9 @@ export function App() {
 										New Session
 									</button>
 									<button
-										disabled={!activeAgentId || activeAgent?.status !== "running"}
+										disabled={
+											!activeAgentId || activeAgent?.status !== "running"
+										}
 										onClick={() => abortAgent()}
 									>
 										Stop
@@ -735,11 +767,7 @@ export function App() {
 									<button
 										disabled={!activeAgentId}
 										onClick={() =>
-											activeAgentId &&
-											api.agents.prompt({
-												agentId: activeAgentId,
-												message: "/reload",
-											})
+											activeAgentId && api.agents.reload(activeAgentId)
 										}
 									>
 										Reload
@@ -825,98 +853,98 @@ export function App() {
 				</section>
 
 				{!agentLoading && (
-				<footer className="composer">
-					<div className="composer-box" style={{ height: composerHeight }}>
-						<div
-							className="composer-resize-handle"
-							title="拖动调整输入框高度"
-							onPointerDown={startComposerResize}
-						/>
-						<ComposerToolbar
-							state={activeRuntimeState}
-							compacting={compacting}
-							onCycleModel={cycleModel}
-							onPickModel={openModelPicker}
-							onCycleThinking={cycleThinking}
-							onCompact={compactAgent}
-						/>
-						<textarea
-							value={prompt}
-							className={
-								prompt.startsWith("!!")
-									? "bang-bang"
-									: prompt.startsWith("!")
-										? "bang"
-										: ""
-							}
-							onFocus={() => setSuggestionsOpen(true)}
-							onChange={(event) => {
-								setPrompt(event.target.value);
-								setSuggestionsOpen(true);
-							}}
-							onKeyDown={handleComposerKeyDown}
-							placeholder={
-								prompt.startsWith("!!")
-									? "!!命令 — 直接执行，不写入上下文"
-									: prompt.startsWith("!")
-										? "!命令 — 直接执行 shell 命令"
-										: settings.sendShortcut === "enter-send"
-											? "输入消息，Enter 发送。/ 命令，@ 文件，! shell"
-											: "输入消息，按设置的快捷键发送。/ 命令，@ 文件，! shell"
-							}
-						/>
-						{(prompt.startsWith("!") || prompt.startsWith("/")) && (
+					<footer className="composer">
+						<div className="composer-box" style={{ height: composerHeight }}>
 							<div
-								className={`composer-mode-hint ${
-									prompt.startsWith("!!")
-										? "mode-bang-bang"
-										: prompt.startsWith("!")
-											? "mode-bang"
-											: "mode-slash"
-								}`}
-							>
-								{prompt.startsWith("!!")
-									? "⚡ 静默执行"
-									: prompt.startsWith("!")
-										? ">_ 执行命令"
-										: "⌘ 斜杠命令"}
-							</div>
-						)}
-						{suggestionsOpen && (
-							<PromptSuggestions
-								prompt={prompt}
-								commands={commands}
-								files={flatFiles}
-								onClose={() => {
-									setPrompt((current) => clearSuggestionTrigger(current));
-									setSuggestionsOpen(false);
-								}}
-								onPick={(value) => {
-									setPrompt((current) => applySuggestion(current, value));
-									setSuggestionsOpen(false);
-								}}
+								className="composer-resize-handle"
+								title="拖动调整输入框高度"
+								onPointerDown={startComposerResize}
 							/>
-						)}
-						<div className="composer-footer">
-							<span>
-								{drawer
-									? "右侧面板可查看文件或恢复历史会话"
-									: (activeAgent?.sessionPath ?? "")}
-							</span>
-							{activeAgent?.status === "running" && (
-								<button className="stop-send" onClick={() => abortAgent()}>
-									停止
-								</button>
+							<ComposerToolbar
+								state={activeRuntimeState}
+								compacting={compacting}
+								onCycleModel={cycleModel}
+								onPickModel={openModelPicker}
+								onCycleThinking={cycleThinking}
+								onCompact={compactAgent}
+							/>
+							<textarea
+								value={prompt}
+								className={
+									prompt.startsWith("!!")
+										? "bang-bang"
+										: prompt.startsWith("!")
+											? "bang"
+											: ""
+								}
+								onFocus={() => setSuggestionsOpen(true)}
+								onChange={(event) => {
+									setPrompt(event.target.value);
+									setSuggestionsOpen(true);
+								}}
+								onKeyDown={handleComposerKeyDown}
+								placeholder={
+									prompt.startsWith("!!")
+										? "!!命令 — 直接执行，不写入上下文"
+										: prompt.startsWith("!")
+											? "!命令 — 直接执行 shell 命令"
+											: settings.sendShortcut === "enter-send"
+												? "输入消息，Enter 发送。/ 命令，@ 文件，! shell"
+												: "输入消息，按设置的快捷键发送。/ 命令，@ 文件，! shell"
+								}
+							/>
+							{(prompt.startsWith("!") || prompt.startsWith("/")) && (
+								<div
+									className={`composer-mode-hint ${
+										prompt.startsWith("!!")
+											? "mode-bang-bang"
+											: prompt.startsWith("!")
+												? "mode-bang"
+												: "mode-slash"
+									}`}
+								>
+									{prompt.startsWith("!!")
+										? "静默执行"
+										: prompt.startsWith("!")
+											? ">_ 执行命令"
+											: "斜杠命令"}
+								</div>
 							)}
-							<button
-								disabled={!activeAgentId || !prompt.trim()}
-								onClick={sendPrompt}
-							>
-								发送
-							</button>
+							{suggestionsOpen && (
+								<PromptSuggestions
+									prompt={prompt}
+									commands={commands}
+									files={flatFiles}
+									onClose={() => {
+										setPrompt((current) => clearSuggestionTrigger(current));
+										setSuggestionsOpen(false);
+									}}
+									onPick={(value) => {
+										setPrompt((current) => applySuggestion(current, value));
+										setSuggestionsOpen(false);
+									}}
+								/>
+							)}
+							<div className="composer-footer">
+								<span>
+									{drawer
+										? "右侧面板可查看文件或恢复历史会话"
+										: (activeAgent?.sessionPath ?? "")}
+								</span>
+								{activeAgent?.status === "running" && (
+									<button className="stop-send" onClick={() => abortAgent()}>
+										停止
+									</button>
+								)}
+								<button
+									disabled={!activeAgentId || !prompt.trim()}
+									onClick={sendPrompt}
+								>
+									发送
+								</button>
+							</div>
 						</div>
-					</div>
-				</footer>
+					</footer>
 				)}
 			</main>
 
@@ -933,7 +961,7 @@ export function App() {
 						title="折叠面板"
 						onClick={() => setDrawerCollapsed(true)}
 					>
-						›
+						<ChevronRight size={16} />
 					</button>
 					<DrawerContent
 						panel={drawer}
@@ -1036,6 +1064,16 @@ export function App() {
 					onChange={updateSettings}
 				/>
 			)}
+			<ConfigModal
+				open={configOpen}
+				onClose={() => setConfigOpen(false)}
+				onSaved={async () => {
+					// 保存后自动 reload 当前活跃 agent
+					if (activeAgentId) {
+						await api.agents.reload(activeAgentId);
+					}
+				}}
+			/>
 		</div>
 	);
 }
@@ -1167,14 +1205,20 @@ function ComposerToolbar(props: {
 			</button>
 			{showCompact && (
 				<button
-					className={props.state?.isCompacting || props.compacting ? "compacting" : ""}
-					disabled={props.state?.isCompacting || props.compacting || !!props.state?.isStreaming}
-					title={
-						`上下文: ${ctxPercent.toFixed(1)}% — 点击压缩上下文释放空间`
+					className={
+						props.state?.isCompacting || props.compacting ? "compacting" : ""
 					}
+					disabled={
+						props.state?.isCompacting ||
+						props.compacting ||
+						!!props.state?.isStreaming
+					}
+					title={`上下文: ${ctxPercent.toFixed(1)}% — 点击压缩上下文释放空间`}
 					onClick={props.onCompact}
 				>
-					{props.state?.isCompacting || props.compacting ? "压缩中…" : `Compact ${ctxPercent.toFixed(0)}%`}
+					{props.state?.isCompacting || props.compacting
+						? "压缩中…"
+						: `Compact ${ctxPercent.toFixed(0)}%`}
 				</button>
 			)}
 		</div>
@@ -1240,35 +1284,50 @@ function BranchSelector(props: {
 		return () => document.removeEventListener("mousedown", handler);
 	}, [open]);
 
-	if (props.gitInfo.branches.length === 0) return null;
 	const current = props.gitInfo.current ?? "";
+	const branches = props.gitInfo.branches;
+
+	// 无分支信息时不渲染
+	if (!current && branches.length === 0) return null;
 
 	return (
 		<div className="branch-select" ref={ref}>
 			<button
 				className="branch-trigger"
 				onClick={() => setOpen((v) => !v)}
-				title={`当前分支: ${current}`}
+				title={`当前分支: ${current}，共 ${branches.length} 个分支`}
 			>
-				<span className="branch-icon">⑂</span>
-				<span className="branch-label" title={current}>
-					{current}
+				<span className="branch-icon">
+					<GitBranch size={14} />
 				</span>
-				<span className={`branch-chevron${open ? " open" : ""}`}>▾</span>
+				<span className="branch-label" title={current}>
+					{current || "detached"}
+				</span>
+				<span className="branch-badge">{branches.length}</span>
+				<span className={`branch-chevron${open ? " open" : ""}`}>
+					<ChevronDown size={12} />
+				</span>
 			</button>
 			{open && (
 				<div className="branch-dropdown">
-					{props.gitInfo.branches.map((branch) => (
+					{branches.length <= 1 && (
+						<div className="branch-empty-hint">仅此一个分支</div>
+					)}
+					{branches.map((branch) => (
 						<button
 							key={branch}
 							className={branch === current ? "active" : ""}
 							onClick={() => {
-								props.onSwitch(branch);
+								if (branch !== current) props.onSwitch(branch);
 								setOpen(false);
 							}}
 						>
 							<span className="branch-item-icon">
-								{branch === current ? "✓" : "⑂"}
+								{branch === current ? (
+									<Check size={14} className="branch-check" />
+								) : (
+									<GitBranch size={14} />
+								)}
 							</span>
 							<span className="branch-item-label" title={branch}>
 								{branch}
@@ -1353,7 +1412,12 @@ function EmptyState(props: { hasProject: boolean; onCreate: () => void }) {
 	return (
 		<div className="empty-state">
 			<div className="empty-logo">
-				<svg viewBox="140 140 520 520" width="40" height="40" aria-hidden="true">
+				<svg
+					viewBox="140 140 520 520"
+					width="40"
+					height="40"
+					aria-hidden="true"
+				>
 					<path
 						fill="#fff"
 						fillRule="evenodd"
@@ -1625,7 +1689,10 @@ function ConversationOutline(props: {
 	const hasMore = props.items.length > 15;
 	return (
 		<div className="outline-hover">
-			<button className="outline-trigger" title={`会话定位 · ${props.items.length} 条`}>
+			<button
+				className="outline-trigger"
+				title={`会话定位 · ${props.items.length} 条`}
+			>
 				☰
 			</button>
 			<nav className="conversation-outline">
@@ -1749,7 +1816,9 @@ function FileNode(props: {
 				onContextMenu={menu}
 				title={node.relativePath}
 			>
-				<span>{expanded ? "▾" : "▸"}</span>
+				<span>
+					{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+				</span>
 				{node.name}
 			</button>
 			{expanded && node.children && node.children.length > 0 && (
@@ -1823,7 +1892,10 @@ function SessionsPanel(props: {
 								onChange={(e) => setEditValue(e.target.value)}
 								onKeyDown={(e) => {
 									if (e.key === "Enter") confirmRename();
-									if (e.key === "Escape") { setRenamingPath(null); setEditValue(""); }
+									if (e.key === "Escape") {
+										setRenamingPath(null);
+										setEditValue("");
+									}
 								}}
 								onBlur={confirmRename}
 								autoFocus
@@ -1877,17 +1949,37 @@ function findTriggerIndex(current: string) {
 // 排除 desktop 已有独立 UI 入口的：/new（New Session 按钮）、/model（模型选择器）、
 // /resume（历史会话抽屉）、/fork（不太需要），/name 可在历史会话列表操作。
 const BUILTIN_COMMANDS: PiCommand[] = [
-	{ name: "session", description: "显示会话文件、ID、消息数、token 和费用", source: "builtin" },
-	{ name: "tree", description: "会话树导航，跳转到任意节点", source: "builtin" },
+	{
+		name: "session",
+		description: "显示会话文件、ID、消息数、token 和费用",
+		source: "builtin",
+	},
+	{
+		name: "tree",
+		description: "会话树导航，跳转到任意节点",
+		source: "builtin",
+	},
 	{ name: "clone", description: "复制当前分支到新会话", source: "builtin" },
-	{ name: "compact", description: "压缩上下文，可选自定义提示词", source: "builtin" },
+	{
+		name: "compact",
+		description: "压缩上下文，可选自定义提示词",
+		source: "builtin",
+	},
 	{ name: "copy", description: "复制最后一条回复到剪贴板", source: "builtin" },
 	{ name: "export", description: "导出会话为 HTML 文件", source: "builtin" },
-	{ name: "share", description: "上传为 GitHub Gist 私密链接", source: "builtin" },
+	{
+		name: "share",
+		description: "上传为 GitHub Gist 私密链接",
+		source: "builtin",
+	},
 	{ name: "settings", description: "打开 pi 设置", source: "builtin" },
 	{ name: "reload", description: "重载扩展、技能和配置", source: "builtin" },
 	{ name: "hotkeys", description: "显示所有快捷键", source: "builtin" },
-	{ name: "login", description: "管理 OAuth 或 API key 认证", source: "builtin" },
+	{
+		name: "login",
+		description: "管理 OAuth 或 API key 认证",
+		source: "builtin",
+	},
 	{ name: "logout", description: "退出登录", source: "builtin" },
 ];
 

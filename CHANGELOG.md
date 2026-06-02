@@ -4,6 +4,31 @@
 
 All notable changes to pi-desktop are documented here.
 
+## v0.3.0 - 2026-06-02
+
+### Added
+- Configuration management modal: click the sliders icon in the sidebar to view and edit pi's global config files (`models.json`, `auth.json`, `settings.json`).
+- Models tab: visual editor with provider cards, model list in grid layout, add/delete providers and models, inline editing for id, name, contextWindow, maxTokens, reasoning.
+- Auth tab: view and edit API keys per provider, add/delete auth entries, show/hide toggle and copy-to-clipboard for keys.
+- Settings tab: key-value editor with type-aware inputs (boolean checkboxes, number fields, JSON for complex values).
+- Raw tab: direct JSON editor for each config file with file selector switcher.
+- Auto-reload after saving config changes (triggers `agents.reload` on the active agent).
+- `!command` and `!!command` bash execution in the chat composer, matching pi terminal behavior: `!` runs and sends output to LLM, `!!` runs silently.
+- Git branch selector now fetches both local and remote branches, with branch count badge and empty-state hint.
+
+### Improved
+- Replaced all emoji icons with lucide-react professional icons (Search, ChevronLeft/Right/Down, Play, Check, GitBranch, Eye/EyeOff, Trash2, Settings, Sliders).
+- Sidebar icons (config management + settings) use distinct lucide-react icons with hover highlight.
+- Auth and provider form layouts use horizontal label+input grid for better alignment.
+- API key inputs support show/hide toggle and one-click copy across both Models and Auth tabs.
+- Branch dropdown z-index and overflow fixes for reliable display inside the chat header.
+
+### Fixed
+- Fixed Reload button in chat header: was sending `/reload` as a prompt message instead of calling the dedicated `agents.reload` IPC handler.
+- Fixed source file tab in config modal: switching files now reloads the correct content instead of always showing `settings.json`.
+- Fixed git branch dropdown being empty due to `overflow: hidden` on parent containers clipping the dropdown.
+- Fixed stray tab character in BranchSelector JSX that could cause rendering issues.
+
 ## v0.2.2 - 2026-06-02
 
 ### Fixed
