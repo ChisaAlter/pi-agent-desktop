@@ -18,3 +18,20 @@ export {
     type WelcomeScreenProps,
     type WelcomeQuickAction,
 } from "./WelcomeScreen";
+
+export {
+    MiniMaxCodeSidebar,
+    type MiniMaxCodeSidebarProps,
+} from "./MiniMaxCodeSidebar";
+
+export {
+    MiniMaxCodeUserCard,
+    type MiniMaxCodeUserCardProps,
+} from "./MiniMaxCodeUserCard";
+
+export {
+    TaskProgressPanel,
+    type TaskProgressPanelProps,
+    type TaskProgressItem,
+} from "./TaskProgressPanel";
+
