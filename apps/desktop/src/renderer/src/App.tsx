@@ -19,6 +19,7 @@ import { ApprovalPanel } from "./components/ApprovalPanel/ApprovalPanel";
 import { PiStatusPanel } from "./components/PiStatusPanel/PiStatusPanel";
 import { TaskSidebar } from "./components/FloatingPanel/TaskSidebar";
 import { Onboarding } from "./components/Onboarding/Onboarding";
+import { AutomationPanel } from "./components/Automation";
 import { useWorkspaceStore } from "./stores/workspace-store";
 import { useSettingsStore } from "./stores/settings-store";
 import { usePiStatusStore } from "./stores/pi-status-store";
@@ -225,10 +226,13 @@ function AppShell(): React.ReactElement {
                         <div className="flex-1 overflow-hidden">
                             <SkillsPanel />
                         </div>
+                    ) : activePanel === "automation" ? (
+                        <div className="flex-1 overflow-hidden">
+                            <AutomationPanel />
+                        </div>
                     ) : (
                         <div className="flex-1 flex items-center justify-center text-[#999] text-sm">
                             {activePanel === "search" && t("app.placeholder.search")}
-                            {activePanel === "automation" && t("app.placeholder.automation")}
                             {activePanel === "settings" && t("app.placeholder.settings")}
                         </div>
                     )}
