@@ -43,7 +43,11 @@ export default defineConfig({
     resolve: {
       alias: {
         '@pi-desktop/pi-driver': resolve(__dirname, '../../packages/pi-driver/src'),
-        '@pi-desktop/shared-types': resolve(__dirname, '../../packages/shared-types/src')
+        '@pi-desktop/shared-types': resolve(__dirname, '../../packages/shared-types/src'),
+        // v1.0.10 (build fix): tsconfig paths 把 @shared 映射到 packages/shared-types/src,
+        // 但 vite/rollup 不读 tsconfig, 必须显式声明. v1.0.6.1 引入 @shared 之后
+        // 一直 build 失败没人发现 — 直到 e2e 验证才发现.
+        '@shared': resolve(__dirname, '../../packages/shared-types/src'),
       }
     }
   },
@@ -58,6 +62,12 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/preload/index.ts')
         }
+      }
+    },
+    resolve: {
+      alias: {
+        '@pi-desktop/shared-types': resolve(__dirname, '../../packages/shared-types/src'),
+        '@shared': resolve(__dirname, '../../packages/shared-types/src'),
       }
     }
   },
@@ -78,7 +88,8 @@ export default defineConfig({
       alias: {
         '@': resolve(__dirname, 'src/renderer/src'),
         '@pi-desktop/pi-driver': resolve(__dirname, '../../packages/pi-driver/src'),
-        '@pi-desktop/shared-types': resolve(__dirname, '../../packages/shared-types/src')
+        '@pi-desktop/shared-types': resolve(__dirname, '../../packages/shared-types/src'),
+        '@shared': resolve(__dirname, '../../packages/shared-types/src'),
       }
     }
   }
