@@ -26,6 +26,62 @@
   --transition-normal: 300ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* ===== Design Tokens (扩展) =====
+ * 在保留原有 :root 变量(向后兼容)的基础上追加语义化设计 token,
+ * 供后续 UI 改版统一引用。新增组件优先使用下列 token,避免硬编码颜色 / 尺寸。
+ */
+
+/* 语义色: 业务反馈与状态表达 */
+:root {
+  --color-danger: #dc2626;   /* 危险/错误/破坏性操作 (destructive) */
+  --color-warn: #f59e0b;     /* 警告/需要注意 (warning) */
+  --color-info: #3b82f6;     /* 信息/提示 (informational) */
+  --color-success: #10b981;  /* 成功/已完成 (同原 --color-success 语义) */
+
+  /* 交互态: 鼠标/键盘交互的不同阶段 */
+  --color-hover: rgba(0, 0, 0, 0.05);       /* 通用 hover 浅灰背景 */
+  --color-active: rgba(0, 0, 0, 0.10);      /* 通用 active/pressed 背景 */
+  --color-selected: rgba(59, 130, 246, 0.12); /* 选中态 (蓝调) */
+}
+
+/* 圆角 scale: 统一 UI 组件的圆角节奏 */
+:root {
+  --radius-xs: 4px;   /* 小型徽标/tag/圆点 */
+  --radius-sm: 6px;   /* 小型按钮/输入框 */
+  --radius-md: 8px;   /* 卡片/面板 (与原 --radius-card / --radius-panel 兼容) */
+  --radius-lg: 12px;  /* 弹窗/抽屉 */
+  --radius-xl: 16px;  /* 大型容器/空状态插图外框 */
+}
+
+/* 字号 scale: 7 级排版梯度,11px - 24px */
+:root {
+  --font-size-xs: 11px;  /* 极小说明/辅助标签 */
+  --font-size-sm: 12px;  /* 辅助文字/次要信息 */
+  --font-size-base: 13px; /* 紧凑正文 (略小于原 --font-size-body) */
+  --font-size-md: 14px;  /* 标准正文 (与原 --font-size-body 一致) */
+  --font-size-lg: 16px;  /* 强调正文/小标题 */
+  --font-size-xl: 20px;  /* 区块标题/弹窗标题 */
+  --font-size-2xl: 24px; /* 页面主标题 */
+}
+
+/* 间距 scale: 4px 基准的 7 级栅格,1-32px */
+:root {
+  --space-1: 4px;   /* 极小间距/图标与文字 */
+  --space-2: 8px;   /* 紧凑间距/组件内 padding */
+  --space-3: 12px;  /* 元素组内距 */
+  --space-4: 16px;  /* 通用间距/卡片内 padding */
+  --space-5: 20px;  /* 区块内距 */
+  --space-6: 24px;  /* 段落间距/卡片间 */
+  --space-8: 32px;  /* 大区块间距/页面边距 */
+}
+
+/* 阴影 scale: 3 级深度,弹窗/卡片/悬浮态 */
+:root {
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);                                                          /* 静态卡片/输入框微弱投影 */
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.10), 0 2px 4px -2px rgba(0, 0, 0, 0.10);                  /* 悬浮按钮/下拉菜单 */
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.10), 0 4px 6px -4px rgba(0, 0, 0, 0.10);                 /* 弹窗/对话框 */
+}
+
 /* 基础样式 */
 html, body {
   font-family: var(--font-sans);
