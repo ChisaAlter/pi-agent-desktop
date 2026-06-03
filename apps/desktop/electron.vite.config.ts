@@ -19,13 +19,26 @@ export default defineConfig({
         // @earendil-works/pi-coding-agent@0.75.5 is ESM-only and has no
         // `require` condition in its exports map. Adding it to `exclude`
         // would force vite to bundle it into the main chunk (emitting a
-        // CJS wrapper that satisfies `require()`). In practice this does
-        // NOT unblock e2e — the dep additionally hard-requires `node:sqlite`
-        // (a Node 22.5+ builtin) which Electron 34 doesn't expose, so the
-        // bundled main process still crashes with ERR_UNKNOWN_BUILTIN_MODULE
-        // at startup. See docs/OPTIMIZATION-ROADMAP.md "E2E 阻塞说明".
-        // The exclude entry is left in place as a historical record of the
-        // diagnosis. The real fix lands in v1.1 via Electron bump.
+        // CJS wrapper that satisfies `require()`).
+        //
+        // E2E blocker (v1.0.10 — confirmed by manual launch):
+        //   Even after bundling, the resulting main process crashes at module
+        //   load. The crash chain is pi-coding-agent -> undici -> CacheStorage
+        //   which transitively requires `webidl.util.markAsUncloneable` (a
+        //   Node 22.5+ builtin). Electron 34 doesn't expose it. Patching
+        //   node:sqlite (also a 22.5+ builtin) is not enough — undici needs
+        //   the same treatment, then probably more. The dep chain assumes
+        //   Node 22.5+ runtime; in Electron 34 (which uses its own Node fork)
+        //   the only fix is upgrading Electron. See
+        //   docs/OPTIMIZATION-ROADMAP.md "E2E 阻塞说明" — real fix is v1.1
+        //   via Electron bump.
+        //
+        // For runtime verification of v1.0.10 IPC fixes WITHOUT launching
+        // the full app, see `scripts/smoke-main-runtime.cjs` — it patches
+        // node:sqlite stubs, mocks electron, and runs setupIPC. C1 fix
+        // (no duplicate IPC handlers) is verified by that smoke launcher.
+        //
+        // The exclude entry is left in place as a historical record.
         exclude: [
           '@pi-desktop/pi-driver',
           '@pi-desktop/shared-types',
