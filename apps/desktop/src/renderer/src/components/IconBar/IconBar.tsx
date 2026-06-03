@@ -1,9 +1,14 @@
 // 左侧图标栏 - 48px 宽，纯图标导航
 // 可用度-C: 5 个导航按钮 + 新建对话按钮 加 Tooltip (hover/focus) + title + aria-label
 // v1.0.4: 用户可见文案走 t()
+// v1.0.x (button-style task):
+//  - 5 个 nav 按钮 + 1 个新建对话按钮 共 6 个图标按钮 统一用 common/Button (size=icon)
+//  - 激活态: primary variant; 非激活: ghost variant
+//  - 移除 logo "π" 文字, 替换为简单 inline SVG (保持视觉块)
 
 import React from 'react';
 import { Tooltip } from '../common/Tooltip';
+import { Button } from '../common/Button';
 import { useI18n } from '../../i18n';
 
 interface IconBarProps {
@@ -66,50 +71,62 @@ export const IconBar: React.FC<IconBarProps> = ({ activePanel, onPanelChange }) 
       role="navigation"
       aria-label={t('iconBar.mainNav')}
     >
-      {/* Logo */}
-      <div className="w-8 h-8 bg-[#1a1a1a] rounded-lg flex items-center justify-center mb-4" aria-hidden="true">
-        <span className="text-white font-bold text-sm">π</span>
+      {/* Logo — 移除 "π" 文字, 替换为简单 inline SVG (保持视觉块) */}
+      <div
+        className="w-8 h-8 bg-[#1a1a1a] rounded-lg flex items-center justify-center mb-4"
+        aria-hidden="true"
+      >
+        <svg
+          className="w-4 h-4 text-white"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          aria-hidden="true"
+        >
+          <circle cx="12" cy="12" r="6" fill="currentColor" />
+        </svg>
       </div>
 
-      {/* 导航图标 */}
+      {/* 导航图标 — 5 个统一 Button size=icon; 激活态 primary, 非激活 ghost */}
       <div className="flex-1 flex flex-col items-center gap-1">
         {icons.map((icon) => {
           const label = t(`iconBar.nav.${icon.id}`);
           const tooltip = icon.shortcut ? `${label} (${icon.shortcut})` : label;
+          const isActive = activePanel === icon.id;
           return (
             <Tooltip key={icon.id} label={tooltip} side="right">
-              <button
+              <Button
                 type="button"
+                variant={isActive ? 'primary' : 'ghost'}
+                size="icon"
                 onClick={() => onPanelChange(icon.id)}
                 aria-label={label}
-                aria-current={activePanel === icon.id ? 'page' : undefined}
+                aria-current={isActive ? 'page' : undefined}
                 title={label}
-                className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
-                  activePanel === icon.id
-                    ? 'bg-[#e5e5e5] text-[#1a1a1a]'
-                    : 'text-[#999] hover:text-[#1a1a1a] hover:bg-[#f0f0f0]'
-                }`}
+                className="!w-9 !h-9"
               >
                 {icon.icon}
-              </button>
+              </Button>
             </Tooltip>
           );
         })}
       </div>
 
-      {/* 新建对话按钮 */}
+      {/* 新建对话按钮 — 统一 Button size=icon + ghost */}
       <Tooltip label={t('iconBar.newChatTooltip')} side="right">
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon"
           onClick={() => onPanelChange('chat')}
           aria-label={t('iconBar.newChat')}
           title={t('iconBar.newChat')}
-          className="w-9 h-9 rounded-lg flex items-center justify-center text-[#999] hover:text-[#1a1a1a] hover:bg-[#f0f0f0] transition-all"
+          className="!w-9 !h-9"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
-        </button>
+        </Button>
       </Tooltip>
     </nav>
   );

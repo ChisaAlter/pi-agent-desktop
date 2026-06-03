@@ -6,6 +6,12 @@
  *  - 显示本地版本 vs 最新版本
  *  - 安装 / 更新 / 卸载操作
  *  - 实时进度显示
+ *
+ * v1.0.x (button-style task):
+ *  - 4 个主操作按钮 (安装/更新/已是最新/取消) 统一用 common/Button
+ *  - 卸载按钮用 outline variant
+ *  - 状态点用 --color-success / --color-text-tertiary token
+ *  - 安装中/更新中按钮 isLoading=true
  */
 
 import React, { useEffect, useRef } from 'react';
@@ -13,6 +19,7 @@ import { usePiStatusStore } from '../../stores/pi-status-store';
 import { useTranslateIpcError } from '../../i18n';
 import type { IpcError } from '@shared';
 import type { PiInstallProgress } from '../../types';
+import { Button } from '../common/Button';
 
 // ── 进度条组件 ──────────────────────────────────────────────────
 
@@ -126,22 +133,30 @@ export function PiStatusPanel(): React.JSX.Element {
           <span className="text-lg">🤖</span>
           <h3 className="text-sm font-medium text-gray-200">Pi CLI</h3>
           {isInstalled && (
-            <span className="w-2 h-2 rounded-full bg-green-500" title="已安装" />
+            <span
+              className="w-2 h-2 rounded-full bg-[var(--color-success)]"
+              title="已安装"
+            />
           )}
           {!isInstalled && !loading && (
-            <span className="w-2 h-2 rounded-full bg-gray-500" title="未安装" />
+            <span
+              className="w-2 h-2 rounded-full bg-[var(--color-text-tertiary)]"
+              title="未安装"
+            />
           )}
         </div>
 
         {/* 刷新按钮 */}
-        <button
+        <Button
+          variant="subtle"
+          size="xs"
           onClick={refreshStatus}
           disabled={loading || isOperating}
-          className="text-xs text-gray-500 hover:text-gray-300 disabled:opacity-50 transition-colors"
           title="刷新状态"
+          className="text-gray-500 hover:text-gray-300"
         >
           {loading ? '⟳ 检测中...' : '⟳ 刷新'}
-        </button>
+        </Button>
       </div>
 
       {/* 版本信息 */}
@@ -180,56 +195,67 @@ export function PiStatusPanel(): React.JSX.Element {
       {/* 进度条 */}
       {isOperating && <ProgressBar progress={progress} />}
 
-      {/* 操作按钮 */}
+      {/* 操作按钮 — 4 个主操作 + 卸载 (outline) */}
       <div className="flex gap-2 mt-3">
-        {!isInstalled && !isOperating && (
-          <button
+        {!isInstalled && (
+          <Button
+            variant="primary"
+            size="sm"
             onClick={install}
-            className="flex-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded transition-colors"
+            isLoading={isOperating}
+            className="flex-1"
           >
-            安装 Pi CLI
-          </button>
+            {isOperating ? '安装中...' : '安装 Pi CLI'}
+          </Button>
         )}
 
-        {isInstalled && updateAvailable && !isOperating && (
-          <button
+        {isInstalled && updateAvailable && (
+          <Button
+            variant="primary"
+            size="sm"
             onClick={update}
-            className="flex-1 px-3 py-1.5 bg-green-600 hover:bg-green-500 text-white text-xs font-medium rounded transition-colors"
+            isLoading={isOperating}
+            className="flex-1"
           >
-            更新到 {status?.latestVersion}
-          </button>
+            {isOperating ? '更新中...' : `更新到 ${status?.latestVersion ?? ''}`}
+          </Button>
         )}
 
         {isInstalled && !updateAvailable && !isOperating && (
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={refreshStatus}
-            className="flex-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs font-medium rounded transition-colors"
+            className="flex-1"
           >
             已是最新版本
-          </button>
+          </Button>
         )}
 
         {isOperating && (
-          <button
+          <Button
+            variant="danger"
+            size="sm"
             onClick={cancelOperation}
-            className="flex-1 px-3 py-1.5 bg-red-700 hover:bg-red-600 text-white text-xs font-medium rounded transition-colors"
+            className="flex-1"
           >
             取消
-          </button>
+          </Button>
         )}
 
         {isInstalled && !isOperating && (
-          <button
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => {
               if (window.confirm('确定要卸载 Pi CLI 吗？')) {
                 uninstall();
               }
             }}
-            className="px-3 py-1.5 bg-gray-800 hover:bg-red-900/50 text-gray-500 hover:text-red-400 text-xs rounded transition-colors border border-gray-700 hover:border-red-800/50"
             title="卸载 Pi CLI"
           >
             卸载
-          </button>
+          </Button>
         )}
       </div>
 

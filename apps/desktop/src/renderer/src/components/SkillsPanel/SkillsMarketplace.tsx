@@ -1,9 +1,18 @@
 // SkillsMarketplace (M3 Task M3-4)
 // 市场 tab: 搜 SkillHub, 卡片网格, 装按钮
+//
+// v1.0.x (button-style task):
+//  - "重新检测"/"重试"/筛选按钮 统一用 common/Button
+//  - 筛选 active 状态用 subtle variant + dark accent 覆盖 (替代硬编码 bg-[#1a1a1a])
+//  - 筛选 inactive 用 ghost variant
+//
+// 注: "装" 按钮在 SkillCard.tsx,搜索 input 在 SkillsPanel.tsx(都不在本文件),
+//     按 button-style 任务 "只改 3 个文件" 严格规则,不动它们。
 
 import React, { useEffect, useState } from "react";
 import { useSkillsStore } from "../../stores/skills-store";
 import { SkillCard } from "./SkillCard";
+import { Button } from "../common/Button";
 import { fuzzyScore } from "../../../../main/utils/fuzzy-match";
 
 const FILTERS = [
@@ -74,12 +83,13 @@ export function SkillsMarketplace(): React.JSX.Element {
                 <code className="block text-xs bg-[#f5f5f5] p-2 rounded mb-3">
                     curl -fsSL https://skillhub.cn/install/install.sh | bash
                 </code>
-                <button
+                <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={() => void checkAvailability()}
-                    className="px-3 py-1.5 bg-[#1a1a1a] text-white text-xs rounded hover:bg-[#333] transition-colors"
                 >
                     重新检测
-                </button>
+                </Button>
             </div>
         );
     }
@@ -96,30 +106,38 @@ export function SkillsMarketplace(): React.JSX.Element {
                         <p className="text-sm text-[#ef4444] font-medium">搜索失败</p>
                         <p className="text-xs text-[#666] truncate font-mono">{error}</p>
                     </div>
-                    <button
+                    <Button
+                        variant="danger"
+                        size="sm"
                         onClick={() => void searchMarket()}
-                        className="px-3 py-1.5 bg-[#ef4444] text-white text-xs rounded hover:bg-[#dc2626] transition-colors flex-shrink-0"
+                        className="flex-shrink-0"
                     >
                         重试
-                    </button>
+                    </Button>
                 </div>
             )}
 
-            {/* Filter chips */}
+            {/* Filter chips — active=subtle+深色, inactive=ghost */}
             <div className="flex items-center gap-2 mb-4">
-                {FILTERS.map((f) => (
-                    <button
-                        key={f.id}
-                        onClick={() => setActiveFilter(f.id)}
-                        className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                            activeFilter === f.id
-                                ? "bg-[#1a1a1a] text-white"
-                                : "bg-[#f5f5f5] text-[#666] hover:bg-[#e5e5e5]"
-                        }`}
-                    >
-                        {f.label}
-                    </button>
-                ))}
+                {FILTERS.map((f) => {
+                    const isActive = activeFilter === f.id;
+                    return (
+                        <Button
+                            key={f.id}
+                            variant={isActive ? "subtle" : "ghost"}
+                            size="sm"
+                            onClick={() => setActiveFilter(f.id)}
+                            aria-pressed={isActive}
+                            className={
+                                isActive
+                                    ? "!bg-[var(--color-accent)] !text-white hover:!bg-[#333] !rounded-full"
+                                    : "!rounded-full"
+                            }
+                        >
+                            {f.label}
+                        </Button>
+                    );
+                })}
                 <div className="flex-1" />
                 <select
                     value={sort}
