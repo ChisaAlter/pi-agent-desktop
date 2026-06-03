@@ -18,13 +18,14 @@ test.describe('Pi Desktop launch', () => {
     let app: ElectronApplication;
 
     test.afterEach(async () => {
-        // Best-effort cleanup if the test failed before close()
-        if (app && !app.process().killed) {
-            try {
-                await app.close();
-            } catch {
-                /* ignore */
-            }
+        // v1.0.11: Playwright 1.60 + Electron 36 — app.process() 在 test 结束后
+        // 变成 undefined. 改用更防御式的 cleanup: 拿到 app 就关, 拿不到就放过
+        // (Electron 进程会被 test runner 自己清理).
+        if (!app) return;
+        try {
+            await app.close();
+        } catch {
+            /* ignore */
         }
     });
 
