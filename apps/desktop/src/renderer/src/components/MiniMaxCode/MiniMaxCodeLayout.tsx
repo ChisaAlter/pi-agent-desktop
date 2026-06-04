@@ -11,6 +11,7 @@
 // 不持有任何业务状态:全部由父级传入,layout 只负责排版与占位。
 
 import React from "react";
+import { MiniMaxCodeTitleBar } from "./MiniMaxCodeTitleBar";
 
 export interface MiniMaxCodeLayoutProps {
     /** 左侧栏(任务/技能/历史导航) */
@@ -51,13 +52,8 @@ export function MiniMaxCodeLayout({
             className={`flex h-screen w-screen flex-col overflow-hidden bg-[var(--mm-bg-main)] text-[var(--mm-text-primary)] ${className}`}
             data-mmcode-layout="root"
         >
-            {/* 窗口标题栏占位(后续接 macOS/Windows 原生 title bar / 拖拽区) */}
-            <div
-                className="h-[var(--mm-height-titlebar)] w-full shrink-0 bg-[var(--mm-bg-sidebar)]"
-                data-mmcode-region="window-title"
-                aria-label="window title bar"
-                role="banner"
-            />
+            {/* 顶部 32px 标题栏(跨平台:macOS 保留 traffic lights,Windows/Linux 自带 min/max/close) */}
+            <MiniMaxCodeTitleBar />
 
             {/* 三栏主体:左 aside + 中 main + 右 aside */}
             <div className="flex min-h-0 flex-1 w-full">

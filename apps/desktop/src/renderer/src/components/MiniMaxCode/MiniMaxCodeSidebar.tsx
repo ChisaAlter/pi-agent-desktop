@@ -340,7 +340,7 @@ export function MiniMaxCodeSidebar({
                     ))}
                 </div>
 
-                {/* 4 个分组(标题 + 占位项) */}
+                {/* 4 个分组(标题 + 占位项,空组显示"（暂无）"占位) */}
                 {GROUPED_SECTIONS.map((group) => (
                     <div key={group.title} className="flex flex-col gap-0.5">
                         <h3
@@ -349,7 +349,14 @@ export function MiniMaxCodeSidebar({
                         >
                             {group.title}
                         </h3>
-                        {group.items.length === 0 ? null : (
+                        {group.items.length === 0 ? (
+                            <p
+                                className="px-3 text-[11px] leading-[20px] text-[var(--mm-text-tertiary)]"
+                                data-mmcode-group-empty={group.title}
+                            >
+                                （暂无）
+                            </p>
+                        ) : (
                             <div className="flex flex-col gap-0.5">
                                 {group.items.map((item) => (
                                     <NavItem

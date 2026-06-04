@@ -18,8 +18,8 @@ import React, { useRef, useState } from "react";
 export interface MiniMaxCodeInputProps {
     /** 工作区名称 (用于状态行的 [📁 name ▾] chip) */
     workspaceName: string;
-    /** 模型名称 (默认 "MiniMax-M3") */
-    modelName?: string;
+    /** 模型名称 (从 useSettingsStore 读,这里不设默认值 — 强制父级传真实值) */
+    modelName: string;
     /** 发送回调: 拿到 trim 后的非空文本 */
     onSend: (text: string) => void;
     /** 附件按钮回调 (可选) */
@@ -44,7 +44,7 @@ const MIN_TEXTAREA_HEIGHT = 24;
  */
 export function MiniMaxCodeInput({
     workspaceName,
-    modelName = "MiniMax-M3",
+    modelName,
     onSend,
     onAttach,
     onToggleAuth,

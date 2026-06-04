@@ -130,6 +130,13 @@ const piAPI: PiAPI = {
     log: (level, message, extra) => {
         ipcRenderer.send("log:write", level, message, extra ?? []);
     },
+
+    // v1.1.0: 窗口控制
+    windowMinimize: () => ipcRenderer.invoke("window:minimize"),
+    windowToggleMaximize: () => ipcRenderer.invoke("window:toggle-maximize"),
+    windowIsMaximized: () => ipcRenderer.invoke("window:is-maximized") as Promise<boolean>,
+    windowClose: () => ipcRenderer.invoke("window:close"),
+    onWindowMaximizeChanged: (cb) => subscribe<boolean>("window:maximize-changed", cb),
 };
 
 const nodeAPI: NodeAPI = {

@@ -234,6 +234,12 @@ function createWindow(): void {
     minHeight: 768,
     show: false,
     autoHideMenuBar: true,
+    // v1.1.0: renderer 接管 title bar(跨平台)
+    //  - darwin: hiddenInset 保留原生 traffic lights(左上 3 个圆点)
+    //  - 其他: frame:false 全部由 renderer 渲染 drag region + 按钮
+    ...(process.platform === "darwin"
+      ? { titleBarStyle: "hiddenInset" as const, frame: true }
+      : { frame: false }),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -824,6 +830,36 @@ function setupIPC(): void {
 
   // M4: Terminal IPC 走 node-pty (替换老 child_process.spawn 模式)
   setupTerminalIpc();
+
+  // v1.1.0: 窗口控制 IPC(renderer 接管 title bar 后用)
+  ipcMain.handle("window:minimize", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.minimize();
+  });
+  ipcMain.handle("window:toggle-maximize", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  });
+  ipcMain.handle("window:is-maximized", () => {
+    return mainWindow && !mainWindow.isDestroyed()
+      ? mainWindow.isMaximized()
+      : false;
+  });
+  ipcMain.handle("window:close", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+  });
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    const sendMaximizeState = (maximized: boolean): void => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("window:maximize-changed", maximized);
+      }
+    };
+    mainWindow.on("maximize", () => sendMaximizeState(true));
+    mainWindow.on("unmaximize", () => sendMaximizeState(false));
+  }
 
   // M5: Auto-updater (从 GitHub Releases 拉, 仅在 packaged 模式跑)
   setupAutoUpdater({ getMainWindow: () => mainWindow });

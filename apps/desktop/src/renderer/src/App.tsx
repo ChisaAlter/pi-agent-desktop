@@ -31,6 +31,7 @@ import { useSettingsStore } from "./stores/settings-store";
 import { usePiStatusStore } from "./stores/pi-status-store";
 import { useApprovalStore } from "./stores/approval-store";
 import { useTaskStore } from "./stores/task-store";
+import { useSkillsStore } from "./stores/skills-store";
 import { isFirstLaunch } from "./utils/first-launch";
 import { useShortcuts } from "./shortcuts";
 import { I18nProvider, useI18n } from "./i18n";
@@ -53,7 +54,7 @@ function AppShell(): React.ReactElement {
     const [showOnboarding, setShowOnboarding] = useState(false);
 
     const { getCurrentWorkspace, workspaces } = useWorkspaceStore();
-    const { loadPiConfig, openSettings } = useSettingsStore();
+    const { loadPiConfig, openSettings, settings } = useSettingsStore();
     const { status, refreshStatus } = usePiStatusStore();
     const pendingApprovalCount = useApprovalStore(
         (s) => s.changes.filter((c) => c.status === "pending").length,
@@ -116,6 +117,21 @@ function AppShell(): React.ReactElement {
                 ? "settings"
                 : "chat";
 
+    // 快捷动作:切到 skills section + 触发 tab=market + 预设搜索词
+    // SkillsPanel 监听 'skills-panel:set-tab' 事件,marketQuery 在 store 里改
+    const setMarketQuery = useSkillsStore((s) => s.setMarketQuery);
+    const routeToSkillSearch = (query: string): void => {
+        setActiveSection("skills");
+        setMarketQuery(query);
+        if (typeof window !== "undefined") {
+            window.dispatchEvent(
+                new CustomEvent<"market" | "mine">("skills-panel:set-tab", {
+                    detail: "market",
+                }),
+            );
+        }
+    };
+
     // 任务列表:从 useTaskStore 派生。
     //  - progress: 完成 step 数 / 总 step 数
     //  - timestamp: 已完成用 completedAt,否则用 startedAt
@@ -161,7 +177,7 @@ function AppShell(): React.ReactElement {
             seedRef.current = true;
             return;
         }
-        const t1 = seedDemoTasks("了解项目结构");
+        const t1 = seedDemoTasks("了解项目");
         addStep(t1.id, "扫描目录树");
         addStep(t1.id, "汇总文件统计");
         const t2 = seedDemoTasks("对项目的看法");
@@ -182,8 +198,39 @@ function AppShell(): React.ReactElement {
                     <MiniMaxCodeSidebar
                         currentSection={activeSection}
                         onSectionChange={(s: string) => {
+                            // Sidebar section 路由表:
+                            //  - new-task          → 切到 chat(WelcomeScreen,光标会自动落在 input)
+                            //  - scheduled-tasks   → 切到 automation(原 AutomationPanel 即定时任务)
+                            //  - mobile-control    → 打开 CommandPalette(没真接入手机操控,先给个搜索入口)
+                            //  - settings          → 打开设置面板
+                            //  - history-*         → 切到 chat + 把对应历史任务标记为 current
+                            //  - skills/automation → 已有 view, 直接切
+                            if (s === "settings") {
+                                openSettings();
+                                return;
+                            }
+                            if (s === "mobile-control") {
+                                setPaletteOpen(true);
+                                return;
+                            }
+                            if (s === "history-opinion" || s === "history-about") {
+                                const title =
+                                    s === "history-opinion"
+                                        ? "对项目的看法"
+                                        : "了解项目";
+                                const found = useTaskStore
+                                    .getState()
+                                    .tasks.find((t) => t.title === title);
+                                if (found) useTaskStore.getState().setCurrentTask(found.id);
+                                setActiveSection("chat");
+                                return;
+                            }
+                            if (s === "scheduled-tasks") {
+                                setActiveSection("automation");
+                                return;
+                            }
+                            // new-task / skills / automation / chat 默认 fallback
                             setActiveSection(s);
-                            if (s === "settings") openSettings();
                         }}
                     />
                 }
@@ -192,9 +239,18 @@ function AppShell(): React.ReactElement {
                         {activePanel === "chat" && (
                             <WelcomeScreen
                                 workspaceName={currentWorkspace?.name ?? "pi-desktop"}
+                                modelName={settings.model}
                                 onQuickAction={(action: WelcomeQuickAction) => {
-                                    // 快捷动作:本轮先 console.log,后续接真实功能
-                                    console.log("[mmcode] quick action:", action);
+                                    // 快捷动作:5 个按钮全路由到 skills 市场
+                                    // tab=market,query 预填匹配关键词(模糊搜索会兜底)
+                                    const QUERY_MAP: Record<WelcomeQuickAction, string> = {
+                                        team: "team",
+                                        slides: "slides pptx presentation",
+                                        pdf: "pdf",
+                                        doc: "doc document",
+                                        sheet: "sheet xlsx spreadsheet",
+                                    };
+                                    routeToSkillSearch(QUERY_MAP[action]);
                                 }}
                                 onSend={(text: string) => {
                                     if (window.piAPI && currentWorkspace) {

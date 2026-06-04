@@ -28,8 +28,8 @@ export type WelcomeQuickAction = "team" | "slides" | "pdf" | "doc" | "sheet";
 export interface WelcomeScreenProps {
     /** 工作区名称 (传给 MiniMaxCodeInput) */
     workspaceName?: string;
-    /** 模型名称 (传给 MiniMaxCodeInput, 默认 "MiniMax-M3") */
-    modelName?: string;
+    /** 模型名称 (从 useSettingsStore 读,这里不设默认值 — 强制父级传真实值) */
+    modelName: string;
     /** 5 个快捷按钮回调, action 是 id 联合 */
     onQuickAction: (action: WelcomeQuickAction) => void;
     /** 输入框发送回调 (转发给 MiniMaxCodeInput) */
@@ -153,7 +153,7 @@ const QUICK_ACTIONS: ReadonlyArray<QuickActionDef> = [
  */
 export function WelcomeScreen({
     workspaceName = "pi-desktop",
-    modelName = "MiniMax-M3",
+    modelName,
     onQuickAction,
     onSend,
     onAttach,
