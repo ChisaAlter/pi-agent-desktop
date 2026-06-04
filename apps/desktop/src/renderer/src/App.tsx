@@ -4,6 +4,7 @@
 // v1.0.4: 包了 I18nProvider 顶层, 顶部标题栏 / 状态栏 / 占位文案走 t()
 // v1.1: 接入 MiniMaxCode 三栏 layout, 移除非必需的旧 UI hook(保留 modal 触发能力)
 // v1.2: Modal/浮层用 createPortal 挂到 body(避免 layout overflow:hidden 裁剪)
+// v1.3: 右栏接 useTaskStore, 任务列表实时反映 store; 首启播种 demo 任务
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -29,6 +30,7 @@ import { useWorkspaceStore } from "./stores/workspace-store";
 import { useSettingsStore } from "./stores/settings-store";
 import { usePiStatusStore } from "./stores/pi-status-store";
 import { useApprovalStore } from "./stores/approval-store";
+import { useTaskStore } from "./stores/task-store";
 import { isFirstLaunch } from "./utils/first-launch";
 import { useShortcuts } from "./shortcuts";
 import { I18nProvider, useI18n } from "./i18n";
@@ -114,8 +116,61 @@ function AppShell(): React.ReactElement {
                 ? "settings"
                 : "chat";
 
-    // 任务列表(本轮空数组,后续接 useTaskStore)
-    const tasks: TaskProgressItem[] = [];
+    // 任务列表:从 useTaskStore 派生。
+    //  - progress: 完成 step 数 / 总 step 数
+    //  - timestamp: 已完成用 completedAt,否则用 startedAt
+    //  - 反序(最新在顶)符合进度列表的视觉习惯
+    const rawTasks = useTaskStore((s) => s.tasks);
+    const setCurrentTask = useTaskStore((s) => s.setCurrentTask);
+    const seedDemoTasks = useTaskStore((s) => s.addTask);
+    const addStep = useTaskStore((s) => s.addStep);
+    const tasks: TaskProgressItem[] = useMemo(
+        () =>
+            [...rawTasks]
+                .sort(
+                    (a, b) =>
+                        (b.completedAt?.getTime() ?? b.startedAt.getTime()) -
+                        (a.completedAt?.getTime() ?? a.startedAt.getTime()),
+                )
+                .map((t) => {
+                    const totalSteps = t.steps.length;
+                    const doneSteps = t.steps.filter(
+                        (s) => s.status === "completed",
+                    ).length;
+                    const progress =
+                        totalSteps > 0
+                            ? Math.round((doneSteps / totalSteps) * 100)
+                            : undefined;
+                    return {
+                        id: t.id,
+                        name: t.title,
+                        status: t.status,
+                        progress,
+                        timestamp:
+                            (t.completedAt ?? t.startedAt).getTime(),
+                    };
+                }),
+        [rawTasks],
+    );
+
+    // 首启播种 demo 任务(空 store 时跑一次,idempotent)
+    const seedRef = useRef(false);
+    useEffect(() => {
+        if (seedRef.current) return;
+        if (rawTasks.length > 0) {
+            seedRef.current = true;
+            return;
+        }
+        const t1 = seedDemoTasks("了解项目结构");
+        addStep(t1.id, "扫描目录树");
+        addStep(t1.id, "汇总文件统计");
+        const t2 = seedDemoTasks("对项目的看法");
+        addStep(t2.id, "分析代码风格");
+        addStep(t2.id, "列出改进点");
+        const t3 = seedDemoTasks("生成 README 草稿");
+        addStep(t3.id, "收集 README 章节");
+        seedRef.current = true;
+    }, [rawTasks.length, seedDemoTasks, addStep]);
 
     // modal/浮层 portal 目标(SSR-safe)
     const portalTarget = typeof document !== "undefined" ? document.body : null;
@@ -169,7 +224,7 @@ function AppShell(): React.ReactElement {
                     <TaskProgressPanel
                         tasks={tasks}
                         onTaskClick={(id: string) => {
-                            console.log("[mmcode] task click:", id);
+                            setCurrentTask(id);
                         }}
                     />
                 }
