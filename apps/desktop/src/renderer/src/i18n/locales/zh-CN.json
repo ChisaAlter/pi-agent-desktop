@@ -188,7 +188,7 @@
   },
   "chatInput": {
     "placeholder": {
-      "ready": "描述你想要构建或修改的内容...",
+      "ready": "输入消息...（输入 / 唤起命令）",
       "noConnection": "Pi CLI 未连接，请确认 pi 已安装并添加到系统路径"
     },
     "send": "发送",

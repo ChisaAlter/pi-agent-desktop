@@ -98,8 +98,6 @@ export function usePiStream(): UsePiStreamReturn {
 
     // ── 事件处理 ────────────────────────────────────────────────────────────
     const handleEvent = useCallback((event: PiEvent) => {
-        // 把当前 closure 写到 ref, 让上面的 useEffect (mount-only) 永远拿到最新实现
-        handleEventRef.current = handleEvent;
         switch (event.type) {
             case "agent_start":
                 setIsStreaming(true);
@@ -220,6 +218,10 @@ export function usePiStream(): UsePiStreamReturn {
                 break;
         }
     }, [addMessage, updateMessage, approvalStore]);
+
+    useEffect(() => {
+        handleEventRef.current = handleEvent;
+    }, [handleEvent]);
 
     // ── 动作 ────────────────────────────────────────────────────────────────
     const startStreaming = useCallback(async (workspaceId: string, content: string) => {

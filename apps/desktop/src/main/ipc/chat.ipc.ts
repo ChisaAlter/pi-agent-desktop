@@ -29,10 +29,10 @@ interface ChatIpcDeps {
 }
 
 export function setupChatIpc(deps: ChatIpcDeps): void {
-    const send: IpcSender = (channel, workspaceId, payload) => {
+    const send: IpcSender = (channel, _workspaceId, payload) => {
         const win: BrowserWindowType | null = BrowserWindow.getAllWindows()[0] ?? null;
         if (win && !win.isDestroyed()) {
-            win.webContents.send(channel, { workspaceId, payload });
+            win.webContents.send(channel, payload);
         }
     };
 

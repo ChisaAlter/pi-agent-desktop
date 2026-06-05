@@ -53,7 +53,7 @@ export function MiniMaxCodeLayout({
             data-mmcode-layout="root"
         >
             {/* 顶部 32px 标题栏(跨平台:macOS 保留 traffic lights,Windows/Linux 自带 min/max/close) */}
-            <MiniMaxCodeTitleBar />
+            <MiniMaxCodeTitleBar title="MiniMax Code" />
 
             {/* 三栏主体:左 aside + 中 main + 右 aside */}
             <div className="flex min-h-0 flex-1 w-full">
@@ -77,7 +77,7 @@ export function MiniMaxCodeLayout({
                 </main>
 
                 <aside
-                    className="flex shrink-0 flex-col bg-[var(--mm-bg-sidebar)]"
+                    className="flex shrink-0 flex-col bg-[var(--mm-bg-main)]"
                     style={{ width: "var(--mm-width-sidebar-right)" }}
                     data-mmcode-region="right"
                     aria-label="context panel"

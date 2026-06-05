@@ -24,7 +24,7 @@ interface ChatInputProps {
 const PERMISSION_OPTIONS: Array<{ value: "read" | "partial" | "full"; label: string; desc: string }> = [
   { value: "read", label: "只读", desc: "只能读取文件" },
   { value: "partial", label: "部分访问", desc: "可编辑 workspace 内文件" },
-  { value: "full", label: "完全访问", desc: "可执行任意命令" },
+  { value: "full", label: "始终授权", desc: "可执行任意命令" },
 ];
 
 function basename(p: string): string {
@@ -219,8 +219,8 @@ export function ChatInput({
   const canSend = inputValue.trim().length > 0 && isConnected;
 
   return (
-    <div className="p-4 bg-[var(--mm-bg-sidebar)] border-t border-[var(--mm-border)]">
-      <div className="max-w-3xl mx-auto">
+    <div className="bg-transparent px-8 pt-3 pb-8">
+      <div className="mx-auto max-w-[768px] rounded-2xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3 shadow-[0_10px_30px_rgba(0,0,0,0.08)]">
         {/* 附件 chips */}
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2" role="list" aria-label="已选附件">
@@ -255,7 +255,7 @@ export function ChatInput({
         )}
 
         {/* 输入框 + 发送按钮 + @mention 弹窗 */}
-        <div className="flex gap-3 mb-2 relative">
+        <div className="relative mb-3 flex gap-3">
           <div className="flex-1 relative">
             <textarea
               ref={textareaRef}
@@ -268,7 +268,7 @@ export function ChatInput({
               onSelect={handleSelect}
               onKeyDown={handleKeyDown}
               placeholder={isConnected ? t("chatInput.placeholder.ready") : t("chatInput.placeholder.noConnection")}
-              className="w-full px-4 py-3 bg-[var(--color-hover)] border border-[var(--color-border)] rounded-xl text-sm text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] resize-none focus:outline-none focus:border-[var(--mm-text-primary)] disabled:opacity-50 min-h-[48px] leading-relaxed"
+              className="min-h-[56px] w-full resize-none rounded-xl border-0 bg-transparent px-1 py-1 text-sm leading-relaxed text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none disabled:opacity-50"
               rows={1}
               disabled={isProcessing || !isConnected}
               aria-label={t("chatInput.send")}
@@ -318,10 +318,10 @@ export function ChatInput({
             type="button"
             onClick={isProcessing ? onStop : () => void handleSend()}
             disabled={!isProcessing && !canSend}
-            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all flex-shrink-0 self-end ${
+            className={`flex h-10 w-10 flex-shrink-0 items-center justify-center self-end rounded-xl transition-all ${
               isProcessing
                 ? "bg-[var(--color-error)] hover:bg-[#dc2626] text-white"
-                : "bg-[var(--mm-bg-active)] hover:bg-[#333] text-[var(--mm-text-on-active)] disabled:opacity-30 disabled:cursor-not-allowed"
+                : "bg-[#a3a3a3] text-white hover:bg-[#8f8f8f] disabled:cursor-not-allowed disabled:opacity-50"
             }`}
             aria-label={isProcessing ? t("chatView.stopGeneration") : t("chatInput.send")}
             title={isProcessing ? t("chatView.stopGeneration") : t("chatInput.send")}
@@ -346,7 +346,7 @@ export function ChatInput({
               type="button"
               onClick={() => void handlePickFiles()}
               disabled={!workspaceId}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-hover)] border border-[var(--color-border)] rounded text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs text-[var(--mm-text-secondary)] transition-all hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
               aria-label={t("chatInput.addAttachment")}
               title={workspaceId ? t("chatInput.addAttachment") : "请先选择 workspace"}
             >
@@ -362,16 +362,16 @@ export function ChatInput({
               contentClassName="min-w-[200px]"
               trigger={
                 <div
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-hover)] border border-[var(--color-border)] rounded text-xs text-[var(--mm-text-secondary)] cursor-pointer hover:bg-[var(--mm-bg-hover)] transition-all"
+                  className="flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs text-[var(--mm-text-secondary)] transition-all hover:bg-[var(--mm-bg-hover)]"
                   role="button"
                   tabIndex={0}
-                  aria-label={`权限: ${PERMISSION_OPTIONS.find((p) => p.value === currentPermission)?.label ?? "完全访问"}`}
+                  aria-label={`权限: ${PERMISSION_OPTIONS.find((p) => p.value === currentPermission)?.label ?? "始终授权"}`}
                   data-testid="chat-input-permission-trigger"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                   </svg>
-                  <span>{PERMISSION_OPTIONS.find((p) => p.value === currentPermission)?.label ?? "完全访问"}</span>
+                  <span>{PERMISSION_OPTIONS.find((p) => p.value === currentPermission)?.label ?? "始终授权"}</span>
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
@@ -414,7 +414,7 @@ export function ChatInput({
 
           <div className="flex items-center gap-3">
             {/* 快捷键提示 */}
-            <div className="flex items-center gap-1.5 text-xs text-[var(--mm-text-tertiary)]" aria-hidden="true">
+            <div className="hidden items-center gap-1.5 text-xs text-[var(--mm-text-tertiary)]" aria-hidden="true">
               <kbd className="px-1.5 py-0.5 bg-[var(--color-hover)] border border-[var(--color-border)] rounded text-[10px] font-mono text-[var(--mm-text-secondary)]">Enter</kbd>
               <span>{t("chatInput.shortcuts.send")}</span>
               <span className="mx-1 text-[var(--color-border)]">/</span>
@@ -430,7 +430,7 @@ export function ChatInput({
               contentClassName="min-w-[220px]"
               trigger={
                 <div
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--color-hover)] border border-[var(--color-border)] rounded text-xs text-[var(--mm-text-secondary)] cursor-pointer hover:bg-[var(--mm-bg-hover)] transition-all"
+                  className="flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs text-[var(--mm-text-secondary)] transition-all hover:bg-[var(--mm-bg-hover)]"
                   role="button"
                   tabIndex={0}
                   aria-label={currentModel ? `当前模型: ${currentModel}` : "未选择模型"}

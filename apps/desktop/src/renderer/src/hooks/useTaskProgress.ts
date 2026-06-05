@@ -19,36 +19,39 @@ export function useTaskProgress(): {
         if (!window.piAPI?.onEvent) return;
 
         const handler = (event: PiEvent): void => {
+            const toolLabels: Record<string, string> = {
+                bash: "运行命令",
+                read: "读取文件",
+                write: "写入文件",
+                edit: "编辑文件",
+                grep: "搜索内容",
+                find: "查找文件",
+                ls: "列出目录",
+            };
+
             switch (event.type) {
                 case "agent_start": {
-                    const id = `task_${++taskCounter}_${Date.now()}`;
-                    currentTaskIdRef.current = id;
-                    setTasks((prev) => [
-                        ...prev,
-                        {
-                            id,
-                            name: "Agent 任务",
-                            status: "running",
-                            timestamp: Date.now(),
-                        },
-                    ]);
                     break;
                 }
 
                 case "tool_execution_start": {
                     const e = event as { toolCallId: string; toolName: string; args: Record<string, unknown> };
-                    const currentId = currentTaskIdRef.current;
-                    if (!currentId) break;
-                    const toolLabels: Record<string, string> = {
-                        bash: "运行命令",
-                        read: "读取文件",
-                        write: "写入文件",
-                        edit: "编辑文件",
-                        grep: "搜索内容",
-                        find: "查找文件",
-                        ls: "列出目录",
-                    };
                     const label = toolLabels[e.toolName] ?? e.toolName;
+                    const currentId = currentTaskIdRef.current;
+                    if (!currentId) {
+                        const id = `task_${++taskCounter}_${Date.now()}`;
+                        currentTaskIdRef.current = id;
+                        setTasks((prev) => [
+                            ...prev,
+                            {
+                                id,
+                                name: label,
+                                status: "running",
+                                timestamp: Date.now(),
+                            },
+                        ]);
+                        break;
+                    }
                     setTasks((prev) =>
                         prev.map((t) =>
                             t.id === currentId ? { ...t, name: label } : t,
@@ -70,19 +73,7 @@ export function useTaskProgress(): {
                             t.id === currentId ? { ...t, status: "completed" as const } : t,
                         ),
                     );
-                    // After a turn ends, start a new task for the next turn
-                    // (the agent may continue with another turn)
-                    const newId = `task_${++taskCounter}_${Date.now()}`;
-                    currentTaskIdRef.current = newId;
-                    setTasks((prev) => [
-                        ...prev,
-                        {
-                            id: newId,
-                            name: "Agent 任务",
-                            status: "running" as const,
-                            timestamp: Date.now(),
-                        },
-                    ]);
+                    currentTaskIdRef.current = null;
                     break;
                 }
 
@@ -123,25 +114,10 @@ export function useTaskProgress(): {
         };
     }, []);
 
-    // Also track local streaming state from usePiStream via a custom event
-    // This bridges the React hook world (usePiStream in ChatView) with the Pi event world
+    // Local stream events only close existing activity. They should not create
+    // a fake "plan" task because Pi does not expose a plan/progress primitive.
     useEffect(() => {
-        const onStreamStart = (): void => {
-            // If no current Pi event-driven task exists, create one from local state
-            if (!currentTaskIdRef.current) {
-                const id = `task_${++taskCounter}_${Date.now()}`;
-                currentTaskIdRef.current = id;
-                setTasks((prev) => [
-                    ...prev,
-                    {
-                        id,
-                        name: "Agent 任务",
-                        status: "running",
-                        timestamp: Date.now(),
-                    },
-                ]);
-            }
-        };
+        const onStreamStart = (): void => undefined;
 
         const onStreamEnd = (): void => {
             const currentId = currentTaskIdRef.current;

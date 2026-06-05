@@ -139,7 +139,7 @@ export function MiniMaxCodeTitleBar({
     }, []);
 
     const isMac = platform === "darwin";
-    const leftPad = isMac ? MAC_TRAFFIC_LIGHT_RESERVE : 12;
+    const leftPad = isMac ? MAC_TRAFFIC_LIGHT_RESERVE : 10;
 
     return (
         <div
@@ -150,27 +150,37 @@ export function MiniMaxCodeTitleBar({
                     height: TITLE_BAR_HEIGHT,
                 } as React.CSSProperties
             }
-            className={`flex w-full shrink-0 items-center bg-[var(--mm-bg-sidebar)] select-none ${className}`}
+            className={`flex w-full shrink-0 items-center border-b border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] select-none ${className}`}
             data-mmcode-region="titlebar"
             role="banner"
             aria-label="window title bar"
         >
             {/* 左侧留白(macOS 让出 traffic lights 区域) */}
             <div
-                style={{ width: leftPad, flexShrink: 0 }}
+                style={{ width: isMac ? leftPad : "var(--mm-width-sidebar-left)", flexShrink: 0 }}
+                className="flex h-full items-center gap-2 px-2"
                 data-mmcode-region="titlebar-left"
-            />
+            >
+                {!isMac && (
+                    <>
+                        <div
+                            className="flex h-4 w-4 items-center justify-center rounded-[4px] bg-[var(--mm-bg-active)] text-[9px] font-bold leading-none text-[var(--mm-text-on-active)]"
+                            aria-hidden="true"
+                        >
+                            π
+                        </div>
+                        <span className="truncate text-[12px] text-[var(--mm-text-primary)]">
+                            {title}
+                        </span>
+                    </>
+                )}
+            </div>
 
             {/* 中间 drag region(可放 title 文案) */}
             <div
                 className="flex flex-1 items-center justify-center min-w-0"
                 data-mmcode-region="titlebar-center"
             >
-                {!isMac && title && (
-                    <span className="truncate text-[12px] font-normal text-[var(--mm-text-tertiary)]">
-                        {title}
-                    </span>
-                )}
             </div>
 
             {/* 右侧:Windows/Linux 显示 3 个按钮;macOS 不显示(系统已有 traffic lights) */}

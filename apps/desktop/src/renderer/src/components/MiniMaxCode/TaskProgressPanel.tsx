@@ -143,98 +143,106 @@ export function TaskProgressPanel({
 }: TaskProgressPanelProps): React.JSX.Element {
     return (
         <div
-            className={`flex h-full w-full flex-col bg-[var(--mm-bg-sidebar)] text-[var(--mm-text-primary)] ${className}`}
+            className={`flex h-full w-full flex-col bg-transparent px-3 py-14 text-[var(--mm-text-primary)] ${className}`}
             data-mmcode-panel="task-progress"
         >
-            {/* 顶部标题(header,padding 16px) */}
             <div
-                className="flex-shrink-0 px-4 py-4"
-                data-mmcode-region="task-progress-header"
+                className="overflow-hidden rounded-2xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)]"
+                data-mmcode-region="task-progress-card"
             >
-                <h2
-                    className="m-0 p-0 text-[12px] leading-none font-normal text-[var(--mm-text-tertiary)]"
-                    data-mmcode-region="task-progress-title"
+                {/* 顶部标题(header,padding 16px) */}
+                <div
+                    className="flex items-center justify-between px-4 pt-4 pb-3"
+                    data-mmcode-region="task-progress-header"
                 >
-                    任务进度
-                </h2>
-            </div>
-
-            {/* 任务列表 / 空状态 */}
-            <div
-                className="flex-1 min-h-0 overflow-y-auto"
-                data-mmcode-region="task-progress-body"
-            >
-                {tasks.length === 0 ? (
-                    <div
-                        className="flex h-full min-h-[120px] items-center justify-center px-3 py-6"
-                        data-mmcode-region="task-progress-empty"
+                    <h2
+                        className="m-0 p-0 text-[13px] leading-none font-medium text-[var(--mm-text-primary)]"
+                        data-mmcode-region="task-progress-title"
                     >
-                        <p className="m-0 text-[13px] text-[var(--mm-text-tertiary)]">
-                            暂无任务
-                        </p>
-                    </div>
-                ) : (
-                    <ul role="list" className="m-0 p-0 list-none">
-                        {tasks.map((t) => {
-                            const hasProgress =
-                                typeof t.progress === "number" &&
-                                !Number.isNaN(t.progress);
-                            const clamped = hasProgress
-                                ? Math.max(0, Math.min(100, t.progress as number))
-                                : 0;
-                            const ts = formatTimestamp(t.timestamp);
-                            return (
-                                <li
-                                    key={t.id}
-                                    role="listitem"
-                                    className="m-0 p-0"
-                                    data-task-status={t.status}
-                                >
-                                    <button
-                                        type="button"
-                                        onClick={
-                                            onTaskClick
-                                                ? () => onTaskClick(t.id)
-                                                : undefined
-                                        }
-                                        aria-label={`task ${t.name} ${t.status}`}
-                                        className="group block w-full text-left p-3 hover:bg-[var(--mm-bg-hover)] focus:bg-[var(--mm-bg-hover)] focus:outline-none transition-colors"
+                        活动
+                    </h2>
+                    <svg className="h-3.5 w-3.5 text-[var(--mm-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 9l-7 7-7-7" />
+                    </svg>
+                </div>
+
+                {/* 任务列表 / 空状态 */}
+                <div
+                    className="min-h-0 overflow-y-auto"
+                    data-mmcode-region="task-progress-body"
+                >
+                    {tasks.length === 0 ? (
+                        <div
+                            className="px-4 pb-4"
+                            data-mmcode-region="task-progress-empty"
+                        >
+                            <p className="m-0 text-[12px] leading-5 text-[var(--mm-text-secondary)]">
+                                暂无任务
+                            </p>
+                        </div>
+                    ) : (
+                        <ul role="list" className="m-0 max-h-[360px] list-none overflow-y-auto p-0">
+                            {tasks.map((t) => {
+                                const hasProgress =
+                                    typeof t.progress === "number" &&
+                                    !Number.isNaN(t.progress);
+                                const clamped = hasProgress
+                                    ? Math.max(0, Math.min(100, t.progress as number))
+                                    : 0;
+                                const ts = formatTimestamp(t.timestamp);
+                                return (
+                                    <li
+                                        key={t.id}
+                                        role="listitem"
+                                        className="m-0 border-t border-[var(--mm-border)] p-0"
+                                        data-task-status={t.status}
                                     >
-                                        <div className="flex items-center gap-2 min-w-0">
-                                            <StatusIcon status={t.status} />
-                                            <span className="flex-1 min-w-0 truncate text-[13px] text-[var(--mm-text-primary)]">
-                                                {t.name}
-                                            </span>
-                                            {ts !== null && (
-                                                <span
-                                                    className="flex-shrink-0 text-[11px] leading-none text-[var(--mm-text-tertiary)] tabular-nums"
-                                                    data-mmcode-region="task-progress-timestamp"
-                                                >
-                                                    {ts}
+                                        <button
+                                            type="button"
+                                            onClick={
+                                                onTaskClick
+                                                    ? () => onTaskClick(t.id)
+                                                    : undefined
+                                            }
+                                            aria-label={`task ${t.name} ${t.status}`}
+                                            className="group block w-full p-3 text-left transition-colors hover:bg-[var(--mm-bg-hover)] focus:bg-[var(--mm-bg-hover)] focus:outline-none"
+                                        >
+                                            <div className="flex min-w-0 items-center gap-2">
+                                                <StatusIcon status={t.status} />
+                                                <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--mm-text-primary)]">
+                                                    {t.name}
                                                 </span>
-                                            )}
-                                        </div>
-                                        {hasProgress && (
-                                            <div
-                                                role="progressbar"
-                                                aria-valuenow={clamped}
-                                                aria-valuemin={0}
-                                                aria-valuemax={100}
-                                                aria-label={`${t.name} 进度`}
-                                                className="mt-1.5 h-[2px] w-full overflow-hidden rounded-[1px] bg-[#e5e5e5]"
-                                            >
-                                                <div
-                                                    className="h-full bg-[#1a1a1a] transition-all"
-                                                    style={{ width: `${clamped}%` }}
-                                                />
+                                                {ts !== null && (
+                                                    <span
+                                                        className="flex-shrink-0 text-[11px] leading-none tabular-nums text-[var(--mm-text-tertiary)]"
+                                                        data-mmcode-region="task-progress-timestamp"
+                                                    >
+                                                        {ts}
+                                                    </span>
+                                                )}
                                             </div>
-                                        )}
-                                    </button>
-                                </li>
-                            );
-                        })}
-                    </ul>
-                )}
+                                            {hasProgress && (
+                                                <div
+                                                    role="progressbar"
+                                                    aria-valuenow={clamped}
+                                                    aria-valuemin={0}
+                                                    aria-valuemax={100}
+                                                    aria-label={`${t.name} 进度`}
+                                                    className="mt-1.5 h-[2px] w-full overflow-hidden rounded-[1px] bg-[#e5e5e5]"
+                                                >
+                                                    <div
+                                                        className="h-full bg-[#1a1a1a] transition-all"
+                                                        style={{ width: `${clamped}%` }}
+                                                    />
+                                                </div>
+                                            )}
+                                        </button>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    )}
+                </div>
             </div>
         </div>
     );

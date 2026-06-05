@@ -194,7 +194,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
         ) : (
           /* 消息列表 */
           <div
-            className="p-6 space-y-6"
+            className="mx-auto max-w-[768px] space-y-6 px-0 py-8"
             role="log"
             aria-live="polite"
             aria-label={t('chatView.messagesAria')}

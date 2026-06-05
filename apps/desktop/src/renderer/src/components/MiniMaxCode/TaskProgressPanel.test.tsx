@@ -1,4 +1,4 @@
-// TaskProgressPanel 测试 (T4 右侧任务进度面板 - 加分项)
+// TaskProgressPanel 测试 (T4 右侧活动面板 - 加分项)
 //
 // 覆盖:
 //  - 空状态: 渲染 "暂无任务"
@@ -34,7 +34,7 @@ describe("TaskProgressPanel", () => {
         render(<TaskProgressPanel tasks={tasks} />);
         expect(screen.getByText("运行测试套件")).toBeTruthy();
         // 标题始终在
-        expect(screen.getByText("任务进度")).toBeTruthy();
+        expect(screen.getByText("活动")).toBeTruthy();
     });
 
     it("a11y: 容器为 list,每条 item 为 listitem,条目本身是 button", () => {

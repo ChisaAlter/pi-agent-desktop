@@ -201,14 +201,14 @@ interface NavItemProps {
 }
 
 function NavItem({ section, active, onClick }: NavItemProps): React.JSX.Element {
-    // 激活态: 黑底白字 圆角 6px
-    // hover: 浅灰 #f0f0f0 (非激活态)
+    // 激活态: 参考图的浅灰底黑字
+    // hover: 轻灰背景
     // 行高 32px,左右 padding 12px
     const baseClasses =
         "flex w-full items-center gap-2.5 rounded-[var(--mm-radius-sm)] px-3 text-[13px] leading-[20px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mm-bg-active)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--mm-bg-sidebar)]";
     const heightClasses = "h-8";
     const stateClasses = active
-        ? "bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)] hover:bg-[var(--mm-bg-active)]"
+        ? "bg-[var(--mm-bg-selected)] text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-selected)]"
         : "bg-transparent text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]";
 
     return (
@@ -258,21 +258,18 @@ export function MiniMaxCodeSidebar({
             className="flex h-full w-full flex-col bg-[var(--mm-bg-sidebar)] text-[var(--mm-text-primary)]"
             data-mmcode-component="sidebar"
         >
-            {/* ============== 顶部 logo (固定,不滚动) ============== */}
+            {/* ============== 顶部折叠占位 (固定,不滚动) ============== */}
             <div
-                className="flex shrink-0 items-center px-3 pt-3 pb-2"
+                className="flex h-11 shrink-0 items-center px-3"
                 data-mmcode-region="logo"
             >
                 <div
-                    className="flex h-6 w-6 items-center justify-center rounded-[var(--mm-radius-sm)] bg-[var(--mm-bg-active)]"
-                    aria-label="Pi Desktop logo"
+                    className="flex h-5 w-5 items-center justify-center rounded-[var(--mm-radius-sm)] text-[var(--mm-text-tertiary)]"
+                    aria-hidden="true"
                 >
-                    <span
-                        className="text-[12px] font-bold leading-none text-[var(--mm-text-on-active)]"
-                        aria-hidden="true"
-                    >
-                        π
-                    </span>
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h6v12H4zM14 6h6v12h-6z" />
+                    </svg>
                 </div>
             </div>
 
@@ -291,7 +288,7 @@ export function MiniMaxCodeSidebar({
                         <NavItem
                             key={section.id}
                             section={section}
-                            active={currentSection === section.id}
+                            active={currentSection === section.id || (section.id === "new-task" && currentSection === "chat")}
                             onClick={() => onSectionChange(section.id)}
                         />
                     ))}
