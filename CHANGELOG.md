@@ -4,6 +4,33 @@
 
 All notable changes to pi-desktop are documented here.
 
+## v0.4.4 - 2026-06-05
+
+### Added
+- Input history navigation: press Up/Down arrow in the composer to cycle
+  through previously sent messages (CLI-like workflow).
+- Edit button on user messages: click to copy the text back into the composer
+  for editing and re-sending.
+- API type dropdown in Models tab: preset options (openai-completions,
+  openai-chat-completions, openai-responses, anthropic, google-generative-ai)
+  with custom value fallback for unknown types.
+
+### Improved
+- Config modal UI overhaul: softer card styling, blurred input styles,
+  consistent borders, model list panel layout, and refined spacing across
+  Models/Auth expanded sections.
+- Agent startup no longer blocks switching to other agents: replaced global
+  `agentLoading` overlay with per-agent `status === "starting"` check.
+- Saving config no longer auto-reloads the active agent; use the Restart
+  button for manual reload instead.
+- Model switch and thinking level toggle are now disabled while the agent
+  is actively responding (prevents mid-stream config changes).
+- Tool call group status now correctly reflects completion: checks the last
+  tool message status instead of any message, so groups no longer show
+  "in progress" after all tools finish.
+- Thinking bubble rendering position restored to the bottom of the message
+  list for natural chronological stacking during streaming.
+
 ## v0.4.3 - 2026-06-04
 
 ### Added
