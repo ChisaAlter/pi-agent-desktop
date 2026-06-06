@@ -210,15 +210,19 @@ interface NavItemProps {
 }
 
 function NavItem({ section, active, onClick }: NavItemProps): React.JSX.Element {
-    // 激活态: 参考图的浅灰底黑字
+    // 激活态: 浅灰底 + 2px 左侧色条(--mm-bg-active = #1a1a1a 黑) + font-medium
+    //   3 重视觉信号,确保在 sidebar 浅灰底上肉眼能立刻看出
+    //   (历史 bug: 早期只靠 bg-[--mm-bg-selected] (#efefef) vs sidebar (#f7f7f7)
+    //    亮度差仅 3%, 用户反映"点了没反应"——其实是切了但看不出来)
     // hover: 轻灰背景
-    // 行高 32px,左右 padding 12px
+    // 行高 32px,左右 padding 12px(用 pl-[10px] 补偿 2px 左边条,active/inactive 宽度一致)
     const baseClasses =
-        "flex w-full items-center gap-3 rounded-[var(--mm-radius-sm)] px-3 text-[13px] leading-relaxed transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mm-bg-active)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--mm-bg-sidebar)]";
+        "flex w-full items-center gap-3 rounded-[var(--mm-radius-sm)] py-0 pl-[10px] pr-3 text-[13px] leading-relaxed transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mm-bg-active)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--mm-bg-sidebar)]";
     const heightClasses = "h-10";
+    // border-l-2 + border-l-transparent 占位 (inactive 时透明, 仍占 2px 宽度, 不抖动)
     const stateClasses = active
-        ? "bg-[var(--mm-bg-selected)] text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-selected)]"
-        : "bg-transparent text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]";
+        ? "border-l-2 border-l-[var(--mm-bg-active)] bg-[var(--mm-bg-selected)] font-medium text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-selected)]"
+        : "border-l-2 border-l-transparent bg-transparent font-normal text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]";
 
     return (
         <button
