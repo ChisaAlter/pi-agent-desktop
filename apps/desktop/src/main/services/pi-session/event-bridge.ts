@@ -15,6 +15,7 @@ export function createEventBridge(workspaceId: string, send: IpcSender) {
                 case "message_update":
                 case "message_end":
                 case "tool_execution_start":
+                case "tool_execution_update":
                 case "tool_execution_end":
                 case "turn_end":
                 case "agent_end":

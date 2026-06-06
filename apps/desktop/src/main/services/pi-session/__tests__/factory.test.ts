@@ -2,8 +2,19 @@ import { describe, it, expect, vi } from "vitest";
 import { createWorkspaceSession } from "../factory";
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
+    createEventBus: vi.fn(() => ({})),
+    getAgentDir: vi.fn(() => "C:/tmp/pi-agent"),
+    DefaultResourceLoader: vi.fn().mockImplementation(() => ({
+        reload: vi.fn().mockResolvedValue(undefined),
+    })),
     createAgentSession: vi.fn().mockResolvedValue({
-        session: { prompt: vi.fn(), subscribe: vi.fn(), abort: vi.fn(), dispose: vi.fn() },
+        session: {
+            prompt: vi.fn(),
+            subscribe: vi.fn(),
+            abort: vi.fn(),
+            dispose: vi.fn(),
+            bindExtensions: vi.fn().mockResolvedValue(undefined),
+        },
         extensionsResult: { extensions: [] },
     }),
 }));
@@ -27,7 +38,10 @@ describe("createWorkspaceSession", () => {
             workspacePath: "C:/some/path",
         });
         expect(createAgentSession).toHaveBeenCalledWith(
-            expect.objectContaining({ cwd: "C:/some/path" })
+            expect.objectContaining({
+                cwd: "C:/some/path",
+                resourceLoader: expect.anything(),
+            })
         );
     });
 });

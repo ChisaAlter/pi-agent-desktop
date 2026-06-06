@@ -10,6 +10,13 @@ import type {
     DeferredEdit,
     FileReview,
     PiEvent,
+    ExtensionUiRequest,
+    ExtensionUiResponse,
+    PermissionDecision,
+    PermissionMode,
+    PlanCard,
+    PlanDecisionRequest,
+    PlanProgressUpdate,
 } from "@shared";
 
 // 内部 helper: 把 ipcRenderer.on 的 (_event, payload) 签名转成 (payload)
@@ -72,9 +79,27 @@ const piAPI: PiAPI = {
 
     // Session
     listSessions: () => ipcRenderer.invoke("session:list"),
-    createSession: (workspaceId, title) => ipcRenderer.invoke("session:create", workspaceId, title),
+    createSession: (workspaceId, title, id) => ipcRenderer.invoke("session:create", workspaceId, title, id),
     renameSession: (id, title) => ipcRenderer.invoke("session:rename", id, title),
     deleteSession: (id) => ipcRenderer.invoke("session:delete", id),
+
+    permissionSetMode: (mode: PermissionMode) => ipcRenderer.invoke("permission:set-mode", mode),
+    permissionRespond: (
+        requestId: string,
+        response: ExtensionUiResponse | PermissionDecision | boolean | string,
+    ) => {
+        ipcRenderer.send("permission:respond", requestId, response);
+    },
+    onPermissionRequest: (cb) => subscribe<ExtensionUiRequest>("permission:request", cb),
+    onPermissionUpdate: (cb) => subscribe<unknown>("permission:update", cb),
+
+    planSetEnabled: (workspaceId, enabled) => ipcRenderer.invoke("plan:set-enabled", workspaceId, enabled),
+    planRespond: (requestId, decision, text) => {
+        ipcRenderer.send("plan:respond", requestId, decision, text);
+    },
+    onPlanCard: (cb) => subscribe<PlanCard>("plan:card", cb),
+    onPlanDecisionRequest: (cb) => subscribe<PlanDecisionRequest>("plan:decision-request", cb),
+    onPlanProgress: (cb) => subscribe<PlanProgressUpdate>("plan:progress", cb),
 
     // Git
     getGitStatus: (workspacePath) => ipcRenderer.invoke("git:status", workspacePath),

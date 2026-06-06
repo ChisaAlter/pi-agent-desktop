@@ -53,7 +53,7 @@ export function MiniMaxCodeLayout({
             data-mmcode-layout="root"
         >
             {/* 顶部 32px 标题栏(跨平台:macOS 保留 traffic lights,Windows/Linux 自带 min/max/close) */}
-            <MiniMaxCodeTitleBar title="MiniMax Code" />
+            <MiniMaxCodeTitleBar title="Pi Agent" />
 
             {/* 三栏主体:左 aside + 中 main + 右 aside */}
             <div className="flex min-h-0 flex-1 w-full">

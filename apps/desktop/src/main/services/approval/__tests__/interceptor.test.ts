@@ -48,27 +48,26 @@ describe("createApprovalInterceptor", () => {
         expect(send).not.toHaveBeenCalled();
     });
 
-    it("asks for approval on high-risk tool, aborts if denied", async () => {
-        (requestApproval as any).mockResolvedValueOnce(false);
+    it("does not ask or abort on high-risk tools; pi-permission-system owns runtime decisions", async () => {
         await interceptor.handleEvent({
             type: "tool_execution_start",
             toolCallId: "tc_1",
             toolName: "bash",
             args: { command: "rm -rf /" },
         });
-        expect(requestApproval).toHaveBeenCalled();
-        expect(abort).toHaveBeenCalled();
+        expect(requestApproval).not.toHaveBeenCalled();
+        expect(abort).not.toHaveBeenCalled();
+        expect(send).not.toHaveBeenCalled();
     });
 
-    it("asks for approval on high-risk tool, does NOT abort if approved", async () => {
-        (requestApproval as any).mockResolvedValueOnce(true);
+    it("leaves high-risk approval to the bundled permission extension", async () => {
         await interceptor.handleEvent({
             type: "tool_execution_start",
             toolCallId: "tc_1",
             toolName: "bash",
             args: { command: "rm -rf /" },
         });
-        expect(requestApproval).toHaveBeenCalled();
+        expect(requestApproval).not.toHaveBeenCalled();
         expect(abort).not.toHaveBeenCalled();
     });
 

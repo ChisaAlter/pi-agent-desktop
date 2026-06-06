@@ -70,8 +70,70 @@ export interface AppSettings {
     wordWrap: boolean;
     language?: string;
     piConfig?: PiConfig;
-    /** v1.0.13: ChatInput 权限下拉,影响 Pi 工具调用的拦截档位 */
-    permissionLevel?: "read" | "partial" | "full";
+    /** 桌面权限模式: ask=主动询问, smart=智能授权, always=始终授权 */
+    permissionLevel?: PermissionMode | "read" | "partial" | "full";
+}
+
+// ── Extension UI: permissions + plan mode ─────────────────────────
+
+export type PermissionMode = "ask" | "smart" | "always";
+
+export type PermissionDecision =
+    | "allow_once"
+    | "allow_session"
+    | "allow_always"
+    | "deny"
+    | "deny_session";
+
+export interface ExtensionUiRequest {
+    requestId: string;
+    workspaceId?: string;
+    kind: "select" | "confirm" | "input" | "editor";
+    source: "permission" | "plan" | "extension";
+    title: string;
+    message?: string;
+    placeholder?: string;
+    options?: string[];
+    createdAt: number;
+}
+
+export interface ExtensionUiResponse {
+    requestId: string;
+    value?: string | boolean;
+    decision?: PermissionDecision;
+}
+
+export interface PlanCard {
+    id: string;
+    title: string;
+    content: string;
+    filename?: string;
+    createdAt: number;
+}
+
+export interface PlanProgressItem {
+    id: string;
+    text: string;
+    status: "pending" | "running" | "completed" | "failed" | "waiting";
+}
+
+export interface PlanProgressUpdate {
+    workspaceId?: string;
+    items: PlanProgressItem[];
+    status?: "planning" | "waiting_decision" | "executing" | "completed" | "idle";
+}
+
+export interface PlanDecisionRequest {
+    requestId: string;
+    card?: PlanCard;
+    workspaceId?: string;
+    kind?: ExtensionUiRequest["kind"];
+    source?: "plan";
+    title?: string;
+    message?: string;
+    placeholder?: string;
+    options?: string[];
+    createdAt?: number;
 }
 
 // ── Pi Driver ─────────────────────────────────────────────────────
@@ -238,9 +300,21 @@ export interface PiAPI {
 
     // Session
     listSessions(): Promise<Session[]>;
-    createSession(workspaceId: string, title?: string): Promise<Session>;
+    createSession(workspaceId: string, title?: string, id?: string): Promise<Session>;
     renameSession(id: string, title: string): Promise<Session>;
     deleteSession(id: string): Promise<void>;
+
+    // Extension UI bridge
+    permissionSetMode(mode: PermissionMode): Promise<void>;
+    permissionRespond(requestId: string, response: ExtensionUiResponse | PermissionDecision | boolean | string): void;
+    onPermissionRequest(cb: (req: ExtensionUiRequest) => void): Unsubscribe;
+    onPermissionUpdate(cb: (payload: unknown) => void): Unsubscribe;
+
+    planSetEnabled(workspaceId: string, enabled: boolean): Promise<void>;
+    planRespond(requestId: string, decision: "execute" | "refine" | "cancel", text?: string): void;
+    onPlanCard(cb: (card: PlanCard) => void): Unsubscribe;
+    onPlanDecisionRequest(cb: (req: PlanDecisionRequest) => void): Unsubscribe;
+    onPlanProgress(cb: (update: PlanProgressUpdate) => void): Unsubscribe;
 
     // Git
     getGitStatus(workspacePath: string): Promise<GitStatus | null>;

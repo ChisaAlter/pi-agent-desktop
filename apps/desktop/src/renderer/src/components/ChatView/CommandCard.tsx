@@ -26,24 +26,24 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
   const getStatusIcon = () => {
     switch (toolCall.status) {
       case 'running': return (
-        <div className="w-4 h-4 border-2 border-[#f59e0b] border-t-transparent rounded-full animate-spin" />
+        <div className="h-3.5 w-3.5 rounded-full border-2 border-[#b8b8b8] border-t-transparent animate-spin" />
       );
       case 'completed': return (
-        <div className="w-4 h-4 rounded-full bg-[#10b981] flex items-center justify-center">
-          <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#16a34a]">
+          <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
           </svg>
         </div>
       );
       case 'error': return (
-        <div className="w-4 h-4 rounded-full bg-[#ef4444] flex items-center justify-center">
-          <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <div className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#ef4444]">
+          <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
           </svg>
         </div>
       );
       default: return (
-        <div className="w-4 h-4 rounded-full border-2 border-[#e5e5e5]" />
+        <div className="h-3.5 w-3.5 rounded-full border border-[#d8d8d8]" />
       );
     }
   };
@@ -95,17 +95,16 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
         : JSON.stringify(toolCall.output, null, 2);
 
   return (
-    <div className="bg-[#f5f5f5] rounded-lg border border-[#e5e5e5] overflow-hidden">
-      {/* Header */}
+    <div className="border-l border-[#e5e5e2] pl-3">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between px-3 py-2 hover:bg-white transition-colors duration-150"
+        className="flex w-full items-center justify-between py-1 text-left transition-colors duration-150 hover:text-[#333]"
       >
         <div className="flex items-center gap-2">
           {getStatusIcon()}
           <div className="flex items-center gap-2">
             {getToolIcon()}
-            <span className="text-sm font-medium text-[#1a1a1a]">
+            <span className="text-sm text-[#777]">
               {toolCall.name === 'bash' ? '运行命令' : 
                toolCall.name === 'read' ? '读取文件' :
                toolCall.name === 'write' ? '写入文件' :
@@ -116,12 +115,12 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
         
         <div className="flex items-center gap-2">
           {toolCall.startTime && (
-            <span className="text-xs text-[#999999]">
+            <span className="text-xs text-[#aaa]">
               {formatTime(toolCall.startTime)}
             </span>
           )}
           <svg
-            className={`w-3 h-3 text-[#999999] transition-transform duration-150 ${
+            className={`h-3 w-3 text-[#aaa] transition-transform duration-150 ${
               isExpanded ? 'rotate-90' : ''
             }`}
             fill="none"
@@ -135,12 +134,12 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
       
       {/* Content */}
       {isExpanded && (
-        <div className="border-t border-[#e5e5e5] p-3">
+        <div className="py-2">
           {/* Input */}
           {inputStr !== null ? (
             <div className="mb-3">
-              <div className="text-xs text-[#666666] mb-1 font-medium">输入：</div>
-              <pre className="bg-white p-2 rounded text-xs overflow-x-auto border border-[#e5e5e5]">
+              <div className="mb-1 text-xs font-medium text-[#777]">输入：</div>
+              <pre className="overflow-x-auto rounded-lg border border-[#ededeb] bg-[#fbfbfa] p-2 text-xs">
                 {inputStr}
               </pre>
             </div>
@@ -149,7 +148,7 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
           {/* Output */}
           {outputStr !== null ? (
             <div>
-              <div className="text-xs text-[#666666] mb-1 font-medium">输出：</div>
+              <div className="mb-1 text-xs font-medium text-[#777]">输出：</div>
               {(toolCall.name === 'edit' || toolCall.name === 'write') &&
                typeof toolCall.output === 'string' &&
                extractDiffFromOutput(toolCall.output) ? (
@@ -157,7 +156,7 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
                   <DiffViewer diff={toolCall.output} maxHeight="400px" />
                 </div>
               ) : (
-                <pre className="bg-white p-2 rounded text-xs overflow-x-auto max-h-40 overflow-y-auto border border-[#e5e5e5]">
+                <pre className="max-h-40 overflow-x-auto overflow-y-auto rounded-lg border border-[#ededeb] bg-[#fbfbfa] p-2 text-xs">
                   {outputStr}
                 </pre>
               )}
@@ -166,7 +165,7 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
           
           {/* Duration */}
           {toolCall.startTime && toolCall.endTime && (
-            <div className="mt-2 text-xs text-[#999999]">
+            <div className="mt-2 text-xs text-[#aaa]">
               耗时：{formatDuration(toolCall.startTime, toolCall.endTime)}
             </div>
           )}

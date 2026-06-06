@@ -47,6 +47,7 @@
 // "Ayase / Plus Plan" 用户卡片,现在直接 inline 渲染,避免再维护一个空组件。
 
 import React from "react";
+import { useSessionStore } from "../../stores/session-store";
 
 // ----------------------------------------------------------------------
 // 类型
@@ -133,6 +134,14 @@ function IconGit(): React.JSX.Element {
                 strokeWidth={1.5}
                 d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
             />
+        </svg>
+    );
+}
+
+function IconMessage(): React.JSX.Element {
+    return (
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h8M8 14h5m8-2a8 8 0 11-3.3-6.48L21 5l-1.05 3.15A7.96 7.96 0 0121 12z" />
         </svg>
     );
 }
@@ -253,6 +262,17 @@ export function MiniMaxCodeSidebar({
     currentSection,
     onSectionChange,
 }: MiniMaxCodeSidebarProps): React.JSX.Element {
+    const sessions = useSessionStore((state) => state.sessions);
+    const currentSessionId = useSessionStore((state) => state.currentSessionId);
+    const historyItems = sessions
+        .slice()
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+        .map((session) => ({
+            id: `session:${session.id}`,
+            label: session.title || "未命名会话",
+            icon: <IconMessage />,
+        }));
+
     return (
         <div
             className="flex h-full w-full flex-col bg-[var(--mm-bg-sidebar)] text-[var(--mm-text-primary)]"
@@ -293,6 +313,22 @@ export function MiniMaxCodeSidebar({
                         />
                     ))}
                 </div>
+
+                {historyItems.length > 0 && (
+                    <div className="flex flex-col gap-0.5">
+                        <h3 className="px-3 pt-1 pb-0.5 text-[11px] font-medium uppercase tracking-[0.5px] text-[var(--mm-text-tertiary)]">
+                            任务历史
+                        </h3>
+                        {historyItems.map((item) => (
+                            <NavItem
+                                key={item.id}
+                                section={item}
+                                active={item.id === `session:${currentSessionId}`}
+                                onClick={() => onSectionChange(item.id)}
+                            />
+                        ))}
+                    </div>
+                )}
 
                 {/* v1.0.17: 空分组已移除，等接入真实数据后再恢复 */}
                 {GROUPED_SECTIONS.length > 0 && GROUPED_SECTIONS.map((group) => (

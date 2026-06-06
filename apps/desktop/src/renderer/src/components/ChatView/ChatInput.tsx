@@ -8,6 +8,10 @@ import { useAttachmentsStore } from "../../stores/attachments-store";
 import { useI18n } from "../../i18n";
 import { Popover } from "../common/Popover";
 import { useMentions } from "../../hooks/useMentions";
+import { usePermissionStore } from "../../stores/permission-store";
+import { usePlanStore } from "../../stores/plan-store";
+import { PermissionRequestStack } from "./PermissionRequestStack";
+import type { PermissionMode } from "@shared";
 
 interface ChatInputProps {
   isConnected: boolean;
@@ -21,15 +25,43 @@ interface ChatInputProps {
   onPrefillConsumed?: () => void;
 }
 
-const PERMISSION_OPTIONS: Array<{ value: "read" | "partial" | "full"; label: string; desc: string }> = [
-  { value: "read", label: "只读", desc: "只能读取文件" },
-  { value: "partial", label: "部分访问", desc: "可编辑 workspace 内文件" },
-  { value: "full", label: "始终授权", desc: "可执行任意命令" },
+const PERMISSION_OPTIONS: Array<{ value: PermissionMode; label: string; desc: string }> = [
+  { value: "ask", label: "主动询问", desc: "写入和命令默认询问" },
+  { value: "smart", label: "智能授权", desc: "只读自动放行，写入询问" },
+  { value: "always", label: "始终授权", desc: "尽量自动允许，保留审计" },
 ];
+
+function normalizePermissionMode(value: unknown): PermissionMode {
+  if (value === "ask" || value === "read") return "ask";
+  if (value === "always" || value === "full") return "always";
+  return "smart";
+}
 
 function basename(p: string): string {
   const m = p.match(/[^\\/]+$/);
   return m ? m[0] : p;
+}
+
+function PermissionModeIcon({ mode }: { mode: PermissionMode }): React.JSX.Element {
+  if (mode === "ask") {
+    return (
+      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M12 6v6l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    );
+  }
+  if (mode === "smart") {
+    return (
+      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M9 12l2 2 4-5m5 3a8 8 0 11-16 0 8 8 0 0116 0z" />
+      </svg>
+    );
+  }
+  return (
+    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M13 10V3L4 14h7v7l9-11h-7z" />
+    </svg>
+  );
 }
 
 export function ChatInput({
@@ -47,6 +79,8 @@ export function ChatInput({
   const [cursorPos, setCursorPos] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { settings, updateSettings, piModels } = useSettingsStore();
+  const permissionStore = usePermissionStore();
+  const planStore = usePlanStore();
   const { add: addAttachment, remove: removeAttachment, list: listAttachments } = useAttachmentsStore();
   const { t } = useI18n();
 
@@ -201,13 +235,20 @@ export function ChatInput({
     }
   }, [workspaceId, addAttachment]);
 
-  const currentPermission = settings.permissionLevel ?? "full";
+  const currentPermission = normalizePermissionMode(settings.permissionLevel ?? permissionStore.mode);
   const currentModel = settings.model;
+  useEffect(() => {
+    if (permissionStore.mode !== currentPermission) {
+      permissionStore.setMode(currentPermission);
+    }
+  }, [currentPermission, permissionStore]);
+
   const handlePermissionSelect = useCallback(
-    (value: "read" | "partial" | "full") => {
+    (value: PermissionMode) => {
+      permissionStore.setMode(value);
       updateSettings({ permissionLevel: value });
     },
-    [updateSettings],
+    [permissionStore, updateSettings],
   );
   const handleModelSelect = useCallback(
     (model: { id: string; name: string; provider: string }) => {
@@ -217,13 +258,15 @@ export function ChatInput({
   );
 
   const canSend = inputValue.trim().length > 0 && isConnected;
+  const currentPermissionLabel = PERMISSION_OPTIONS.find((p) => p.value === currentPermission)?.label ?? "智能授权";
 
   return (
-    <div className="bg-transparent px-8 pt-3 pb-8">
-      <div className="mx-auto max-w-[768px] rounded-2xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3 shadow-[0_10px_30px_rgba(0,0,0,0.08)]">
+    <div className="bg-transparent px-8 pt-2 pb-2">
+      <PermissionRequestStack />
+      <div className="mx-auto max-w-[770px] overflow-hidden rounded-[18px] border border-[#e6e6e3] bg-white shadow-[0_18px_50px_rgba(0,0,0,0.08)]">
         {/* 附件 chips */}
         {attachments.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-2" role="list" aria-label="已选附件">
+          <div className="flex flex-wrap gap-1.5 px-4 pt-3" role="list" aria-label="已选附件">
             {attachments.map((a) => (
               <span
                 key={a.id}
@@ -255,7 +298,7 @@ export function ChatInput({
         )}
 
         {/* 输入框 + 发送按钮 + @mention 弹窗 */}
-        <div className="relative mb-3 flex gap-3">
+        <div className="relative flex gap-3 px-4 pt-4 pb-2">
           <div className="flex-1 relative">
             <textarea
               ref={textareaRef}
@@ -268,7 +311,7 @@ export function ChatInput({
               onSelect={handleSelect}
               onKeyDown={handleKeyDown}
               placeholder={isConnected ? t("chatInput.placeholder.ready") : t("chatInput.placeholder.noConnection")}
-              className="min-h-[56px] w-full resize-none rounded-xl border-0 bg-transparent px-1 py-1 text-sm leading-relaxed text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none disabled:opacity-50"
+              className="min-h-[52px] w-full resize-none border-0 bg-transparent px-0 py-0 text-sm leading-relaxed text-[#1f1f1f] placeholder:text-[#a1a1a1] focus:outline-none disabled:opacity-50"
               rows={1}
               disabled={isProcessing || !isConnected}
               aria-label={t("chatInput.send")}
@@ -318,10 +361,10 @@ export function ChatInput({
             type="button"
             onClick={isProcessing ? onStop : () => void handleSend()}
             disabled={!isProcessing && !canSend}
-            className={`flex h-10 w-10 flex-shrink-0 items-center justify-center self-end rounded-xl transition-all ${
+            className={`flex h-9 w-9 flex-shrink-0 items-center justify-center self-end rounded-xl transition-all ${
               isProcessing
-                ? "bg-[var(--color-error)] hover:bg-[#dc2626] text-white"
-                : "bg-[#a3a3a3] text-white hover:bg-[#8f8f8f] disabled:cursor-not-allowed disabled:opacity-50"
+                ? "bg-[#1f1f1f] text-white hover:bg-[#111]"
+                : "bg-[#a8a8a8] text-white hover:bg-[#8f8f8f] disabled:cursor-not-allowed disabled:opacity-50"
             }`}
             aria-label={isProcessing ? t("chatView.stopGeneration") : t("chatInput.send")}
             title={isProcessing ? t("chatView.stopGeneration") : t("chatInput.send")}
@@ -340,13 +383,13 @@ export function ChatInput({
         </div>
 
         {/* 控制栏 */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between border-t border-[#f0f0ee] bg-[#fbfbfa] px-4 py-2">
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => void handlePickFiles()}
               disabled={!workspaceId}
-              className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs text-[var(--mm-text-secondary)] transition-all hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs text-[#777] transition-all hover:bg-[#f0f0ef] disabled:cursor-not-allowed disabled:opacity-50"
               aria-label={t("chatInput.addAttachment")}
               title={workspaceId ? t("chatInput.addAttachment") : "请先选择 workspace"}
             >
@@ -359,19 +402,19 @@ export function ChatInput({
             {/* 权限下拉 */}
             <Popover
               align="start"
-              contentClassName="min-w-[200px]"
+              contentClassName="min-w-[158px]"
               trigger={
                 <div
-                  className="flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs text-[var(--mm-text-secondary)] transition-all hover:bg-[var(--mm-bg-hover)]"
+                  className="flex h-7 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs text-[#666] transition-all hover:bg-[#f0f0ef]"
                   role="button"
                   tabIndex={0}
-                  aria-label={`权限: ${PERMISSION_OPTIONS.find((p) => p.value === currentPermission)?.label ?? "始终授权"}`}
+                  aria-label={`权限: ${currentPermissionLabel}`}
                   data-testid="chat-input-permission-trigger"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                   </svg>
-                  <span>{PERMISSION_OPTIONS.find((p) => p.value === currentPermission)?.label ?? "始终授权"}</span>
+                  <span>{currentPermissionLabel}</span>
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
@@ -380,7 +423,6 @@ export function ChatInput({
             >
               {(close) => (
                 <div className="py-1">
-                  <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--mm-text-tertiary)]">权限档位</div>
                   {PERMISSION_OPTIONS.map((opt) => (
                     <button
                       key={opt.value}
@@ -391,25 +433,38 @@ export function ChatInput({
                         handlePermissionSelect(opt.value);
                         close();
                       }}
-                      className="w-full text-left px-3 py-2 hover:bg-[var(--mm-bg-hover)] flex items-start gap-2"
+                      className="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[#333] hover:bg-[#f4f4f3]"
                     >
-                      <span
-                        className={`mt-0.5 inline-block w-3 h-3 rounded-full border-2 flex-shrink-0 ${
-                          currentPermission === opt.value
-                            ? "border-[var(--mm-bg-active)] bg-[var(--mm-bg-active)]"
-                            : "border-[var(--color-border)]"
-                        }`}
-                        aria-hidden
-                      />
-                      <span className="flex-1 min-w-0">
-                        <span className="block text-sm text-[var(--mm-text-primary)]">{opt.label}</span>
-                        <span className="block text-xs text-[var(--mm-text-tertiary)]">{opt.desc}</span>
+                      <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[#777]" aria-hidden>
+                        <PermissionModeIcon mode={opt.value} />
                       </span>
+                      <span className="min-w-0 flex-1 truncate">{opt.label}</span>
+                      {currentPermission === opt.value && (
+                        <svg className="h-3.5 w-3.5 text-[#333]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
                     </button>
                   ))}
                 </div>
               )}
             </Popover>
+
+            <button
+              type="button"
+              onClick={() => planStore.setEnabled(workspaceId, !planStore.enabled)}
+              className={`flex h-7 items-center gap-1.5 rounded-lg px-2 text-xs transition-all ${
+                planStore.enabled
+                  ? "bg-[#262626] text-white"
+                  : "text-[#777] hover:bg-[#f0f0ef]"
+              }`}
+              aria-pressed={planStore.enabled}
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />
+              </svg>
+              计划模式
+            </button>
           </div>
 
           <div className="flex items-center gap-3">
@@ -430,7 +485,7 @@ export function ChatInput({
               contentClassName="min-w-[220px]"
               trigger={
                 <div
-                  className="flex h-8 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs text-[var(--mm-text-secondary)] transition-all hover:bg-[var(--mm-bg-hover)]"
+                  className="flex h-7 cursor-pointer items-center gap-1.5 rounded-lg px-2 text-xs text-[#666] transition-all hover:bg-[#f0f0ef]"
                   role="button"
                   tabIndex={0}
                   aria-label={currentModel ? `当前模型: ${currentModel}` : "未选择模型"}

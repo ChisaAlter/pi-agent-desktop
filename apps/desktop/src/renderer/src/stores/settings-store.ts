@@ -55,7 +55,7 @@ const defaultSettings: AppSettings = {
   autoSave: true,
   showLineNumbers: true,
   wordWrap: true,
-  permissionLevel: 'full',  // v1.0.13: ChatInput 权限下拉默认
+  permissionLevel: 'smart',
 };
 
 /** 内部 helper: 把 setSettings 返的 (void | IpcError) / throw 统一成 lastWriteError */

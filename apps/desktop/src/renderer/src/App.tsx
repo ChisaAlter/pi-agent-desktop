@@ -24,7 +24,7 @@ import { GitPanel } from "./components/GitPanel/GitPanel";
 import {
     MiniMaxCodeLayout,
     MiniMaxCodeSidebar,
-    TaskProgressPanel,
+    RightRail,
 } from "./components/MiniMaxCode";
 import { useWorkspaceStore } from "./stores/workspace-store";
 import { useSettingsStore } from "./stores/settings-store";
@@ -36,6 +36,8 @@ import { useShortcuts } from "./shortcuts";
 import { I18nProvider } from "./i18n";
 import { logger } from "./utils/logger";
 import { useTaskProgress } from "./hooks/useTaskProgress";
+import { ensurePermissionSubscriptions } from "./stores/permission-store";
+import { ensurePlanSubscriptions } from "./stores/plan-store";
 
 function App(): React.ReactElement {
     return (
@@ -61,6 +63,11 @@ function AppShell(): React.ReactElement {
         (s) => s.changes.filter((c) => c.status === "pending").length,
     );
     const currentWorkspace = getCurrentWorkspace();
+
+    useEffect(() => {
+        ensurePermissionSubscriptions();
+        ensurePlanSubscriptions();
+    }, []);
 
     // v1.1: 暗色主题切换 — 同步 settings.theme 到 data-theme 属性
     useEffect(() => {
@@ -136,6 +143,9 @@ function AppShell(): React.ReactElement {
         switch (cmdId) {
             case "new_chat":
                 setActiveSection("chat");
+                if (currentWorkspace) {
+                    useSessionStore.getState().createSession(currentWorkspace.id);
+                }
                 return;
             case "open_skills":
                 setActiveSection("skills");
@@ -188,7 +198,7 @@ function AppShell(): React.ReactElement {
                 }
             },
         }),
-        [openSettings, paletteOpen, showCheatsheet, showTerminal],
+        [currentWorkspace, openSettings, paletteOpen, showCheatsheet, showTerminal],
     );
     useShortcuts(shortcutHandlers);
 
@@ -222,6 +232,18 @@ function AppShell(): React.ReactElement {
                                 openSettings();
                                 return;
                             }
+                            if (s === "new-task") {
+                                if (currentWorkspace) {
+                                    useSessionStore.getState().createSession(currentWorkspace.id);
+                                }
+                                setActiveSection("chat");
+                                return;
+                            }
+                            if (s.startsWith("session:")) {
+                                useSessionStore.getState().setCurrentSession(s.slice("session:".length));
+                                setActiveSection("chat");
+                                return;
+                            }
                             // new-task / skills / chat 默认 fallback
                             setActiveSection(s);
                         }}
@@ -245,8 +267,8 @@ function AppShell(): React.ReactElement {
                     </>
                 }
                 rightSlot={
-                    // v1.0.17: 接通真数据 (useTaskProgress)
-                    <TaskProgressPanel
+                    <RightRail
+                        workspacePath={currentWorkspace?.path}
                         tasks={taskProgress.tasks}
                     />
                 }

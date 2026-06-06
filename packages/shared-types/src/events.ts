@@ -34,6 +34,44 @@ export type MessageUpdateSubtype =
     | "done"
     | "error";
 
+export interface PiAssistantMessageTextDelta {
+    type: "text_delta";
+    delta: string;
+}
+
+export interface PiAssistantMessageThinkingDelta {
+    type: "thinking_delta";
+    delta: string;
+}
+
+export interface PiAssistantMessageToolStart {
+    type: "toolcall_start";
+    toolCallId: string;
+    toolName: string;
+    args: Record<string, unknown>;
+}
+
+export interface PiAssistantMessageToolEnd {
+    type: "toolcall_end";
+    toolCallId: string;
+    toolName?: string;
+    result?: unknown;
+}
+
+export type PiAssistantMessageEvent =
+    | PiAssistantMessageTextDelta
+    | PiAssistantMessageThinkingDelta
+    | PiAssistantMessageToolStart
+    | PiAssistantMessageToolEnd
+    | { type: Exclude<MessageUpdateSubtype, "text_delta" | "thinking_delta" | "toolcall_start" | "toolcall_end">; [key: string]: unknown };
+
+export interface PiMessageUpdateSdk {
+    type: "message_update";
+    message?: unknown;
+    assistantMessageEvent: PiAssistantMessageEvent;
+}
+
+// Legacy flattened shape kept for older adapters/tests.
 export interface PiMessageUpdateTextDelta {
     type: "message_update";
     subtype: "text_delta";
@@ -112,6 +150,7 @@ export type PiEvent =
     | { type: "turn_start" }
     | PiTurnEnd
     | { type: "message_start" }
+    | PiMessageUpdateSdk
     | PiTextDeltaEvent
     | PiThinkingDeltaEvent
     | PiToolStartEvent

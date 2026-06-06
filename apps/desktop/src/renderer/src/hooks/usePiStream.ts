@@ -10,9 +10,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PiEvent } from "@shared/events";
-import { isIpcError } from "@shared";
+import { isIpcError, type PlanCard } from "@shared";
 import { useSessionStore } from "../stores/session-store";
-import { useApprovalStore } from "../stores/approval-store";
+import { usePlanStore } from "../stores/plan-store";
 
 export interface ToolCallState {
     id: string;
@@ -41,7 +41,52 @@ export interface UsePiStreamReturn extends PiStreamState {
     clearError: () => void;
 }
 
-const HIGH_RISK_TOOLS = new Set(["bash", "write", "edit", "delete"]);
+type AssistantMessageEvent =
+    | { type: "text_delta"; delta: string }
+    | { type: "thinking_delta"; delta: string }
+    | { type: "toolcall_start"; toolCallId: string; toolName: string; args: Record<string, unknown> }
+    | { type: "toolcall_end"; toolCallId: string; result?: unknown }
+    | { type: string; [key: string]: unknown };
+
+function getAssistantMessageEvent(event: PiEvent): AssistantMessageEvent | null {
+    if (event.type !== "message_update") return null;
+
+    const nested = (event as { assistantMessageEvent?: unknown }).assistantMessageEvent;
+    if (nested && typeof nested === "object" && typeof (nested as { type?: unknown }).type === "string") {
+        return nested as AssistantMessageEvent;
+    }
+
+    const subtype = (event as { subtype?: unknown }).subtype;
+    if (typeof subtype === "string") {
+        return { ...(event as unknown as Record<string, unknown>), type: subtype } as AssistantMessageEvent;
+    }
+
+    return null;
+}
+
+function createFallbackPlanCard(content: string): PlanCard | null {
+    const text = content.trim();
+    if (!text) return null;
+
+    const hasPlanShape = /(^|\n)\s*(?:#+\s*)?计划[：:\s]/.test(text) ||
+        /(^|\n)\s*(?:步骤|Step)\s*\d+\s*[：:.]/i.test(text) ||
+        /(^|\n)\s*(?:[-*]|\d+\.)\s+(?:\[[ xX]\]\s*)?(?:.+)/.test(text);
+    const hasExecutionIntent = /执行计划|execute_plan|implementation plan|test plan|方案|步骤/i.test(text);
+    if (!hasPlanShape || !hasExecutionIntent) return null;
+
+    const titleLine = text
+        .split(/\r?\n/)
+        .map((line) => line.trim().replace(/^#+\s*/, ""))
+        .find((line) => line.length > 0 && /计划|plan/i.test(line));
+    const title = titleLine?.replace(/^计划[：:\s]*/, "").trim() || "计划";
+
+    return {
+        id: `fallback_plan_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        title,
+        content: text,
+        createdAt: Date.now(),
+    };
+}
 
 export function usePiStream(): UsePiStreamReturn {
     const [isStreaming, setIsStreaming] = useState(false);
@@ -59,8 +104,22 @@ export function usePiStream(): UsePiStreamReturn {
     const messageIdRef = useRef<string | null>(null);
     const sessionIdRef = useRef<string | null>(null);
 
-    const { getCurrentSession, addMessage, updateMessage } = useSessionStore();
-    const approvalStore = useApprovalStore();
+    const { getCurrentSession, addMessage, updateMessage, addToolCall, updateToolCall } = useSessionStore();
+    const ensureAssistantMessage = useCallback(() => {
+        if (sessionIdRef.current && messageIdRef.current) return;
+        const session = useSessionStore.getState().getCurrentSession();
+        if (!session) return;
+        sessionIdRef.current = session.id;
+        const newId = `m_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        messageIdRef.current = newId;
+        setStreamingMessageId(newId);
+        addMessage(session.id, {
+            id: newId,
+            role: "assistant",
+            content: "",
+            timestamp: new Date(),
+        });
+    }, [addMessage]);
 
     // ── 连接状态 ────────────────────────────────────────────────────────────
     // v1.0.17: 初次检测 + 每 30 秒心跳重检，断了自动设为 false
@@ -111,40 +170,44 @@ export function usePiStream(): UsePiStreamReturn {
                 break;
 
             case "message_start":
-                // 新消息开始, 创建一个空 assistant 消息
-                {
-                    const session = useSessionStore.getState().getCurrentSession();
-                    if (session) {
-                        sessionIdRef.current = session.id;
-                        const newId = `m_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-                        messageIdRef.current = newId;
-                        setStreamingMessageId(newId);
-                        addMessage(session.id, {
-                            id: newId,
-                            role: "assistant",
-                            content: "",
-                            timestamp: new Date(),
-                        });
-                    }
-                }
+                // Pi can emit repeated/empty message_start events. Create the assistant row lazily on first content.
                 break;
 
             case "message_update": {
-                const subtype = event.subtype;
-                if (subtype === "text_delta") {
-                    const delta = (event as { delta: string }).delta;
+                const assistantEvent = getAssistantMessageEvent(event);
+                if (!assistantEvent) break;
+
+                if (assistantEvent.type === "text_delta") {
+                    const delta = assistantEvent.delta;
+                    ensureAssistantMessage();
                     textRef.current += delta;
                     setCurrentText(textRef.current);
                     // 实时更新 session 里的最后一条消息
                     if (sessionIdRef.current && messageIdRef.current) {
                         updateMessage(sessionIdRef.current, messageIdRef.current, { content: textRef.current });
                     }
-                } else if (subtype === "thinking_delta") {
-                    const delta = (event as { delta: string }).delta;
+                } else if (assistantEvent.type === "thinking_delta") {
+                    const delta = assistantEvent.delta;
+                    ensureAssistantMessage();
                     thinkingRef.current += delta;
                     setCurrentThinking(thinkingRef.current);
-                } else if (subtype === "toolcall_start") {
-                    const e = event as { toolCallId: string; toolName: string; args: Record<string, unknown> };
+                    if (sessionIdRef.current && messageIdRef.current) {
+                        updateMessage(sessionIdRef.current, messageIdRef.current, { thinking: thinkingRef.current });
+                    }
+                } else if (assistantEvent.type === "toolcall_start") {
+                    const e = assistantEvent as { toolCallId: string; toolName: string; args: Record<string, unknown> };
+                    ensureAssistantMessage();
+                    if (e.toolName === "plan_write") {
+                        const title = typeof e.args.title === "string" ? e.args.title : "计划";
+                        const content = typeof e.args.content === "string" ? e.args.content : "";
+                        usePlanStore.getState().setCard({
+                            id: e.toolCallId,
+                            title,
+                            content,
+                            filename: typeof e.args.filename === "string" ? e.args.filename : undefined,
+                            createdAt: Date.now(),
+                        });
+                    }
                     const tc: ToolCallState = {
                         id: e.toolCallId,
                         name: e.toolName,
@@ -154,8 +217,17 @@ export function usePiStream(): UsePiStreamReturn {
                     };
                     toolCallsRef.current.set(e.toolCallId, tc);
                     setToolCalls(new Map(toolCallsRef.current));
-                } else if (subtype === "toolcall_end") {
-                    const e = event as { toolCallId: string; result?: unknown };
+                    if (sessionIdRef.current && messageIdRef.current) {
+                        addToolCall(sessionIdRef.current, messageIdRef.current, {
+                            id: e.toolCallId,
+                            name: e.toolName,
+                            input: e.args,
+                            status: "running",
+                            startTime: new Date(tc.startTime),
+                        });
+                    }
+                } else if (assistantEvent.type === "toolcall_end") {
+                    const e = assistantEvent as { toolCallId: string; result?: unknown };
                     const tc = toolCallsRef.current.get(e.toolCallId);
                     if (tc) {
                         tc.status = "completed";
@@ -163,6 +235,13 @@ export function usePiStream(): UsePiStreamReturn {
                         tc.endTime = Date.now();
                         toolCallsRef.current.set(e.toolCallId, tc);
                         setToolCalls(new Map(toolCallsRef.current));
+                        if (sessionIdRef.current && messageIdRef.current) {
+                            updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
+                                status: "completed",
+                                output: e.result,
+                                endTime: new Date(tc.endTime),
+                            });
+                        }
                     }
                 }
                 break;
@@ -174,16 +253,37 @@ export function usePiStream(): UsePiStreamReturn {
 
             case "tool_execution_start": {
                 const e = event as { toolCallId: string; toolName: string; args: Record<string, unknown> };
-                // 高危工具: 记录到审批 store
-                if (HIGH_RISK_TOOLS.has(e.toolName)) {
-                    const changeId = `ch_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-                    approvalStore.addChange({
-                        toolCallId: e.toolCallId,
-                        toolName: e.toolName === "write" || e.toolName === "edit" ? e.toolName : "write",
-                        filePath: (e.args?.path as string) ?? (e.args?.file_path as string) ?? "",
+                ensureAssistantMessage();
+                if (e.toolName === "plan_write") {
+                    const title = typeof e.args?.title === "string" ? e.args.title : "计划";
+                    const content = typeof e.args?.content === "string" ? e.args.content : "";
+                    usePlanStore.getState().setCard({
+                        id: e.toolCallId,
+                        title,
+                        content,
+                        filename: typeof e.args?.filename === "string" ? e.args.filename : undefined,
+                        createdAt: Date.now(),
                     });
-                    const tc = toolCallsRef.current.get(e.toolCallId);
-                    if (tc) tc.approvalChangeId = changeId;
+                }
+                if (!toolCallsRef.current.has(e.toolCallId)) {
+                    const tc: ToolCallState = {
+                        id: e.toolCallId,
+                        name: e.toolName,
+                        args: e.args,
+                        status: "running",
+                        startTime: Date.now(),
+                    };
+                    toolCallsRef.current.set(e.toolCallId, tc);
+                    setToolCalls(new Map(toolCallsRef.current));
+                    if (sessionIdRef.current && messageIdRef.current) {
+                        addToolCall(sessionIdRef.current, messageIdRef.current, {
+                            id: e.toolCallId,
+                            name: e.toolName,
+                            input: e.args,
+                            status: "running",
+                            startTime: new Date(tc.startTime),
+                        });
+                    }
                 }
                 break;
             }
@@ -195,17 +295,41 @@ export function usePiStream(): UsePiStreamReturn {
                     tc.status = e.isError ? "error" : "completed";
                     tc.endTime = Date.now();
                     setToolCalls(new Map(toolCallsRef.current));
+                    if (sessionIdRef.current && messageIdRef.current) {
+                        updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
+                            status: e.isError ? "error" : "completed",
+                            endTime: new Date(tc.endTime),
+                        });
+                    }
                 }
                 break;
             }
 
             case "turn_end":
+                if (textRef.current) {
+                    const planStore = usePlanStore.getState();
+                    if (planStore.enabled && !planStore.activeCard) {
+                        const fallbackCard = createFallbackPlanCard(textRef.current);
+                        if (fallbackCard) {
+                            planStore.setCard(fallbackCard);
+                        }
+                    }
+                    usePlanStore.getState().applyDoneMarkers(textRef.current);
+                }
                 setIsStreaming(false);
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
                 break;
 
             case "agent_end":
+                if (
+                    !textRef.current &&
+                    !thinkingRef.current &&
+                    toolCallsRef.current.size === 0 &&
+                    !usePlanStore.getState().activeCard
+                ) {
+                    setError("Pi 本轮没有返回内容，请检查模型/API Key 配置后重试。");
+                }
                 setIsStreaming(false);
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
@@ -217,7 +341,7 @@ export function usePiStream(): UsePiStreamReturn {
                 setError("Pi 扩展错误");
                 break;
         }
-    }, [addMessage, updateMessage, approvalStore]);
+    }, [updateMessage, addToolCall, updateToolCall, ensureAssistantMessage]);
 
     useEffect(() => {
         handleEventRef.current = handleEvent;
@@ -255,7 +379,16 @@ export function usePiStream(): UsePiStreamReturn {
         }
 
         try {
-            await window.piAPI.sendPrompt(workspaceId, content);
+            const outbound = usePlanStore.getState().enabled && !content.trimStart().startsWith("/")
+                ? `/plan\n${content}`
+                : content;
+            const result = await window.piAPI.sendPrompt(workspaceId, outbound);
+            if (isIpcError(result)) {
+                setError(result.fallback);
+                setIsStreaming(false);
+                setStreamingMessageId(null);
+                window.dispatchEvent(new CustomEvent("pi:stream-end"));
+            }
         } catch (err) {
             setError(String(err));
             setIsStreaming(false);

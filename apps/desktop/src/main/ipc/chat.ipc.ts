@@ -11,6 +11,11 @@ import { WorkspaceRegistry } from "../services/pi-session/registry";
 import type { IpcSender } from "../services/pi-session/event-bridge";
 import { PendingEdits } from "../services/approval/pending-edits";
 import { resolveApprovalRequest } from "../services/approval/approval-bridge";
+import {
+    resolveExtensionUiRequest,
+    setDesktopPermissionMode,
+} from "../services/extensions/extension-ui-bridge";
+import type { ExtensionUiResponse, PermissionDecision, PermissionMode } from "@shared";
 
 interface WorkspaceLite {
     id: string;
@@ -39,6 +44,25 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
     // 监听 renderer 响应审批
     ipcMain.on("approval:respond", (_event, requestId: string, approved: boolean) => {
         resolveApprovalRequest(requestId, approved);
+    });
+
+    ipcMain.handle("permission:set-mode", async (_event, mode: PermissionMode) => {
+        setDesktopPermissionMode(mode);
+    });
+
+    ipcMain.on(
+        "permission:respond",
+        (_event, requestId: string, response: ExtensionUiResponse | PermissionDecision | boolean | string) => {
+            resolveExtensionUiRequest(requestId, response);
+        },
+    );
+
+    ipcMain.handle("plan:set-enabled", async (_event, _workspaceId: string, _enabled: boolean) => {
+        return undefined;
+    });
+
+    ipcMain.on("plan:respond", (_event, requestId: string, decision: string, text?: string) => {
+        resolveExtensionUiRequest(requestId, { requestId, value: decision === "execute" ? true : text ?? "" });
     });
 
     // v1.1: renderer 同步 autoApprove 标志到主进程

@@ -4,7 +4,6 @@
 // v1.0.5: event 类型用 @shared/events PiEvent (之前是 :any)
 
 import { classifyToolCall } from "./classifier";
-import { requestApproval } from "./approval-bridge";
 import { readFile } from "fs/promises";
 import { join } from "path";
 import type { PiEvent, PiToolExecutionStart, PiToolExecutionEnd } from "@shared/events";
@@ -42,46 +41,9 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                 const c = classifyToolCall({ name: toolName, args: safeArgs });
                 if (c.risk === "read") return;
 
-                // v1.1: autoApprove 时跳过所有高危/编辑审批弹窗, 直接放行
-                if (deps.pendingEdits.autoApprove) {
-                    if (c.risk === "high") return; // 直接放行高危命令
-                    if (c.risk === "edit") {
-                        // 仍然跟踪编辑以便事后 review, 但不弹审批
-                        const filePath = String(
-                            safeArgs.file_path ?? safeArgs.path ?? safeArgs.filePath ?? ""
-                        );
-                        if (filePath) {
-                            deps.pendingEdits.track(
-                                toolCallId,
-                                toolName as "write" | "edit",
-                                filePath,
-                                {
-                                    content: typeof safeArgs.content === "string" ? safeArgs.content
-                                        : typeof safeArgs.file_text === "string" ? safeArgs.file_text
-                                        : undefined,
-                                    old_string: typeof safeArgs.old_string === "string" ? safeArgs.old_string
-                                        : typeof safeArgs.oldString === "string" ? safeArgs.oldString
-                                        : undefined,
-                                    new_string: typeof safeArgs.new_string === "string" ? safeArgs.new_string
-                                        : typeof safeArgs.newString === "string" ? safeArgs.newString
-                                        : undefined,
-                                }
-                            );
-                        }
-                        return;
-                    }
-                    return;
-                }
-
                 if (c.risk === "high") {
-                    const approved = await requestApproval({
-                        method: "confirm",
-                        title: `⚠️ 允许执行高危工具: ${toolName}?`,
-                        message: c.preview,
-                    });
-                    if (!approved) {
-                        deps.abort();
-                    }
+                    // Runtime permission decisions are handled by pi-permission-system.
+                    // This interceptor now only keeps post-edit diff/review telemetry.
                     return;
                 }
 

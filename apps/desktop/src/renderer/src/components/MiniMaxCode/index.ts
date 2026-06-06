@@ -19,3 +19,5 @@ export {
     type TaskProgressItem,
 } from "./TaskProgressPanel";
 
+export { RightRail } from "./RightRail";
+

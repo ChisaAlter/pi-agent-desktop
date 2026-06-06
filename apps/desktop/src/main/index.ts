@@ -282,21 +282,26 @@ function initializePiDriver(): void {
 // Git status helper
 function getGitStatus(workspacePath: string): { branch: string; modified: string[]; added: string[]; deleted: string[]; untracked: string[]; ahead: number; behind: number } | null {
   try {
-    const gitDir = join(workspacePath, '.git');
-    if (!existsSync(gitDir)) {
+    let gitRoot: string;
+    try {
+      gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+        cwd: workspacePath,
+        encoding: 'utf-8',
+      }).trim();
+    } catch {
       return null;
     }
 
     // Get branch
     let branch = 'main';
     try {
-      branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: workspacePath, encoding: 'utf-8' }).trim();
+      branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: gitRoot, encoding: 'utf-8' }).trim();
     } catch {
       // fallback to main
     }
 
     // Get status
-    const statusOutput = execSync('git status --porcelain', { cwd: workspacePath, encoding: 'utf-8' });
+    const statusOutput = execSync('git status --porcelain', { cwd: gitRoot, encoding: 'utf-8' });
     const lines = statusOutput.split('\n').filter(l => l.trim());
 
     const modified: string[] = [];
@@ -317,8 +322,11 @@ function getGitStatus(workspacePath: string): { branch: string; modified: string
     let ahead = 0;
     let behind = 0;
     try {
-      const revParse = execSync('git rev-parse --abbrev-ref @{u}', { cwd: workspacePath, encoding: 'utf-8' }).trim();
-      const countOutput = execSync(`git rev-list --left-right --count HEAD...${revParse}`, { cwd: workspacePath, encoding: 'utf-8' }).trim();
+      const revParse = execSync('git rev-parse --abbrev-ref @{u}', { cwd: gitRoot, encoding: 'utf-8' }).trim();
+      const countOutput = execFileSync('git', ['rev-list', '--left-right', '--count', `HEAD...${revParse}`], {
+        cwd: gitRoot,
+        encoding: 'utf-8',
+      }).trim();
       const parts = countOutput.split('\t');
       if (parts.length === 2) {
         ahead = parseInt(parts[0], 10) || 0;
@@ -548,11 +556,11 @@ function setupIPC(): void {
     return store.get('sessions');
   });
 
-  ipcMain.handle('session:create', async (_, workspaceId: string, title?: string) => {
+  ipcMain.handle('session:create', async (_, workspaceId: string, title?: string, id?: string) => {
     const sessions = store.get('sessions');
     const session = {
-      id: Date.now().toString(),
-      title: title || `Session ${sessions.length + 1}`,
+      id: id || Date.now().toString(),
+      title: title || '未命名会话',
       workspaceId,
       createdAt: Date.now(),
       updatedAt: Date.now()

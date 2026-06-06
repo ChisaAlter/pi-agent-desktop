@@ -1,4 +1,4 @@
-// 消息气泡 - 用户消息右侧，AI 消息左侧（黑色头像）
+// 消息气泡 - 用户消息右侧 pill，AI 消息正文块（无头像）
 // v1.0.4: author 走 t()
 // v1.0.9: 时间戳走 utils/format.{formatTime, formatIso}, 无效输入不渲染 "Invalid Date"
 
@@ -31,27 +31,12 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
       aria-label={articleLabel}
       aria-busy={isStreaming}
     >
-      <div className={`max-w-[80%] ${isUser ? 'order-2' : 'order-1'}`}>
-        <div className={`flex items-start gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-          {/* 头像 */}
-          <div
-            className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-              isUser
-                ? 'bg-[#1a1a1a]'
-                : 'bg-[#1a1a1a]'
-            }`}
-            aria-hidden="true"
-          >
-            <span className="text-white text-xs font-bold">
-              {isUser ? 'U' : 'π'}
-            </span>
-          </div>
-
+      <div className={isUser ? 'max-w-[74%]' : 'w-full max-w-full'}>
           {/* 消息内容 */}
-          <div className={`rounded-2xl ${
+          <div className={`${
             isUser
-              ? 'bg-[#1a1a1a] text-white px-4 py-3'
-              : 'bg-white border border-[#e5e5e5] text-[#1a1a1a] px-4 py-3'
+              ? 'rounded-[18px] bg-[#f1f1ef] px-4 py-3 text-[#1f1f1f]'
+              : 'text-[#1f1f1f] py-1'
           }`}>
             {isUser ? (
               <div className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</div>
@@ -92,12 +77,11 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
 
             {/* 时间戳 */}
             <div
-              className={`text-xs mt-2 ${isUser ? 'text-white/70' : 'text-[#999]'}`}
+              className={`text-xs mt-2 ${isUser ? 'text-[#8a8a8a]' : 'text-[#aaa]'}`}
             >
               <time dateTime={timeIso}>{timeText}</time>
             </div>
           </div>
-        </div>
       </div>
     </article>
   );

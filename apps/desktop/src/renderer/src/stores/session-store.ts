@@ -55,6 +55,11 @@ interface SessionState {
   getSessionMessages: (sessionId: string) => Message[];
 }
 
+function summarizeTitle(content: string): string {
+  const compact = content.replace(/\s+/g, " ").trim();
+  return compact.slice(0, 28) || "未命名会话";
+}
+
 export const useSessionStore = create<SessionState>((set, get) => {
   // Load sessions from main process on init
   const loadSessions = async () => {
@@ -80,9 +85,10 @@ export const useSessionStore = create<SessionState>((set, get) => {
   currentSessionId: null,
 
   createSession: (workspaceId: string) => {
+    const id = `s_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const newSession: Session = {
-      id: Date.now().toString(),
-      title: `Session ${get().sessions.length + 1}`,
+      id,
+      title: "未命名会话",
       workspaceId,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -96,7 +102,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
 
     // Sync to main process
     if (window.piAPI) {
-      window.piAPI.createSession(workspaceId, newSession.title).catch((e) =>
+      window.piAPI.createSession(workspaceId, newSession.title, id).catch((e) =>
         logger.error('[session-store] createSession failed:', e)
       );
     }
@@ -158,12 +164,22 @@ export const useSessionStore = create<SessionState>((set, get) => {
         session.id === sessionId
           ? {
               ...session,
+              title:
+                message.role === "user" && session.messages.length === 0 && session.title === "未命名会话"
+                  ? summarizeTitle(message.content)
+                  : session.title,
               messages: [...session.messages, message],
               updatedAt: new Date()
             }
           : session
       )
     }));
+    const updated = get().sessions.find((session) => session.id === sessionId);
+    if (message.role === "user" && updated?.messages.length === 1 && updated.title !== "未命名会话") {
+      window.piAPI?.renameSession(sessionId, updated.title).catch((e) =>
+        logger.error('[session-store] auto renameSession failed:', e)
+      );
+    }
   },
   
   updateMessage: (sessionId: string, messageId: string, updates: Partial<Message>) => {

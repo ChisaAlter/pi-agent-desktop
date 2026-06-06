@@ -7,6 +7,7 @@
 import { createWorkspaceSession, type WorkspaceSession } from "./factory";
 import { createEventBridge, type IpcSender } from "./event-bridge";
 import { createApprovalInterceptor } from "../approval/interceptor";
+import { createExtensionUiBridge } from "../extensions/extension-ui-bridge";
 import type { PiEvent } from "@shared/events";
 import type { PendingEdits } from "../approval/pending-edits";
 import log from "electron-log/main";
@@ -29,7 +30,11 @@ export class WorkspaceRegistry {
         const existing = this.entries.get(workspaceId);
         if (existing) return existing.session;
 
-        const session = await createWorkspaceSession({ workspaceId, workspacePath });
+        const session = await createWorkspaceSession({
+            workspaceId,
+            workspacePath,
+            uiContext: createExtensionUiBridge(workspaceId),
+        });
         const entry: WorkspaceEntry = { session, subscribed: false };
         this.entries.set(workspaceId, entry);
 
