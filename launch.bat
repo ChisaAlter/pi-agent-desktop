@@ -1,6 +1,9 @@
 @echo off
-cd /d C:\ai\pi-agent-desktop\apps\desktop
+setlocal
+set "ROOT=%~dp0"
+cd /d "%ROOT%apps\desktop"
 echo [Pi Agent] Building...
 call pnpm run build >NUL 2>NUL
 echo [Pi Agent] Starting...
-start "" "C:\ai\pi-agent-desktop\apps\desktop\node_modules\.bin\electron.CMD" .
+start "" "%ROOT%apps\desktop\node_modules\.bin\electron.CMD" .
+endlocal

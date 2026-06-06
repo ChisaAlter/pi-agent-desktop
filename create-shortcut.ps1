@@ -1,12 +1,13 @@
-# Pi Agent 桌面快捷方式创建脚本
+﻿# Pi Agent 桌面快捷方式创建脚本
 # 运行此脚本在桌面创建 Pi Agent 快捷方式
 
 $desktopPath = [Environment]::GetFolderPath("Desktop")
 $shortcutPath = Join-Path $desktopPath "Pi Agent.lnk"
 
-$projectRoot = "C:\ai\pi-agent-desktop"
-$launcherPath = "C:\ai\pi-agent-desktop\launch.bat"
-$iconPath = "C:\ai\pi-agent-desktop\apps\desktop\build\icon.ico"
+# Derive paths from the script's own location — works from any checkout path.
+$projectRoot = $PSScriptRoot
+$launcherPath = Join-Path $PSScriptRoot "launch.bat"
+$iconPath = Join-Path $PSScriptRoot "apps\desktop\build\icon.ico"
 
 # 如果图标不存在，使用默认图标
 if (-not (Test-Path $iconPath)) {
