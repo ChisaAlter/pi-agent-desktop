@@ -16,6 +16,7 @@ import { WorkspaceRegistry } from './services/pi-session/registry';
 import { PendingEdits } from './services/approval/pending-edits';
 import { setupChatIpc } from './ipc/chat.ipc';
 import { setupFilesIpc } from './ipc/files.ipc';
+import { setupSessionsIpc } from './ipc/sessions.ipc';
 import { setupSkillsIpc } from './ipc/skills.ipc';
 import { setupTerminalIpc } from './ipc/terminal.ipc';
 import { workspaceCreateSchema, settingsSetSchema, gitCommitSchema, gitAddSchema } from './ipc/schemas';
@@ -23,6 +24,7 @@ import { ptyManager } from './services/shell/pty-manager';
 import { setupAutoUpdater } from './services/updater';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
 import { ipcError } from '@shared';
+import type { Session } from '@shared';
 
 let mainWindow: BrowserWindow | null = null;
 let piAgentConfig: PiAgentConfig | null = null;
@@ -180,13 +182,8 @@ interface Workspace {
   createdAt: number;
 }
 
-interface Session {
-  id: string;
-  title: string;
-  workspaceId: string;
-  createdAt: number;
-  updatedAt: number;
-}
+// Session 类型用 @shared 的版本(包含 messages 字段),不再 inline
+// 2026-06-06 hotfix: 持久化需要 messages 字段,inline 版本已删
 
 interface AppSettings {
   theme: 'dark' | 'light';
@@ -551,41 +548,13 @@ function setupIPC(): void {
     }
   });
 
-  // Session management
-  ipcMain.handle('session:list', async () => {
-    return store.get('sessions');
-  });
-
-  ipcMain.handle('session:create', async (_, workspaceId: string, title?: string, id?: string) => {
-    const sessions = store.get('sessions');
-    const session = {
-      id: id || Date.now().toString(),
-      title: title || '未命名会话',
-      workspaceId,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
-    sessions.push(session);
-    store.set('sessions', sessions);
-    return session;
-  });
-
-  ipcMain.handle('session:rename', async (_, id: string, title: string) => {
-    const sessions = store.get('sessions');
-    const target = sessions.find((s: { id: string }) => s.id === id);
-    if (!target) {
-      throw new Error(`Session not found: ${id}`);
-    }
-    const trimmed = (title || '').trim() || target.title;
-    target.title = trimmed;
-    target.updatedAt = Date.now();
-    store.set('sessions', sessions);
-    return target;
-  });
-
-  ipcMain.handle('session:delete', async (_, id: string) => {
-    const sessions = store.get('sessions').filter(s => s.id !== id);
-    store.set('sessions', sessions);
+  // Session management (4 个原有 + 3 个新增 messages handler 都在 sessions.ipc.ts)
+  // 2026-06-06 hotfix: 重构到 ipc/sessions.ipc.ts,走 services/session-store 模块
+  setupSessionsIpc({
+    store: {
+      get: (key) => store.get(key) as Session[],
+      set: (key, value) => store.set(key, value as never),
+    },
   });
 
   // Git status

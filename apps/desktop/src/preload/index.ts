@@ -82,6 +82,20 @@ const piAPI: PiAPI = {
     createSession: (workspaceId, title, id) => ipcRenderer.invoke("session:create", workspaceId, title, id),
     renameSession: (id, title) => ipcRenderer.invoke("session:rename", id, title),
     deleteSession: (id) => ipcRenderer.invoke("session:delete", id),
+    // 2026-06-06 hotfix: session messages 持久化桥接
+    // fire-and-forget,失败由 caller 走 .catch + logger.error,不阻塞 UI 流式响应
+    appendMessage: (sessionId, message) =>
+        ipcRenderer.invoke("session:append-message", sessionId, message),
+    updateMessage: (sessionId, messageId, updates) =>
+        ipcRenderer.invoke("session:update-message", sessionId, messageId, updates),
+    updateToolCall: (sessionId, messageId, toolCallId, updates) =>
+        ipcRenderer.invoke(
+            "session:update-tool-call",
+            sessionId,
+            messageId,
+            toolCallId,
+            updates,
+        ),
 
     permissionSetMode: (mode: PermissionMode) => ipcRenderer.invoke("permission:set-mode", mode),
     permissionRespond: (

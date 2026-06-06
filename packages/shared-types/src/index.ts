@@ -303,6 +303,26 @@ export interface PiAPI {
     createSession(workspaceId: string, title?: string, id?: string): Promise<Session>;
     renameSession(id: string, title: string): Promise<Session>;
     deleteSession(id: string): Promise<void>;
+    // 2026-06-06 hotfix: session messages 持久化
+    //  - appendMessage: stream 起点(user msg / 首条 assistant msg)
+    //  - updateMessage: 流式累积 content / thinking,turn_end 时 flush
+    //  - updateToolCall: tool call 状态变迁(running → completed/error)
+    //  失败返 IpcError,fire-and-forget 由 caller 处理
+    appendMessage(
+        sessionId: string,
+        message: Message,
+    ): Promise<void | IpcError>;
+    updateMessage(
+        sessionId: string,
+        messageId: string,
+        updates: Partial<Message>,
+    ): Promise<void | IpcError>;
+    updateToolCall(
+        sessionId: string,
+        messageId: string,
+        toolCallId: string,
+        updates: Partial<ToolCall>,
+    ): Promise<void | IpcError>;
 
     // Extension UI bridge
     permissionSetMode(mode: PermissionMode): Promise<void>;

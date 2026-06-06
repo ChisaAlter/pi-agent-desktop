@@ -34,3 +34,56 @@ export const terminalInputSchema = z.tuple([
     z.string().min(1, "terminalId must be a non-empty string"),
     z.string().min(1, "data must be a non-empty string"),
 ]);
+
+// ── 2026-06-06 hotfix: session messages persistence ──────────────────
+// 4 个原有 session handler 的 schema 已经在上面 gitAddSchema 等里隐式覆盖
+// (只是 string[] / string),不重复定义。下面是 3 个新增的 messages 持久化 schema。
+
+// session:append-message — (sessionId: string, message: object)
+export const appendMessageSchema = z.tuple([
+    z.string().min(1, "sessionId must be a non-empty string"),
+    z
+        .object({
+            id: z.string().min(1),
+            role: z.enum(["user", "assistant", "system"]),
+            content: z.string(),
+            timestamp: z.union([z.string(), z.date(), z.number()]),
+            thinking: z.string().optional(),
+            toolCalls: z.array(z.unknown()).optional(),
+        })
+        .passthrough(), // 允许额外字段,真值由 services/session-store 决定
+]);
+
+// session:update-message — (sessionId, messageId, updates: Partial<Message>)
+export const updateMessageSchema = z.tuple([
+    z.string().min(1, "sessionId must be a non-empty string"),
+    z.string().min(1, "messageId must be a non-empty string"),
+    z
+        .object({
+            id: z.string().optional(),
+            role: z.enum(["user", "assistant", "system"]).optional(),
+            content: z.string().optional(),
+            timestamp: z.union([z.string(), z.date(), z.number()]).optional(),
+            thinking: z.string().optional(),
+            toolCalls: z.array(z.unknown()).optional(),
+        })
+        .passthrough(),
+]);
+
+// session:update-tool-call — (sessionId, messageId, toolCallId, updates: Partial<ToolCall>)
+export const updateToolCallSchema = z.tuple([
+    z.string().min(1, "sessionId must be a non-empty string"),
+    z.string().min(1, "messageId must be a non-empty string"),
+    z.string().min(1, "toolCallId must be a non-empty string"),
+    z
+        .object({
+            id: z.string().optional(),
+            name: z.string().optional(),
+            input: z.unknown().optional(),
+            output: z.unknown().optional(),
+            status: z.enum(["pending", "running", "completed", "error"]).optional(),
+            startTime: z.union([z.string(), z.date(), z.number()]).optional(),
+            endTime: z.union([z.string(), z.date(), z.number()]).optional(),
+        })
+        .passthrough(),
+]);
