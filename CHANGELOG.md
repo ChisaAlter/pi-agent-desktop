@@ -4,6 +4,18 @@
 
 All notable changes to pi-desktop are documented here.
 
+## v0.4.7 - 2026-06-07
+
+### Added
+- Embedded terminal dock: open an agent-scoped terminal between the chat timeline and composer without leaving the session.
+- Terminal tabs: create, switch, close individual tabs, or close all tabs with an in-app confirmation.
+- Terminal themes: switch between Pi Soft, Solarized Light, Solarized Dark, One Dark, and Monokai.
+
+### Improved
+- Refactored the large config modal into focused tabs and shared helpers, making provider, auth, settings, and raw JSON editing easier to maintain.
+- Split the main renderer display components out of `App.tsx`, reducing the main UI entry point and preparing the app for future panel work.
+- Windows packaging now uses the `node-pty` prebuilds instead of forcing a native rebuild, avoiding Visual Studio Spectre library requirements during `electron-builder`.
+
 ## v0.4.6 - 2026-06-07
 
 ### Added

@@ -4,6 +4,18 @@
 
 这里记录 pi-desktop 各版本的重要变化。
 
+## v0.4.7 - 2026-06-07
+
+### 新增
+- 内嵌终端 Dock：可在聊天时间线和输入框之间打开当前 Agent 绑定的终端，无需离开会话。
+- 终端多 tab：支持新建、切换、关闭单个 tab，也可通过应用内确认弹层关闭全部 tab。
+- 终端主题：支持 Pi Soft、Solarized Light、Solarized Dark、One Dark、Monokai 等经典主题。
+
+### 优化
+- 将大型配置弹窗拆分为独立页签和共享工具，后续维护 Provider、Auth、Settings 和原始 JSON 编辑更稳。
+- 将主界面的展示组件从 `App.tsx` 拆出，降低主入口复杂度，为后续面板和终端迭代做准备。
+- Windows 打包改用 `node-pty` 预构建产物，不再强制 native rebuild，避免 electron-builder 依赖 Visual Studio Spectre 库。
+
 ## v0.4.6 - 2026-06-07
 
 ### 新增

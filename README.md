@@ -8,7 +8,7 @@
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Electron](https://img.shields.io/badge/Electron-38-47848f)
 ![React](https://img.shields.io/badge/React-19-61dafb)
-![Version](https://img.shields.io/badge/version-0.4.6-green)
+![Version](https://img.shields.io/badge/version-0.4.7-green)
 
 `pi-desktop` **不是** pi 的分支。它是一个轻量 Electron 外壳，通过启动多个 `pi --mode rpc` 进程，将项目管理、会话管理、对话界面、配置管理和工具编排整合到一个原生桌面应用中——所有 Agent 能力由 pi 原生提供。
 
@@ -16,13 +16,12 @@
 
 ## 📋 更新日志
 
-> **最新版本 v0.4.6**（2026-06-07）
+> **最新版本 v0.4.7**（2026-06-07）
 
-### v0.4.6 新增
-- 🧪 Provider 连接测试：在启动 agent 前验证 Base URL、API Key、模型 ID、headers 和响应延迟
-- 📥 模型列表拉取：从供应商接口直接获取可用模型，减少手动录入
-- 🏷️ Provider 重命名与 User-Agent 配置：Models 页可视化管理 provider 名称和请求头
-- ⌨️ 建议面板优化：斜线命令和文件建议支持键盘选择，常用命令置顶
+### v0.4.7 新增
+- 🖥️ 内嵌终端：每个 Agent 拥有独立终端 Dock 和多 tab，直接在会话旁运行命令。
+- 🎨 终端主题：支持 Pi Soft、Solarized、One Dark、Monokai 等经典主题。
+- 🧩 UI 拆分：配置弹窗和主界面组件拆分，后续扩展终端和面板更稳。
 
 [查看完整更新日志 →](CHANGELOG.zh-CN.md)
 
@@ -35,6 +34,7 @@
 | **多项目工作区** | 添加、搜索和切换本地项目目录，同时运行多个 pi Agent，项目间完全隔离。 |
 | **配置管理** | 可视化编辑器管理 pi 的 `models.json`、`auth.json`、`settings.json`，支持 Provider 重命名、模型拉取、连接测试和请求头/User-Agent 配置。 |
 | **斜线命令 & `!` Shell** | 内置斜线命令建议（`/compact`、`/session` 等），支持 `!command` / `!!command` 在聊天输入框直接执行 Shell 命令。 |
+| **内嵌终端 Dock** | 当前 Agent 绑定独立终端 tab，支持 PowerShell/cmd/sh fallback、多 tab、主题切换、拖拽高度和关闭确认。 |
 | **会话管理** | 新建会话、恢复历史会话、内联重命名、导出 HTML、关闭 Agent——通过侧边栏或右键菜单即可完成。 |
 | **Git 集成** | 实时显示当前分支，支持本地 + 远程分支选择器、分支数量徽章和分支切换。 |
 | **工具调用可视化** | 工具调用聚合卡片，摘要 + 可展开详情，运行中/完成/失败状态清晰标识。 |
@@ -49,7 +49,7 @@
 
 ![工作区总览](docs/images/overview.png)
 
-Markdown 渲染 + 流式输出、工具调用详情、模型/思考等级/上下文/缓存状态栏、Git 分支选择器、操作按钮（New Session · Stop · Reload · Restart）。
+Markdown 渲染 + 流式输出、工具调用详情、模型/思考等级/上下文/缓存状态栏、Git 分支选择器、操作按钮（New Session · Stop · Restart · Files · History · Terminal）。
 
 ### 配置管理
 
@@ -78,6 +78,7 @@ pi-desktop
 ├─ Electron 主进程
 │  ├─ 管理项目记录
 │  ├─ 启动 pi --mode rpc 进程
+│  ├─ 管理 Agent 绑定的本地 pty 终端
 │  ├─ 桥接文件、会话、Git 操作
 │  └─ 暴露安全 IPC API
 │
@@ -89,6 +90,7 @@ pi-desktop
 │  ├─ 聊天时间线（流式输出）
 │  ├─ 文件 / 历史抽屉
 │  ├─ 配置管理弹窗（Models / Auth / Settings / 源文件）
+│  ├─ Agent 绑定的 Terminal Dock
 │  ├─ 模型与上下文状态栏
 │  └─ 设置 UI
 │
@@ -170,6 +172,7 @@ src/
 │  ├─ projects/           # 项目记录持久化
 │  ├─ sessions/           # Pi 会话扫描
 │  ├─ settings/           # 应用设置持久化
+│  ├─ terminal/           # Agent 绑定的 pty 终端
 │  └─ index.ts            # Electron 主入口
 │
 ├─ preload/
@@ -178,6 +181,8 @@ src/
 ├─ renderer/
 │  └─ src/
 │     ├─ App.tsx          # 主界面
+│     ├─ components/      # 拆分后的 UI 组件
+│     ├─ config/          # 配置弹窗子组件和配置工具
 │     ├─ previewApi.ts    # 浏览器预览降级
 │     ├─ styles.css       # 应用样式
 │     └─ main.tsx         # React 入口

@@ -8,7 +8,7 @@
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Electron](https://img.shields.io/badge/Electron-38-47848f)
 ![React](https://img.shields.io/badge/React-19-61dafb)
-![Version](https://img.shields.io/badge/version-0.4.0-green)
+![Version](https://img.shields.io/badge/version-0.4.7-green)
 
 `pi-desktop` is **not** a fork of pi. It is a lightweight Electron shell that orchestrates multiple `pi --mode rpc` processes, providing a native desktop UI for projects, sessions, conversations, configuration, and tool orchestration — all powered by pi's native agent capabilities.
 
@@ -16,14 +16,12 @@
 
 ## 📋 Changelog
 
-> **Latest: v0.4.0** (2026-06-02)
+> **Latest: v0.4.7** (2026-06-07)
 
-### v0.4.0 Added
-- 🖼️ Image support: paste images from clipboard (Ctrl+V) or drag and drop into chat composer
-- 👁️ Image preview in user messages with click-to-zoom fullscreen viewer
-- 📜 History session image restoration: images from previous sessions now display correctly
-- 🔔 Session end notification: system notification when agent finishes responding
-- ⚡ Large image auto-compression: images resized to 2000px max edge
+### v0.4.7 Added
+- 🖥️ Embedded terminal: each agent can open its own terminal dock with multiple tabs next to the conversation.
+- 🎨 Terminal themes: switch between Pi Soft, Solarized, One Dark, Monokai, and other classic looks.
+- 🧩 UI cleanup: split the large app and config components so future terminal and panel changes are easier to maintain.
 
 [View Full Changelog →](CHANGELOG.md)
 
@@ -34,8 +32,9 @@
 | Feature | Description |
 |---|---|
 | **Multi-Project Workspace** | Add, search, and switch between local project folders. Run multiple pi agents simultaneously with per-project isolation. |
-| **Configuration Management** | Visual editors for pi's `models.json`, `auth.json`, and `settings.json` — manage providers, API keys, and model settings without touching JSON files manually. |
+| **Configuration Management** | Visual editors for pi's `models.json`, `auth.json`, and `settings.json` — manage providers, API keys, model discovery, connection tests, and request headers without touching JSON files manually. |
 | **Slash Commands & `!` Shell** | Built-in slash command suggestions (`/reload`, `/compact`, `/session`, …) and `!command` / `!!command` for inline shell execution directly in the chat composer. |
+| **Embedded Terminal Dock** | Agent-scoped terminal tabs with PowerShell/cmd/sh fallback, multiple tabs, theme switching, height resizing, and close-all confirmation. |
 | **Session Management** | Create new sessions, restore historical ones, rename sessions inline, export to HTML, and close agents — all from the sidebar or context menu. |
 | **Git Integration** | Real-time branch display with local + remote branch selector, branch count badge, and switching support. |
 | **Tool Call Visualization** | Grouped tool-call cards with summary and expandable details, clear status indicators for running/completed/failed calls. |
@@ -50,7 +49,7 @@
 
 ![Workspace overview](docs/images/overview.png)
 
-Markdown rendering with streaming text, tool-call details, model/thinking/context/cache status bar, git branch selector, and action controls (New Session · Stop · Reload · Restart).
+Markdown rendering with streaming text, tool-call details, model/thinking/context/cache status bar, git branch selector, and action controls (New Session · Stop · Restart · Files · History · Terminal).
 
 ### Configuration Management
 
@@ -79,6 +78,7 @@ pi-desktop
 ├─ Electron Main Process
 │  ├─ Project record management
 │  ├─ Spawns pi --mode rpc processes
+│  ├─ Manages agent-scoped local pty terminals
 │  ├─ Bridges file / session / git operations
 │  └─ Exposes safe IPC APIs
 │
@@ -90,6 +90,7 @@ pi-desktop
 │  ├─ Chat timeline with streaming
 │  ├─ File / history drawers
 │  ├─ Configuration modal (Models / Auth / Settings / Source)
+│  ├─ Agent-scoped Terminal Dock
 │  ├─ Model & context status bar
 │  └─ Settings UI
 │
@@ -171,6 +172,7 @@ src/
 │  ├─ projects/           # Project persistence
 │  ├─ sessions/           # Pi session scanning
 │  ├─ settings/           # App settings persistence
+│  ├─ terminal/           # Agent-scoped pty terminal sessions
 │  └─ index.ts            # Electron main entry
 │
 ├─ preload/
@@ -179,6 +181,8 @@ src/
 ├─ renderer/
 │  └─ src/
 │     ├─ App.tsx          # Main UI
+│     ├─ components/      # Split UI components
+│     ├─ config/          # Config modal tabs and helpers
 │     ├─ previewApi.ts    # Browser preview fallback
 │     ├─ styles.css       # App styling
 │     └─ main.tsx         # React entry
