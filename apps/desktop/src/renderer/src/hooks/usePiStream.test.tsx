@@ -5,11 +5,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiEvent } from "@shared/events";
 import { usePiStream } from "./usePiStream";
 import { useSessionStore } from "../stores/session-store";
+import { useAgentStore } from "../stores/agent-store";
 
 let emitPiEvent: ((event: PiEvent) => void) | null = null;
+let emitAgentEvent: ((payload: { agentId: string; workspaceId: string; event: PiEvent }) => void) | null = null;
 
 function HookHost(): null {
     usePiStream();
+    return null;
+}
+
+function HookHostWithAgent() {
+    usePiStream("agent_1");
     return null;
 }
 
@@ -20,6 +27,7 @@ function HookStateHost() {
 
 beforeEach(() => {
     emitPiEvent = null;
+    emitAgentEvent = null;
     (globalThis as { window: unknown }).window = {
         dispatchEvent: vi.fn(),
         piAPI: {
@@ -38,8 +46,19 @@ beforeEach(() => {
                 emitPiEvent = cb;
                 return vi.fn();
             }),
+            onAgentEvent: vi.fn((cb: (payload: { agentId: string; workspaceId: string; event: PiEvent }) => void) => {
+                emitAgentEvent = cb;
+                return vi.fn();
+            }),
         },
     };
+    useAgentStore.setState({
+        agents: [],
+        currentAgentId: null,
+        messagesByAgent: {},
+        runtimeByAgent: {},
+        initialized: true,
+    });
     useSessionStore.setState({
         currentSessionId: "s1",
         sessions: [
@@ -185,7 +204,75 @@ describe("usePiStream", () => {
         });
     });
 
-    it("surfaces empty Pi turns as a visible error", async () => {
+    it("routes matching agent events to agent-store when agentId is provided", async () => {
+        await act(async () => {
+            render(<HookHostWithAgent />);
+        });
+        expect(emitAgentEvent).toBeTruthy();
+
+        await act(async () => {
+            emitAgentEvent?.({ agentId: "other_agent", workspaceId: "ws1", event: { type: "agent_start" } });
+            emitAgentEvent?.({
+                agentId: "other_agent",
+                workspaceId: "ws1",
+                event: {
+                    type: "message_update",
+                    assistantMessageEvent: {
+                        type: "text_delta",
+                        delta: "wrong agent",
+                    },
+                },
+            });
+            emitAgentEvent?.({ agentId: "agent_1", workspaceId: "ws1", event: { type: "agent_start" } });
+            emitAgentEvent?.({ agentId: "agent_1", workspaceId: "ws1", event: { type: "message_start" } });
+            emitAgentEvent?.({
+                agentId: "agent_1",
+                workspaceId: "ws1",
+                event: {
+                    type: "message_update",
+                    assistantMessageEvent: {
+                        type: "text_delta",
+                        delta: "agent hi",
+                    },
+                },
+            });
+        });
+
+        // Agent-store should have the message, not session-store
+        const agentMsgs = useAgentStore.getState().messagesByAgent["agent_1"];
+        expect(agentMsgs).toHaveLength(1);
+        expect(agentMsgs[0]).toMatchObject({
+            role: "assistant",
+            content: "agent hi",
+        });
+        // Session-store should NOT have received this message
+        const session = useSessionStore.getState().sessions[0];
+        expect(session.messages).toHaveLength(0);
+    });
+
+    it("preserves old session-store routing when agentId is null", async () => {
+        await act(async () => {
+            render(<HookHost />);
+        });
+        expect(emitPiEvent).toBeTruthy();
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({ type: "message_start" });
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: {
+                    type: "text_delta",
+                    delta: "session hi",
+                },
+            });
+        });
+
+        const session = useSessionStore.getState().sessions[0];
+        expect(session.messages).toHaveLength(1);
+        expect(session.messages[0].content).toBe("session hi");
+    });
+it("surfaces empty Pi turns as a visible error", async () => {
         await act(async () => {
             render(<HookStateHost />);
         });

@@ -1,31 +1,42 @@
 // TerminalPanel (M4 Task M4-3)
 // 多 tab 终端面板, 集成 xterm.js + node-pty
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 
 interface Tab {
     id: string;
+    terminalId?: string;
     title: string;
     terminal: Terminal;
     fitAddon: FitAddon;
     containerRef: React.RefObject<HTMLDivElement | null>;
     cwd: string;
+    initialized: boolean;
+    unsubs: Array<() => void>;
+}
+
+interface TerminalResource {
+    terminalId: string;
+    unsubs: Array<() => void>;
 }
 
 interface TerminalPanelProps {
     workspacePath?: string;
+    agentId?: string;
     isOpen: boolean;
     onClose: () => void;
 }
 
-export function TerminalPanel({ workspacePath, isOpen, onClose }: TerminalPanelProps): React.ReactElement | null {
+export function TerminalPanel({ workspacePath, agentId, isOpen, onClose }: TerminalPanelProps): React.ReactElement | null {
     const [tabs, setTabs] = useState<Tab[]>([]);
     const [activeId, setActiveId] = useState<string | null>(null);
+    const resourcesRef = useRef(new Map<string, TerminalResource>());
+    const closedTabIdsRef = useRef(new Set<string>());
 
-    const createTab = async () => {
+    const createTab = () => {
         if (!window.piAPI) return;
         const id = `term_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         const containerRef = React.createRef<HTMLDivElement>();
@@ -38,49 +49,30 @@ export function TerminalPanel({ workspacePath, isOpen, onClose }: TerminalPanelP
         });
         const fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
-        term.open(containerRef.current!);
-        fitAddon.fit();
-
-        const { id: actualId } = await window.piAPI.createTerminal({
-            id,
-            cwd: workspacePath,
-            cols: term.cols,
-            rows: term.rows,
-        });
-
-        term.onData((data: string) => {
-            void window.piAPI.terminalInput(actualId, data);
-        });
-
-        const unsubOut = window.piAPI.onTerminalOutput(actualId, (data: string) => {
-            term.write(data);
-        });
-        const unsubExit = window.piAPI.onTerminalExit(actualId, (code: number | null) => {
-            term.write(`\r\n\x1b[33m[Process exited with code ${code}]\x1b[0m\r\n`);
-        });
-
-        // Stash unsubs for cleanup in closeTab (xterm has no onDispose event)
-        (term as unknown as { _unsubs: Array<() => void> })._unsubs = [unsubOut, unsubExit];
-
-        // Cleanup happens in closeTab (term.dispose() + IPC close)
 
         const newTab: Tab = {
-            id: actualId,
+            id,
             title: `Terminal ${tabs.length + 1}`,
             terminal: term,
             fitAddon,
             containerRef,
             cwd: workspacePath ?? "",
+            initialized: false,
+            unsubs: [],
         };
         setTabs((prev) => [...prev, newTab]);
-        setActiveId(actualId);
+        setActiveId(id);
     };
 
     const closeTab = (id: string) => {
+        closedTabIdsRef.current.add(id);
         const tab = tabs.find((t) => t.id === id);
+        const resource = resourcesRef.current.get(id);
+        resourcesRef.current.delete(id);
         if (tab) {
+            for (const unsub of resource?.unsubs ?? tab.unsubs) unsub();
             tab.terminal.dispose();
-            void window.piAPI?.closeTerminal(id);
+            void window.piAPI?.closeTerminal(resource?.terminalId ?? tab.terminalId ?? id);
         }
         setTabs((prev) => prev.filter((t) => t.id !== id));
         if (activeId === id) {
@@ -90,6 +82,65 @@ export function TerminalPanel({ workspacePath, isOpen, onClose }: TerminalPanelP
     };
 
     const activeTab = tabs.find((t) => t.id === activeId);
+
+    useEffect(() => {
+        for (const tab of tabs) {
+            const element = tab.containerRef.current;
+            if (tab.initialized || !element || !window.piAPI) continue;
+
+            tab.terminal.open(element);
+            tab.fitAddon.fit();
+            setTabs((prev) =>
+                prev.map((item) =>
+                    item.id === tab.id ? { ...item, initialized: true } : item,
+                ),
+            );
+
+            void (async () => {
+                const { id: actualId } = await window.piAPI.createTerminal({
+                    id: tab.id,
+                    cwd: workspacePath,
+                    agentId,
+                    cols: tab.terminal.cols,
+                    rows: tab.terminal.rows,
+                });
+
+                if (closedTabIdsRef.current.has(tab.id)) {
+                    void window.piAPI?.closeTerminal(actualId);
+                    return;
+                }
+
+                const dataDisposable = tab.terminal.onData((data: string) => {
+                    void window.piAPI.terminalInput(actualId, data);
+                });
+                const unsubOut = window.piAPI.onTerminalOutput(actualId, (data: string) => {
+                    tab.terminal.write(data);
+                });
+                const unsubExit = window.piAPI.onTerminalExit(actualId, (code: number | null) => {
+                    tab.terminal.write(`\r\n\x1b[33m[Process exited with code ${code}]\x1b[0m\r\n`);
+                });
+                const unsubs = [
+                    () => dataDisposable?.dispose?.(),
+                    unsubOut,
+                    unsubExit,
+                ];
+                resourcesRef.current.set(tab.id, { terminalId: actualId, unsubs });
+
+                if (closedTabIdsRef.current.has(tab.id)) {
+                    for (const unsub of unsubs) unsub();
+                    resourcesRef.current.delete(tab.id);
+                    void window.piAPI?.closeTerminal(actualId);
+                    return;
+                }
+
+                setTabs((prev) =>
+                    prev.map((item) =>
+                        item.id === tab.id ? { ...item, terminalId: actualId, unsubs } : item,
+                    ),
+                );
+            })();
+        }
+    }, [agentId, tabs, workspacePath]);
 
     // Resize active tab when panel resizes
     useEffect(() => {
@@ -115,18 +166,25 @@ export function TerminalPanel({ workspacePath, isOpen, onClose }: TerminalPanelP
             <div className="flex items-center px-2 py-1 border-b border-[#e5e5e5] bg-[#fafafa]">
                 <div className="flex items-center gap-1 flex-1 overflow-x-auto">
                     {tabs.map((t) => (
-                        <button
+                        <div
                             key={t.id}
-                            onClick={() => setActiveId(t.id)}
                             className={`flex items-center gap-2 px-3 py-1 text-xs rounded transition-colors ${
                                 activeId === t.id
                                     ? "bg-white text-[#1a1a1a] border border-[#e5e5e5]"
                                     : "text-[#666] hover:bg-[#f0f0f0]"
                             }`}
                         >
-                            <span className="font-mono">▣</span>
-                            <span>{t.title}</span>
                             <button
+                                type="button"
+                                onClick={() => setActiveId(t.id)}
+                                className="flex min-w-0 items-center gap-2"
+                            >
+                                <span className="font-mono">▣</span>
+                                <span>{t.title}</span>
+                            </button>
+                            <button
+                                type="button"
+                                aria-label={`关闭终端 ${t.title}`}
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     closeTab(t.id);
@@ -135,7 +193,7 @@ export function TerminalPanel({ workspacePath, isOpen, onClose }: TerminalPanelP
                             >
                                 ✕
                             </button>
-                        </button>
+                        </div>
                     ))}
                 </div>
                 <button

@@ -40,4 +40,12 @@ describe("main/index.ts: ipcMain.handle 重复注册回归", () => {
             .map(([ch, n]) => `${ch} (×${n})`);
         expect(dupes, `duplicate ipcMain.on channels: ${dupes.join(", ")}`).toEqual([]);
     });
+
+    it("git:diff-staged 使用标准 git diff --staged 参数", () => {
+        const indexPath = resolve(__dirname, "../index.ts");
+        const content = readFileSync(indexPath, "utf-8");
+
+        expect(content).toContain("['diff', '--staged']");
+        expect(content).not.toContain("['diff-staged']");
+    });
 });

@@ -4,6 +4,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RightRail } from "./RightRail";
 import { usePlanStore } from "../../stores/plan-store";
+import { useAgentStore } from "../../stores/agent-store";
 
 describe("RightRail", () => {
   const getGitStatus = vi.fn();
@@ -13,6 +14,13 @@ describe("RightRail", () => {
     Object.defineProperty(window, "piAPI", {
       value: { getGitStatus },
       configurable: true,
+    });
+    useAgentStore.setState({
+      agents: [],
+      currentAgentId: null,
+      messagesByAgent: {},
+      runtimeByAgent: {},
+      initialized: true,
     });
     usePlanStore.setState({
       enabled: false,
@@ -44,7 +52,25 @@ describe("RightRail", () => {
     expect(getGitStatus).toHaveBeenCalledWith("C:/ai/pi-agent-desktop/apps/desktop");
   });
 
-  it("prefers plan checklist over generic task activity", () => {
+  it("renders Agent card with idle status when agent exists", () => {
+    useAgentStore.setState({
+      agents: [{ id: "a1", workspaceId: "ws1", title: "Demo Agent", status: "idle", createdAt: 1, updatedAt: 1 }],
+      currentAgentId: "a1",
+    });
+
+    render(<RightRail />);
+
+    expect(screen.getByText("Agent")).toBeTruthy();
+    expect(screen.getByText("空闲")).toBeTruthy();
+  });
+
+  it("renders Agent card with not-created status when no agent exists", () => {
+    render(<RightRail />);
+
+    expect(screen.getByText("Agent")).toBeTruthy();
+    expect(screen.getByText("未创建")).toBeTruthy();
+  });
+it("prefers plan checklist over generic task activity", () => {
     usePlanStore.setState({
       steps: [
         { id: "s1", text: "梳理界面", status: "completed" },

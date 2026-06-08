@@ -1,11 +1,11 @@
 // E2E smoke: 全面 runtime test v1.0.16 Pi Desktop 的各个功能。
 //
 // 覆盖矩阵:
-//   - Sidebar 4 个主操作路由 (新建任务/技能/手机操控/设置)
-//   - 4 个 welcome card onClick 注入 prefill
+//   - Sidebar 4 个主操作路由 (新建任务/技能/Git/设置)
+//   - welcome empty state + ChatInput 基础输入
 //   - SkillsPanel 3 个真接通按钮 (GitHub 导入/编写技能/搜索)
-//   - Settings panel 接通 + 4 tabs (general/model/piagent/about)
-//   - CommandPalette 接通 (手机操控入口 + Ctrl+K 快捷键)
+//   - Settings panel 接通 + 5 tabs (general/model/piagent/config/about)
+//   - CommandPalette 接通 (Ctrl+K 快捷键)
 //   - ApprovalPanel 渲染 + 自动审批 toggle
 //   - ChatInput 3 个 Popover (权限/模型/附件) — 回归 (原 v1.0.13 spec)
 //
@@ -45,24 +45,23 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         try { await app?.close(); } catch { /* ignore */ }
     });
 
-    test('1. Sidebar 4 个主操作路由 (新建任务/技能/手机操控/设置)', async () => {
+    test('1. Sidebar 4 个主操作路由 (新建任务/技能/Git/设置)', async () => {
         ({ app, page } = await launchApp());
 
         // (1) Sidebar 4 个主操作按钮都在
-        //     MiniMaxCodeSidebar MAIN_SECTIONS: 新建任务 / 技能 / 手机操控 / 设置
+        //     MiniMaxCodeSidebar MAIN_SECTIONS: 新建任务 / 技能 / Git / 设置
         await expect(page.locator('button[data-mmcode-section="new-task"]')).toBeVisible();
         await expect(page.locator('button[data-mmcode-section="skills"]')).toBeVisible();
-        await expect(page.locator('button[data-mmcode-section="mobile-control"]')).toBeVisible();
+        await expect(page.locator('button[data-mmcode-section="git"]')).toBeVisible();
         await expect(page.locator('button[data-mmcode-section="settings"]')).toBeVisible();
 
-        // (2) 验证 4 个 grouped section 标题存在(任务历史/Agents/已归档)
-        await expect(page.getByText('任务历史')).toBeVisible();
-        await expect(page.getByText('Agents')).toBeVisible();
-        await expect(page.getByText('已归档')).toBeVisible();
-
-        // (3) 点 "技能" → SkillsPanel 出现(aria-label="技能面板")
+        // (2) 点 "技能" → SkillsPanel 出现(aria-label="技能面板")
         await page.locator('button[data-mmcode-section="skills"]').click();
         await expect(page.getByRole('region', { name: '技能面板' })).toBeVisible({ timeout: 5000 });
+
+        // (3) 点 "Git" → GitPanel 出现
+        await page.locator('button[data-mmcode-section="git"]').click();
+        await expect(page.getByText('变更')).toBeVisible({ timeout: 5000 });
 
         // (4) 点 "设置" → SettingsPanel dialog 出现(aria-label="设置")
         await page.locator('button[data-mmcode-section="settings"]').click();
@@ -77,42 +76,20 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         await page.locator('button[data-mmcode-section="new-task"]').click();
         await expect(page.getByText('描述你想要构建或修改的内容')).toBeVisible({ timeout: 5000 });
 
-        // (7) 点 "手机操控" → CommandPalette 打开 (aria-label 含 "Ctrl+K")
-        await page.locator('button[data-mmcode-section="mobile-control"]').click();
-        await page.waitForSelector('[role="dialog"][aria-label*="命令面板"]', { timeout: 5000 });
+        // CommandPalette 入口由 Ctrl+K 覆盖，Sidebar 不再提供手机操控入口。
     });
 
-    test('2. 4 个 welcome card onClick 注入正确 prefill', async () => {
+    test('2. welcome 空态和 ChatInput 基础输入', async () => {
         ({ app, page } = await launchApp());
 
         // 等待 ChatView 接管中栏
         await expect(page.getByText('描述你想要构建或修改的内容')).toBeVisible({ timeout: 15000 });
+        await expect(page.getByRole('heading', { name: '准备好开始了吗？' })).toBeVisible();
 
-        // (1) 4 个 card 都在
-        const cards = [
-            { name: '新建功能', expectText: /我想添加一个新功能/ },
-            { name: '修复问题', expectText: null as RegExp | null },
-            { name: '代码审查', expectText: null as RegExp | null },
-            { name: '解释代码', expectText: null as RegExp | null },
-        ];
-        for (const c of cards) {
-            await expect(page.getByText(c.name)).toBeVisible();
-        }
-
-        // (2) 4 个 card 都能点(不抛错)
-        //     注:不查 prefill 全部内容,只查点击不崩 + ChatInput 不变(因为已填会被覆盖)
-        //     只对第一个 card 查 textarea 变化 — 其余 3 个只点验证不崩
-        await page.getByText('新建功能').click();
-        const textarea = page.locator('textarea[placeholder*="描述" i], textarea[placeholder*="审查" i]').first();
+        const textarea = page.getByRole('textbox', { name: '发送' });
         await expect(textarea).toBeVisible({ timeout: 5000 });
-        const v1 = await textarea.inputValue();
-        expect(v1).toMatch(/我想添加一个新功能/);
-
-        // (3) 验证其他 3 个 card 都能点(点击触发 onClick 不抛错)
-        //     每次点完再点回 "新建功能" reset
-        for (const c of cards) {
-            await page.getByText(c.name).click();
-        }
+        await textarea.fill('请帮我检查当前工作区');
+        await expect(textarea).toHaveValue('请帮我检查当前工作区');
     });
 
     test('3. SkillsPanel 3 个真接通按钮', async () => {
@@ -153,28 +130,32 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         expect(v).toBe('pi-coding-agent');
     });
 
-    test('4. Settings panel 接通 — 4 个 tabs 都能切', async () => {
+    test('4. Settings panel 接通 — 5 个 tabs 都能切', async () => {
         ({ app, page } = await launchApp());
 
         // 打开 Settings
         await page.getByRole('button', { name: '设置' }).click();
         await expect(page.getByRole('dialog', { name: '设置' })).toBeVisible({ timeout: 5000 });
 
-        // 4 个 tab 都在 — 用 tablist + tab roles
+        // 5 个 tab 都在 — 用 tablist + tab roles
         const tablist = page.getByRole('tablist', { name: '设置分类' });
         await expect(tablist).toBeVisible();
         const tabs = tablist.getByRole('tab');
         const tabCount = await tabs.count();
-        expect(tabCount).toBe(4); // general / model / piagent / about
+        expect(tabCount).toBe(5); // general / model / piagent / config / about
 
         // 验证能切 tab(点第 2 个 — model)
         await tabs.nth(1).click();
         // model tab 应该是 selected
         await expect(tabs.nth(1)).toHaveAttribute('aria-selected', 'true');
 
-        // 切到 about (第 4 个)
+        // 切到 config (第 4 个)
         await tabs.nth(3).click();
         await expect(tabs.nth(3)).toHaveAttribute('aria-selected', 'true');
+
+        // 切到 about (第 5 个)
+        await tabs.nth(4).click();
+        await expect(tabs.nth(4)).toHaveAttribute('aria-selected', 'true');
 
         // 关闭按钮接通 — Settings 顶部关闭按钮 aria-label="关闭" (t('common.close'))
         //   注: Settings 内有 2 个 "关闭" substring-match 的按钮 (line 76 = "关闭" + line 440 = "关闭设置")
@@ -214,19 +195,11 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         await expect(palette).toBeHidden({ timeout: 3000 });
     });
 
-    test('6. CommandPalette 通过 "手机操控" Sidebar 入口接通', async () => {
+    test('6. Git Sidebar 入口接通', async () => {
         ({ app, page } = await launchApp());
 
-        // 默认未开
-        await expect(page.locator('[role="dialog"]').filter({ hasText: '命令面板' })).toHaveCount(0);
-
-        // 点 "手机操控" → App.tsx 路由到 setPaletteOpen(true)
-        await page.getByRole('button', { name: '手机操控' }).click();
-        await page.waitForSelector('[role="dialog"][aria-label*="命令面板"]', { timeout: 3000 });
-
-        // 关闭(点遮罩 or Escape)
-        await page.keyboard.press('Escape');
-        await expect(page.locator('[role="dialog"]').filter({ hasText: '命令面板' })).toBeHidden({ timeout: 3000 });
+        await page.getByRole('button', { name: 'Git' }).click();
+        await expect(page.getByText('变更')).toBeVisible({ timeout: 5000 });
     });
 
     test('7. ChatInput 3 个 Popover 接通 (回归 v1.0.13)', async () => {
@@ -240,13 +213,13 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         await expect(modelTrigger).toBeVisible();
         await expect(attachBtn).toBeVisible();
 
-        // (1) 权限 popover — click → 出现 → 选 "只读" → 关闭
+        // (1) 权限 popover — click → 出现 → 选 "智能授权" → 关闭
         await permTrigger.click();
-        const permMenu = page.getByRole('menu').filter({ hasText: '权限档位' });
+        const permMenu = page.getByRole('menu').filter({ hasText: '智能授权' });
         await expect(permMenu).toBeVisible();
-        await permMenu.getByRole('menuitemradio', { name: /只读/ }).click();
+        await permMenu.getByRole('menuitemradio', { name: /智能授权/ }).click();
         await expect(permMenu).toBeHidden();
-        await expect(permTrigger).toContainText('只读');
+        await expect(permTrigger).toContainText('智能授权');
 
         // (2) 模型 popover — click → 出现
         await modelTrigger.click();

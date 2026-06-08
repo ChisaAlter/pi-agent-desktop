@@ -51,6 +51,7 @@ interface SessionState {
   addStreamingMessage: (sessionId: string, message: Message) => void;
   /** 更新流式内容（实时追加 thinking / text） */
   updateStreamingContent: (sessionId: string, messageId: string, content: Partial<Message>) => void;
+  loadSessions: () => Promise<void>;
   getCurrentSession: () => Session | null;
   getSessionMessages: (sessionId: string) => Message[];
 }
@@ -83,6 +84,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
   return {
   sessions: [],
   currentSessionId: null,
+  loadSessions,
 
   createSession: (workspaceId: string) => {
     const id = `s_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;

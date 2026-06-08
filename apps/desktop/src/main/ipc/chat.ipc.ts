@@ -16,6 +16,7 @@ import {
     setDesktopPermissionMode,
 } from "../services/extensions/extension-ui-bridge";
 import type { ExtensionUiResponse, PermissionDecision, PermissionMode } from "@shared";
+import type { AgentRuntimeRegistry } from "../services/agent-runtime/registry";
 
 interface WorkspaceLite {
     id: string;
@@ -31,6 +32,8 @@ interface ChatIpcDeps {
     getDefaultWorkspace: () => WorkspaceLite | undefined;
     /** 持久化 PendingEdits 状态 (可选, 用于窗口重启时恢复) */
     pendingEdits: PendingEdits;
+    /** 新工作台运行时；存在时 legacy pi:* 入口转发到 agent 语义 */
+    agentRegistry?: AgentRuntimeRegistry;
 }
 
 export function setupChatIpc(deps: ChatIpcDeps): void {
@@ -82,6 +85,17 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         }
 
         try {
+            if (deps.agentRegistry) {
+                let agent = deps.agentRegistry.findDefaultAgent(ws.id);
+                if (!agent) {
+                    agent = await deps.agentRegistry.create({
+                        workspaceId: ws.id,
+                        title: `${ws.name} Agent`,
+                    });
+                }
+                await deps.agentRegistry.prompt({ agentId: agent.id, message: text });
+                return undefined;
+            }
             // registry.get() 内部会 lazy-init: 第一次创建 session + bridge + interceptor
             // 并只订阅一次 Pi 事件 (修复之前的订阅泄漏 + 重复处理 bug)
             const wsSession = await deps.registry.get(ws.id, ws.path, deps.pendingEdits, send);
@@ -100,6 +114,11 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
     ipcMain.handle("pi:stop", async (_event, workspaceId: string) => {
         const ws = deps.getWorkspace(workspaceId) ?? deps.getDefaultWorkspace();
         if (!ws) return;
+        if (deps.agentRegistry) {
+            const agent = deps.agentRegistry.findDefaultAgent(ws.id);
+            if (agent) deps.agentRegistry.stop(agent.id);
+            return;
+        }
         if (!deps.registry.has(ws.id)) return;
         const wsSession = await deps.registry.get(ws.id, ws.path);
         wsSession.session.abort();
