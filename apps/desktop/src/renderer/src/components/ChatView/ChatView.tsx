@@ -1,11 +1,12 @@
 // 聊天主区域 - 空态 + 消息列表 + 输入框
 // v1.0.4: 用户可见文案走 t()
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useMemo, useState } from 'react';
 import { usePiStream } from '../../hooks/usePiStream';
 import { useSessionStore } from '../../stores/session-store';
 import { useWorkspaceStore } from '../../stores/workspace-store';
 import { usePiStatusStore } from '../../stores/pi-status-store';
+import { useAgentStore } from '../../stores/agent-store';
 import { MessageBubble } from './MessageBubble';
 import { ChatInput } from './ChatInput';
 import { useI18n } from '../../i18n';
@@ -20,6 +21,7 @@ interface ChatViewProps {
 
 export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {}): React.JSX.Element {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const agentId = useAgentStore((state) => state.currentAgentId);
   const {
     isStreaming,
     isConnected,
@@ -28,18 +30,43 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
     stopStreaming,
     clearError,
     error: streamError,
-  } = usePiStream();
-  const { getCurrentSession, createSession } = useSessionStore();
+  } = usePiStream(agentId);
   const { getCurrentWorkspace } = useWorkspaceStore();
+  const {
+    init: initAgents,
+    getCurrentAgent,
+    getCurrentMessages,
+    sendPrompt: sendAgentPrompt,
+    stopAgent,
+  } = useAgentStore();
+  const { getCurrentSession, createSession } = useSessionStore();
   const { install, isOperating, progress } = usePiStatusStore();
   const { t } = useI18n();
 
   const currentSession = getCurrentSession();
   const currentWorkspace = getCurrentWorkspace();
+  const currentAgent = getCurrentAgent();
+  const agentMessages = getCurrentMessages();
+  const hasAgent = Boolean(currentAgent);
+  const messages = useMemo(() => hasAgent
+    ? agentMessages.map((message) => ({
+        id: message.id,
+        role: message.role === "assistant" || message.role === "system" || message.role === "user" ? message.role : "system",
+        content: message.content,
+        timestamp: new Date(message.createdAt),
+        thinking: message.thinking,
+      }))
+    : currentSession?.messages || [], [agentMessages, currentSession?.messages, hasAgent]);
+  const isAgentStreaming = currentAgent?.status === "running" || currentAgent?.status === "starting";
+  const processing = hasAgent ? isAgentStreaming : isStreaming;
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [currentSession?.messages]);
+  }, [messages]);
+
+  useEffect(() => {
+    void initAgents();
+  }, [initAgents]);
 
   useEffect(() => {
     if (!currentSession && currentWorkspace) {
@@ -47,16 +74,27 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
     }
   }, [currentSession, currentWorkspace, createSession]);
 
+
   useEffect(() => {
     clearError();
   }, [currentSession?.id, clearError]);
 
   const handleSend = async (message: string) => {
     if (!currentWorkspace) return;
+    if (currentAgent) {
+      await sendAgentPrompt(message);
+      return;
+    }
     await startStreaming(currentWorkspace.id, message);
   };
 
-  const messages = currentSession?.messages || [];
+  const handleStop = async () => {
+    if (currentAgent) {
+      await stopAgent(currentAgent.id);
+      return;
+    }
+    await stopStreaming();
+  };
 
   // 外部预填文本，光标停在末尾方便用户继续。
   const [prefill, setPrefill] = useState<{ text: string; nonce: number }>({ text: '', nonce: 0 });
@@ -78,7 +116,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
             <svg className="h-4 w-4 text-[#9a9a9a]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
             </svg>
-            <span className="truncate font-medium">{currentSession?.title || "未命名会话"}</span>
+            <span className="truncate font-medium">{currentAgent?.title || currentSession?.title || "未命名会话"}</span>
             <svg className="h-3 w-3 text-[#aaa]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
@@ -108,9 +146,9 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
             <div className="w-full max-w-[900px]">
               <ChatInput
                 isConnected={isConnected}
-                isProcessing={isStreaming}
+                isProcessing={processing}
                 onSend={handleSend}
-                onStop={stopStreaming}
+                onStop={handleStop}
                 workspaceId={currentWorkspace?.id}
                 workspacePath={currentWorkspace?.path}
                 prefill={prefill.text}
@@ -189,7 +227,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
             role="log"
             aria-live="polite"
             aria-label={t('chatView.messagesAria')}
-            aria-busy={isStreaming}
+            aria-busy={processing}
           >
             <PlanCardView workspaceId={currentWorkspace?.id} onExecute={handleSend} />
 
@@ -197,12 +235,12 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
               <MessageBubble
                 key={message.id}
                 message={message}
-                isStreaming={isStreaming && message.id === streamingMessageId}
+                isStreaming={!hasAgent && isStreaming && message.id === streamingMessageId}
               />
             ))}
 
             {/* 流式处理中指示器（仅在没有 assistant 消息占位符时显示） */}
-            {isStreaming && !streamingMessageId && (
+            {processing && (!streamingMessageId || hasAgent) && (
               <div
                 className="flex justify-start"
                 role="status"
@@ -217,7 +255,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                       <div className="w-2 h-2 bg-[#999] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} aria-hidden="true" />
                       <button
                         type="button"
-                        onClick={stopStreaming}
+                        onClick={handleStop}
                         className="ml-3 text-xs text-[#666] hover:text-[#1a1a1a] transition-colors"
                         aria-label={t('chatView.stopGeneration')}
                       >
@@ -272,9 +310,9 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
       {messages.length > 0 && (
         <ChatInput
           isConnected={isConnected}
-          isProcessing={isStreaming}
+          isProcessing={processing}
           onSend={handleSend}
-          onStop={stopStreaming}
+          onStop={handleStop}
           workspaceId={currentWorkspace?.id}
           workspacePath={currentWorkspace?.path}
           prefill={prefill.text}

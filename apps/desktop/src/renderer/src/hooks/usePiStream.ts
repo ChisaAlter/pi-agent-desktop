@@ -20,6 +20,7 @@ import { isIpcError, type PlanCard, type ToolCall } from "@shared";
 import { useSessionStore } from "../stores/session-store";
 import { usePlanStore } from "../stores/plan-store";
 import { logger } from "../utils/logger";
+import { useAgentStore } from "../stores/agent-store";
 
 export interface ToolCallState {
     id: string;
@@ -95,7 +96,7 @@ function createFallbackPlanCard(content: string): PlanCard | null {
     };
 }
 
-export function usePiStream(): UsePiStreamReturn {
+export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     const [isStreaming, setIsStreaming] = useState(false);
     const [currentThinking, setCurrentThinking] = useState("");
     const [currentText, setCurrentText] = useState("");
@@ -110,6 +111,7 @@ export function usePiStream(): UsePiStreamReturn {
     const toolCallsRef = useRef(new Map<string, ToolCallState>());
     const messageIdRef = useRef<string | null>(null);
     const sessionIdRef = useRef<string | null>(null);
+    const agentIdRef = useRef<string | null>(null);
 
     // 2026-06-06 hotfix (T6): debounce + flush 机制
     //   - streamPersistRef 累积待 flush 的内容
@@ -192,8 +194,24 @@ export function usePiStream(): UsePiStreamReturn {
     }, [flushStreamPersist]);
 
     const { getCurrentSession, addMessage, updateMessage, addToolCall, updateToolCall } = useSessionStore();
+
+    useEffect(() => { agentIdRef.current = agentId ?? null; }, [agentId]);
     const ensureAssistantMessage = useCallback(() => {
-        if (sessionIdRef.current && messageIdRef.current) return;
+        if (messageIdRef.current) return;
+        const aid = agentIdRef.current;
+        if (aid) {
+            const newId = `am_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            messageIdRef.current = newId;
+            setStreamingMessageId(newId);
+            useAgentStore.getState().appendStreamMessage(aid, {
+                id: newId,
+                agentId: aid,
+                role: "assistant",
+                content: "",
+                createdAt: Date.now(),
+            });
+            return;
+        }
         const session = useSessionStore.getState().getCurrentSession();
         if (!session) return;
         sessionIdRef.current = session.id;
@@ -234,6 +252,16 @@ export function usePiStream(): UsePiStreamReturn {
     // ref 类型是 ((event: PiEvent) => void) | null, 每次 render 同步到 current.
     const handleEventRef = useRef<((event: PiEvent) => void) | null>(null);
     useEffect(() => {
+        if (agentId && window.piAPI?.onAgentEvent) {
+            const unsub = window.piAPI.onAgentEvent((payload) => {
+                if (payload.agentId !== agentId) return;
+                handleEventRef.current?.(payload.event);
+            });
+            return () => {
+                if (typeof unsub === "function") unsub();
+            };
+        }
+
         if (!window.piAPI?.onEvent) return;
         const unsub = window.piAPI.onEvent((event: PiEvent) => {
             handleEventRef.current?.(event);
@@ -241,7 +269,7 @@ export function usePiStream(): UsePiStreamReturn {
         return () => {
             if (typeof unsub === "function") unsub();
         };
-    }, []);
+    }, [agentId]);
 
     // ── 事件处理 ────────────────────────────────────────────────────────────
     const handleEvent = useCallback((event: PiEvent) => {
@@ -270,8 +298,12 @@ export function usePiStream(): UsePiStreamReturn {
                     ensureAssistantMessage();
                     textRef.current += delta;
                     setCurrentText(textRef.current);
-                    // 2026-06-06 hotfix (T6): 内存立即更新(给 UI 看到), 持久化走 debounce
-                    if (sessionIdRef.current && messageIdRef.current) {
+                    if (agentIdRef.current && messageIdRef.current) {
+                        useAgentStore.getState().updateStreamMessage(agentIdRef.current, messageIdRef.current, {
+                            content: textRef.current,
+                        });
+                    } else if (sessionIdRef.current && messageIdRef.current) {
+                        // 2026-06-06 hotfix (T6): 内存立即更新(给 UI 看到), 持久化走 debounce
                         updateMessage(sessionIdRef.current, messageIdRef.current, { content: textRef.current }, { persist: false });
                         if (!streamPersistRef.current ||
                             streamPersistRef.current.sessionId !== sessionIdRef.current ||
@@ -289,7 +321,11 @@ export function usePiStream(): UsePiStreamReturn {
                     ensureAssistantMessage();
                     thinkingRef.current += delta;
                     setCurrentThinking(thinkingRef.current);
-                    if (sessionIdRef.current && messageIdRef.current) {
+                    if (agentIdRef.current && messageIdRef.current) {
+                        useAgentStore.getState().updateStreamMessage(agentIdRef.current, messageIdRef.current, {
+                            thinking: thinkingRef.current,
+                        });
+                    } else if (sessionIdRef.current && messageIdRef.current) {
                         updateMessage(sessionIdRef.current, messageIdRef.current, { thinking: thinkingRef.current }, { persist: false });
                         if (!streamPersistRef.current ||
                             streamPersistRef.current.sessionId !== sessionIdRef.current ||
@@ -454,6 +490,7 @@ export function usePiStream(): UsePiStreamReturn {
                 setIsStreaming(false);
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
+                sessionIdRef.current = null;
                 break;
 
             case "agent_end":
@@ -470,6 +507,7 @@ export function usePiStream(): UsePiStreamReturn {
                 setIsStreaming(false);
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
+                sessionIdRef.current = null;
                 // v1.0.17: 通知 useTaskProgress agent 结束
                 window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 break;
@@ -495,6 +533,9 @@ export function usePiStream(): UsePiStreamReturn {
         setError(null);
         textRef.current = "";
         thinkingRef.current = "";
+        messageIdRef.current = null;
+        sessionIdRef.current = null;
+        streamPersistRef.current = null;
         toolCallsRef.current = new Map();
         setCurrentText("");
         setCurrentThinking("");
@@ -503,9 +544,15 @@ export function usePiStream(): UsePiStreamReturn {
         // v1.0.17: 通知 useTaskProgress 流式开始
         window.dispatchEvent(new CustomEvent("pi:stream-start"));
 
-        // 用户消息
-        const session = getCurrentSession();
-        if (session) {
+        const aid = agentIdRef.current;
+        const outbound = usePlanStore.getState().enabled && !content.trimStart().startsWith("/")
+            ? `/plan\n${content}`
+            : content;
+
+        // Agent workbench messages are owned by AgentRuntimeRegistry; legacy chats
+        // still write the user message to the session store immediately.
+        const session = aid ? null : getCurrentSession();
+        if (!aid && session) {
             sessionIdRef.current = session.id;
             addMessage(session.id, {
                 id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -516,15 +563,16 @@ export function usePiStream(): UsePiStreamReturn {
         }
 
         try {
-            const outbound = usePlanStore.getState().enabled && !content.trimStart().startsWith("/")
-                ? `/plan\n${content}`
-                : content;
-            const result = await window.piAPI.sendPrompt(workspaceId, outbound);
-            if (isIpcError(result)) {
-                setError(result.fallback);
-                setIsStreaming(false);
-                setStreamingMessageId(null);
-                window.dispatchEvent(new CustomEvent("pi:stream-end"));
+            if (aid) {
+                await window.piAPI.agentsPrompt({ agentId: aid, message: outbound });
+            } else {
+                const result = await window.piAPI.sendPrompt(workspaceId, outbound);
+                if (isIpcError(result)) {
+                    setError(result.fallback);
+                    setIsStreaming(false);
+                    setStreamingMessageId(null);
+                    window.dispatchEvent(new CustomEvent("pi:stream-end"));
+                }
             }
         } catch (err) {
             setError(String(err));
@@ -537,7 +585,12 @@ export function usePiStream(): UsePiStreamReturn {
     const stopStreaming = useCallback(() => {
         if (!window.piAPI) return;
         try {
-            void window.piAPI.stop();
+            const aid = agentIdRef.current;
+            if (aid && window.piAPI.agentsAbort) {
+                void window.piAPI.agentsAbort(aid);
+            } else {
+                void window.piAPI.stop();
+            }
         } catch {
             // ignore
         }

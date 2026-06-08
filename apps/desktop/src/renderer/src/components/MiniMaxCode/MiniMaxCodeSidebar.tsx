@@ -47,7 +47,9 @@
 // "Ayase / Plus Plan" 用户卡片,现在直接 inline 渲染,避免再维护一个空组件。
 
 import React from "react";
-import { useSessionStore } from "../../stores/session-store";
+
+import { useAgentStore } from '../../stores/agent-store';
+import { useSessionStore } from '../../stores/session-store';
 
 // ----------------------------------------------------------------------
 // 类型
@@ -268,6 +270,9 @@ export function MiniMaxCodeSidebar({
 }: MiniMaxCodeSidebarProps): React.JSX.Element {
     const sessions = useSessionStore((state) => state.sessions);
     const currentSessionId = useSessionStore((state) => state.currentSessionId);
+    const agents = useAgentStore((state) => state.agents);
+    const currentAgentId = useAgentStore((state) => state.currentAgentId);
+    const setCurrentAgent = useAgentStore((state) => state.setCurrentAgent);
     const historyItems = sessions
         .slice()
         .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
@@ -276,6 +281,11 @@ export function MiniMaxCodeSidebar({
             label: session.title || "未命名会话",
             icon: <IconMessage />,
         }));
+    const agentItems = agents.map((agent) => ({
+        id: `agent:${agent.id}`,
+        label: agent.title,
+        icon: <IconMessage />,
+    }));
 
     return (
         <div
@@ -331,6 +341,28 @@ export function MiniMaxCodeSidebar({
                                 onClick={() => onSectionChange(item.id)}
                             />
                         ))}
+                    </div>
+                )}
+
+                {agentItems.length > 0 && (
+                    <div className="flex flex-col gap-0.5">
+                        <h3 className="px-3 pt-1 pb-0.5 text-[11px] font-medium uppercase tracking-[0.5px] text-[var(--mm-text-tertiary)]">
+                            Agents
+                        </h3>
+                        {agentItems.map((item) => {
+                            const agentId = item.id.slice("agent:".length);
+                            return (
+                                <NavItem
+                                    key={item.id}
+                                    section={item}
+                                    active={agentId === currentAgentId}
+                                    onClick={() => {
+                                        setCurrentAgent(agentId);
+                                        onSectionChange("chat");
+                                    }}
+                                />
+                            );
+                        })}
                     </div>
                 )}
 

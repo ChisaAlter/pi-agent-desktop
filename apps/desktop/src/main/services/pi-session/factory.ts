@@ -6,6 +6,7 @@ import {
     createAgentSession,
     createEventBus,
     DefaultResourceLoader,
+    SessionManager,
     getAgentDir,
     type AgentSession,
     type ExtensionUIContext,
@@ -26,25 +27,28 @@ export interface CreateSessionOpts {
     workspacePath: string;
     modelId?: string;
     provider?: string;
+    sessionPath?: string;
     uiContext?: ExtensionUIContext;
 }
 
 export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<WorkspaceSession> {
-    const permissionExtensionPath = require.resolve("pi-permission-system");
-    const openPlanPackageJson = require.resolve("pi-openplan/package.json");
-    const openPlanExtensionPath = join(dirname(openPlanPackageJson), "extensions");
+    const additionalExtensionPaths = [
+        safeResolve("pi-permission-system"),
+        safeResolve("pi-openplan/package.json", (packageJson) => join(dirname(packageJson), "extensions")),
+    ].filter((path): path is string => Boolean(path));
     const eventBus = createEventBus();
     const resourceLoader = new DefaultResourceLoader({
         cwd: opts.workspacePath,
         agentDir: getAgentDir(),
         eventBus,
-        additionalExtensionPaths: [permissionExtensionPath, openPlanExtensionPath],
+        additionalExtensionPaths,
     });
     await resourceLoader.reload();
 
     const { session } = await createAgentSession({
         cwd: opts.workspacePath,
         resourceLoader,
+        sessionManager: opts.sessionPath ? SessionManager.open(opts.sessionPath) : undefined,
     });
     if (opts.uiContext) {
         await session.bindExtensions({ uiContext: opts.uiContext });
@@ -61,4 +65,12 @@ export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<W
             }
         },
     };
+}
+
+function safeResolve(packageName: string, map: (resolved: string) => string = (resolved) => resolved): string | undefined {
+    try {
+        return map(require.resolve(packageName));
+    } catch {
+        return undefined;
+    }
 }

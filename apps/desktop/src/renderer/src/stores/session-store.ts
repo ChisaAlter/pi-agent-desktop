@@ -77,6 +77,7 @@ interface SessionState {
     content: Partial<Message>,
     opts?: { persist?: boolean },
   ) => void;
+  loadSessions: () => Promise<void>;
   getCurrentSession: () => Session | null;
   getSessionMessages: (sessionId: string) => Message[];
   /** 2026-06-06 hotfix: 清掉错误计数(banner 关闭) */
@@ -208,6 +209,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
   currentSessionId: null,
   persistErrorCount: 0,
   lastPersistError: null,
+  loadSessions,
 
   createSession: (workspaceId: string) => {
     const id = `s_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;

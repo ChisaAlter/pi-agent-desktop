@@ -48,6 +48,122 @@ export interface ToolCall {
     endTime?: Date;
 }
 
+export type AgentStatus = "starting" | "idle" | "running" | "error" | "closed";
+
+export interface AgentTab {
+    id: string;
+    workspaceId: string;
+    title: string;
+    status: AgentStatus;
+    sessionId?: string;
+    sessionPath?: string;
+    createdAt: number;
+    updatedAt: number;
+}
+
+export interface AgentRuntimeState {
+    agentId: string;
+    status: AgentStatus;
+    isStreaming: boolean;
+    modelProvider?: string;
+    modelId?: string;
+    modelName?: string;
+    thinkingLevel?: string;
+    tokenUsage?: {
+        input?: number;
+        output?: number;
+        total?: number;
+    };
+    sessionPath?: string;
+}
+
+export interface AgentMessage {
+    id: string;
+    agentId: string;
+    role: "user" | "assistant" | "tool" | "system" | "error";
+    content: string;
+    createdAt: number;
+    thinking?: string;
+    meta?: Record<string, unknown>;
+}
+
+export interface CreateAgentInput {
+    workspaceId: string;
+    title?: string;
+    sessionPath?: string;
+}
+
+export interface SendAgentPromptInput {
+    agentId: string;
+    message: string;
+    streamingBehavior?: "steer" | "followUp";
+}
+
+export type CodexImportStatus = "new" | "current" | "outdated";
+
+export interface CodexSessionSummary {
+    id: string;
+    sourcePath: string;
+    targetPath: string;
+    cwd: string;
+    title: string;
+    createdAt: number;
+    updatedAt: number;
+    messageCount: number;
+    sourceSize: number;
+    status: CodexImportStatus;
+    importedSourceMtime?: number;
+}
+
+export interface CodexImportResult {
+    sourcePath: string;
+    targetPath?: string;
+    success: boolean;
+    error?: string;
+}
+
+export interface CodexImportReport {
+    imported: number;
+    failed: number;
+    results: CodexImportResult[];
+}
+
+export interface PiModelItem {
+    id: string;
+    name?: string;
+}
+
+export interface PiProviderConfig {
+    name?: string;
+    baseUrl?: string;
+    apiType?: "openai" | "responses";
+    models?: PiModelItem[];
+    headers?: Record<string, string>;
+}
+
+export interface PiModelsFile {
+    providers: Record<string, PiProviderConfig>;
+}
+
+export interface PiAuthItem {
+    type?: string;
+    apiKey?: string;
+}
+
+export type PiAuthFile = Record<string, PiAuthItem>;
+export type PiSettingsFile = Record<string, unknown>;
+
+export interface ConfigValidationResult {
+    valid: boolean;
+    error?: string;
+}
+
+export interface ProviderTestResult {
+    ok: boolean;
+    status?: number;
+    message: string;
+}
+
 // ── Pi Config + Settings ──────────────────────────────────────────
 
 export interface PiConfig {
@@ -324,6 +440,19 @@ export interface PiAPI {
         updates: Partial<ToolCall>,
     ): Promise<void | IpcError>;
 
+    // Agents workbench
+    agentsList(): Promise<AgentTab[]>;
+    agentsCreate(input: CreateAgentInput): Promise<AgentTab>;
+    agentsPrompt(input: SendAgentPromptInput): Promise<void>;
+    agentsAbort(agentId: string): Promise<void>;
+    agentsStop(agentId: string): Promise<void>;
+    agentsRestart(agentId: string): Promise<AgentTab>;
+    agentsMessages(agentId: string): Promise<AgentMessage[]>;
+    agentsRuntimeState(agentId: string): Promise<AgentRuntimeState>;
+    onAgentsState(cb: (agents: AgentTab[]) => void): Unsubscribe;
+    onAgentMessages(cb: (payload: { agentId: string; messages: AgentMessage[] }) => void): Unsubscribe;
+    onAgentEvent(cb: (payload: { agentId: string; workspaceId: string; event: PiEvent }) => void): Unsubscribe;
+
     // Extension UI bridge
     permissionSetMode(mode: PermissionMode): Promise<void>;
     permissionRespond(requestId: string, response: ExtensionUiResponse | PermissionDecision | boolean | string): void;
@@ -355,6 +484,29 @@ export interface PiAPI {
     loadPiConfig(): Promise<unknown>;
     getFullConfig(): Promise<PiAgentFullConfig>;
 
+    // Pi config center
+    configGetModels(): Promise<{ raw: string; parsed: PiModelsFile }>;
+    configGetAuth(): Promise<{ raw: string; parsed: PiAuthFile }>;
+    configGetSettings(): Promise<{ raw: string; parsed: PiSettingsFile }>;
+    configSaveModels(data: PiModelsFile): Promise<ConfigValidationResult>;
+    configSaveAuth(data: PiAuthFile): Promise<ConfigValidationResult>;
+    configSaveSettings(data: PiSettingsFile): Promise<ConfigValidationResult>;
+    configSaveRaw(fileName: string, rawJson: string): Promise<ConfigValidationResult>;
+    configExport(): Promise<string>;
+    configImport(packageJson: string): Promise<ConfigValidationResult>;
+    configFetchModels(baseUrl: string, apiKey?: string, apiType?: string): Promise<PiModelItem[]>;
+    configTestProvider(input: {
+        baseUrl: string;
+        apiKey?: string;
+        modelId?: string;
+        apiType?: string;
+        headers?: Record<string, string>;
+    }): Promise<ProviderTestResult>;
+
+    // Codex session import
+    codexSessionsScan(workspacePath: string): Promise<CodexSessionSummary[]>;
+    codexSessionsImport(workspacePath: string, sourcePaths: string[]): Promise<CodexImportReport>;
+
     // Skills
     listSkills(): Promise<InstalledSkillInfo[]>;
 
@@ -375,6 +527,7 @@ export interface PiAPI {
     createTerminal(opts: {
         id?: string;
         cwd?: string;
+        agentId?: string;
         cols?: number;
         rows?: number;
     }): Promise<TerminalInfo>;

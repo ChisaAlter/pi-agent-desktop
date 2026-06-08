@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import type { GitStatus } from "@shared";
-import { usePlanStore } from "../../stores/plan-store";
+import { usePlanStore } from '../../stores/plan-store';
+import { useAgentStore } from '../../stores/agent-store';
 import type { TaskProgressItem } from "./TaskProgressPanel";
 
 interface RightRailProps {
@@ -18,6 +19,8 @@ function statusDot(status: string): string {
 
 export function RightRail({ workspacePath, tasks = [] }: RightRailProps): React.JSX.Element {
   const [git, setGit] = useState<GitStatus | null>(null);
+    const currentAgent = useAgentStore((state) => state.getCurrentAgent());
+    const agentRuntimeState = useAgentStore((state) => state.currentAgentId ? state.runtimeByAgent[state.currentAgentId] : undefined);
   const { steps } = usePlanStore();
 
   useEffect(() => {
@@ -66,6 +69,40 @@ export function RightRail({ workspacePath, tasks = [] }: RightRailProps): React.
             <span className="h-px flex-1 bg-[#eee]" />
             <span>提交或推送</span>
           </div>
+        </dl>
+      </section>
+
+      <section className="rounded-[16px] border border-[#e9e9e6] bg-white p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="m-0 text-[13px] font-medium">Agent</h2>
+        </div>
+        <dl className="space-y-3 text-xs">
+          <div className="flex justify-between gap-3">
+            <dt className="text-[var(--mm-text-tertiary)]">状态</dt>
+            <dd className="truncate text-right">
+              {currentAgent
+                ? currentAgent.status === "running"
+                  ? "运行中"
+                  : currentAgent.status === "starting"
+                    ? "启动中"
+                    : "空闲"
+                : "未创建"}
+            </dd>
+          </div>
+          {agentRuntimeState?.isStreaming != null && (
+            <div className="flex justify-between gap-3">
+              <dt className="text-[var(--mm-text-tertiary)]">流式</dt>
+              <dd>{agentRuntimeState?.isStreaming ? "是" : "否"}</dd>
+            </div>
+          )}
+          {agentRuntimeState?.sessionPath && (
+            <div className="flex justify-between gap-3">
+              <dt className="text-[var(--mm-text-tertiary)]">会话</dt>
+              <dd className="truncate text-right font-mono text-[10px]" title={agentRuntimeState?.sessionPath}>
+                {(() => { const p = agentRuntimeState?.sessionPath; return p ? p.split(/[\\/]/).pop() : null; })()}
+              </dd>
+            </div>
+          )}
         </dl>
       </section>
 

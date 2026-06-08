@@ -19,12 +19,18 @@ import { setupFilesIpc } from './ipc/files.ipc';
 import { setupSessionsIpc } from './ipc/sessions.ipc';
 import { setupSkillsIpc } from './ipc/skills.ipc';
 import { setupTerminalIpc } from './ipc/terminal.ipc';
+import { setupAgentsIpc } from './ipc/agents.ipc';
+import { setupConfigIpc } from './ipc/config.ipc';
+import { setupCodexSessionsIpc } from './ipc/codex-sessions.ipc';
 import { workspaceCreateSchema, settingsSetSchema, gitCommitSchema, gitAddSchema } from './ipc/schemas';
 import { ptyManager } from './services/shell/pty-manager';
 import { setupAutoUpdater } from './services/updater';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
 import { ipcError } from '@shared';
 import type { Session } from '@shared';
+import { AgentRuntimeRegistry } from './services/agent-runtime/registry';
+import { ConfigManager } from './services/config/config-manager';
+import { CodexSessionImporter } from './services/codex-session/importer';
 
 let mainWindow: BrowserWindow | null = null;
 let piAgentConfig: PiAgentConfig | null = null;
@@ -223,6 +229,20 @@ const store = new Store<StoreSchema>({
   }
 });
 
+const sendToRenderer = (channel: string, payload: unknown) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, payload);
+  }
+};
+
+const agentRegistry = new AgentRuntimeRegistry({
+  getWorkspace: (workspaceId: string) => store.get('workspaces').find((workspace) => workspace.id === workspaceId),
+  pendingEdits: piPendingEdits,
+  send: sendToRenderer,
+});
+const configManager = new ConfigManager(PI_AGENT_DIR);
+const codexSessionImporter = new CodexSessionImporter();
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -345,6 +365,7 @@ function setupIPC(): void {
   // M1: 替换老的 pi:prompt (一次性 spawn), 走 AgentSession 长连接
   setupChatIpc({
     registry: piRegistry,
+    agentRegistry,
     pendingEdits: piPendingEdits,
     getWorkspace: (id: string) => store.get('workspaces').find((w) => w.id === id),
     getDefaultWorkspace: () => {
@@ -352,6 +373,10 @@ function setupIPC(): void {
       return ws.length > 0 ? ws[0] : undefined;
     },
   });
+
+  setupAgentsIpc(agentRegistry);
+  setupConfigIpc(configManager);
+  setupCodexSessionsIpc(codexSessionImporter);
 
   // M2: 文件搜索 (给 @ 引用和 CommandPalette 用)
   setupFilesIpc();
@@ -589,7 +614,7 @@ function setupIPC(): void {
   // Git staged diff
   ipcMain.handle('git:diff-staged', async (_, workspacePath: string) => {
     try {
-      return execFileSync('git', ['diff-staged'], { cwd: workspacePath, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
+      return execFileSync('git', ['diff', '--staged'], { cwd: workspacePath, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 });
     } catch (err) {
       log.error("[index.ts] git:diff-staged failed:", err);
       return ipcError(
@@ -892,6 +917,7 @@ app.on('window-all-closed', () => {
   clearAllPendingApprovals();
   piPendingEdits.clear();
   piRegistry.disposeAll();
+  agentRegistry.disposeAll();
 
   // 清理所有终端进程 (M4: 走 ptyManager)
   ptyManager.closeAll();

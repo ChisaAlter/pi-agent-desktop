@@ -17,6 +17,17 @@ import type {
     PlanCard,
     PlanDecisionRequest,
     PlanProgressUpdate,
+    AgentMessage,
+    AgentRuntimeState,
+    AgentTab,
+    CodexImportReport,
+    CodexSessionSummary,
+    ConfigValidationResult,
+    PiAuthFile,
+    PiModelItem,
+    PiModelsFile,
+    PiSettingsFile,
+    ProviderTestResult,
 } from "@shared";
 
 // 内部 helper: 把 ipcRenderer.on 的 (_event, payload) 签名转成 (payload)
@@ -97,6 +108,22 @@ const piAPI: PiAPI = {
             updates,
         ),
 
+    // Agents workbench
+    agentsList: () => ipcRenderer.invoke("agents:list") as Promise<AgentTab[]>,
+    agentsCreate: (input) => ipcRenderer.invoke("agents:create", input) as Promise<AgentTab>,
+    agentsPrompt: (input) => ipcRenderer.invoke("agents:prompt", input) as Promise<void>,
+    agentsAbort: (agentId) => ipcRenderer.invoke("agents:abort", agentId) as Promise<void>,
+    agentsStop: (agentId) => ipcRenderer.invoke("agents:stop", agentId) as Promise<void>,
+    agentsRestart: (agentId) => ipcRenderer.invoke("agents:restart", agentId) as Promise<AgentTab>,
+    agentsMessages: (agentId) => ipcRenderer.invoke("agents:messages", agentId) as Promise<AgentMessage[]>,
+    agentsRuntimeState: (agentId) =>
+        ipcRenderer.invoke("agents:runtime-state", agentId) as Promise<AgentRuntimeState>,
+    onAgentsState: (cb) => subscribe<AgentTab[]>("agents:state", cb),
+    onAgentMessages: (cb) =>
+        subscribe<{ agentId: string; messages: AgentMessage[] }>("agents:message", cb),
+    onAgentEvent: (cb) =>
+        subscribe<{ agentId: string; workspaceId: string; event: PiEvent }>("agents:event", cb),
+
     permissionSetMode: (mode: PermissionMode) => ipcRenderer.invoke("permission:set-mode", mode),
     permissionRespond: (
         requestId: string,
@@ -135,6 +162,35 @@ const piAPI: PiAPI = {
     setSettings: (settings) => ipcRenderer.invoke("settings:set", settings),
     loadPiConfig: () => ipcRenderer.invoke("settings:load-pi-config"),
     getFullConfig: () => ipcRenderer.invoke("pi:get-full-config"),
+
+    // Pi config center
+    configGetModels: () =>
+        ipcRenderer.invoke("config:get-models") as Promise<{ raw: string; parsed: PiModelsFile }>,
+    configGetAuth: () =>
+        ipcRenderer.invoke("config:get-auth") as Promise<{ raw: string; parsed: PiAuthFile }>,
+    configGetSettings: () =>
+        ipcRenderer.invoke("config:get-settings") as Promise<{ raw: string; parsed: PiSettingsFile }>,
+    configSaveModels: (data) =>
+        ipcRenderer.invoke("config:save-models", data) as Promise<ConfigValidationResult>,
+    configSaveAuth: (data) =>
+        ipcRenderer.invoke("config:save-auth", data) as Promise<ConfigValidationResult>,
+    configSaveSettings: (data) =>
+        ipcRenderer.invoke("config:save-settings", data) as Promise<ConfigValidationResult>,
+    configSaveRaw: (fileName, rawJson) =>
+        ipcRenderer.invoke("config:save-raw", fileName, rawJson) as Promise<ConfigValidationResult>,
+    configExport: () => ipcRenderer.invoke("config:export") as Promise<string>,
+    configImport: (packageJson) =>
+        ipcRenderer.invoke("config:import", packageJson) as Promise<ConfigValidationResult>,
+    configFetchModels: (baseUrl, apiKey, apiType) =>
+        ipcRenderer.invoke("config:fetch-models", baseUrl, apiKey, apiType) as Promise<PiModelItem[]>,
+    configTestProvider: (input) =>
+        ipcRenderer.invoke("config:test-provider", input) as Promise<ProviderTestResult>,
+
+    // Codex session import
+    codexSessionsScan: (workspacePath) =>
+        ipcRenderer.invoke("codex-sessions:scan", workspacePath) as Promise<CodexSessionSummary[]>,
+    codexSessionsImport: (workspacePath, sourcePaths) =>
+        ipcRenderer.invoke("codex-sessions:import", workspacePath, sourcePaths) as Promise<CodexImportReport>,
 
     // Skills
     listSkills: () => ipcRenderer.invoke("pi:list-skills"),
