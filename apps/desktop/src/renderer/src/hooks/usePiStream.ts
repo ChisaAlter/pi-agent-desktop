@@ -13,6 +13,7 @@ import type { PiEvent } from "@shared/events";
 import { isIpcError, type PlanCard } from "@shared";
 import { useSessionStore } from "../stores/session-store";
 import { usePlanStore } from "../stores/plan-store";
+import { useAgentStore } from "../stores/agent-store";
 
 export interface ToolCallState {
     id: string;
@@ -88,7 +89,7 @@ function createFallbackPlanCard(content: string): PlanCard | null {
     };
 }
 
-export function usePiStream(): UsePiStreamReturn {
+export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     const [isStreaming, setIsStreaming] = useState(false);
     const [currentThinking, setCurrentThinking] = useState("");
     const [currentText, setCurrentText] = useState("");
@@ -103,23 +104,40 @@ export function usePiStream(): UsePiStreamReturn {
     const toolCallsRef = useRef(new Map<string, ToolCallState>());
     const messageIdRef = useRef<string | null>(null);
     const sessionIdRef = useRef<string | null>(null);
+  const agentIdRef = useRef<string | null>(null);
 
     const { getCurrentSession, addMessage, updateMessage, addToolCall, updateToolCall } = useSessionStore();
+
+  useEffect(() => { agentIdRef.current = agentId ?? null; }, [agentId]);
     const ensureAssistantMessage = useCallback(() => {
-        if (sessionIdRef.current && messageIdRef.current) return;
-        const session = useSessionStore.getState().getCurrentSession();
-        if (!session) return;
-        sessionIdRef.current = session.id;
-        const newId = `m_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        messageIdRef.current = newId;
-        setStreamingMessageId(newId);
-        addMessage(session.id, {
-            id: newId,
-            role: "assistant",
-            content: "",
-            timestamp: new Date(),
-        });
-    }, [addMessage]);
+    if (sessionIdRef.current && messageIdRef.current) return;
+    const aid = agentIdRef.current;
+    if (aid) {
+      const newId = `am_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      messageIdRef.current = newId;
+      setStreamingMessageId(newId);
+      useAgentStore.getState().appendStreamMessage(aid, {
+        id: newId,
+        agentId: aid,
+        role: "assistant",
+        content: "",
+        createdAt: Date.now(),
+      });
+      return;
+    }
+    const session = useSessionStore.getState().getCurrentSession();
+    if (!session) return;
+    sessionIdRef.current = session.id;
+    const newId = `m_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    messageIdRef.current = newId;
+    setStreamingMessageId(newId);
+    addMessage(session.id, {
+      id: newId,
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+    });
+  }, [addMessage]);
 
     // ── 连接状态 ────────────────────────────────────────────────────────────
     // v1.0.17: 初次检测 + 每 30 秒心跳重检，断了自动设为 false
@@ -146,6 +164,16 @@ export function usePiStream(): UsePiStreamReturn {
     // ref 类型是 ((event: PiEvent) => void) | null, 每次 render 同步到 current.
     const handleEventRef = useRef<((event: PiEvent) => void) | null>(null);
     useEffect(() => {
+        if (agentId && window.piAPI?.onAgentEvent) {
+            const unsub = window.piAPI.onAgentEvent((payload) => {
+                if (payload.agentId !== agentId) return;
+                handleEventRef.current?.(payload.event);
+            });
+            return () => {
+                if (typeof unsub === "function") unsub();
+            };
+        }
+
         if (!window.piAPI?.onEvent) return;
         const unsub = window.piAPI.onEvent((event: PiEvent) => {
             handleEventRef.current?.(event);
@@ -153,7 +181,7 @@ export function usePiStream(): UsePiStreamReturn {
         return () => {
             if (typeof unsub === "function") unsub();
         };
-    }, []);
+    }, [agentId]);
 
     // ── 事件处理 ────────────────────────────────────────────────────────────
     const handleEvent = useCallback((event: PiEvent) => {
@@ -182,17 +210,25 @@ export function usePiStream(): UsePiStreamReturn {
                     ensureAssistantMessage();
                     textRef.current += delta;
                     setCurrentText(textRef.current);
-                    // 实时更新 session 里的最后一条消息
-                    if (sessionIdRef.current && messageIdRef.current) {
-                        updateMessage(sessionIdRef.current, messageIdRef.current, { content: textRef.current });
+                    // 实时更新消息（agent 或 session）
+                    if (messageIdRef.current) {
+                        if (agentIdRef.current) {
+                          useAgentStore.getState().updateStreamMessage(agentIdRef.current, messageIdRef.current!, { content: textRef.current });
+                        } else if (sessionIdRef.current) {
+                          updateMessage(sessionIdRef.current, messageIdRef.current, { content: textRef.current });
+                        }
                     }
                 } else if (assistantEvent.type === "thinking_delta") {
                     const delta = assistantEvent.delta;
                     ensureAssistantMessage();
                     thinkingRef.current += delta;
                     setCurrentThinking(thinkingRef.current);
-                    if (sessionIdRef.current && messageIdRef.current) {
-                        updateMessage(sessionIdRef.current, messageIdRef.current, { thinking: thinkingRef.current });
+                    if (messageIdRef.current) {
+                        if (agentIdRef.current) {
+                          useAgentStore.getState().updateStreamMessage(agentIdRef.current, messageIdRef.current!, { thinking: thinkingRef.current });
+                        } else if (sessionIdRef.current) {
+                          updateMessage(sessionIdRef.current, messageIdRef.current, { thinking: thinkingRef.current });
+                        }
                     }
                 } else if (assistantEvent.type === "toolcall_start") {
                     const e = assistantEvent as { toolCallId: string; toolName: string; args: Record<string, unknown> };
@@ -319,6 +355,7 @@ export function usePiStream(): UsePiStreamReturn {
                 setIsStreaming(false);
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
+                sessionIdRef.current = null;
                 break;
 
             case "agent_end":
@@ -333,6 +370,7 @@ export function usePiStream(): UsePiStreamReturn {
                 setIsStreaming(false);
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
+                sessionIdRef.current = null;
                 // v1.0.17: 通知 useTaskProgress agent 结束
                 window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 break;

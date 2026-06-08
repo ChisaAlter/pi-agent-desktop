@@ -7,6 +7,7 @@ import type { PiEvent } from "@shared/events";
 import { useTaskProgress } from "./useTaskProgress";
 
 let emitPiEvent: ((event: PiEvent) => void) | null = null;
+let emitAgentEvent: ((payload: { agentId: string; workspaceId: string; event: PiEvent }) => void) | null = null;
 
 function HookHost(): React.JSX.Element {
     const { tasks } = useTaskProgress();
@@ -21,11 +22,16 @@ function HookHost(): React.JSX.Element {
 
 beforeEach(() => {
     emitPiEvent = null;
+    emitAgentEvent = null;
     (globalThis as { window: unknown }).window = window;
     Object.assign(window, {
         piAPI: {
             onEvent: vi.fn((cb: (event: PiEvent) => void) => {
                 emitPiEvent = cb;
+                return vi.fn();
+            }),
+            onAgentEvent: vi.fn((cb: (payload: { agentId: string; workspaceId: string; event: PiEvent }) => void) => {
+                emitAgentEvent = cb;
                 return vi.fn();
             }),
         },
@@ -61,5 +67,27 @@ describe("useTaskProgress", () => {
         });
 
         expect(screen.getByText("运行命令")).toBeTruthy();
+    });
+
+    it("creates an activity item from agent-scoped events", async () => {
+        await act(async () => {
+            render(<HookHost />);
+        });
+        expect(emitAgentEvent).toBeTruthy();
+
+        act(() => {
+            emitAgentEvent?.({
+                agentId: "agent_1",
+                workspaceId: "ws1",
+                event: {
+                    type: "tool_execution_start",
+                    toolCallId: "tc_2",
+                    toolName: "read",
+                    args: { path: "README.md" },
+                },
+            });
+        });
+
+        expect(screen.getByText("读取文件")).toBeTruthy();
     });
 });

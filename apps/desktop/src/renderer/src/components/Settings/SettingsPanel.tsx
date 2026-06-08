@@ -6,11 +6,11 @@ import React, { useState, useEffect } from 'react';
 import { useSettingsStore } from '../../stores/settings-store';
 import { PiStatusPanel } from '../PiStatusPanel';
 import { useI18n, useTranslateIpcError, SUPPORTED_LOCALES, type Locale } from '../../i18n';
-import type { IpcError } from '@shared';
+import type { IpcError, PiAuthFile, PiModelsFile, PiSettingsFile } from '@shared';
 
 export function SettingsPanel(): React.JSX.Element {
     const { settings, isOpen, closeSettings, updateSettings, resetSettings, piModels, lastWriteError, clearWriteError } = useSettingsStore();
-    const [activeTab, setActiveTab] = useState<'general' | 'model' | 'piagent' | 'about'>('general');
+    const [activeTab, setActiveTab] = useState<'general' | 'model' | 'piagent' | 'config' | 'about'>('general');
     const [piFullConfig, setPiFullConfig] = useState<Awaited<ReturnType<typeof window.piAPI.getFullConfig>> | null>(null);
     const { t, locale, setLocale } = useI18n();
     // v1.0.9: 翻译 IpcError, string 兜底
@@ -38,6 +38,7 @@ export function SettingsPanel(): React.JSX.Element {
         { id: 'general' as const, label: t('settings.tab.general') },
         { id: 'model' as const, label: t('settings.tab.model') },
         { id: 'piagent' as const, label: t('settings.tab.piagent') },
+        { id: 'config' as const, label: '配置中心' },
         { id: 'about' as const, label: t('settings.tab.about') },
     ];
 
@@ -420,6 +421,10 @@ export function SettingsPanel(): React.JSX.Element {
                                 </div>
                             </div>
                         )}
+
+                        {activeTab === 'config' && (
+                            <PiConfigEditor />
+                        )}
                     </div>
                 </div>
 
@@ -442,6 +447,178 @@ export function SettingsPanel(): React.JSX.Element {
                         {t('common.done')}
                     </button>
                 </div>
+            </div>
+        </div>
+    );
+}
+
+function PiConfigEditor(): React.JSX.Element {
+    const [fileName, setFileName] = useState<'models.json' | 'auth.json' | 'settings.json'>('models.json');
+    const [raw, setRaw] = useState('');
+    const [message, setMessage] = useState('');
+    const [fetchStatus, setFetchStatus] = useState('');
+    const [testStatus, setTestStatus] = useState('');
+
+    const parseCurrentJson = <T,>(targetFile: typeof fileName, fallback: T): T => {
+        if (fileName !== targetFile) return fallback;
+        return JSON.parse(raw) as T;
+    };
+
+    const loadProviderSelection = async (setStatus: (message: string) => void): Promise<{
+        baseUrl: string;
+        apiKey?: string;
+        apiType?: string;
+        modelId?: string;
+    } | null> => {
+        const [modelsResult, authResult, settingsResult] = await Promise.all([
+            fileName === 'models.json'
+                ? Promise.resolve({ parsed: parseCurrentJson<PiModelsFile>('models.json', { providers: {} }) })
+                : window.piAPI.configGetModels(),
+            fileName === 'auth.json'
+                ? Promise.resolve({ parsed: parseCurrentJson<PiAuthFile>('auth.json', {}) })
+                : window.piAPI.configGetAuth(),
+            fileName === 'settings.json'
+                ? Promise.resolve({ parsed: parseCurrentJson<PiSettingsFile>('settings.json', {}) })
+                : window.piAPI.configGetSettings(),
+        ]);
+        const providers = modelsResult.parsed.providers ?? {};
+        const providerIds = Object.keys(providers);
+        const configuredDefault = settingsResult.parsed.defaultProvider;
+        const providerId =
+            typeof configuredDefault === "string" && providers[configuredDefault]
+                ? configuredDefault
+                : providerIds[0];
+        if (!providerId) {
+            setStatus("请先在 models.json 中配置 provider baseUrl");
+            return null;
+        }
+
+        const provider = providers[providerId];
+        if (!provider?.baseUrl) {
+            setStatus("请先在 models.json 中配置 provider baseUrl");
+            return null;
+        }
+
+        return {
+            baseUrl: provider.baseUrl,
+            apiKey: authResult.parsed[providerId]?.apiKey,
+            apiType: provider.apiType,
+            modelId: provider.models?.[0]?.id,
+        };
+    };
+
+    useEffect(() => {
+        let cancelled = false;
+        async function load() {
+            setMessage('');
+            const result =
+                fileName === 'models.json'
+                    ? await window.piAPI.configGetModels()
+                    : fileName === 'auth.json'
+                        ? await window.piAPI.configGetAuth()
+                        : await window.piAPI.configGetSettings();
+            if (!cancelled) setRaw(result.raw);
+        }
+        void load().catch((error) => {
+            if (!cancelled) setMessage(error instanceof Error ? error.message : String(error));
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [fileName]);
+
+    const save = async () => {
+        const result = await window.piAPI.configSaveRaw(fileName, raw);
+        setMessage(result.valid ? '已保存，新的 Agent 或重启后的 Agent 会读取最新配置。' : result.error ?? '保存失败');
+    };
+
+    const exportConfig = async () => {
+        setRaw(await window.piAPI.configExport());
+        setMessage('已导出配置包，可复制保存或切换回具体文件继续编辑。');
+    };
+
+    const importConfig = async () => {
+        const result = await window.piAPI.configImport(raw);
+        setMessage(result.valid ? '已导入配置包。' : result.error ?? '导入失败');
+    };
+
+    return (
+        <div
+            className="space-y-4"
+            role="tabpanel"
+            id="settings-tabpanel-config"
+            aria-labelledby="settings-tab-config"
+        >
+            <h3 className="text-base font-medium text-[#1a1a1a]">Pi 配置中心</h3>
+            <div className="flex flex-wrap items-center gap-2">
+                {(['models.json', 'auth.json', 'settings.json'] as const).map((name) => (
+                    <button
+                        key={name}
+                        type="button"
+                        onClick={() => setFileName(name)}
+                        className={`rounded-md px-3 py-1.5 text-sm ${
+                            fileName === name ? 'bg-[#1a1a1a] text-white' : 'bg-[#f0f0f0] text-[#333] hover:bg-[#e5e5e5]'
+                        }`}
+                    >
+                        {name}
+                    </button>
+                ))}
+            </div>
+            <textarea
+                value={raw}
+                onChange={(event) => setRaw(event.target.value)}
+                spellCheck={false}
+                className="min-h-[280px] w-full rounded-lg border border-[#e5e5e5] bg-[#f8f8f8] p-3 font-mono text-xs text-[#1a1a1a] outline-none focus:border-[#1a1a1a]"
+                aria-label="Pi 配置 JSON"
+            />
+            {message && (
+                <div className="rounded-md border border-[#e5e5e5] bg-[#f8f8f8] px-3 py-2 text-xs text-[#555]">
+                    {message}
+                </div>
+            )}
+            {fetchStatus && (
+                <div className="rounded-md border border-[#e0efe0] bg-[#f0fff0] px-3 py-2 text-xs text-[#333]">
+                    {fetchStatus}
+                </div>
+            )}
+            {testStatus && (
+                <div className="rounded-md border border-[#e0e0f0] bg-[#f0f0ff] px-3 py-2 text-xs text-[#333]">
+                    {testStatus}
+                </div>
+            )}
+            <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={save} className="rounded-md bg-[#1a1a1a] px-3 py-2 text-sm text-white hover:bg-[#333]">
+                    保存当前文件
+                </button>
+                <button type="button" onClick={exportConfig} className="rounded-md bg-[#f0f0f0] px-3 py-2 text-sm text-[#333] hover:bg-[#e5e5e5]">
+                    导出配置包
+                </button>
+                <button type="button" onClick={importConfig} className="rounded-md bg-[#f0f0f0] px-3 py-2 text-sm text-[#333] hover:bg-[#e5e5e5]">
+                    从编辑区导入配置包
+                </button>
+                <button type="button" onClick={async () => {
+                    setFetchStatus("拉取中...");
+                    try {
+                        const provider = await loadProviderSelection(setFetchStatus);
+                        if (!provider) return;
+                        const models = await window.piAPI.configFetchModels(provider.baseUrl, provider.apiKey, provider.apiType);
+                        setFetchStatus(`拉取到 ${models.length} 个模型`);
+                    } catch (e) { setFetchStatus(`拉取失败: ${e instanceof Error ? e.message : String(e)}`); }
+                }} className="rounded-md bg-[#f0f0f0] px-3 py-2 text-sm text-[#333] hover:bg-[#e5e5e5]">
+                    拉取模型列表
+                </button>
+                <button type="button" onClick={async () => {
+                    setTestStatus("测试中...");
+                    try {
+                        const provider = await loadProviderSelection(setTestStatus);
+                        if (!provider) return;
+                        const result = await window.piAPI.configTestProvider(provider);
+                        setTestStatus(result.ok ? "连接成功" : `连接失败: ${result.message}`);
+                    } catch (e) { setTestStatus(`测试失败: ${e instanceof Error ? e.message : String(e)}`); }
+                }} className="rounded-md bg-[#f0f0f0] px-3 py-2 text-sm text-[#333] hover:bg-[#e5e5e5]">
+                    测试 Provider
+                </button>
+
             </div>
         </div>
     );

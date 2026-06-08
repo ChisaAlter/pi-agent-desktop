@@ -1,5 +1,5 @@
-// E2E smoke: verify the v1.0.12 fix — ChatView 真接通 usePiStream → session-store → MessageBubble,
-// 4 个 welcome card 真的接 onClick, 真能 send prompt 并收到 Pi 回复。
+// E2E smoke: verify ChatView 真接通 usePiStream → session-store → MessageBubble,
+// 当前 welcome 空态、ChatInput 和 Popover 入口都能交互。
 //
 // 关键点(跟 launch.spec.ts 区别):
 //  - 用 page.click 触发 React onClick,不走 OS 鼠标(避免 z-order 抢焦点)
@@ -9,7 +9,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from '@playwright/test';
 import { electronMainEntry } from '../playwright.config';
 
-test.describe('Pi Desktop v1.0.12 — ChatView 接通 + 4 cards 接 onClick', () => {
+test.describe('Pi Desktop — ChatView 接通 + ChatInput 交互', () => {
     let app: ElectronApplication;
     let page: Page;
 
@@ -17,7 +17,7 @@ test.describe('Pi Desktop v1.0.12 — ChatView 接通 + 4 cards 接 onClick', ()
         try { await app?.close(); } catch { /* ignore */ }
     });
 
-    test('welcome screen renders 4 cards from ChatView, click 注入 prompt 到 ChatInput, send 触发 piAPI.sendPrompt', async () => {
+    test('welcome 空态渲染 ChatInput，输入和发送流程接通', async () => {
         app = await _electron.launch({
             args: [electronMainEntry],
             env: { ...process.env, CI: '1' },
@@ -25,7 +25,7 @@ test.describe('Pi Desktop v1.0.12 — ChatView 接通 + 4 cards 接 onClick', ()
         page = await app.firstWindow();
         await page.waitForLoadState('domcontentloaded');
 
-        // (1) Welcome 标题 — 4 个 card 的 ChatView 接管中栏
+        // (1) Welcome 标题 — ChatView 接管中栏
         //  ChatView 副标题:"描述你想要构建或修改的内容,Pi 会为你创建一个独立的工作环境。"
         //  注:onboarding 模态会先盖住,直接 evaluate 删掉(本 spec 只测 ChatView 接通,不在测 onboarding)
         await page.evaluate(() => {
@@ -35,51 +35,42 @@ test.describe('Pi Desktop v1.0.12 — ChatView 接通 + 4 cards 接 onClick', ()
         const subtitle = page.getByText('描述你想要构建或修改的内容');
         await expect(subtitle).toBeVisible({ timeout: 15_000 });
 
-        // (2) 4 个 welcome card 都在(ChatView 内部,不是 WelcomeScreen)
-        //   关键词:新建功能 / 修复问题 / 代码审查 / 解释代码
-        await expect(page.getByText('新建功能')).toBeVisible();
-        await expect(page.getByText('修复问题')).toBeVisible();
-        await expect(page.getByText('代码审查')).toBeVisible();
-        await expect(page.getByText('解释代码')).toBeVisible();
+        // (2) 当前空态直接渲染 ChatInput，不再渲染快捷卡片
+        await expect(page.getByRole('heading', { name: '准备好开始了吗？' })).toBeVisible();
 
-        // (3) 确认是 ChatView 内部 (而不是 MiniMaxCode/WelcomeScreen 的 5 个假按钮)
+        // (3) 确认是 ChatView 内部 (而不是 MiniMaxCode/WelcomeScreen 的假按钮)
         //   假按钮串(应已全清):创建 Team / 幻灯片 / PDF / 文档 / 表格
         await expect(page.getByText('创建 Team')).toHaveCount(0);
         await expect(page.getByText('幻灯片', { exact: true })).toHaveCount(0);
         await expect(page.getByText('PDF', { exact: true })).toHaveCount(0);
 
-        // (4) 点击 🚀 新建功能 card,应该把 "我想添加一个新功能:" 注入 ChatInput textarea
-        await page.getByText('新建功能').click();
-        // ChatInput 的 textarea
-        const textarea = page.locator('textarea[aria-label*="发送" i], textarea[placeholder*="在此审查" i], textarea[placeholder*="描述" i]').first();
+        // (4) ChatInput 的 textarea 可输入
+        const textarea = page.getByRole('textbox', { name: '发送' });
         await expect(textarea).toBeVisible({ timeout: 5_000 });
-        // 验证 prefill 真的进了 input
-        const value = await textarea.inputValue();
-        expect(value).toMatch(/我想添加一个新功能/);
+        await textarea.fill('test ping from ChatView verification');
+        await expect(textarea).toHaveValue('test ping from ChatView verification');
 
         // (5) 验证 ChatView 接管 chat panel(不是 WelcomeScreen)— ChatInput 自身的"附件"按钮
         //   跟 WelcomeScreen 的 MiniMaxCodeInput 不同(没附件按钮)
         await expect(page.getByRole('button', { name: /添加附件/ })).toBeVisible();
-        await expect(page.getByText('mimo-v2.5-pro')).toBeVisible();
+        await expect(page.locator('[data-testid="chat-input-model-trigger"]')).toBeVisible();
 
         // (6) 验证 send 真的能发 — 监听 window.piAPI.sendPrompt 是否被调
-        //   改 prompt,再发
-        await textarea.fill('test ping from v1.0.12 verification');
         // 触发 send: 按 Enter
         await textarea.press('Enter');
 
         // (7) 消息流出现:user 消息 — 走 article 区域避开 textarea 残留 value
         const userArticle = page.getByRole('article', { name: /你说/ });
         await expect(userArticle).toBeVisible({ timeout: 10_000 });
-        await expect(userArticle).toContainText('test ping from v1.0.12 verification');
+        await expect(userArticle).toContainText('test ping from ChatView verification');
 
         // (8) Pi 正在 streaming 回复 — ChatInput 因 isProcessing 锁住(>1 步证据)
         //   注:不查 "Pi 正在思考" 状态文本,因为时序敏感(可能 1 秒就消失),
         //   ChatInput disabled 是 isProcessing 走过 的稳证据
         await expect(textarea).toBeDisabled({ timeout: 5_000 });
 
-        // (9) 右栏空态(无 demo 任务) — TaskProgressPanel 走空态
-        await expect(page.getByText('暂无任务')).toBeVisible();
+        // (9) 右栏进度区域存在
+        await expect(page.getByRole('heading', { name: '进度' })).toBeVisible();
     });
 
     test('v1.0.13 — ChatInput 3 个假按钮真接通: 权限/模型/附件 全部能交互', async () => {
@@ -104,17 +95,17 @@ test.describe('Pi Desktop v1.0.12 — ChatView 接通 + 4 cards 接 onClick', ()
         await expect(modelTrigger).toBeVisible();
         await expect(attachBtn).toBeVisible();
 
-        // (2) 权限按钮 — click → popover 出现 → 选 "只读" → 按钮 label 切换
+        // (2) 权限按钮 — click → popover 出现 → 选 "智能授权" → 按钮 label 切换
         //    注:不依赖初始 label,因为跨 test 共享 electron-store,初始可能是任何档位
         await permTrigger.click();
         // popover role=menu 出现
-        const permMenu = page.getByRole('menu').filter({ hasText: '权限档位' });
+        const permMenu = page.getByRole('menu').filter({ hasText: '智能授权' });
         await expect(permMenu).toBeVisible();
-        // 选"只读"
-        await permMenu.getByRole('menuitemradio', { name: /只读/ }).click();
-        // popover 关闭,按钮 label 切到"只读"
+        // 选"智能授权"
+        await permMenu.getByRole('menuitemradio', { name: /智能授权/ }).click();
+        // popover 关闭,按钮 label 切到"智能授权"
         await expect(permMenu).toBeHidden();
-        await expect(permTrigger).toContainText('只读');
+        await expect(permTrigger).toContainText('智能授权');
 
         // (3) 模型按钮 — click → popover 出现
         //    Pi CLI 配置可能有也可能没有 — 但 popover 至少要出现

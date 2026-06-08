@@ -16,6 +16,7 @@ import { CommandPalette } from "./components/CommandPalette/CommandPalette";
 import { ShortcutsCheatsheet } from "./components/ShortcutsCheatsheet/ShortcutsCheatsheet";
 import { SkillsPanel } from "./components/SkillsPanel/SkillsPanel";
 import { TerminalPanel } from "./components/Terminal/TerminalPanel";
+import { useAgentStore } from "./stores/agent-store";
 import { ApprovalPanel } from "./components/ApprovalPanel/ApprovalPanel";
 import { PiStatusPanel } from "./components/PiStatusPanel/PiStatusPanel";
 import { Onboarding } from "./components/Onboarding/Onboarding";
@@ -63,6 +64,40 @@ function AppShell(): React.ReactElement {
         (s) => s.changes.filter((c) => c.status === "pending").length,
     );
     const currentWorkspace = getCurrentWorkspace();
+    const currentAgent = useAgentStore((state) => state.getCurrentAgent());
+    const { initialized: agentsInitialized, init: initAgents, createAgent } = useAgentStore();
+    const creatingDefaultAgentWorkspaceRef = useRef<string | null>(null);
+
+    // Auto-create default Agent on first load when workspace exists but no agents
+    useEffect(() => {
+        void initAgents();
+    }, [initAgents]);
+
+    useEffect(() => {
+        const api = window.piAPI as unknown as { agentsCreate?: unknown };
+        const hasCurrentWorkspaceAgent = Boolean(
+            currentWorkspace &&
+                currentAgent &&
+                currentAgent.workspaceId === currentWorkspace.id,
+        );
+        if (
+            agentsInitialized &&
+            currentWorkspace &&
+            !hasCurrentWorkspaceAgent &&
+            creatingDefaultAgentWorkspaceRef.current !== currentWorkspace.id &&
+            typeof api.agentsCreate === 'function'
+        ) {
+            const workspaceId = currentWorkspace.id;
+            creatingDefaultAgentWorkspaceRef.current = workspaceId;
+            void createAgent(workspaceId, `${currentWorkspace.name} Agent`)
+                .catch((error) => logger.error("[App] create default agent failed:", error))
+                .finally(() => {
+                    if (creatingDefaultAgentWorkspaceRef.current === workspaceId) {
+                        creatingDefaultAgentWorkspaceRef.current = null;
+                    }
+                });
+        }
+    }, [agentsInitialized, currentWorkspace, currentAgent, createAgent]);
 
     useEffect(() => {
         ensurePermissionSubscriptions();
@@ -144,7 +179,7 @@ function AppShell(): React.ReactElement {
             case "new_chat":
                 setActiveSection("chat");
                 if (currentWorkspace) {
-                    useSessionStore.getState().createSession(currentWorkspace.id);
+                    void useAgentStore.getState().createAgent(currentWorkspace.id, `${currentWorkspace.name} Agent`);
                 }
                 return;
             case "open_skills":
@@ -178,7 +213,7 @@ function AppShell(): React.ReactElement {
             default:
                 logger.warn("[App] unknown command palette cmd:", cmdId);
         }
-    }, [openSettings]);
+    }, [currentWorkspace, openSettings]);
 
     // 全局快捷键
     const shortcutHandlers = useMemo(
@@ -198,7 +233,7 @@ function AppShell(): React.ReactElement {
                 }
             },
         }),
-        [currentWorkspace, openSettings, paletteOpen, showCheatsheet, showTerminal],
+        [openSettings, paletteOpen, showCheatsheet, showTerminal],
     );
     useShortcuts(shortcutHandlers);
 
@@ -226,22 +261,23 @@ function AppShell(): React.ReactElement {
                             //  - new-task          → 切到 chat(ChatView 接管)
                             //  - mobile-control    → 打开 CommandPalette(没真接入手机操控,先给个搜索入口)
                             //  - settings          → 打开设置面板
-                            //  - history-*         → 切到 chat(历史 task 路由由 ChatView 内部处理)
+                            //  - session:*         → 切到 chat + 切换当前历史 session
                             //  - skills            → 已有 view, 直接切
                             if (s === "settings") {
                                 openSettings();
                                 return;
                             }
                             if (s === "new-task") {
-                                if (currentWorkspace) {
-                                    useSessionStore.getState().createSession(currentWorkspace.id);
-                                }
                                 setActiveSection("chat");
+                                if (currentWorkspace) {
+                                    void useAgentStore.getState().createAgent(currentWorkspace.id, `${currentWorkspace.name} Agent`);
+                                }
                                 return;
                             }
                             if (s.startsWith("session:")) {
-                                useSessionStore.getState().setCurrentSession(s.slice("session:".length));
                                 setActiveSection("chat");
+                                const sessionId = s.slice("session:".length);
+                                useSessionStore.getState().setCurrentSession(sessionId);
                                 return;
                             }
                             // new-task / skills / chat 默认 fallback
@@ -270,6 +306,8 @@ function AppShell(): React.ReactElement {
                     <RightRail
                         workspacePath={currentWorkspace?.path}
                         tasks={taskProgress.tasks}
+
+
                     />
                 }
             />
@@ -314,7 +352,9 @@ function AppShell(): React.ReactElement {
                     }}
                 >
                     <TerminalPanel
+                        key={currentAgent?.id ?? currentWorkspace.id}
                         isOpen={showTerminal}
+                        agentId={currentAgent?.id}
                         workspacePath={currentWorkspace.path}
                         onClose={() => setShowTerminal(false)}
                     />

@@ -16,7 +16,7 @@ export function useTaskProgress(): {
 
     // 订阅 Pi 事件流,映射为任务进度
     useEffect(() => {
-        if (!window.piAPI?.onEvent) return;
+        if (!window.piAPI?.onEvent && !window.piAPI?.onAgentEvent) return;
 
         const handler = (event: PiEvent): void => {
             const toolLabels: Record<string, string> = {
@@ -108,9 +108,11 @@ export function useTaskProgress(): {
             }
         };
 
-        const unsub = window.piAPI.onEvent(handler);
+        const unsub = window.piAPI.onEvent?.(handler);
+        const unsubAgent = window.piAPI.onAgentEvent?.((payload) => handler(payload.event));
         return () => {
             if (typeof unsub === "function") unsub();
+            if (typeof unsubAgent === "function") unsubAgent();
         };
     }, []);
 
