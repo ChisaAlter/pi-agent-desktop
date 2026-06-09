@@ -6,6 +6,7 @@ import { I18nProvider } from "../../i18n";
 import { useSessionStore } from "../../stores/session-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { usePiStatusStore } from "../../stores/pi-status-store";
+import { usePlanStore } from "../../stores/plan-store";
 import { ChatView } from "./ChatView";
 
 const clearError = vi.fn();
@@ -41,24 +42,25 @@ vi.mock("./ChatInput", () => ({
 vi.mock("./MessageBubble", () => ({
   MessageBubble: ({
     message,
-    onContinueFrom,
+    onPlanAction,
   }: {
-    message: { id: string; content: string };
-    onContinueFrom?: (messageId: string) => void;
+    message: { id: string; content: string; planAction?: { status?: string } };
+    onPlanAction?: (message: { id: string; content: string; planAction?: { status?: string } }, action: "execute" | "pause" | "resume" | "cancel" | "refine") => Promise<void>;
   }) => (
     <div data-testid="message-bubble">
       {message.content}
-      {onContinueFrom && (
-        <button type="button" onClick={() => onContinueFrom(message.id)}>
-          continue-from-message
+      {message.planAction?.status === "pending" && (
+        <button type="button" onClick={() => void onPlanAction?.(message, "execute")}>
+          execute-plan
+        </button>
+      )}
+      {message.planAction?.status === "executing" && (
+        <button type="button" onClick={() => void onPlanAction?.(message, "pause")}>
+          pause-plan
         </button>
       )}
     </div>
   ),
-}));
-
-vi.mock("./PlanCard", () => ({
-  PlanCardView: () => <div data-testid="plan-card" style={{ height: 900 }}>plan card</div>,
 }));
 
 describe("ChatView", () => {
@@ -90,6 +92,7 @@ describe("ChatView", () => {
       isOperating: false,
       progress: null,
     });
+    usePlanStore.getState().reset();
     Object.defineProperty(window, "piAPI", {
       value: {
         createSession: vi.fn(async (workspaceId: string, title?: string, id?: string) => ({
@@ -158,7 +161,7 @@ describe("ChatView", () => {
     });
   });
 
-  it("renders the plan card after existing messages", () => {
+  it("does not render the legacy floating plan card", () => {
     mockedStreamError = null;
 
     render(
@@ -167,9 +170,8 @@ describe("ChatView", () => {
       </I18nProvider>,
     );
 
-    const message = screen.getByText("hello");
-    const planCard = screen.getByTestId("plan-card");
-    expect(message.compareDocumentPosition(planCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("hello")).toBeTruthy();
+    expect(screen.queryByTestId("plan-card")).toBeNull();
   });
 
   it("keeps the input outside the scroll region and the message region as the only scroller", () => {
@@ -285,12 +287,8 @@ describe("ChatView", () => {
     expect(useSessionStore.getState().currentSessionId).toBe("s1");
   });
 
-  it("shows an inline error when continuing from a message fails", async () => {
+  it("does not expose per-message continue actions", async () => {
     mockedStreamError = null;
-    window.piAPI!.createSession = vi.fn(async () => ({
-      code: "ipcErrors.sessions.createFailed",
-      fallback: "创建会话失败: permission denied",
-    })) as unknown as Window["piAPI"]["createSession"];
 
     render(
       <I18nProvider>
@@ -298,9 +296,146 @@ describe("ChatView", () => {
       </I18nProvider>,
     );
 
-    fireEvent.click(screen.getByText("continue-from-message"));
-
-    expect((await screen.findByRole("alert")).textContent).toContain("创建会话分支失败: 创建会话失败: permission denied");
+    expect(screen.queryByText("continue-from-message")).toBeNull();
     expect(useSessionStore.getState().currentSessionId).toBe("s1");
+  });
+
+  it("collapses adjacent cumulative assistant thinking updates into one visible bubble", () => {
+    mockedStreamError = null;
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              messages: [
+                {
+                  id: "u-plan",
+                  role: "user",
+                  content: "做一个 pi agent 的测试计划",
+                  timestamp: new Date(0),
+                },
+                {
+                  id: "a-snapshot-1",
+                  role: "assistant",
+                  content: "Let me first understand the pi agent project.",
+                  thinking: "第一轮思考",
+                  timestamp: new Date(1),
+                },
+                {
+                  id: "a-snapshot-2",
+                  role: "assistant",
+                  content: "Let me first understand the pi agent project. Now let me look at key files.",
+                  thinking: "第二轮思考",
+                  timestamp: new Date(2),
+                },
+                {
+                  id: "a-snapshot-3",
+                  role: "assistant",
+                  content: "Let me first understand the pi agent project. Now let me look at key files. Now I have a plan.",
+                  thinking: "第三轮思考",
+                  timestamp: new Date(3),
+                },
+              ],
+            }
+          : session
+      )),
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    const bubbles = screen.getAllByTestId("message-bubble");
+    expect(bubbles).toHaveLength(2);
+    expect(screen.getByText(/Now I have a plan/)).toBeTruthy();
+    expect(screen.queryByText("Let me first understand the pi agent project.")).toBeNull();
+  });
+
+  it("executes a plan through a hidden command while showing a clean user-facing message", async () => {
+    mockedStreamError = null;
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              messages: [
+                {
+                  id: "plan-message",
+                  role: "assistant",
+                  content: "- 检查\n- 修改",
+                  timestamp: new Date(0),
+                  planAction: {
+                    id: "plan_action_test",
+                    title: "测试计划",
+                    filename: "test-plan.md",
+                    status: "pending",
+                  },
+                },
+              ],
+            }
+          : session
+      )),
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByText("execute-plan"));
+
+    await waitFor(() => {
+      expect(startStreaming).toHaveBeenCalledWith("ws1", "/execute_plan test-plan.md", {
+        visibleContent: "执行计划：test-plan.md",
+      });
+    });
+  });
+
+  it("pauses an executing plan through stopStreaming", async () => {
+    mockedStreamError = null;
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              messages: [
+                {
+                  id: "plan-message-running",
+                  role: "assistant",
+                  content: "- 检查\n- 修改",
+                  timestamp: new Date(0),
+                  planAction: {
+                    id: "plan_action_running",
+                    title: "测试计划",
+                    filename: "test-plan.md",
+                    status: "executing",
+                  },
+                },
+              ],
+            }
+          : session
+      )),
+    }));
+    usePlanStore.setState({
+      activeExecution: {
+        activePlanId: "plan_action_running",
+        title: "测试计划",
+        filename: "test-plan.md",
+        sourceMessageId: "plan-message-running",
+        phase: "executing",
+      },
+    });
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByText("pause-plan"));
+    expect(stopStreaming).toHaveBeenCalledWith("ws1");
   });
 });

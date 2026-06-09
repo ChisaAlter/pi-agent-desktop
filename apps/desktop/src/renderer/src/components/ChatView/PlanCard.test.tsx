@@ -49,6 +49,32 @@ describe("PlanCardView", () => {
     expect(usePlanStore.getState().decisionRequest).toBeNull();
   });
 
+  it("submits local plan goal clarification through onExecute", async () => {
+    const onExecute = vi.fn(async () => undefined);
+    usePlanStore.getState().setDecisionRequest({
+      requestId: "local_plan_goal_1",
+      workspaceId: "ws1",
+      source: "plan",
+      title: "计划模式需要目标",
+      message: "请补充计划目标",
+      placeholder: "写下计划目标",
+      createdAt: 1,
+    });
+
+    render(<PlanCardView workspaceId="ws1" onExecute={onExecute} />);
+
+    fireEvent.change(screen.getByPlaceholderText("写下计划目标"), {
+      target: { value: "为聊天输入框制定改版计划" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送补充" }));
+
+    await waitFor(() => {
+      expect(onExecute).toHaveBeenCalledWith("为聊天输入框制定改版计划");
+    });
+    expect(planRespond).not.toHaveBeenCalled();
+    expect(usePlanStore.getState().decisionRequest).toBeNull();
+  });
+
   it("executes active plan through /execute_plan", async () => {
     const onExecute = vi.fn(async () => undefined);
     usePlanStore.getState().setCard({

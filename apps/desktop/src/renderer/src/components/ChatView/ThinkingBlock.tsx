@@ -5,6 +5,8 @@ import React, { useState } from 'react';
 interface ThinkingBlockProps {
   /** 累积的思考文本 */
   content: string;
+  /** 合并的思考段数 */
+  count?: number;
   /** 是否仍在流式接收 */
   isStreaming?: boolean;
   /** 默认是否展开 */
@@ -13,6 +15,7 @@ interface ThinkingBlockProps {
 
 export function ThinkingBlock({
   content,
+  count = 1,
   isStreaming = false,
   defaultExpanded = false,
 }: ThinkingBlockProps): React.JSX.Element {
@@ -28,7 +31,7 @@ export function ThinkingBlock({
       >
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="text-xs">
-            {isStreaming ? '思考中' : '思考 1 次'}
+            {isStreaming ? '思考中' : `思考 ${Math.max(1, count)} 次`}
             {!isStreaming && ` · ${content.length} 字符`}
           </span>
           {isStreaming && <span className="inline-block h-3 w-0.5 animate-pulse bg-[#999]" />}

@@ -18,6 +18,7 @@ import { isIpcError, type PermissionMode } from "@shared";
 interface ChatInputProps {
   isConnected: boolean;
   isProcessing: boolean;
+  runContext?: "plan_execution" | null;
   onSend: (message: string) => Promise<void>;
   onStop: () => void;
   workspaceId?: string;
@@ -25,6 +26,7 @@ interface ChatInputProps {
   prefill?: string;
   prefillKey?: number;
   onPrefillConsumed?: () => void;
+  focusKey?: number;
 }
 
 const PERMISSION_OPTIONS: Array<{ value: PermissionMode; label: string; desc: string }> = [
@@ -82,9 +84,27 @@ function PermissionModeIcon({ mode }: { mode: PermissionMode }): React.JSX.Eleme
   );
 }
 
+function ToggleSwitch({ checked }: { checked: boolean }): React.JSX.Element {
+  return (
+    <span
+      className={`relative inline-flex h-[18px] w-[31px] shrink-0 rounded-full p-0.5 transition-colors ${
+        checked ? "bg-[#1795f6]" : "bg-[#e9e9e5]"
+      }`}
+      aria-hidden
+    >
+      <span
+        className={`h-3.5 w-3.5 rounded-full bg-white shadow-[0_1px_2px_rgba(0,0,0,0.14)] transition-transform ${
+          checked ? "translate-x-[13px]" : "translate-x-0"
+        }`}
+      />
+    </span>
+  );
+}
+
 export function ChatInput({
   isConnected,
   isProcessing,
+  runContext = null,
   onSend,
   onStop,
   workspaceId,
@@ -92,6 +112,7 @@ export function ChatInput({
   prefill,
   prefillKey,
   onPrefillConsumed,
+  focusKey,
 }: ChatInputProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState("");
   const [cursorPos, setCursorPos] = useState(0);
@@ -178,6 +199,11 @@ export function ChatInput({
       onConsumedRef.current?.();
     }
   }, [prefill, prefillKey]);
+
+  useEffect(() => {
+    if (focusKey === undefined) return;
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [focusKey]);
 
   const handleSend = async (): Promise<void> => {
     if (sendingRef.current || !inputValue.trim() || !isConnected) return;
@@ -356,6 +382,10 @@ export function ChatInput({
     },
     [updateSettings],
   );
+  const handlePlanToggle = useCallback(() => {
+    planStore.setEnabled(workspaceId, !planStore.enabled);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [planStore, workspaceId]);
   const handleSwitchWorkspace = useCallback(
     async (id: string): Promise<void> => {
       const ws = workspaces.find((w) => w.id === id);
@@ -438,26 +468,36 @@ export function ChatInput({
   const inputPlaceholder = !isConnected
     ? t("chatInput.placeholder.noConnection")
     : isProcessing
-      ? "任务运行中，输入内容会作为追加指令发送"
+      ? runContext === "plan_execution"
+        ? "正在执行计划，输入内容会作为补充指令发送"
+        : "任务运行中，输入内容会作为追加指令发送"
       : t("chatInput.placeholder.ready");
+  const runningLabel = runContext === "plan_execution"
+    ? "正在执行计划 · 新输入会作为补充指令进入当前执行"
+    : "任务运行中 · 新输入会作为追加指令进入当前会话";
+  const stopLabel = runContext === "plan_execution" ? "暂停执行" : "停止";
+  const stopAriaLabel = runContext === "plan_execution" ? "暂停执行" : t("chatView.stopGeneration");
 
   return (
     <div className="bg-transparent px-8 pt-2 pb-3">
       <PermissionRequestStack />
-      <div data-testid="chat-input-shell" className="mx-auto max-w-[770px] overflow-hidden rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-[var(--mm-shadow-elevated)]">
+      <div
+        data-testid="chat-input-shell"
+        className="mx-auto max-w-[770px] overflow-visible rounded-[18px] border border-[#e8e8e4] bg-white shadow-[0_18px_44px_rgba(20,20,18,0.08),0_2px_10px_rgba(20,20,18,0.05)] transition-all focus-within:border-[#deded9] focus-within:shadow-[0_18px_44px_rgba(20,20,18,0.08),0_0_0_3px_rgba(36,36,35,0.035)]"
+      >
         {isProcessing && (
-          <div className="flex items-center justify-between gap-3 border-b border-[var(--mm-border-subtle)] bg-[var(--mm-bg-input)] px-4 py-2 text-xs">
+          <div className="flex items-center justify-between gap-3 rounded-t-[18px] bg-[#fafafa] px-4 py-2 text-xs">
             <div className="flex min-w-0 items-center gap-2 text-[var(--mm-text-secondary)]">
               <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--mm-bg-active)]" aria-hidden />
-              <span className="truncate">任务运行中 · 新输入会作为追加指令进入当前会话</span>
+              <span className="truncate">{runningLabel}</span>
             </div>
             <button
               type="button"
               onClick={onStop}
               className="shrink-0 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-xs text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
-              aria-label={t("chatView.stopGeneration")}
+              aria-label={stopAriaLabel}
             >
-              停止
+              {stopLabel}
             </button>
           </div>
         )}
@@ -495,8 +535,21 @@ export function ChatInput({
         )}
 
         {/* 输入框 + 发送按钮 + @mention 弹窗 */}
-        <div className="relative flex gap-3 px-4 pt-4 pb-3">
+        <div className="relative flex gap-3 px-[18px] pt-[17px] pb-2">
           <div className="flex-1 relative">
+            {planStore.enabled && (
+              <div className="mb-2 flex">
+                <span
+                  className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[#dce9dd] bg-[#eef8ef] px-2.5 text-xs font-semibold text-[#3c7b46]"
+                  aria-label="计划模式已启用"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />
+                  </svg>
+                  计划模式
+                </span>
+              </div>
+            )}
             <textarea
               ref={textareaRef}
               value={inputValue}
@@ -510,7 +563,7 @@ export function ChatInput({
               onSelect={handleSelect}
               onKeyDown={handleKeyDown}
               placeholder={inputPlaceholder}
-              className="min-h-[52px] w-full resize-none border-0 bg-transparent px-0 py-0 text-sm leading-relaxed text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none disabled:opacity-50"
+              className="min-h-[62px] w-full resize-none border-0 bg-transparent px-0 py-0 text-sm leading-relaxed text-[var(--mm-text-primary)] placeholder:text-[#a6a6a0] focus:outline-none focus-visible:!outline-none focus-visible:!shadow-none disabled:opacity-50"
               rows={1}
               disabled={!isConnected}
               aria-label={t("chatInput.send")}
@@ -596,14 +649,85 @@ export function ChatInput({
         )}
 
         {/* 控制栏 */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--mm-border-subtle)] bg-[var(--mm-bg-input)] px-3 py-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 pb-[11px] pt-0">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <Popover
+              align="start"
+              contentClassName="w-[222px] rounded-[13px] border-[#e8e8e4] bg-white p-[7px] shadow-[0_18px_38px_rgba(20,20,18,0.12),0_2px_8px_rgba(20,20,18,0.05)]"
+              trigger={
+                <button
+                  type="button"
+                  className="flex h-[30px] w-[30px] items-center justify-center rounded-[10px] border border-[#e8e8e4] bg-[#f7f7f4] text-xl leading-none text-[#777771] transition-colors hover:bg-[#f2f2ef] focus-visible:!outline-none focus-visible:!shadow-none"
+                  aria-label="添加附件和工具"
+                  data-testid="chat-input-plus-trigger"
+                >
+                  +
+                </button>
+              }
+            >
+              {(close) => (
+                <div className="space-y-0.5">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      close();
+                      void handlePickFiles();
+                    }}
+                    disabled={!workspaceId}
+                    className="flex min-h-8 w-full items-center justify-between gap-3 rounded-[9px] px-2 text-left text-sm text-[#1f1f1d] hover:bg-[#f6f6f3] disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="添加文件或图片"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <svg className="h-3.5 w-3.5 shrink-0 text-[#70706a]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3 3 0 1 1 4 4L8.5 18.5a1.5 1.5 0 1 1-2-2L15 8" />
+                      </svg>
+                      添加文件或图片
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex min-h-8 w-full items-center justify-between gap-3 rounded-[9px] px-2 text-left text-sm text-[#1f1f1d] hover:bg-[#f6f6f3]"
+                    aria-label="技能"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <svg className="h-3.5 w-3.5 shrink-0 text-[#70706a]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M6 3h9l3 3v15H6zM14 3v5h5M9 13h6M9 17h4" />
+                      </svg>
+                      技能
+                    </span>
+                    <span className="text-[#aaa]" aria-hidden>›</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitemcheckbox"
+                    aria-checked={planStore.enabled}
+                    onClick={() => {
+                      handlePlanToggle();
+                      close();
+                    }}
+                    className="flex min-h-8 w-full items-center justify-between gap-3 rounded-[9px] px-2 text-left text-sm text-[#1f1f1d] hover:bg-[#f6f6f3]"
+                    aria-label="计划模式"
+                  >
+                    <span className="flex min-w-0 items-center gap-2">
+                      <svg className="h-3.5 w-3.5 shrink-0 text-[#70706a]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />
+                      </svg>
+                      计划模式
+                    </span>
+                    <ToggleSwitch checked={planStore.enabled} />
+                  </button>
+                </div>
+              )}
+            </Popover>
+
             <Popover
               align="start"
               contentClassName="min-w-[220px]"
               trigger={
                 <div
-                  className="flex h-7 max-w-[210px] cursor-pointer items-center gap-1.5 rounded-md border border-transparent px-2 text-xs text-[var(--mm-text-secondary)] transition-all hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-hover)]"
+                  className="flex h-[30px] max-w-[210px] cursor-pointer items-center gap-1.5 rounded-[10px] border border-transparent px-2 text-xs text-[#62625c] transition-all hover:border-[#e8e8e4] hover:bg-[#f7f7f4] focus-visible:!outline-none focus-visible:!shadow-none"
                   role="button"
                   tabIndex={0}
                   aria-label={currentWorkspace ? `当前工作目录: ${currentWorkspace.name}` : "选择工作目录"}
@@ -669,27 +793,13 @@ export function ChatInput({
               )}
             </Popover>
 
-            <button
-              type="button"
-              onClick={() => void handlePickFiles()}
-              disabled={!workspaceId}
-              className="flex h-7 items-center gap-1.5 rounded-md border border-transparent px-2 text-xs text-[var(--mm-text-secondary)] transition-all hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
-              aria-label={t("chatInput.addAttachment")}
-              title={workspaceId ? t("chatInput.addAttachment") : "请先选择 workspace"}
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              {t("chatInput.attachment")}
-            </button>
-
             {/* 权限下拉 */}
             <Popover
               align="start"
               contentClassName="min-w-[158px]"
               trigger={
                 <div
-                  className="flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-transparent px-2 text-xs text-[var(--mm-text-secondary)] transition-all hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-hover)]"
+                  className="flex h-[30px] cursor-pointer items-center gap-1.5 rounded-[10px] border border-transparent px-2 text-xs text-[#62625c] transition-all hover:border-[#e8e8e4] hover:bg-[#f7f7f4] focus-visible:!outline-none focus-visible:!shadow-none"
                   role="button"
                   tabIndex={0}
                   aria-label={`权限: ${currentPermissionLabel}`}
@@ -734,21 +844,6 @@ export function ChatInput({
               )}
             </Popover>
 
-            <button
-              type="button"
-              onClick={() => planStore.setEnabled(workspaceId, !planStore.enabled)}
-              className={`flex h-7 items-center gap-1.5 rounded-md border px-2 text-xs transition-all ${
-                planStore.enabled
-                  ? "border-[var(--mm-bg-active)] bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)]"
-                  : "border-transparent text-[var(--mm-text-secondary)] hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-hover)]"
-              }`}
-              aria-pressed={planStore.enabled}
-            >
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />
-              </svg>
-              计划模式
-            </button>
           </div>
 
           <div className="flex min-w-0 items-center gap-2">
@@ -769,7 +864,7 @@ export function ChatInput({
               contentClassName="min-w-[220px]"
               trigger={
                 <div
-                  className="flex h-7 max-w-[180px] cursor-pointer items-center gap-1.5 rounded-md border border-transparent px-2 text-xs text-[var(--mm-text-secondary)] transition-all hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-hover)]"
+                  className="flex h-[30px] max-w-[180px] cursor-pointer items-center gap-1.5 rounded-[10px] border border-transparent px-2 text-xs text-[#62625c] transition-all hover:border-[#e8e8e4] hover:bg-[#f7f7f4] focus-visible:!outline-none focus-visible:!shadow-none"
                   role="button"
                   tabIndex={0}
                   aria-label={currentModel ? `当前模型: ${currentModel}` : "未选择模型"}

@@ -11,10 +11,14 @@ import { ThinkingBlock } from './ThinkingBlock';
 import { useI18n } from '../../i18n';
 import { formatTime, formatIso } from '../../utils/format';
 
+type ChatMessage = Message & {
+  thinkingCount?: number;
+};
+
 interface MessageBubbleProps {
-  message: Message;
+  message: ChatMessage;
   isStreaming?: boolean;
-  onContinueFrom?: (messageId: string) => void;
+  onPlanAction?: (message: ChatMessage, action: "execute" | "refine" | "cancel" | "pause" | "resume") => Promise<void>;
 }
 
 function describeToolCall(name: unknown): "view" | "modify" | "command" | "tool" {
@@ -56,7 +60,7 @@ function toolSummary(toolCalls: NonNullable<Message["toolCalls"]>): string {
   return parts.join("，") || `使用 ${toolCalls.length} 个工具`;
 }
 
-function splitInlineThinking(content: string): { thinking: string; content: string } {
+function splitInlineThinking(content: string): { thinking: string; content: string; count: number } {
   const thinkingParts: string[] = [];
   let visible = content.replace(/<think>([\s\S]*?)<\/think>/gi, (_match, thinking: string) => {
     if (thinking.trim()) thinkingParts.push(thinking.trim());
@@ -70,17 +74,52 @@ function splitInlineThinking(content: string): { thinking: string; content: stri
 
   return {
     thinking: thinkingParts.join("\n\n"),
+    count: thinkingParts.length,
     content: visible.trim(),
   };
 }
 
-function splitUserPlanCommand(content: string): { isPlanMode: boolean; content: string } {
-  const match = content.match(/^\/plan(?:\r?\n|\s+)?([\s\S]*)$/);
-  if (!match) return { isPlanMode: false, content };
+function splitUserInternalCommand(content: string): { badge: string | null; content: string } {
+  const planMatch = content.match(/^\/plan(?:\r?\n|\s+)?([\s\S]*)$/);
+  if (planMatch) {
+    return {
+      badge: "计划模式",
+      content: (planMatch[1] ?? "").trim(),
+    };
+  }
+  const executeMatch = content.match(/^\/execute_plan(?:\s+)?([\s\S]*)$/i);
+  if (executeMatch) {
+    const target = (executeMatch[1] ?? "").trim();
+    return {
+      badge: "执行计划",
+      content: target ? `执行计划：${target}` : "执行计划",
+    };
+  }
   return {
-    isPlanMode: true,
-    content: (match[1] ?? "").trim(),
+    badge: null,
+    content,
   };
+}
+
+function planStatusLabel(status: NonNullable<ChatMessage["planAction"]>["status"]): string {
+  switch (status) {
+    case "executing":
+      return "执行中";
+    case "pausing":
+      return "正在暂停";
+    case "paused":
+      return "已暂停";
+    case "executed":
+      return "已完成";
+    case "cancelled":
+      return "已取消";
+    case "failed":
+      return "执行失败";
+    case "refining":
+      return "等待补充";
+    default:
+      return "等待确认";
+  }
 }
 
 function ToolActivity({
@@ -124,21 +163,25 @@ function ToolActivity({
   );
 }
 
-export function MessageBubble({ message, isStreaming = false, onContinueFrom }: MessageBubbleProps): React.JSX.Element {
+export function MessageBubble({ message, isStreaming = false, onPlanAction }: MessageBubbleProps): React.JSX.Element {
   const { t } = useI18n();
   const isUser = message.role === 'user';
   const timeText = formatTime(message.timestamp);
   const timeIso = formatIso(message.timestamp);
   const authorLabel = isUser ? t('messageBubble.userAuthor') : t('messageBubble.piAuthor');
   const articleLabel = `${authorLabel} · ${timeText}`;
-  const userPlanContent = isUser ? splitUserPlanCommand(message.content) : { isPlanMode: false, content: message.content };
-  const inlineThinking = !isUser ? splitInlineThinking(message.content) : { thinking: "", content: userPlanContent.content };
-  const thinkingContent = [message.thinking?.trim(), inlineThinking.thinking]
+  const userCommand = isUser ? splitUserInternalCommand(message.content) : { badge: null, content: message.content };
+  const inlineThinking = !isUser ? splitInlineThinking(message.content) : { thinking: "", content: userCommand.content, count: 0 };
+  const thinkingParts = [message.thinking?.trim(), inlineThinking.thinking]
     .filter((part): part is string => Boolean(part))
-    .join("\n\n");
+  const thinkingContent = thinkingParts.join("\n\n");
+  const thinkingCount = (message.thinkingCount ?? (message.thinking?.trim() ? 1 : 0)) + inlineThinking.count;
   const visibleContent = inlineThinking.content;
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
+  const planAction = !isUser ? message.planAction : undefined;
+  const planStatus = planAction?.status ?? "pending";
+  const showPlanPanel = Boolean(planAction);
 
   const handleCopy = useCallback(async () => {
     if (!visibleContent) return;
@@ -173,21 +216,21 @@ export function MessageBubble({ message, isStreaming = false, onContinueFrom }: 
           }`}>
             {isUser ? (
               <div className="space-y-2">
-                {userPlanContent.isPlanMode && (
+                {userCommand.badge && (
                   <div className="flex justify-end">
                     <span
                       className="inline-flex items-center gap-1.5 rounded-full border border-[#d8e7d9] bg-[#eef8ef] px-2.5 py-1 text-[11px] font-medium text-[#2f6b38]"
-                      aria-label="计划模式消息"
+                      aria-label={`${userCommand.badge}消息`}
                     >
                       <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />
                       </svg>
-                      计划模式
+                      {userCommand.badge}
                     </span>
                   </div>
                 )}
                 <div className="whitespace-pre-wrap text-sm leading-relaxed font-normal">
-                  {visibleContent || (userPlanContent.isPlanMode ? "已开启计划模式" : "")}
+                  {visibleContent || (userCommand.badge ? userCommand.badge : "")}
                 </div>
               </div>
             ) : (
@@ -195,6 +238,7 @@ export function MessageBubble({ message, isStreaming = false, onContinueFrom }: 
                 {thinkingContent && (
                   <ThinkingBlock
                     content={thinkingContent}
+                    count={thinkingCount}
                     isStreaming={isStreaming && !visibleContent}
                   />
                 )}
@@ -208,6 +252,77 @@ export function MessageBubble({ message, isStreaming = false, onContinueFrom }: 
                 {message.customCard && (
                   <div className={message.content ? "mt-3" : ""}>
                     <CustomMessageCard card={message.customCard} />
+                  </div>
+                )}
+
+                {showPlanPanel && (
+                  <div className="mt-3 rounded-xl border border-[#eeeeea] bg-[#fbfbfa] p-3">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="inline-flex h-5 items-center rounded-full bg-[#eef8ef] px-2 text-[11px] font-medium text-[#2f6b38]">
+                          {planStatusLabel(planStatus)}
+                        </span>
+                        <span className="truncate text-xs text-[#777]">{planAction?.filename ?? planAction?.title ?? "计划"}</span>
+                      </div>
+                    </div>
+                    {(planStatus === "pending" || planStatus === "refining") && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void onPlanAction?.(message, "execute")}
+                          className="h-8 rounded-full bg-[#242423] px-3 text-xs font-medium text-white hover:bg-[#111]"
+                        >
+                          执行计划
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void onPlanAction?.(message, "refine")}
+                          className="h-8 rounded-full border border-[#e2e2de] bg-white px-3 text-xs font-medium text-[#333] hover:bg-[#f7f7f7]"
+                        >
+                          补充要求
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void onPlanAction?.(message, "cancel")}
+                          className="h-8 rounded-full px-3 text-xs font-medium text-[#666] hover:bg-[#f3f3f3]"
+                        >
+                          取消
+                        </button>
+                        {planStatus === "refining" && (
+                          <span className="text-xs text-[#777]">请在下方输入框补充要求</span>
+                        )}
+                      </div>
+                    )}
+                    {(planStatus === "executing" || planStatus === "pausing") && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void onPlanAction?.(message, "pause")}
+                          disabled={planStatus === "pausing"}
+                          className="h-8 rounded-full border border-[#e2e2de] bg-white px-3 text-xs font-medium text-[#333] hover:bg-[#f7f7f7] disabled:opacity-60"
+                        >
+                          暂停执行
+                        </button>
+                      </div>
+                    )}
+                    {planStatus === "paused" && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void onPlanAction?.(message, "resume")}
+                          className="h-8 rounded-full bg-[#242423] px-3 text-xs font-medium text-white hover:bg-[#111]"
+                        >
+                          继续执行
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void onPlanAction?.(message, "cancel")}
+                          className="h-8 rounded-full px-3 text-xs font-medium text-[#666] hover:bg-[#f3f3f3]"
+                        >
+                          取消
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -225,17 +340,6 @@ export function MessageBubble({ message, isStreaming = false, onContinueFrom }: 
 
             {/* 底部栏: 复制 + 时间戳 */}
             <div className={`flex items-center gap-2 mt-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
-              {onContinueFrom && !isStreaming && (
-                <button
-                  type="button"
-                  onClick={() => onContinueFrom(message.id)}
-                  className="rounded-md px-1.5 py-0.5 text-[11px] text-[#8a8a84] transition-colors hover:bg-[#f1f1ee] hover:text-[#333]"
-                  aria-label="从此消息继续"
-                  title="从此消息继续"
-                >
-                  继续
-                </button>
-              )}
               {!isUser && visibleContent && (
                 <button
                   type="button"

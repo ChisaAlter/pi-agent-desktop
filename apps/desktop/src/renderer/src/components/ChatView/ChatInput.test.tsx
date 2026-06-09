@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { useAttachmentsStore } from "../../stores/attachments-store";
+import { usePlanStore } from "../../stores/plan-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { ChatInput } from "./ChatInput";
@@ -23,6 +24,15 @@ vi.mock("./PermissionRequestStack", () => ({
   PermissionRequestStack: () => null,
 }));
 
+function openComposerMenu(): void {
+  fireEvent.click(screen.getByRole("button", { name: "添加附件和工具" }));
+}
+
+function clickAddAttachment(): void {
+  openComposerMenu();
+  fireEvent.click(screen.getByRole("menuitem", { name: "添加文件或图片" }));
+}
+
 describe("ChatInput", () => {
   beforeEach(() => {
     Object.defineProperty(window, "piAPI", {
@@ -30,6 +40,13 @@ describe("ChatInput", () => {
       configurable: true,
     });
     useAttachmentsStore.setState({ byWorkspace: new Map() });
+    usePlanStore.setState({
+      enabled: false,
+      activeCard: null,
+      decisionRequest: null,
+      steps: [],
+      status: "idle",
+    });
     useWorkspaceStore.setState({
       workspaces: [
         { id: "ws1", name: "repo", path: "C:/repo", createdAt: new Date(0), lastActiveAt: new Date(0) },
@@ -54,6 +71,58 @@ describe("ChatInput", () => {
     vi.spyOn(window, "alert").mockImplementation(() => undefined);
   });
 
+  it("groups attachment, skills, and plan mode inside the plus menu", () => {
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    const shell = screen.getByTestId("chat-input-shell");
+    expect(shell.textContent).not.toContain("附件");
+    expect(shell.textContent).not.toContain("计划模式");
+
+    openComposerMenu();
+
+    expect(screen.getByRole("menuitem", { name: "添加文件或图片" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "技能" })).toBeTruthy();
+    expect(screen.getByRole("menuitemcheckbox", { name: "计划模式" }).getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("shows a plan mode tag above the input after selecting plan mode from the plus menu", () => {
+    Object.defineProperty(window, "piAPI", {
+      value: { planSetEnabled: vi.fn() },
+      configurable: true,
+    });
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    openComposerMenu();
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "计划模式" }));
+
+    expect(screen.getByLabelText("计划模式已启用")).toBeTruthy();
+    expect(usePlanStore.getState().enabled).toBe(true);
+    expect(window.piAPI.planSetEnabled).toHaveBeenCalledWith("ws1", true);
+  });
+
   it("shows attachment picker failures inline instead of window.alert", () => {
     render(
       <I18nProvider>
@@ -68,7 +137,7 @@ describe("ChatInput", () => {
       </I18nProvider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "添加附件" }));
+    clickAddAttachment();
 
     expect(screen.getByRole("alert").textContent).toContain("文件选择不可用");
     expect(window.alert).not.toHaveBeenCalled();
@@ -96,7 +165,7 @@ describe("ChatInput", () => {
       </I18nProvider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "添加附件" }));
+    clickAddAttachment();
     await screen.findByText("app.ts");
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "检查这个文件" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
@@ -139,7 +208,7 @@ describe("ChatInput", () => {
       </I18nProvider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "添加附件" }));
+    clickAddAttachment();
     await screen.findByText("app.ts");
     const textbox = screen.getByRole("textbox") as HTMLTextAreaElement;
     fireEvent.change(textbox, { target: { value: "检查这个文件" } });
@@ -205,7 +274,7 @@ describe("ChatInput", () => {
       </I18nProvider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "添加附件" }));
+    clickAddAttachment();
 
     expect(await screen.findByRole("alert")).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain("打开文件选择器失败: dialog unavailable");
@@ -235,7 +304,7 @@ describe("ChatInput", () => {
       </I18nProvider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "添加附件" }));
+    clickAddAttachment();
 
     expect((await screen.findByRole("alert")).textContent).toContain("打开文件选择器失败: dialog crashed");
   });
@@ -547,6 +616,29 @@ describe("ChatInput", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "停止生成" }));
+    expect(onStop).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows plan execution context and pause action while executing a plan", () => {
+    const onStop = vi.fn();
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing
+          runContext="plan_execution"
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={onStop}
+        />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText(/正在执行计划/)).toBeTruthy();
+    expect(screen.getByPlaceholderText(/正在执行计划/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "暂停执行" }));
     expect(onStop).toHaveBeenCalledTimes(1);
   });
 });

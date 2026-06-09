@@ -6,6 +6,7 @@ import type { PiEvent } from "@shared/events";
 import { usePiStream } from "./usePiStream";
 import { useSessionStore } from "../stores/session-store";
 import { usePlanStore } from "../stores/plan-store";
+import { useAgentStore } from "../stores/agent-store";
 
 let emitPiEvent: ((event: PiEvent) => void) | null = null;
 const sendPrompt = vi.fn(async () => undefined);
@@ -39,6 +40,9 @@ function AgentHookStateHost() {
             <button type="button" onClick={() => void state.startStreaming("ws1", "agent follow up")}>
                 send-agent-follow-up
             </button>
+            <button type="button" onClick={() => void state.startStreaming("ws1", "你好?")}>
+                send-agent-plan-greeting
+            </button>
         </div>
     );
 }
@@ -49,7 +53,16 @@ function PlanHookStateHost() {
         <div>
             <div data-testid="streaming">{String(state.isStreaming)}</div>
             <button type="button" onClick={() => void state.startStreaming("ws1", "你好")}>
-                send-plan
+                send-plan-greeting
+            </button>
+            <button type="button" onClick={() => void state.startStreaming("ws1", "附加文件:\n@C:\\repo\\package.json\n\n用户消息:\n你好?")}>
+                send-plan-greeting-with-attachment
+            </button>
+            <button type="button" onClick={() => void state.startStreaming("ws1", "为聊天输入框制定改版计划")}>
+                send-plan-task
+            </button>
+            <button type="button" onClick={() => void state.startStreaming("ws1", "了解一下这个项目")}>
+                send-short-plan-task
             </button>
         </div>
     );
@@ -112,8 +125,16 @@ beforeEach(() => {
         enabled: false,
         activeCard: null,
         decisionRequest: null,
+        pendingPlanClarification: null,
         steps: [],
         status: "idle",
+    });
+    useAgentStore.setState({
+        agents: [],
+        currentAgentId: null,
+        messagesByAgent: {},
+        runtimeByAgent: {},
+        initialized: false,
     });
 });
 
@@ -369,6 +390,31 @@ describe("usePiStream", () => {
         });
     });
 
+    it("shows vague agent plan-mode input locally when asking for a plan goal", async () => {
+        usePlanStore.setState({ enabled: true });
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            screen.getByText("send-agent-plan-greeting").click();
+        });
+
+        expect(agentsPrompt).not.toHaveBeenCalled();
+        expect(usePlanStore.getState().pendingPlanClarification).toMatchObject({
+            workspaceId: "ws1",
+            originalContent: "你好?",
+        });
+        expect(useAgentStore.getState().messagesByAgent.agent_1?.at(0)).toMatchObject({
+            role: "user",
+            content: "你好?",
+        });
+        expect(useAgentStore.getState().messagesByAgent.agent_1?.at(1)).toMatchObject({
+            role: "assistant",
+            content: expect.stringContaining("计划模式需要目标"),
+        });
+    });
+
     it("sends a plan-mode prompt once with exactly one /plan prefix", async () => {
         usePlanStore.setState({ enabled: true });
         await act(async () => {
@@ -376,8 +422,8 @@ describe("usePiStream", () => {
         });
 
         await act(async () => {
-            screen.getByText("send-plan").click();
-            screen.getByText("send-plan").click();
+            screen.getByText("send-plan-task").click();
+            screen.getByText("send-plan-task").click();
         });
 
         expect(sendPrompt).toHaveBeenCalledTimes(1);
@@ -393,7 +439,7 @@ describe("usePiStream", () => {
         });
 
         await act(async () => {
-            screen.getByText("send-plan").click();
+            screen.getByText("send-plan-task").click();
         });
         expect(screen.getByTestId("streaming").textContent).toBe("true");
 
@@ -428,7 +474,7 @@ describe("usePiStream", () => {
         });
 
         await act(async () => {
-            screen.getByText("send-plan").click();
+            screen.getByText("send-plan-task").click();
         });
 
         await act(async () => {
@@ -450,5 +496,87 @@ describe("usePiStream", () => {
 
         expect(usePlanStore.getState().activeCard).toBeNull();
         expect(usePlanStore.getState().decisionRequest).toBeNull();
+    });
+
+    it("asks for a plan goal instead of sending vague plan-mode greetings to Pi", async () => {
+        usePlanStore.setState({ enabled: true });
+        await act(async () => {
+            render(<PlanHookStateHost />);
+        });
+
+        await act(async () => {
+            screen.getByText("send-plan-greeting").click();
+        });
+
+        expect(sendPrompt).not.toHaveBeenCalled();
+        expect(usePlanStore.getState().pendingPlanClarification).toMatchObject({
+            workspaceId: "ws1",
+            originalContent: "你好",
+        });
+        expect(useSessionStore.getState().sessions[0].messages.at(-1)).toMatchObject({
+            role: "assistant",
+            content: expect.stringContaining("计划模式需要目标"),
+        });
+        expect(screen.getByTestId("streaming").textContent).toBe("false");
+    });
+
+    it("asks for a plan goal for vague plan-mode greetings even when attachments add a prefix", async () => {
+        usePlanStore.setState({ enabled: true });
+        await act(async () => {
+            render(<PlanHookStateHost />);
+        });
+
+        await act(async () => {
+            screen.getByText("send-plan-greeting-with-attachment").click();
+        });
+
+        expect(sendPrompt).not.toHaveBeenCalled();
+        expect(usePlanStore.getState().pendingPlanClarification).toMatchObject({
+            workspaceId: "ws1",
+            originalContent: expect.stringContaining("用户消息:"),
+        });
+        expect(screen.getByTestId("streaming").textContent).toBe("false");
+    });
+
+    it("asks for a plan goal for short project exploration requests", async () => {
+        usePlanStore.setState({ enabled: true });
+        await act(async () => {
+            render(<PlanHookStateHost />);
+        });
+
+        await act(async () => {
+            screen.getByText("send-short-plan-task").click();
+        });
+
+        expect(usePlanStore.getState().decisionRequest).toBeNull();
+        expect(usePlanStore.getState().pendingPlanClarification).toMatchObject({
+            originalContent: "了解一下这个项目",
+        });
+        expect(sendPrompt).not.toHaveBeenCalled();
+    });
+
+    it("sends the next plan-mode message as clarification without asking again", async () => {
+        usePlanStore.setState({ enabled: true });
+        await act(async () => {
+            render(<PlanHookStateHost />);
+        });
+
+        await act(async () => {
+            screen.getByText("send-short-plan-task").click();
+        });
+        sendPrompt.mockClear();
+
+        await act(async () => {
+            screen.getByText("send-plan-task").click();
+        });
+
+        expect(usePlanStore.getState().pendingPlanClarification).toBeNull();
+        expect(sendPrompt).toHaveBeenCalledTimes(1);
+        const [, outbound] = sendPrompt.mock.calls[0] as unknown as [string, string];
+        expect(outbound).toMatch(/^\/plan\n/);
+        expect(outbound).toContain("原始请求:");
+        expect(outbound).toContain("了解一下这个项目");
+        expect(outbound).toContain("补充目标:");
+        expect(outbound).toContain("为聊天输入框制定改版计划");
     });
 });

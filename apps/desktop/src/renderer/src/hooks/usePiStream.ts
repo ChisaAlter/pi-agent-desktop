@@ -22,6 +22,7 @@ import {
     type CustomMessageCardAction,
     type CustomMessageCardKind,
     type PlanCard,
+    type PlanMessageAction,
     type SessionUsageSnapshot,
     type ToolCall,
 } from "@shared";
@@ -53,9 +54,13 @@ export interface PiStreamState {
 }
 
 export interface UsePiStreamReturn extends PiStreamState {
-    startStreaming: (workspaceId: string, content: string) => Promise<void>;
+    startStreaming: (workspaceId: string, content: string, options?: StartStreamingOptions) => Promise<void>;
     stopStreaming: (workspaceId: string) => void;
     clearError: () => void;
+}
+
+export interface StartStreamingOptions {
+    visibleContent?: string;
 }
 
 type AssistantMessageEvent =
@@ -232,6 +237,42 @@ function describePermissionsForPrompt(sessionId: string | null, workspaceId: str
     ].join("\n");
 }
 
+function shouldAskForPlanGoal(content: string): boolean {
+    let text = content
+        .replace(/^\/plan(?:\s+|\r?\n)?/i, "")
+        .trim();
+    const userMessageMatch = text.match(/(?:^|\r?\n)用户消息:\s*([\s\S]*)$/);
+    if (userMessageMatch) {
+        text = userMessageMatch[1].trim();
+    }
+    if (!text) return true;
+    if (/^(你好|您好|hello|hi|hey|在吗|可以吗|能用吗|测试|test)[？?！!。.]*$/i.test(text)) return true;
+    return /^(了解|看一下|熟悉|读一下|研究一下|分析一下)\s*(一下)?\s*(这个|当前)?\s*(项目|仓库|代码库|代码)?[？?！!。.]*$/i.test(text);
+}
+
+function createPlanClarificationContent(content: string): string {
+    const text = content.trim() || "这个任务";
+    return [
+        "计划模式需要目标",
+        "",
+        `你想让我为「${text}」制定哪方面的计划？`,
+        "可以直接补充目标、范围、约束或验收标准，我会基于补充内容生成可执行计划。",
+    ].join("\n");
+}
+
+function createPlanAction(card: PlanCard): PlanMessageAction {
+    return {
+        id: `plan_action_${card.id}`,
+        title: card.title,
+        filename: card.filename,
+        status: "pending",
+    };
+}
+
+function isExecutePlanCommand(content: string): boolean {
+    return /^\/execute_plan(?:\s|$)/i.test(content.trimStart());
+}
+
 export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     const [isStreaming, setIsStreaming] = useState(false);
     const [currentThinking, setCurrentThinking] = useState("");
@@ -381,9 +422,79 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         }, { persist: true });
     }, [addMessage]);
 
+    const appendAgentMessage = useCallback((agentId: string, role: "user" | "assistant", content: string, planAction?: PlanMessageAction) => {
+        useAgentStore.getState().appendStreamMessage(agentId, {
+            id: `${role === "user" ? "um" : "am"}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            agentId,
+            role,
+            content,
+            createdAt: Date.now(),
+            ...(planAction ? { planAction } : {}),
+        });
+    }, []);
+
+    const appendInlinePlanClarification = useCallback((workspaceId: string, content: string) => {
+        const aid = agentIdRef.current;
+        if (aid) {
+            appendAgentMessage(aid, "user", content);
+            appendAgentMessage(aid, "assistant", createPlanClarificationContent(content));
+        } else if (sessionIdRef.current) {
+            addMessage(sessionIdRef.current, {
+                id: `pm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                role: "assistant",
+                content: createPlanClarificationContent(content),
+                timestamp: new Date(),
+            });
+        }
+        usePlanStore.getState().setPendingPlanClarification({ workspaceId, originalContent: content });
+    }, [addMessage, appendAgentMessage]);
+
+    const publishInlinePlanCard = useCallback((card: PlanCard) => {
+        const cleanContent = card.content
+            .replace(/<think>[\s\S]*?<\/think>/gi, "")
+            .replace(/<think>[\s\S]*$/gi, "")
+            .trim();
+        const planAction = createPlanAction(card);
+        usePlanStore.getState().markPlanCardRendered(card.id);
+        const aid = agentIdRef.current;
+        if (aid) {
+            if (messageIdRef.current) {
+                useAgentStore.getState().updateStreamMessage(aid, messageIdRef.current, {
+                    content: cleanContent,
+                    planAction,
+                });
+            } else {
+                appendAgentMessage(aid, "assistant", cleanContent, planAction);
+            }
+            return;
+        }
+        const session = sessionIdRef.current
+            ? useSessionStore.getState().sessions.find((item) => item.id === sessionIdRef.current)
+            : useSessionStore.getState().getCurrentSession();
+        if (!session) return;
+        if (messageIdRef.current) {
+            updateMessage(session.id, messageIdRef.current, {
+                content: cleanContent,
+                planAction,
+            });
+            return;
+        }
+        addMessage(session.id, {
+            id: `pm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            role: "assistant",
+            content: cleanContent,
+            timestamp: new Date(),
+            planAction,
+        });
+    }, [addMessage, appendAgentMessage, updateMessage]);
+
     const pauseVisibleStreamingForPlanDecision = useCallback(() => {
         setIsStreaming(false);
+        isStreamingRef.current = false;
+        promptInFlightRef.current = false;
         setStreamingMessageId(null);
+        messageIdRef.current = null;
+        sessionIdRef.current = null;
         window.dispatchEvent(new CustomEvent("pi:stream-end"));
     }, []);
 
@@ -505,13 +616,15 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     if (e.toolName === "plan_write") {
                         const title = typeof e.args.title === "string" ? e.args.title : "计划";
                         const content = typeof e.args.content === "string" ? e.args.content : "";
-                        usePlanStore.getState().setCard({
+                        const card = {
                             id: e.toolCallId,
                             title,
                             content,
                             filename: typeof e.args.filename === "string" ? e.args.filename : undefined,
                             createdAt: Date.now(),
-                        });
+                        };
+                        usePlanStore.getState().setCard(card);
+                        publishInlinePlanCard(card);
                         pauseVisibleStreamingForPlanDecision();
                     }
                     const tc: ToolCallState = {
@@ -575,13 +688,15 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 if (e.toolName === "plan_write") {
                     const title = typeof e.args?.title === "string" ? e.args.title : "计划";
                     const content = typeof e.args?.content === "string" ? e.args.content : "";
-                    usePlanStore.getState().setCard({
+                    const card = {
                         id: e.toolCallId,
                         title,
                         content,
                         filename: typeof e.args?.filename === "string" ? e.args.filename : undefined,
                         createdAt: Date.now(),
-                    });
+                    };
+                    usePlanStore.getState().setCard(card);
+                    publishInlinePlanCard(card);
                     pauseVisibleStreamingForPlanDecision();
                 }
                 if (!toolCallsRef.current.has(e.toolCallId)) {
@@ -641,6 +756,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                         const fallbackCard = createFallbackPlanCard(textRef.current);
                         if (fallbackCard) {
                             planStore.setCard(fallbackCard);
+                            publishInlinePlanCard(fallbackCard);
                         }
                     }
                     usePlanStore.getState().applyDoneMarkers(textRef.current);
@@ -653,6 +769,9 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
                 sessionIdRef.current = null;
+                if (usePlanStore.getState().activeExecution?.phase === "executing") {
+                    usePlanStore.getState().markCompleted();
+                }
                 break;
 
             case "usage_update":
@@ -702,6 +821,9 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
                 sessionIdRef.current = null;
+                if (usePlanStore.getState().activeExecution?.phase === "executing") {
+                    usePlanStore.getState().markCompleted();
+                }
                 // v1.0.17: 通知 useTaskProgress agent 结束
                 window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 break;
@@ -713,17 +835,29 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 isStreamingRef.current = false;
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
+                if (usePlanStore.getState().activeExecution?.phase === "executing") {
+                    usePlanStore.getState().markFailed();
+                }
                 window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 break;
         }
-    }, [updateMessage, addToolCall, updateToolCall, ensureAssistantMessage, flushStreamPersist, scheduleStreamPersist, updateCurrentUsage, addMessage, pauseVisibleStreamingForPlanDecision]);
+    }, [updateMessage, addToolCall, updateToolCall, ensureAssistantMessage, flushStreamPersist, scheduleStreamPersist, updateCurrentUsage, addMessage, pauseVisibleStreamingForPlanDecision, publishInlinePlanCard]);
 
     useEffect(() => {
         handleEventRef.current = handleEvent;
     }, [handleEvent]);
 
+    useEffect(() => {
+        const unsubscribe = usePlanStore.subscribe((state, previousState) => {
+            if (state.activeCard && state.activeCard.id !== previousState.activeCard?.id) {
+                pauseVisibleStreamingForPlanDecision();
+            }
+        });
+        return unsubscribe;
+    }, [pauseVisibleStreamingForPlanDecision]);
+
     // ── 动作 ────────────────────────────────────────────────────────────────
-    const startStreaming = useCallback(async (workspaceId: string, content: string) => {
+    const startStreaming = useCallback(async (workspaceId: string, content: string, options: StartStreamingOptions = {}) => {
         if (!window.piAPI) {
             setError("piAPI 不可用");
             return;
@@ -733,29 +867,35 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         const session = aid ? null : getCurrentSession();
         const planEnabled = usePlanStore.getState().enabled;
         const isFollowUpWhileStreaming = isStreamingRef.current || promptInFlightRef.current;
+        const isSlashCommand = content.trimStart().startsWith("/");
+        const visibleContent = options.visibleContent ?? content;
         if (isFollowUpWhileStreaming) {
-            if (planEnabled) return;
-            if (!aid && session) {
-                addMessage(session.id, {
-                    id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-                    role: "user",
-                    content,
-                    timestamp: new Date(),
-                });
-            }
-            try {
-                if (aid) {
-                    await window.piAPI.agentsPrompt({ agentId: aid, message: content, streamingBehavior: "followUp" });
-                } else {
-                    const result = await window.piAPI.sendPrompt(workspaceId, content);
-                    if (isIpcError(result)) {
-                        setError(result.fallback);
-                    }
+            if (planEnabled && !isSlashCommand) return;
+            if (planEnabled && isSlashCommand) {
+                pauseVisibleStreamingForPlanDecision();
+            } else {
+                if (!aid && session) {
+                    addMessage(session.id, {
+                        id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                        role: "user",
+                        content: visibleContent,
+                        timestamp: new Date(),
+                    });
                 }
-            } catch (err) {
-                setError(String(err));
+                try {
+                    if (aid) {
+                        await window.piAPI.agentsPrompt({ agentId: aid, message: content, streamingBehavior: "followUp" });
+                    } else {
+                        const result = await window.piAPI.sendPrompt(workspaceId, content);
+                        if (isIpcError(result)) {
+                            setError(result.fallback);
+                        }
+                    }
+                } catch (err) {
+                    setError(String(err));
+                }
+                return;
             }
-            return;
         }
         promptInFlightRef.current = true;
         setIsStreaming(true);
@@ -776,20 +916,45 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
 
         // Agent workbench messages are owned by AgentRuntimeRegistry; legacy chats
         // still write the user message to the session store immediately.
-        if (!aid && session) {
+        if (aid && options.visibleContent && options.visibleContent !== content) {
+            appendAgentMessage(aid, "user", options.visibleContent);
+        } else if (!aid && session) {
             sessionIdRef.current = session.id;
             addMessage(session.id, {
                 id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
                 role: "user",
-                content,
+                content: visibleContent,
                 timestamp: new Date(),
             });
         }
 
         try {
-            const isSlashCommand = content.trimStart().startsWith("/");
+            if (planEnabled && !isSlashCommand) {
+                usePlanStore.getState().startPlanning();
+            }
+            const pendingClarification = usePlanStore.getState().pendingPlanClarification;
+            const clarifiedPlanContent = planEnabled && !isSlashCommand && pendingClarification?.workspaceId === workspaceId
+                ? [
+                    "原始请求:",
+                    pendingClarification.originalContent,
+                    "",
+                    "补充目标:",
+                    content,
+                ].join("\n")
+                : null;
+            if (clarifiedPlanContent) {
+                usePlanStore.getState().setPendingPlanClarification(null);
+            } else if (planEnabled && !isSlashCommand && shouldAskForPlanGoal(content)) {
+                appendInlinePlanClarification(workspaceId, content);
+                setIsStreaming(false);
+                isStreamingRef.current = false;
+                promptInFlightRef.current = false;
+                setStreamingMessageId(null);
+                window.dispatchEvent(new CustomEvent("pi:stream-end"));
+                return;
+            }
             const permissionPrefix = aid || isSlashCommand ? "" : describePermissionsForPrompt(sessionIdRef.current, workspaceId);
-            const guardedContent = `${permissionPrefix}${content}`;
+            const guardedContent = `${permissionPrefix}${clarifiedPlanContent ?? content}`;
             const outbound = planEnabled && !isSlashCommand
                 ? `/plan\n${guardedContent}`
                 : guardedContent;
@@ -805,16 +970,27 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 }
             }
+            if (isExecutePlanCommand(content)) {
+                usePlanStore.getState().startExecution({
+                    activePlanId: usePlanStore.getState().activeExecution?.activePlanId ?? `execute_${Date.now()}`,
+                    title: visibleContent.replace(/^执行计划[：:]\s*/, "").trim() || content.replace(/^\/execute_plan\s*/i, "").trim() || "计划",
+                    filename: usePlanStore.getState().activeExecution?.filename,
+                    sourceMessageId: usePlanStore.getState().activeExecution?.sourceMessageId,
+                });
+            }
             promptInFlightRef.current = false;
         } catch (err) {
             setError(String(err));
             setIsStreaming(false);
             isStreamingRef.current = false;
             promptInFlightRef.current = false;
+            if (isExecutePlanCommand(content)) {
+                usePlanStore.getState().markFailed();
+            }
             // v1.0.17: 通知 useTaskProgress 流式异常结束
             window.dispatchEvent(new CustomEvent("pi:stream-end"));
         }
-    }, [getCurrentSession, addMessage]);
+    }, [getCurrentSession, addMessage, appendAgentMessage, appendInlinePlanClarification, pauseVisibleStreamingForPlanDecision]);
 
     const stopStreaming = useCallback((workspaceId: string) => {
         if (!window.piAPI) return;
@@ -840,6 +1016,9 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         isStreamingRef.current = false;
         promptInFlightRef.current = false;
         setStreamingMessageId(null);
+        if (usePlanStore.getState().activeExecution?.phase === "pausing" || usePlanStore.getState().activeExecution?.phase === "executing") {
+            usePlanStore.getState().markPaused();
+        }
         // v1.0.17: 通知 useTaskProgress 流式结束
         window.dispatchEvent(new CustomEvent("pi:stream-end"));
     }, []);

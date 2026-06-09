@@ -1,7 +1,7 @@
 // 聊天主区域 - 空态 + 消息列表 + 输入框
 // v1.0.4: 用户可见文案走 t()
 
-import React, { useRef, useEffect, useMemo, useState } from 'react';
+import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { usePiStream } from '../../hooks/usePiStream';
 import { useSessionStore } from '../../stores/session-store';
 import { useWorkspaceStore } from '../../stores/workspace-store';
@@ -10,14 +10,123 @@ import { useAgentStore } from '../../stores/agent-store';
 import { MessageBubble } from './MessageBubble';
 import { ChatInput } from './ChatInput';
 import { useI18n } from '../../i18n';
-import { PlanCardView } from './PlanCard';
 import { usePlanStore } from '../../stores/plan-store';
+import type { Message } from '../../stores/session-store';
 
 interface ChatViewProps {
     /** v1.0.14: 外部注入的预填文本(由 App.tsx 监听 'chatpanel:prefill' 事件传来,用于跨组件切到 chat 时把 prompt 灌进 ChatInput) */
     prefillText?: string | null;
     /** prefill 已被 ChatInput 消费后回调 */
     onPrefillConsumed?: () => void;
+}
+
+function hasVisibleAssistantContent(message: Message): boolean {
+  const content = message.content
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<think>[\s\S]*$/gi, "")
+    .trim();
+  return Boolean(content || message.customCard || (message.toolCalls && message.toolCalls.length > 0));
+}
+
+type ChatMessage = Message & {
+  thinkingCount?: number;
+};
+
+function stripThinking(content: string): string {
+  return content
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<think>[\s\S]*$/gi, "")
+    .trim();
+}
+
+function visibleText(message: Message): string {
+  return stripThinking(message.content);
+}
+
+function isCumulativeAssistantUpdate(previous: Message, next: Message): boolean {
+  if (previous.role !== "assistant" || next.role !== "assistant") return false;
+  if (previous.customCard || next.customCard || previous.planAction || next.planAction) return false;
+  const previousContent = visibleText(previous);
+  const nextContent = visibleText(next);
+  if (!previousContent || !nextContent) return false;
+  return nextContent !== previousContent && nextContent.startsWith(previousContent);
+}
+
+function mergeAdjacentThinkingMessages(messages: Message[]): ChatMessage[] {
+  const merged: ChatMessage[] = [];
+  let pendingThinking: string[] = [];
+
+  for (const message of messages) {
+    const isThinkingOnlyAssistant =
+      message.role === "assistant" &&
+      Boolean(message.thinking?.trim()) &&
+      !hasVisibleAssistantContent(message);
+
+    if (isThinkingOnlyAssistant) {
+      pendingThinking.push(message.thinking!.trim());
+      continue;
+    }
+
+    const previous = merged.at(-1);
+    if (previous && isCumulativeAssistantUpdate(previous, message)) {
+      const previousThinking = previous.thinking?.trim();
+      const nextThinking = message.thinking?.trim();
+      merged[merged.length - 1] = {
+        ...previous,
+        ...message,
+        thinking: [previousThinking, nextThinking]
+          .filter((part): part is string => Boolean(part))
+          .filter((part, index, parts) => parts.findIndex((candidate) => candidate === part) === index)
+          .join("\n\n"),
+        thinkingCount:
+          (previous.thinkingCount ?? (previousThinking ? 1 : 0)) +
+          (message.thinking ? 1 : 0),
+      };
+      continue;
+    }
+
+    if (pendingThinking.length > 0 && message.role === "assistant") {
+      const existingCount = message.thinking?.trim() ? ((message as ChatMessage).thinkingCount ?? 1) : 0;
+      merged.push({
+        ...message,
+        thinking: [pendingThinking.join("\n\n"), message.thinking?.trim()]
+          .filter((part): part is string => Boolean(part))
+          .join("\n\n"),
+        thinkingCount: pendingThinking.length + existingCount,
+      });
+      pendingThinking = [];
+      continue;
+    }
+
+    if (pendingThinking.length > 0) {
+      const timestamp = merged.at(-1)?.timestamp ?? message.timestamp;
+      merged.push({
+        id: `merged_thinking_${merged.length}`,
+        role: "assistant",
+        content: "",
+        timestamp,
+        thinking: pendingThinking.join("\n\n"),
+        thinkingCount: pendingThinking.length,
+      });
+      pendingThinking = [];
+    }
+
+    merged.push(message);
+  }
+
+  if (pendingThinking.length > 0) {
+    const timestamp = merged.at(-1)?.timestamp ?? new Date();
+    merged.push({
+      id: `merged_thinking_${merged.length}`,
+      role: "assistant",
+      content: "",
+      timestamp,
+      thinking: pendingThinking.join("\n\n"),
+      thinkingCount: pendingThinking.length,
+    });
+  }
+
+  return merged;
 }
 
 export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {}): React.JSX.Element {
@@ -34,6 +143,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
     error: streamError,
   } = usePiStream(agentId);
   const { getCurrentSession, createSession, renameSession, setCurrentSession, continueSession } = useSessionStore();
+  const updateMessage = useSessionStore((state) => state.updateMessage);
   const sessions = useSessionStore((state) => state.sessions);
   const { getCurrentWorkspace } = useWorkspaceStore();
   const { init: initAgents, getCurrentAgent, getCurrentMessages } = useAgentStore();
@@ -43,7 +153,10 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
   const [sessionActionError, setSessionActionError] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
-  const isPlanWaiting = usePlanStore((state) => Boolean(state.activeCard || state.decisionRequest));
+  const [composerFocusKey, setComposerFocusKey] = useState(0);
+  const activePlanCard = usePlanStore((state) => state.activeCard);
+  const renderedPlanCardIds = usePlanStore((state) => state.renderedPlanCardIds);
+  const activePlanExecution = usePlanStore((state) => state.activeExecution);
 
   const currentSession = getCurrentSession();
   const currentWorkspace = getCurrentWorkspace();
@@ -90,7 +203,57 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
     setSessionActionError(null);
   }, [currentSession?.id, clearError]);
 
-  const handleSend = async (message: string) => {
+  useEffect(() => {
+    if (!activePlanCard || renderedPlanCardIds.includes(activePlanCard.id)) return;
+    const cleanContent = activePlanCard.content
+      .replace(/<think>[\s\S]*?<\/think>/gi, "")
+      .replace(/<think>[\s\S]*$/gi, "")
+      .trim();
+    const planAction = {
+      id: `plan_action_${activePlanCard.id}`,
+      title: activePlanCard.title,
+      filename: activePlanCard.filename,
+      status: "pending" as const,
+    };
+    if (hasAgent && currentAgent) {
+      const messageId = `pm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      useAgentStore.getState().appendStreamMessage(currentAgent.id, {
+        id: messageId,
+        agentId: currentAgent.id,
+        role: "assistant",
+        content: cleanContent,
+        createdAt: Date.now(),
+        planAction,
+      });
+      usePlanStore.getState().markPlanCardRendered(activePlanCard.id);
+      usePlanStore.getState().setAwaitingConfirmation({
+        activePlanId: activePlanCard.id,
+        title: activePlanCard.title,
+        filename: activePlanCard.filename,
+        sourceMessageId: messageId,
+      });
+      return;
+    }
+    if (currentSession) {
+      const messageId = `pm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      useSessionStore.getState().addMessage(currentSession.id, {
+        id: messageId,
+        role: "assistant",
+        content: cleanContent,
+        timestamp: new Date(),
+        planAction,
+      });
+      usePlanStore.getState().markPlanCardRendered(activePlanCard.id);
+      usePlanStore.getState().setAwaitingConfirmation({
+        activePlanId: activePlanCard.id,
+        title: activePlanCard.title,
+        filename: activePlanCard.filename,
+        sourceMessageId: messageId,
+      });
+    }
+  }, [activePlanCard, currentAgent, currentSession, hasAgent, renderedPlanCardIds]);
+
+  const handleSend = async (message: string, options?: { visibleContent?: string }) => {
     if (!currentWorkspace) return;
     try {
       if (!hasAgent && getCurrentSession()?.readOnly) {
@@ -102,14 +265,29 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
       }
       setSendError(null);
       setSessionActionError(null);
-      await startStreaming(currentWorkspace.id, message);
+      if (options) {
+        await startStreaming(currentWorkspace.id, message, options);
+      } else {
+        await startStreaming(currentWorkspace.id, message);
+      }
     } catch (err) {
       setSendError(err instanceof Error ? err.message : String(err));
     }
   };
   const handleStop = () => {
     if (currentWorkspace) {
+      let sourceMessage: Message | undefined;
+      if (activePlanExecution?.phase === "executing") {
+        usePlanStore.getState().markPausing();
+        if (activePlanExecution.sourceMessageId) {
+          sourceMessage = messages.find((message) => message.id === activePlanExecution.sourceMessageId);
+          if (sourceMessage?.planAction) updatePlanActionStatus(sourceMessage, "pausing");
+        }
+      }
       stopStreaming(currentWorkspace.id);
+      if (sourceMessage?.planAction) {
+        updatePlanActionStatus(sourceMessage, "paused");
+      }
     }
   };
   const handleContinueReadOnly = async (): Promise<void> => {
@@ -122,18 +300,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
       setSessionActionError(`继续会话失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
-  const handleContinueFromMessage = async (messageId: string): Promise<void> => {
-    if (!currentSession || isStreaming) return;
-    try {
-      setSessionActionError(null);
-      const next = await continueSession(currentSession.id, messageId);
-      setCurrentSession(next.id);
-    } catch (error) {
-      setSessionActionError(`创建会话分支失败: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  };
-
-  const messages = useMemo(() => hasAgent && agentMessages.length > 0
+  const rawMessages = useMemo(() => hasAgent && agentMessages.length > 0
     ? agentMessages.map((message) => ({
         id: message.id,
         role: message.role === "assistant" || message.role === "system" || message.role === "user"
@@ -142,8 +309,10 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
         content: message.content,
         timestamp: new Date(message.createdAt),
         thinking: message.thinking,
+        planAction: message.planAction,
       }))
     : currentSession?.messages || [], [agentMessages, currentSession?.messages, hasAgent]);
+  const messages = useMemo(() => mergeAdjacentThinkingMessages(rawMessages), [rawMessages]);
   const workspaceSessions = sessions
     .filter((session) => !session.archived && session.workspaceId === currentWorkspace?.id)
     .slice()
@@ -156,6 +325,78 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
       renameSession(currentSession.id, trimmed);
     }
     setEditingTitle(false);
+  };
+
+  const updatePlanActionStatus = useCallback((message: Message, status: NonNullable<Message["planAction"]>["status"]): void => {
+    if (!message.planAction) return;
+    const nextAction = { ...message.planAction, status };
+    if (hasAgent && currentAgent) {
+      useAgentStore.getState().updateStreamMessage(currentAgent.id, message.id, { planAction: nextAction });
+      return;
+    }
+    if (currentSession) {
+      updateMessage(currentSession.id, message.id, { planAction: nextAction });
+    }
+  }, [currentAgent, currentSession, hasAgent, updateMessage]);
+
+  useEffect(() => {
+    if (!activePlanExecution?.sourceMessageId) return;
+    const sourceMessage = messages.find((message) => message.id === activePlanExecution.sourceMessageId);
+    if (!sourceMessage?.planAction) return;
+    const phaseToStatus: Partial<Record<NonNullable<typeof activePlanExecution>["phase"], NonNullable<Message["planAction"]>["status"]>> = {
+      awaiting_confirmation: "pending",
+      executing: "executing",
+      pausing: "pausing",
+      paused: "paused",
+      completed: "executed",
+      failed: "failed",
+    };
+    const nextStatus = phaseToStatus[activePlanExecution.phase];
+    if (nextStatus && sourceMessage.planAction.status !== nextStatus) {
+      updatePlanActionStatus(sourceMessage, nextStatus);
+    }
+  }, [activePlanExecution?.phase, activePlanExecution?.sourceMessageId, messages, updatePlanActionStatus]);
+
+  const executePlanMessage = async (message: Message): Promise<void> => {
+    if (!message.planAction) return;
+    const name = message.planAction.filename ?? message.planAction.title;
+    const visibleContent = `执行计划：${name}`;
+    usePlanStore.getState().startExecution({
+      activePlanId: message.planAction.id,
+      title: message.planAction.title,
+      filename: message.planAction.filename,
+      sourceMessageId: message.id,
+    });
+    updatePlanActionStatus(message, "executing");
+    usePlanStore.getState().setDecisionRequest(null);
+    usePlanStore.getState().setEnabled(currentWorkspace?.id, false);
+    await handleSend(`/execute_plan ${name}`, { visibleContent });
+  };
+
+  const handlePlanAction = async (message: Message, action: "execute" | "refine" | "cancel" | "pause" | "resume"): Promise<void> => {
+    if (!message.planAction) return;
+    if (action === "cancel") {
+      updatePlanActionStatus(message, "cancelled");
+      usePlanStore.getState().clearPlanFlow();
+      return;
+    }
+    if (action === "refine") {
+      updatePlanActionStatus(message, "refining");
+      usePlanStore.getState().setDecisionRequest(null);
+      setComposerFocusKey((value) => value + 1);
+      return;
+    }
+    if (action === "pause") {
+      updatePlanActionStatus(message, "pausing");
+      usePlanStore.getState().markPausing();
+      handleStop();
+      return;
+    }
+    if (action === "resume") {
+      await executePlanMessage(message);
+      return;
+    }
+    await executePlanMessage(message);
   };
 
   // 外部预填文本，光标停在末尾方便用户继续。
@@ -261,6 +502,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
               <ChatInput
                 isConnected={isConnected}
                 isProcessing={isStreaming}
+                runContext={activePlanExecution?.phase === "executing" || activePlanExecution?.phase === "pausing" ? "plan_execution" : null}
                 onSend={handleSend}
                 onStop={handleStop}
                 workspaceId={currentWorkspace?.id}
@@ -268,6 +510,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                 prefill={prefill.text}
                 prefillKey={prefill.nonce}
                 onPrefillConsumed={() => setPrefill((p) => ({ ...p, text: '' }))}
+                focusKey={composerFocusKey}
               />
             </div>
 
@@ -351,12 +594,10 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
               <MessageBubble
                 key={message.id}
                 message={message}
-                isStreaming={!isPlanWaiting && isStreaming && message.id === streamingMessageId}
-                onContinueFrom={(messageId) => void handleContinueFromMessage(messageId)}
+                isStreaming={isStreaming && message.id === streamingMessageId}
+                onPlanAction={handlePlanAction}
               />
             ))}
-
-            <PlanCardView workspaceId={currentWorkspace?.id} onExecute={handleSend} />
 
             {/* 流式处理中指示器（仅在没有 assistant 消息占位符时显示） */}
             {isStreaming && !streamingMessageId && (
@@ -376,9 +617,9 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                         type="button"
                         onClick={handleStop}
                         className="ml-3 text-xs text-[var(--mm-text-secondary)] hover:text-[var(--mm-text-primary)] transition-colors"
-                        aria-label={t('chatView.stopGeneration')}
+                        aria-label={activePlanExecution?.phase === "executing" ? "暂停执行" : t('chatView.stopGeneration')}
                       >
-                        {t('chatView.stop')}
+                        {activePlanExecution?.phase === "executing" ? "暂停执行" : t('chatView.stop')}
                       </button>
                     </div>
                   </div>
@@ -448,6 +689,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
             <ChatInput
               isConnected={isConnected}
               isProcessing={isStreaming}
+              runContext={activePlanExecution?.phase === "executing" || activePlanExecution?.phase === "pausing" ? "plan_execution" : null}
               onSend={handleSend}
               onStop={handleStop}
               workspaceId={currentWorkspace?.id}
@@ -455,6 +697,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
               prefill={prefill.text}
               prefillKey={prefill.nonce}
               onPrefillConsumed={() => setPrefill((p) => ({ ...p, text: '' }))}
+              focusKey={composerFocusKey}
             />
           </div>
         )

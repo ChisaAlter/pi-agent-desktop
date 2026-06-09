@@ -1,15 +1,48 @@
 import { create } from "zustand";
 import type { PlanCard, PlanDecisionRequest, PlanProgressItem, PlanProgressUpdate } from "@shared";
 
+export type PlanFlowPhase =
+  | "idle"
+  | "planning"
+  | "awaiting_confirmation"
+  | "executing"
+  | "pausing"
+  | "paused"
+  | "completed"
+  | "failed";
+
+export interface ActivePlanExecution {
+  activePlanId: string;
+  title: string;
+  filename?: string;
+  sourceMessageId?: string;
+  executionMessageId?: string;
+  phase: PlanFlowPhase;
+}
+
 interface PlanState {
   enabled: boolean;
   activeCard: PlanCard | null;
   decisionRequest: PlanDecisionRequest | null;
+  pendingPlanClarification: { workspaceId: string; originalContent: string } | null;
+  renderedPlanCardIds: string[];
+  activeExecution: ActivePlanExecution | null;
   steps: PlanProgressItem[];
   status: PlanProgressUpdate["status"];
   setEnabled: (workspaceId: string | undefined, enabled: boolean) => void;
   setCard: (card: PlanCard) => void;
   setDecisionRequest: (request: PlanDecisionRequest | null) => void;
+  setPendingPlanClarification: (request: { workspaceId: string; originalContent: string } | null) => void;
+  markPlanCardRendered: (cardId: string) => void;
+  startPlanning: () => void;
+  setAwaitingConfirmation: (input: { activePlanId: string; title: string; filename?: string; sourceMessageId?: string }) => void;
+  startExecution: (input: { activePlanId: string; title: string; filename?: string; sourceMessageId?: string; executionMessageId?: string }) => void;
+  setExecutionMessageId: (messageId: string) => void;
+  markPausing: () => void;
+  markPaused: () => void;
+  markCompleted: () => void;
+  markFailed: () => void;
+  clearPlanFlow: () => void;
   setProgress: (update: PlanProgressUpdate) => void;
   applyDoneMarkers: (content: string) => void;
   reset: () => void;
@@ -50,13 +83,16 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   enabled: false,
   activeCard: null,
   decisionRequest: null,
+  pendingPlanClarification: null,
+  renderedPlanCardIds: [],
+  activeExecution: null,
   steps: [],
   status: "idle",
 
   setEnabled: (workspaceId, enabled) => {
     set({ enabled });
     if (workspaceId) {
-      void window.piAPI?.planSetEnabled(workspaceId, enabled);
+      void window.piAPI?.planSetEnabled?.(workspaceId, enabled);
     }
   },
 
@@ -73,6 +109,12 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       activeCard: cleanCard,
       steps: stepsFromMarkdown(cleanCard.content),
       status: "waiting_decision",
+      activeExecution: {
+        activePlanId: cleanCard.id,
+        title: cleanCard.title,
+        filename: cleanCard.filename,
+        phase: "awaiting_confirmation",
+      },
       decisionRequest: state.decisionRequest && !state.decisionRequest.card
         ? state.decisionRequest
         : {
@@ -85,6 +127,86 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   },
 
   setDecisionRequest: (request) => set({ decisionRequest: request }),
+
+  setPendingPlanClarification: (request) => set({ pendingPlanClarification: request }),
+
+  markPlanCardRendered: (cardId) => set((state) => ({
+    renderedPlanCardIds: state.renderedPlanCardIds.includes(cardId)
+      ? state.renderedPlanCardIds
+      : [...state.renderedPlanCardIds, cardId],
+  })),
+
+  startPlanning: () => set({
+    activeExecution: null,
+    status: "idle",
+  }),
+
+  setAwaitingConfirmation: (input) => set((state) => ({
+    activeExecution: {
+      ...state.activeExecution,
+      activePlanId: input.activePlanId,
+      title: input.title,
+      filename: input.filename,
+      sourceMessageId: input.sourceMessageId,
+      phase: "awaiting_confirmation",
+    },
+    status: "waiting_decision",
+  })),
+
+  startExecution: (input) => set({
+    activeExecution: {
+      activePlanId: input.activePlanId,
+      title: input.title,
+      filename: input.filename,
+      sourceMessageId: input.sourceMessageId,
+      executionMessageId: input.executionMessageId,
+      phase: "executing",
+    },
+    status: "executing",
+  }),
+
+  setExecutionMessageId: (messageId) => set((state) => ({
+    activeExecution: state.activeExecution
+      ? { ...state.activeExecution, executionMessageId: messageId }
+      : null,
+  })),
+
+  markPausing: () => set((state) => ({
+    activeExecution: state.activeExecution
+      ? { ...state.activeExecution, phase: "pausing" }
+      : null,
+    status: "executing",
+  })),
+
+  markPaused: () => set((state) => ({
+    activeExecution: state.activeExecution
+      ? { ...state.activeExecution, phase: "paused" }
+      : null,
+    status: "waiting_decision",
+  })),
+
+  markCompleted: () => set((state) => ({
+    activeExecution: state.activeExecution
+      ? { ...state.activeExecution, phase: "completed" }
+      : null,
+    status: "completed",
+  })),
+
+  markFailed: () => set((state) => ({
+    activeExecution: state.activeExecution
+      ? { ...state.activeExecution, phase: "failed" }
+      : null,
+    status: "idle",
+  })),
+
+  clearPlanFlow: () => set({
+    activeCard: null,
+    decisionRequest: null,
+    pendingPlanClarification: null,
+    activeExecution: null,
+    steps: [],
+    status: "idle",
+  }),
 
   setProgress: (update) => {
     set({
@@ -103,7 +225,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     }));
   },
 
-  reset: () => set({ activeCard: null, decisionRequest: null, steps: [], status: "idle" }),
+  reset: () => set({ activeCard: null, decisionRequest: null, pendingPlanClarification: null, renderedPlanCardIds: [], activeExecution: null, steps: [], status: "idle" }),
 }));
 
 let subscribed = false;

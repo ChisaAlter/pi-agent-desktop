@@ -192,6 +192,25 @@ describe("MessageBubble", () => {
     expect(screen.queryByText(/\/plan/)).toBeNull();
   });
 
+  it("hides the internal /execute_plan command from user messages", () => {
+    const message: Message = {
+      id: "m-user-execute-plan",
+      role: "user",
+      content: "/execute_plan docs/pi-agent-evaluation-plan.md",
+      timestamp: new Date(0),
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText("执行计划：docs/pi-agent-evaluation-plan.md")).toBeTruthy();
+    expect(screen.getByText("执行计划")).toBeTruthy();
+    expect(screen.queryByText(/\/execute_plan/)).toBeNull();
+  });
+
   it("shows custom card open-file string failures from Electron shell", async () => {
     const openPath = vi.fn().mockResolvedValue("No application is associated with the specified file");
     Object.defineProperty(window, "piAPI", {
@@ -225,8 +244,7 @@ describe("MessageBubble", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  it("exposes a continue-from-message action for history branching", () => {
-    const onContinueFrom = vi.fn();
+  it("does not show per-message continue actions in normal message bubbles", () => {
     const message: Message = {
       id: "m-branch",
       role: "assistant",
@@ -236,11 +254,92 @@ describe("MessageBubble", () => {
 
     render(
       <I18nProvider>
-        <MessageBubble message={message} onContinueFrom={onContinueFrom} />
+        <MessageBubble message={message} />
       </I18nProvider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "从此消息继续" }));
-    expect(onContinueFrom).toHaveBeenCalledWith("m-branch");
+    expect(screen.queryByRole("button", { name: "从此消息继续" })).toBeNull();
+    expect(screen.queryByText("继续")).toBeNull();
+  });
+
+  it("renders inline plan actions on assistant plan messages", async () => {
+    const onPlanAction = vi.fn(async () => undefined);
+    const message: Message = {
+      id: "m-plan",
+      role: "assistant",
+      content: "- 检查\n- 修改",
+      timestamp: new Date(0),
+      planAction: {
+        id: "plan_action_1",
+        title: "聊天输入区计划",
+        filename: "chat-plan.md",
+        status: "pending",
+      },
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} onPlanAction={onPlanAction} />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByRole("button", { name: "执行计划" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "补充要求" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "取消" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "执行计划" }));
+    await waitFor(() => expect(onPlanAction).toHaveBeenCalledWith(message, "execute"));
+  });
+
+  it("renders pause action while a plan is executing", async () => {
+    const onPlanAction = vi.fn(async () => undefined);
+    const message: Message = {
+      id: "m-plan-executing",
+      role: "assistant",
+      content: "- 检查\n- 修改",
+      timestamp: new Date(0),
+      planAction: {
+        id: "plan_action_2",
+        title: "测试计划",
+        filename: "test-plan.md",
+        status: "executing",
+      },
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} onPlanAction={onPlanAction} />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText("执行中")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "暂停执行" }));
+    await waitFor(() => expect(onPlanAction).toHaveBeenCalledWith(message, "pause"));
+  });
+
+  it("renders resume action after a plan is paused", async () => {
+    const onPlanAction = vi.fn(async () => undefined);
+    const message: Message = {
+      id: "m-plan-paused",
+      role: "assistant",
+      content: "- 检查\n- 修改",
+      timestamp: new Date(0),
+      planAction: {
+        id: "plan_action_3",
+        title: "测试计划",
+        filename: "test-plan.md",
+        status: "paused",
+      },
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} onPlanAction={onPlanAction} />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText("已暂停")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "继续执行" }));
+    await waitFor(() => expect(onPlanAction).toHaveBeenCalledWith(message, "resume"));
   });
 });
