@@ -530,6 +530,19 @@ button:disabled {
 	border-color: #b9e2c4;
 	background: #eef8f0;
 }
+.project-group > .conversation.project-draggable:first-child {
+	cursor: grab;
+}
+.project-group > .conversation.project-draggable:first-child:active {
+	cursor: grabbing;
+}
+.project-group > .conversation.dragging:first-child {
+	opacity: 0.58;
+}
+.project-group > .conversation.drag-over:first-child {
+	border-color: #82c99a;
+	box-shadow: inset 0 0 0 1px #82c99a;
+}
 .list-collapsed .chat-list-pane .project-group > .conversation:first-child {
 	grid-template-columns: 36px;
 	justify-content: center;

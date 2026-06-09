@@ -4,6 +4,7 @@ export type Project = {
 	path: string;
 	lastOpenedAt: number;
 	pinned?: boolean;
+	sortOrder?: number;
 };
 
 export type AgentStatus = "starting" | "idle" | "running" | "error" | "closed";

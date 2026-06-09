@@ -2,6 +2,7 @@ export const ipcChannels = {
 	projectsList: "projects:list",
 	projectsAdd: "projects:add",
 	projectsRemove: "projects:remove",
+	projectsReorder: "projects:reorder",
 	projectsChanged: "projects:changed",
 	filesList: "files:list",
 	filesOpen: "files:open",

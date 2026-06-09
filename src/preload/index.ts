@@ -34,6 +34,11 @@ const api = {
 			ipcRenderer.invoke(ipcChannels.projectsAdd) as Promise<Project | null>,
 		remove: (id: string) =>
 			ipcRenderer.invoke(ipcChannels.projectsRemove, id) as Promise<Project[]>,
+		reorder: (projectIds: string[]) =>
+			ipcRenderer.invoke(
+				ipcChannels.projectsReorder,
+				projectIds,
+			) as Promise<Project[]>,
 		onChanged: (callback: (projects: Project[]) => void) =>
 			subscribe(ipcChannels.projectsChanged, callback),
 	},

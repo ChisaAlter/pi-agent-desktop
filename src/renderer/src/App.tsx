@@ -137,6 +137,8 @@ function isPendingAgentId(agentId?: string) {
 
 export function App() {
 	const [projects, setProjects] = useState<Project[]>([]);
+	const [draggingProjectId, setDraggingProjectId] = useState<string>();
+	const [dragOverProjectId, setDragOverProjectId] = useState<string>();
 	const [agents, setAgents] = useState<AgentTab[]>([]);
 	const [pendingAgents, setPendingAgents] = useState<AgentTab[]>([]);
 	const [activeProjectId, setActiveProjectId] = useState<string>();
@@ -308,6 +310,7 @@ export function App() {
 	const composerBoxRef = useRef<HTMLDivElement | null>(null);
 	const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 	const pendingAgentsRef = useRef<AgentTab[]>([]);
+	const projectDragPreventClickRef = useRef(false);
 
 	const activeProject = projects.find(
 		(project) => project.id === activeProjectId,
@@ -437,6 +440,7 @@ export function App() {
 			),
 		[projects, search],
 	);
+	const canReorderProjects = search.trim().length === 0;
 
 	useEffect(() => {
 		window.setTimeout(() => void refreshProjects(), 0);
@@ -1066,6 +1070,85 @@ export function App() {
 		} finally {
 			setCodexImportRunning(false);
 		}
+	}
+
+	async function reorderProjects(sourceProjectId: string, targetProjectId: string) {
+		if (!canReorderProjects || sourceProjectId === targetProjectId) return;
+		const sourceIndex = projects.findIndex((project) => project.id === sourceProjectId);
+		const targetIndex = projects.findIndex((project) => project.id === targetProjectId);
+		if (sourceIndex === -1 || targetIndex === -1) return;
+
+		const previousProjects = projects;
+		const nextProjects = [...projects];
+		const [movedProject] = nextProjects.splice(sourceIndex, 1);
+		const targetIndexAfterRemoval = nextProjects.findIndex(
+			(project) => project.id === targetProjectId,
+		);
+		const insertIndex =
+			sourceIndex < targetIndex ? targetIndexAfterRemoval + 1 : targetIndexAfterRemoval;
+		nextProjects.splice(insertIndex, 0, movedProject);
+		setProjects(nextProjects);
+
+		try {
+			const savedProjects = await api.projects.reorder(
+				nextProjects.map((project) => project.id),
+			);
+			setProjects(savedProjects);
+		} catch (error) {
+			setProjects(previousProjects);
+			showToast(
+				`项目排序保存失败：${error instanceof Error ? error.message : String(error)}`,
+				4000,
+			);
+		}
+	}
+
+	function handleProjectDragStart(
+		event: React.DragEvent<HTMLButtonElement>,
+		projectId: string,
+	) {
+		if (!canReorderProjects) {
+			event.preventDefault();
+			return;
+		}
+		setDraggingProjectId(projectId);
+		event.dataTransfer.effectAllowed = "move";
+		event.dataTransfer.setData("text/plain", projectId);
+	}
+
+	function handleProjectDragOver(
+		event: React.DragEvent<HTMLButtonElement>,
+		projectId: string,
+	) {
+		if (!draggingProjectId || draggingProjectId === projectId) return;
+		event.preventDefault();
+		event.dataTransfer.dropEffect = "move";
+		setDragOverProjectId(projectId);
+	}
+
+	function handleProjectDragLeave(projectId: string) {
+		setDragOverProjectId((current) => (current === projectId ? undefined : current));
+	}
+
+	function finishProjectDrag() {
+		setDraggingProjectId(undefined);
+		setDragOverProjectId(undefined);
+	}
+
+	async function handleProjectDrop(
+		event: React.DragEvent<HTMLButtonElement>,
+		targetProjectId: string,
+	) {
+		event.preventDefault();
+		const sourceProjectId =
+			event.dataTransfer.getData("text/plain") || draggingProjectId;
+		finishProjectDrag();
+		if (!sourceProjectId || sourceProjectId === targetProjectId) return;
+		projectDragPreventClickRef.current = true;
+		window.setTimeout(() => {
+			projectDragPreventClickRef.current = false;
+		}, 0);
+		await reorderProjects(sourceProjectId, targetProjectId);
 	}
 
 	async function addProject() {
@@ -1829,14 +1912,32 @@ export function App() {
 							(agent) => agent.projectId === project.id,
 						);
 						const isCollapsed = collapsedProjects.has(project.id);
+						const isDraggingProject = draggingProjectId === project.id;
+						const isProjectDropTarget = dragOverProjectId === project.id;
+						const projectRowClass = [
+							project.id === activeProjectId && !activeAgentId
+								? "conversation active"
+								: "conversation",
+							canReorderProjects ? "project-draggable" : "",
+							isDraggingProject ? "dragging" : "",
+							isProjectDropTarget ? "drag-over" : "",
+						]
+							.filter(Boolean)
+							.join(" ");
 						return (
 							<div key={project.id} className="project-group">
 								<button
-									className={
-										project.id === activeProjectId && !activeAgentId
-										? "conversation active"
-										: "conversation"
+									className={projectRowClass}
+									draggable={canReorderProjects}
+									onDragStart={(event) =>
+										handleProjectDragStart(event, project.id)
 									}
+									onDragOver={(event) =>
+										handleProjectDragOver(event, project.id)
+									}
+									onDragLeave={() => handleProjectDragLeave(project.id)}
+									onDrop={(event) => void handleProjectDrop(event, project.id)}
+									onDragEnd={finishProjectDrag}
 									onContextMenu={(event) => {
 										event.preventDefault();
 										setProjectMenu({
@@ -1846,6 +1947,7 @@ export function App() {
 										});
 									}}
 									onClick={() => {
+										if (projectDragPreventClickRef.current) return;
 										// 有 agent 时，点击整个项目行切换折叠状态
 										if (projectAgents.length > 0) {
 											setCollapsedProjects((prev) => {

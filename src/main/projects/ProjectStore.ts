@@ -15,11 +15,16 @@ export class ProjectStore {
     } catch {
       this.projects = [];
     }
+    if (this.ensureSortOrder()) await this.save();
     return this.list();
   }
 
   list() {
-    return [...this.projects].sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || b.lastOpenedAt - a.lastOpenedAt);
+    return [...this.projects].sort((a, b) =>
+      Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))
+      || this.projectSortOrder(a) - this.projectSortOrder(b)
+      || b.lastOpenedAt - a.lastOpenedAt
+    );
   }
 
   get(id: string) {
@@ -49,6 +54,7 @@ export class ProjectStore {
       name: basename(path) || path,
       path,
       lastOpenedAt: Date.now(),
+      sortOrder: this.nextSortOrder(),
     };
 
     this.projects.push(project);
@@ -59,6 +65,46 @@ export class ProjectStore {
   async remove(id: string) {
     this.projects = this.projects.filter(project => project.id !== id);
     await this.save();
+  }
+
+  async reorder(projectIds: string[]) {
+    const orderById = new Map(projectIds.map((id, index) => [id, index]));
+    const tailStart = projectIds.length;
+    const currentOrder = this.list().map((project) => project.id);
+
+    this.projects.forEach((project) => {
+      const explicitOrder = orderById.get(project.id);
+      project.sortOrder = explicitOrder ?? tailStart + currentOrder.indexOf(project.id);
+    });
+
+    await this.save();
+    return this.list();
+  }
+
+  private ensureSortOrder() {
+    const needsOrder = this.projects.some(
+      (project) => typeof project.sortOrder !== "number" || Number.isNaN(project.sortOrder),
+    );
+    if (!needsOrder) return false;
+
+    // 首次升级旧数据时保留原来的“置顶优先 + 最近打开”顺序，之后由用户拖拽顺序接管。
+    [...this.projects]
+      .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || b.lastOpenedAt - a.lastOpenedAt)
+      .forEach((project, index) => {
+        project.sortOrder = index;
+      });
+    return true;
+  }
+
+  private nextSortOrder() {
+    if (this.projects.length === 0) return 0;
+    return Math.max(...this.projects.map((project) => this.projectSortOrder(project))) + 1;
+  }
+
+  private projectSortOrder(project: Project) {
+    return typeof project.sortOrder === "number" && !Number.isNaN(project.sortOrder)
+      ? project.sortOrder
+      : Number.MAX_SAFE_INTEGER;
   }
 
   private async save() {

@@ -260,6 +260,10 @@ function registerIpc() {
 		await projectStore.remove(id);
 		return projectStore.list();
 	});
+	ipcMain.handle(
+		ipcChannels.projectsReorder,
+		(_event, projectIds: string[]) => projectStore.reorder(projectIds),
+	);
 
 	ipcMain.handle(ipcChannels.filesList, async (_event, projectId: string) => {
 		const project = projectStore.get(projectId);
