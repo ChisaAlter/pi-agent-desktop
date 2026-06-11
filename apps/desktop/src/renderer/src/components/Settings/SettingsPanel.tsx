@@ -3,10 +3,13 @@
 import React, { useEffect, useState } from 'react';
 import { useSettingsStore } from '../../stores/settings-store';
 import { PiStatusPanel } from '../PiStatusPanel';
+import { ShortcutsSettings } from './ShortcutsSettings/ShortcutsSettings';
 import { useI18n, useTranslateIpcError, SUPPORTED_LOCALES, type Locale } from '../../i18n';
 import type { IpcError, PiAuthFile, PiModelsFile, PiSettingsFile } from '@shared';
+import { isSoundEnabled, setSoundEnabled, getSoundVolume, setSoundVolume } from '../../utils/sounds';
+import { requestNotificationPermission, canNotify } from '../../utils/notifications';
 
-type SettingsTab = 'appearance' | 'model' | 'piagent' | 'config' | 'general' | 'about';
+type SettingsTab = 'appearance' | 'model' | 'piagent' | 'config' | 'general' | 'shortcuts' | 'about';
 
 function CloseIcon(): React.JSX.Element {
     return (
@@ -75,6 +78,9 @@ export function SettingsPanel(): React.JSX.Element {
     const { settings, isOpen, closeSettings, updateSettings, resetSettings, piModels, lastWriteError, clearWriteError } = useSettingsStore();
     const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
     const [piFullConfig, setPiFullConfig] = useState<Awaited<ReturnType<typeof window.piAPI.getFullConfig>> | null>(null);
+    const [soundEnabled, setSoundEnabledState] = useState(isSoundEnabled());
+    const [soundVolume, setSoundVolumeState] = useState(getSoundVolume());
+    const [notificationsEnabled, setNotificationsEnabled] = useState(canNotify());
     const { t, locale, setLocale } = useI18n();
     const translateIpcError = useTranslateIpcError();
     const writeErrorMessage: string | null = lastWriteError == null
@@ -117,6 +123,7 @@ export function SettingsPanel(): React.JSX.Element {
         { id: 'piagent', label: t('settings.tab.piagent'), caption: t('settings.tabCaption.piagent') },
         { id: 'config', label: '配置中心', caption: '编辑 Pi Agent JSON 配置' },
         { id: 'general', label: t('settings.tab.general'), caption: t('settings.tabCaption.general') },
+        { id: 'shortcuts', label: '快捷键', caption: '自定义键盘快捷键' },
         { id: 'about', label: t('settings.tab.about'), caption: t('settings.tabCaption.about') },
     ];
 
@@ -200,21 +207,21 @@ export function SettingsPanel(): React.JSX.Element {
                         {activeTab === 'appearance' && (
                             <div role="tabpanel" id="settings-tabpanel-appearance" aria-labelledby="settings-tab-appearance">
                                 <SectionTitle title={t('settings.appearance.heading')} description={t('settings.appearance.description')} />
-                                <div className="grid grid-cols-2 gap-3">
-                                    {(['light', 'dark'] as const).map((theme) => {
+                                <div className="grid grid-cols-3 gap-3">
+                                    {(['light', 'dark', 'system'] as const).map((theme) => {
                                         const active = settings.theme === theme;
                                         return (
                                             <button
                                                 key={theme}
                                                 type="button"
-                                                onClick={() => updateSettings({ theme })}
+                                                onClick={() => useSettingsStore.getState().setTheme(theme)}
                                                 className={`rounded-xl border p-3 text-left transition-colors ${
                                                     active ? 'border-[#1f1f1f] bg-[#fafafa]' : 'border-[#e4e4e0] bg-white hover:border-[#cfcfca]'
                                                 }`}
                                             >
                                                 <span className="block text-sm font-medium text-[#1f1f1f]">{t(`settings.theme.${theme}`)}</span>
                                                 <span className="mt-3 block h-24 rounded-lg border border-[#e4e4e0] bg-[#f8f8f6] p-2">
-                                                    <span className={`block h-full rounded-md ${theme === 'dark' ? 'bg-[#1f1f1f]' : 'bg-white'} border border-[#dededb]`} />
+                                                    <span className={`block h-full rounded-md ${theme === 'dark' ? 'bg-[#1f1f1f]' : theme === 'system' ? 'bg-gradient-to-r from-white to-[#1f1f1f]' : 'bg-white'} border border-[#dededb]`} />
                                                 </span>
                                             </button>
                                         );
@@ -361,11 +368,63 @@ export function SettingsPanel(): React.JSX.Element {
                                         <SwitchControl checked={settings.wordWrap} label={t('settings.wordWrap.label')} onChange={() => updateSettings({ wordWrap: !settings.wordWrap })} />
                                     </FieldRow>
                                 </div>
+
+                                <SectionTitle title="通知" description="控制系统通知和声音提示" />
+                                <div className="rounded-xl border border-[#ececea] bg-[#fbfbfa] px-4">
+                                    <FieldRow label="系统通知" description="任务完成和错误时发送系统通知">
+                                        <SwitchControl
+                                            checked={notificationsEnabled}
+                                            label="系统通知"
+                                            onChange={async () => {
+                                                if (!notificationsEnabled) {
+                                                    const result = await requestNotificationPermission();
+                                                    setNotificationsEnabled(result === "granted");
+                                                } else {
+                                                    setNotificationsEnabled(false);
+                                                }
+                                            }}
+                                        />
+                                    </FieldRow>
+                                    <FieldRow label="提示音" description="消息接收和任务完成时播放声音">
+                                        <SwitchControl
+                                            checked={soundEnabled}
+                                            label="提示音"
+                                            onChange={() => {
+                                                const next = !soundEnabled;
+                                                setSoundEnabledState(next);
+                                                setSoundEnabled(next);
+                                            }}
+                                        />
+                                    </FieldRow>
+                                    {soundEnabled && (
+                                        <FieldRow label={`音量: ${Math.round(soundVolume * 100)}%`}>
+                                            <input
+                                                type="range"
+                                                min="0"
+                                                max="100"
+                                                value={Math.round(soundVolume * 100)}
+                                                onChange={(e) => {
+                                                    const vol = Number(e.target.value) / 100;
+                                                    setSoundVolumeState(vol);
+                                                    setSoundVolume(vol);
+                                                }}
+                                                className="w-full"
+                                                aria-label="音量"
+                                            />
+                                        </FieldRow>
+                                    )}
+                                </div>
                             </div>
                         )}
 
                         {activeTab === 'config' && (
                             <PiConfigEditor />
+                        )}
+
+                        {activeTab === 'shortcuts' && (
+                            <div role="tabpanel" id="settings-tabpanel-shortcuts" aria-labelledby="settings-tab-shortcuts">
+                                <ShortcutsSettings />
+                            </div>
                         )}
 
                         {activeTab === 'about' && (
