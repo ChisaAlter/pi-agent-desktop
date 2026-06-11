@@ -71,6 +71,7 @@ describe("SessionCenter", () => {
       ],
       persistErrorCount: 0,
       lastPersistError: null,
+      sessionsLoading: false,
     });
   });
 

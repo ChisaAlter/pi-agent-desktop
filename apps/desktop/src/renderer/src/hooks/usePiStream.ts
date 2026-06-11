@@ -31,6 +31,7 @@ import { usePlanStore } from "../stores/plan-store";
 import { useSettingsStore } from "../stores/settings-store";
 import { logger } from "../utils/logger";
 import { useAgentStore } from "../stores/agent-store";
+import { addToast } from "../stores/toast-store";
 
 export interface ToolCallState {
     id: string;
@@ -92,7 +93,11 @@ function createFallbackPlanCard(content: string): PlanCard | null {
         .replace(/<think>[\s\S]*$/gi, "")
         .trim();
     if (!text) return null;
-    if (/关于\s*\/?plan|请告诉我你的目标|为了给出有价值的规划|常见用法包括/i.test(text)) return null;
+    if (
+        /关于\s*\/?plan|请告诉我你的目标|为了给出有价值的规划|常见用法包括/i.test(text) ||
+        /你想要规划什么|你想规划什么|你想让我规划什么|请告诉(?:我|我们).*?(?:规划|想法|目标|内容)|有其他想要添加的功能/i.test(text) ||
+        /I see you(?:'|’)ve typed\s+`?\/plan`?|what would you like (?:me )?(?:to help you )?to? ?plan|what topic\/component you want to plan/i.test(text)
+    ) return null;
 
     const hasPlanShape = /(^|\n)\s*(?:#+\s*)?计划[：:\s]/.test(text) ||
         /(^|\n)\s*(?:步骤|Step)\s*\d+\s*[：:.]/i.test(text) ||
@@ -237,29 +242,6 @@ function describePermissionsForPrompt(sessionId: string | null, workspaceId: str
     ].join("\n");
 }
 
-function shouldAskForPlanGoal(content: string): boolean {
-    let text = content
-        .replace(/^\/plan(?:\s+|\r?\n)?/i, "")
-        .trim();
-    const userMessageMatch = text.match(/(?:^|\r?\n)用户消息:\s*([\s\S]*)$/);
-    if (userMessageMatch) {
-        text = userMessageMatch[1].trim();
-    }
-    if (!text) return true;
-    if (/^(你好|您好|hello|hi|hey|在吗|可以吗|能用吗|测试|test)[？?！!。.]*$/i.test(text)) return true;
-    return /^(了解|看一下|熟悉|读一下|研究一下|分析一下)\s*(一下)?\s*(这个|当前)?\s*(项目|仓库|代码库|代码)?[？?！!。.]*$/i.test(text);
-}
-
-function createPlanClarificationContent(content: string): string {
-    const text = content.trim() || "这个任务";
-    return [
-        "计划模式需要目标",
-        "",
-        `你想让我为「${text}」制定哪方面的计划？`,
-        "可以直接补充目标、范围、约束或验收标准，我会基于补充内容生成可执行计划。",
-    ].join("\n");
-}
-
 function createPlanAction(card: PlanCard): PlanMessageAction {
     return {
         id: `plan_action_${card.id}`,
@@ -291,6 +273,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     const messageIdRef = useRef<string | null>(null);
     const sessionIdRef = useRef<string | null>(null);
     const agentIdRef = useRef<string | null>(null);
+    const isTurnActiveRef = useRef(false);
 
     // 2026-06-06 hotfix (T6): debounce + flush 机制
     //   - streamPersistRef 累积待 flush 的内容
@@ -352,6 +335,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     lastPersistError: msg,
                 });
                 logger.error("[usePiStream] flush persist failed:", msg);
+                addToast("消息保存失败，内容可能未持久化", "warning");
             });
     }, []);
 
@@ -432,22 +416,6 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             ...(planAction ? { planAction } : {}),
         });
     }, []);
-
-    const appendInlinePlanClarification = useCallback((workspaceId: string, content: string) => {
-        const aid = agentIdRef.current;
-        if (aid) {
-            appendAgentMessage(aid, "user", content);
-            appendAgentMessage(aid, "assistant", createPlanClarificationContent(content));
-        } else if (sessionIdRef.current) {
-            addMessage(sessionIdRef.current, {
-                id: `pm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-                role: "assistant",
-                content: createPlanClarificationContent(content),
-                timestamp: new Date(),
-            });
-        }
-        usePlanStore.getState().setPendingPlanClarification({ workspaceId, originalContent: content });
-    }, [addMessage, appendAgentMessage]);
 
     const publishInlinePlanCard = useCallback((card: PlanCard) => {
         const cleanContent = card.content
@@ -546,8 +514,17 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     const handleEvent = useCallback((event: PiEvent) => {
         switch (event.type) {
             case "agent_start":
+                // 防御重复 agent_start: 如果同一 turn 内已有内容,保留状态避免覆盖
+                if (isTurnActiveRef.current && (textRef.current || thinkingRef.current)) {
+                    // 同一 turn 内重复 agent_start — 重置工具调用但保留文本内容
+                    toolCallsRef.current = new Map();
+                    setToolCalls(new Map());
+                    break;
+                }
+                // 新 turn 或首次 agent_start — 完整重置
                 setIsStreaming(true);
                 isStreamingRef.current = true;
+                isTurnActiveRef.current = true;
                 setError(null);
                 setCurrentText("");
                 setCurrentThinking("");
@@ -567,6 +544,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
 
                 if (assistantEvent.type === "text_delta") {
                     const delta = assistantEvent.delta;
+                    if (!delta) break;
                     ensureAssistantMessage();
                     textRef.current += delta;
                     setCurrentText(textRef.current);
@@ -590,6 +568,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     }
                 } else if (assistantEvent.type === "thinking_delta") {
                     const delta = assistantEvent.delta;
+                    if (!delta) break;
                     ensureAssistantMessage();
                     thinkingRef.current += delta;
                     setCurrentThinking(thinkingRef.current);
@@ -612,6 +591,22 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     }
                 } else if (assistantEvent.type === "toolcall_start") {
                     const e = assistantEvent as { toolCallId: string; toolName: string; args: Record<string, unknown> };
+                    const existingTc = toolCallsRef.current.get(e.toolCallId);
+                    if (existingTc) {
+                        // tool_execution_start 先到达已创建条目 — 补充 tool name
+                        existingTc.name = e.toolName;
+                        existingTc.args = e.args;
+                        toolCallsRef.current.set(e.toolCallId, existingTc);
+                        setToolCalls(new Map(toolCallsRef.current));
+                        if (sessionIdRef.current && messageIdRef.current) {
+                            updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
+                                name: e.toolName,
+                                input: e.args,
+                            }, { persist: false });
+                            scheduleStreamPersist();
+                        }
+                        break;
+                    }
                     ensureAssistantMessage();
                     if (e.toolName === "plan_write") {
                         const title = typeof e.args.title === "string" ? e.args.title : "计划";
@@ -684,6 +679,22 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
 
             case "tool_execution_start": {
                 const e = event as { toolCallId: string; toolName: string; args: Record<string, unknown> };
+                const existingTc = toolCallsRef.current.get(e.toolCallId);
+                if (existingTc) {
+                    // toolcall_start 先到达已创建条目 — 更新执行状态
+                    existingTc.status = "running";
+                    existingTc.startTime = Date.now();
+                    toolCallsRef.current.set(e.toolCallId, existingTc);
+                    setToolCalls(new Map(toolCallsRef.current));
+                    if (sessionIdRef.current && messageIdRef.current) {
+                        updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
+                            status: "running",
+                            startTime: new Date(existingTc.startTime),
+                        }, { persist: false });
+                        scheduleStreamPersist();
+                    }
+                    break;
+                }
                 ensureAssistantMessage();
                 if (e.toolName === "plan_write") {
                     const title = typeof e.args?.title === "string" ? e.args.title : "计划";
@@ -699,34 +710,33 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     publishInlinePlanCard(card);
                     pauseVisibleStreamingForPlanDecision();
                 }
-                if (!toolCallsRef.current.has(e.toolCallId)) {
-                    const tc: ToolCallState = {
+                // toolcall_start 未先到达 — 创建最小条目(tool name 可能稍后由 toolcall_start 补充)
+                const tc: ToolCallState = {
+                    id: e.toolCallId,
+                    name: e.toolName,
+                    args: e.args,
+                    status: "running",
+                    startTime: Date.now(),
+                };
+                toolCallsRef.current.set(e.toolCallId, tc);
+                setToolCalls(new Map(toolCallsRef.current));
+                if (sessionIdRef.current && messageIdRef.current) {
+                    addToolCall(sessionIdRef.current, messageIdRef.current, {
                         id: e.toolCallId,
                         name: e.toolName,
-                        args: e.args,
+                        input: e.args,
                         status: "running",
-                        startTime: Date.now(),
-                    };
-                    toolCallsRef.current.set(e.toolCallId, tc);
-                    setToolCalls(new Map(toolCallsRef.current));
-                    if (sessionIdRef.current && messageIdRef.current) {
-                        addToolCall(sessionIdRef.current, messageIdRef.current, {
-                            id: e.toolCallId,
-                            name: e.toolName,
-                            input: e.args,
-                            status: "running",
-                            startTime: new Date(tc.startTime),
-                        }, { persist: false });
-                        if (!streamPersistRef.current ||
-                            streamPersistRef.current.sessionId !== sessionIdRef.current ||
-                            streamPersistRef.current.messageId !== messageIdRef.current) {
-                            streamPersistRef.current = {
-                                sessionId: sessionIdRef.current,
-                                messageId: messageIdRef.current,
-                            };
-                        }
-                        scheduleStreamPersist();
+                        startTime: new Date(tc.startTime),
+                    }, { persist: false });
+                    if (!streamPersistRef.current ||
+                        streamPersistRef.current.sessionId !== sessionIdRef.current ||
+                        streamPersistRef.current.messageId !== messageIdRef.current) {
+                        streamPersistRef.current = {
+                            sessionId: sessionIdRef.current,
+                            messageId: messageIdRef.current,
+                        };
                     }
+                    scheduleStreamPersist();
                 }
                 break;
             }
@@ -764,11 +774,13 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 // 2026-06-06 hotfix (T6): 强制 flush 累积的 content/thinking/toolCalls
                 // 在 turn_end 这一刻把整个 assistant message 落盘一次
                 flushStreamPersist();
-                setIsStreaming(false);
-                isStreamingRef.current = false;
-                setStreamingMessageId(null);
-                messageIdRef.current = null;
-                sessionIdRef.current = null;
+                isTurnActiveRef.current = false;
+                // 非 agent 模式下清除 message/session 引用; agent 模式跨 turn 保持
+                if (!agentIdRef.current) {
+                    setStreamingMessageId(null);
+                    messageIdRef.current = null;
+                    sessionIdRef.current = null;
+                }
                 if (usePlanStore.getState().activeExecution?.phase === "executing") {
                     usePlanStore.getState().markCompleted();
                 }
@@ -818,6 +830,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 flushStreamPersist();
                 setIsStreaming(false);
                 isStreamingRef.current = false;
+                isTurnActiveRef.current = false;
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
                 sessionIdRef.current = null;
@@ -868,9 +881,9 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         const planEnabled = usePlanStore.getState().enabled;
         const isFollowUpWhileStreaming = isStreamingRef.current || promptInFlightRef.current;
         const isSlashCommand = content.trimStart().startsWith("/");
+        const shouldUsePlanMode = planEnabled && !isSlashCommand && !isFollowUpWhileStreaming;
         const visibleContent = options.visibleContent ?? content;
         if (isFollowUpWhileStreaming) {
-            if (planEnabled && !isSlashCommand) return;
             if (planEnabled && isSlashCommand) {
                 pauseVisibleStreamingForPlanDecision();
             } else {
@@ -900,6 +913,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         promptInFlightRef.current = true;
         setIsStreaming(true);
         isStreamingRef.current = true;
+        isTurnActiveRef.current = true;
         setError(null);
         textRef.current = "";
         thinkingRef.current = "";
@@ -929,12 +943,43 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         }
 
         try {
-            if (planEnabled && !isSlashCommand) {
+            const pendingClarification = usePlanStore.getState().pendingPlanClarification;
+
+            if (shouldUsePlanMode && !pendingClarification) {
+                usePlanStore.getState().setPendingPlanClarification({
+                    workspaceId,
+                    originalContent: visibleContent,
+                });
+                if (!aid && session) {
+                    addMessage(session.id, {
+                        id: `pm_clarify_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                        role: "assistant",
+                        content: "计划模式需要目标，请补充你想要规划的具体内容和目标，例如：\n- 要解决什么问题\n- 期望的实现方案\n- 验收标准",
+                        timestamp: new Date(),
+                    });
+                }
+                if (aid) {
+                    appendAgentMessage(aid, "assistant", "计划模式需要目标，请补充你想要规划的具体内容和目标，例如：\n- 要解决什么问题\n- 期望的实现方案\n- 验收标准");
+                }
+                setIsStreaming(false);
+                isStreamingRef.current = false;
+                isTurnActiveRef.current = false;
+                promptInFlightRef.current = false;
+                setStreamingMessageId(null);
+                messageIdRef.current = null;
+                sessionIdRef.current = null;
+                window.dispatchEvent(new CustomEvent("pi:stream-end"));
+                return;
+            }
+
+            if (shouldUsePlanMode) {
                 usePlanStore.getState().startPlanning();
             }
-            const pendingClarification = usePlanStore.getState().pendingPlanClarification;
-            const clarifiedPlanContent = planEnabled && !isSlashCommand && pendingClarification?.workspaceId === workspaceId
+
+            const clarifiedPlanContent = shouldUsePlanMode && pendingClarification?.workspaceId === workspaceId
                 ? [
+                    "/plan",
+                    "",
                     "原始请求:",
                     pendingClarification.originalContent,
                     "",
@@ -944,29 +989,37 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 : null;
             if (clarifiedPlanContent) {
                 usePlanStore.getState().setPendingPlanClarification(null);
-            } else if (planEnabled && !isSlashCommand && shouldAskForPlanGoal(content)) {
-                appendInlinePlanClarification(workspaceId, content);
-                setIsStreaming(false);
-                isStreamingRef.current = false;
-                promptInFlightRef.current = false;
-                setStreamingMessageId(null);
-                window.dispatchEvent(new CustomEvent("pi:stream-end"));
-                return;
             }
             const permissionPrefix = aid || isSlashCommand ? "" : describePermissionsForPrompt(sessionIdRef.current, workspaceId);
             const guardedContent = `${permissionPrefix}${clarifiedPlanContent ?? content}`;
-            const outbound = planEnabled && !isSlashCommand
-                ? `/plan\n${guardedContent}`
-                : guardedContent;
+            const outbound = guardedContent;
             if (aid) {
                 await window.piAPI.agentsPrompt({ agentId: aid, message: outbound });
             } else {
-                const result = await window.piAPI.sendPrompt(workspaceId, outbound);
-                if (isIpcError(result)) {
-                    setError(result.fallback);
+                try {
+                    const result = await window.piAPI.sendPrompt(workspaceId, outbound);
+                    if (isIpcError(result)) {
+                        setError(result.fallback);
+                        // Add visible error message in chat
+                        const errSession = getCurrentSession();
+                        if (errSession) {
+                            addMessage(errSession.id, {
+                                id: `err_${Date.now()}`,
+                                role: "assistant",
+                                content: `⚠️ 发送失败: ${result.fallback}`,
+                                timestamp: new Date(),
+                            });
+                        }
+                        setIsStreaming(false);
+                        isStreamingRef.current = false;
+                        setStreamingMessageId(null);
+                        window.dispatchEvent(new CustomEvent("pi:stream-end"));
+                    }
+                } catch (err) {
+                    setError(String(err));
                     setIsStreaming(false);
                     isStreamingRef.current = false;
-                    setStreamingMessageId(null);
+                    promptInFlightRef.current = false;
                     window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 }
             }
@@ -981,6 +1034,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             promptInFlightRef.current = false;
         } catch (err) {
             setError(String(err));
+            addToast(String(err), "error");
             setIsStreaming(false);
             isStreamingRef.current = false;
             promptInFlightRef.current = false;
@@ -990,7 +1044,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             // v1.0.17: 通知 useTaskProgress 流式异常结束
             window.dispatchEvent(new CustomEvent("pi:stream-end"));
         }
-    }, [getCurrentSession, addMessage, appendAgentMessage, appendInlinePlanClarification, pauseVisibleStreamingForPlanDecision]);
+    }, [getCurrentSession, addMessage, appendAgentMessage, pauseVisibleStreamingForPlanDecision]);
 
     const stopStreaming = useCallback((workspaceId: string) => {
         if (!window.piAPI) return;
@@ -1011,6 +1065,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             }
         } catch (err) {
             setError(`停止失败: ${eventMessage(err, "未知错误")}`);
+            addToast("停止响应失败", "error");
         }
         setIsStreaming(false);
         isStreamingRef.current = false;

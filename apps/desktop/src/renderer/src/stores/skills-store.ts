@@ -5,6 +5,7 @@
 
 import { create } from "zustand";
 import type { SkillInfo } from "../../../main/services/skills/skillhub-adapter";
+import { addToast } from "./toast-store";
 
 interface InstalledSkill {
     slug: string;
@@ -114,6 +115,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
             await get().refreshInstalled();
         } catch (err) {
             set({ error: (err as Error).message });
+            addToast(`卸载技能失败: ${(err as Error).message}`, "error");
         }
     },
 
@@ -124,6 +126,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
             await get().refreshInstalled();
         } catch (err) {
             set({ error: (err as Error).message });
+            addToast(`切换技能失败: ${(err as Error).message}`, "error");
         }
     },
 }));

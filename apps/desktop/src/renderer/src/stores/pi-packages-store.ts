@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { isIpcError, type InstalledPiPackage, type PiPackageActionResult, type PiPackageInfo } from "@shared";
+import { addToast } from "./toast-store";
 
 export type PiPackageActionKind = "search" | "refresh" | "refresh-installed" | "install" | "remove" | "update";
 
@@ -91,6 +92,7 @@ export const usePiPackagesStore = create<PiPackagesState>((set, get) => ({
       const message = resultMessage(response);
       if (message) {
         set({ error: message, installedLoading: false, retryAction: get().refreshInstalled, lastFailedAction: { kind: "refresh-installed", label: "刷新已安装列表" } });
+        addToast(message, "error", get().refreshInstalled);
         return;
       }
       set({ installed: Array.isArray(response) ? response : [], installedLoading: false });
@@ -123,6 +125,7 @@ export const usePiPackagesStore = create<PiPackagesState>((set, get) => ({
       const message = resultMessage(response);
       if (message) {
         set({ error: message, actionSource: null, retryAction: () => get().remove(source), lastFailedAction: { kind: "remove", source, label: "卸载" } });
+        addToast(message, "error", () => get().remove(source));
         return;
       }
       set({ lastAction: response as PiPackageActionResult, actionSource: null });
@@ -130,6 +133,7 @@ export const usePiPackagesStore = create<PiPackagesState>((set, get) => ({
       await get().search();
     } catch (err) {
       set({ error: err instanceof Error ? err.message : String(err), actionSource: null, retryAction: () => get().remove(source), lastFailedAction: { kind: "remove", source, label: "卸载" } });
+      addToast(err instanceof Error ? err.message : String(err), "error", () => get().remove(source));
     }
   },
 
@@ -146,6 +150,7 @@ export const usePiPackagesStore = create<PiPackagesState>((set, get) => ({
       await get().refreshInstalled();
     } catch (err) {
       set({ error: err instanceof Error ? err.message : String(err), actionSource: null, retryAction: () => get().update(source), lastFailedAction: { kind: "update", source, label: "更新" } });
+      addToast(err instanceof Error ? err.message : String(err), "error", () => get().update(source));
     }
   },
 }));

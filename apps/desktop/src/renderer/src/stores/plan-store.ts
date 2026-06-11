@@ -29,6 +29,8 @@ interface PlanState {
   activeExecution: ActivePlanExecution | null;
   steps: PlanProgressItem[];
   status: PlanProgressUpdate["status"];
+  lastError: string | null;
+  clearError: () => void;
   setEnabled: (workspaceId: string | undefined, enabled: boolean) => void;
   setCard: (card: PlanCard) => void;
   setDecisionRequest: (request: PlanDecisionRequest | null) => void;
@@ -66,17 +68,30 @@ function stepsFromMarkdown(content: string): PlanProgressItem[] {
 
 function stripInlineThinking(content: string): string {
   return content
-    .replace(/<think>[\s\S]*?<\/think>/gi, "")
-    .replace(/<think>[\s\S]*$/gi, "")
+    .replace(/<think[\s\S]*?<\/think>/gi, "")
+    .replace(/<think[\s\S]*$/gi, "")
     .trim();
 }
 
-function isGenericPlanGuidance(content: string): boolean {
+export function isGenericPlanGuidance(content: string): boolean {
+  const hasConcretePlanTitle = /(^|\n)\s*#{1,6}\s*(实施计划|执行计划|实现计划|测试计划|迁移计划|修复计划|计划[：:]|Implementation Plan|Execution Plan|Action Plan)/i.test(content);
+  if (hasConcretePlanTitle) return false;
+
+  const hasExecutionSteps = /(^|\n)\s*(?:[-*]|\d+\.)\s+(?:修改|实现|新增|删除|运行|验证|测试|构建|修复|重构|更新|提交|检查|Add|Create|Modify|Delete|Update|Fix|Refactor|Implement|Test|Build|Run|Check|Move|Rename)/i.test(content);
+  if (hasExecutionSteps) return false;
+
+  const hasCodeBlocks = /```/.test(content);
+  if (hasCodeBlocks) return false;
+
+  const filePathMatches = content.match(/[\w/.-]+\.\w{1,4}/g);
+  if (filePathMatches && filePathMatches.length >= 2) return false;
+
+  // Now check if it's guidance
   const asksForGoal = /目标|范围|约束|验收标准|要解决什么问题|实现什么功能|直接描述项目背景|请告诉我你的目标/.test(content);
   const describesCapabilities = /你可以让我|阅读、编辑|重构|调试代码|分解需求|制定执行计划|调用 pi 技能/i.test(content);
-  const hasConcretePlanTitle = /(^|\n)\s*#{1,6}\s*(实施计划|执行计划|实现计划|测试计划|迁移计划|修复计划|计划[：:])/.test(content);
-  const hasExecutionSteps = /(^|\n)\s*(?:[-*]|\d+\.)\s+(?:修改|实现|新增|删除|运行|验证|测试|构建|修复|重构|更新|提交|检查)/.test(content);
-  return (asksForGoal || describesCapabilities) && !hasConcretePlanTitle && !hasExecutionSteps;
+  const clarificationPrompt = /你想要规划什么|你想规划什么|你想让我规划什么|请告诉(?:我|我们).*?(?:规划|想法|目标|内容)|有其他想要添加的功能|I see you(?:'|')ve typed\s+`?\/plan`?|what would you like (?:me )?(?:to help you )?to? ?plan|what topic\/component you want to plan/i.test(content);
+
+  return asksForGoal || describesCapabilities || clarificationPrompt;
 }
 
 export const usePlanStore = create<PlanState>((set, get) => ({
@@ -88,11 +103,23 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   activeExecution: null,
   steps: [],
   status: "idle",
+  lastError: null,
+  clearError: () => set({ lastError: null }),
 
   setEnabled: (workspaceId, enabled) => {
-    set({ enabled });
-    if (workspaceId) {
-      void window.piAPI?.planSetEnabled?.(workspaceId, enabled);
+    const previousEnabled = get().enabled;
+    set({ enabled, lastError: null, ...(enabled ? {} : { pendingPlanClarification: null }) });
+    if (workspaceId && window.piAPI?.planSetEnabled) {
+      const result = window.piAPI.planSetEnabled(workspaceId, enabled);
+      if (result && typeof result.then === "function") {
+        result.then((res) => {
+          if (res !== undefined) {
+            set({ enabled: previousEnabled, lastError: typeof res === 'string' ? res : '计划模式切换失败' });
+          }
+        }).catch((err) => {
+          set({ enabled: previousEnabled, lastError: err instanceof Error ? err.message : '计划模式切换失败' });
+        });
+      }
     }
   },
 

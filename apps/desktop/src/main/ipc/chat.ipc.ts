@@ -41,6 +41,7 @@ interface ChatIpcDeps {
 }
 
 export function setupChatIpc(deps: ChatIpcDeps): void {
+    const planModeByWorkspace = new Map<string, boolean>();
     const send: IpcSender = (channel, _workspaceId, payload) => {
         const win: BrowserWindowType | null = BrowserWindow.getAllWindows()[0] ?? null;
         if (win && !win.isDestroyed()) {
@@ -64,7 +65,16 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         },
     );
 
-    ipcMain.handle("plan:set-enabled", async (_event, _workspaceId: string, _enabled: boolean) => {
+    ipcMain.handle("plan:set-enabled", async (_event, workspaceId: string, enabled: boolean) => {
+        const ws = workspaceId ? deps.getWorkspace(workspaceId) : undefined;
+        if (!ws) {
+            return ipcError(
+                "ipcErrors.chat.workspaceNotFound",
+                `Workspace not found: ${workspaceId}`,
+                { id: workspaceId },
+            );
+        }
+        planModeByWorkspace.set(ws.id, enabled);
         return undefined;
     });
 

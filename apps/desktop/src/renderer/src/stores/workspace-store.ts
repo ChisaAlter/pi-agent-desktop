@@ -7,6 +7,7 @@ import { create } from 'zustand';
 import { logger } from '../utils/logger';
 import { isNumberOrUndefined } from '../utils/format';
 import { isIpcError } from '@shared';
+import { addToast } from './toast-store';
 
 export interface Workspace {
   id: string;
@@ -80,6 +81,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
     } catch (e) {
       logger.error('[workspace-store] Failed to load workspaces:', e);
       set({ lastError: e instanceof Error ? e.message : String(e) });
+      addToast("工作区加载失败", "error");
     }
   };
   loadWorkspaces();
@@ -129,6 +131,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
     } catch (e) {
       logger.error('[workspace-store] createWorkspace failed:', e);
       set({ lastError: e instanceof Error ? e.message : String(e) });
+      addToast(e instanceof Error ? e.message : "创建工作区失败", "error");
       return null;
     }
   },
@@ -160,6 +163,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
               currentWorkspaceId: before.currentWorkspaceId,
               lastError: result.fallback,
             });
+            addToast(result.fallback, "error");
           }
         })
         .catch((e) => {
@@ -169,6 +173,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
             currentWorkspaceId: before.currentWorkspaceId,
             lastError: e instanceof Error ? e.message : String(e),
           });
+          addToast(e instanceof Error ? e.message : "删除工作区失败", "error");
         });
     }
   },

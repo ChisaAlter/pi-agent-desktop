@@ -10,6 +10,7 @@
 import { create } from 'zustand';
 import { logger } from '../utils/logger';
 import { isIpcError, type Message, type SessionUsageSnapshot, type ToolCall, type ToolPermissions } from '@shared';
+import { addToast } from './toast-store';
 
 // 2026-06-06 hotfix: 用 @shared 提供的 Message/ToolCall 类型,不再本地 duplicate
 // 主进程 store 里的 timestamp/startTime/endTime 是 string(JSON 反序列化后), 内存里
@@ -42,6 +43,7 @@ export interface Session {
 interface SessionState {
   sessions: Session[];
   currentSessionId: string | null;
+  sessionsLoading: boolean;
 
   // 2026-06-06 hotfix: 持久化错误计数(给 PersistenceBanner 用)
   persistErrorCount: number;
@@ -188,6 +190,7 @@ function recordPersistFailure(err: unknown): void {
   const counter = { count: state.persistErrorCount, last: state.lastPersistError };
   notePersistFailure(err, counter);
   useSessionStore.setState({ persistErrorCount: counter.count, lastPersistError: counter.last });
+  addToast(counter.last ?? "数据持久化失败", "error");
 }
 
 function observePersistResult(promise: Promise<unknown>): void {
@@ -286,6 +289,7 @@ function reviveSession(raw: Session | import("@shared").Session): Session {
 export const useSessionStore = create<SessionState>((set, get) => {
   // Load sessions from main process on init
   const loadSessions = async () => {
+    set({ sessionsLoading: true });
     try {
       const piAPI = getPiAPI();
       if (piAPI) {
@@ -297,10 +301,15 @@ export const useSessionStore = create<SessionState>((set, get) => {
         set({
           sessions,
           currentSessionId: currentSession?.id || null,
+          sessionsLoading: false,
         });
+      } else {
+        set({ sessionsLoading: false });
       }
     } catch (e) {
       logger.error("[session-store] Failed to load sessions:", e);
+      addToast("会话加载失败", "error");
+      set({ sessionsLoading: false });
     }
   };
   loadSessions();
@@ -308,6 +317,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
   return {
   sessions: [],
   currentSessionId: null,
+  sessionsLoading: true,
   persistErrorCount: 0,
   lastPersistError: null,
   loadSessions,

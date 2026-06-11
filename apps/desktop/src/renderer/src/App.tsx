@@ -13,6 +13,7 @@ import { createPortal } from "react-dom";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 // 2026-06-06 hotfix: 持久化失败顶部提示
 import { PersistenceBanner } from "./components/PersistenceBanner/PersistenceBanner";
+import { ToastContainer } from "./components/Toast/ToastContainer";
 import { WorkspaceNoticeBanner, emitWorkspaceNotice } from "./components/WorkspaceNoticeBanner/WorkspaceNoticeBanner";
 import { SettingsPanel } from "./components/Settings/SettingsPanel";
 import { CommandPalette } from "./components/CommandPalette/CommandPalette";
@@ -426,6 +427,22 @@ function AppShell(): React.ReactElement {
     // v1.1: "git" 渲染 GitPanel
     const activePanel = panelForSection(activeSection);
 
+    const panelFallback = (name: string) => (error: Error, reset: () => void) => (
+        <div className="flex items-center justify-center h-full bg-[#f5f5f5] p-4">
+            <div className="bg-white rounded-xl p-6 max-w-sm shadow text-center">
+                <div className="text-3xl mb-2">⚠️</div>
+                <h2 className="text-sm font-semibold text-[#1a1a1a] mb-1">{name}加载失败</h2>
+                <p className="text-xs text-[#666] mb-3">{error.message}</p>
+                <button
+                    onClick={reset}
+                    className="px-3 py-1.5 bg-[#1a1a1a] text-white rounded text-xs hover:bg-[#333] transition-colors"
+                >
+                    重试
+                </button>
+            </div>
+        </div>
+    );
+
     // modal/浮层 portal 目标(SSR-safe)
     const portalTarget = typeof document !== "undefined" ? document.body : null;
 
@@ -433,6 +450,7 @@ function AppShell(): React.ReactElement {
         <>
             {/* 2026-06-06 hotfix: 持久化失败时, 顶部 banner 提示 */}
             <PersistenceBanner />
+            <ToastContainer />
             <WorkspaceNoticeBanner />
             <MiniMaxCodeLayout
                 title="Pi Agent"
@@ -453,27 +471,37 @@ function AppShell(): React.ReactElement {
                 centerSlot={
                     <>
                         {activePanel === "chat" && (
-                            <ChatView prefillText={chatPrefill} onPrefillConsumed={() => setChatPrefill(null)} />
+                            <ErrorBoundary fallback={panelFallback("聊天")}>
+                                <ChatView prefillText={chatPrefill} onPrefillConsumed={() => setChatPrefill(null)} />
+                            </ErrorBoundary>
                         )}
                         {activePanel === "skills" && (
-                            <div className="flex-1 overflow-hidden">
-                                <SkillsPanel />
-                            </div>
+                            <ErrorBoundary fallback={panelFallback("技能")}>
+                                <div className="flex-1 overflow-hidden">
+                                    <SkillsPanel />
+                                </div>
+                            </ErrorBoundary>
                         )}
                         {activePanel === "sessions" && (
-                            <div className="flex-1 overflow-hidden">
-                                <SessionCenter onOpenChat={() => setActiveSection("chat")} />
-                            </div>
+                            <ErrorBoundary fallback={panelFallback("会话")}>
+                                <div className="flex-1 overflow-hidden">
+                                    <SessionCenter onOpenChat={() => setActiveSection("chat")} />
+                                </div>
+                            </ErrorBoundary>
                         )}
                         {activePanel === "git" && currentWorkspace && (
-                            <div className="flex-1 overflow-hidden">
-                                <GitPanel workspacePath={currentWorkspace.path} initialTarget={gitPanelTarget} />
-                            </div>
+                            <ErrorBoundary fallback={panelFallback("Git")}>
+                                <div className="flex-1 overflow-hidden">
+                                    <GitPanel workspacePath={currentWorkspace.path} initialTarget={gitPanelTarget} />
+                                </div>
+                            </ErrorBoundary>
                         )}
                         {activePanel === "files" && currentWorkspace && (
-                            <div className="flex-1 overflow-hidden">
-                                <FileWorkspace workspacePath={currentWorkspace.path} initialTarget={fileWorkspaceTarget} />
-                            </div>
+                            <ErrorBoundary fallback={panelFallback("文件")}>
+                                <div className="flex-1 overflow-hidden">
+                                    <FileWorkspace workspacePath={currentWorkspace.path} initialTarget={fileWorkspaceTarget} />
+                                </div>
+                            </ErrorBoundary>
                         )}
                     </>
                 }

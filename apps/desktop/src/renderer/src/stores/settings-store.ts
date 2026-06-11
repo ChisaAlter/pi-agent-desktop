@@ -8,6 +8,7 @@
 import { create } from 'zustand';
 import { isIpcError, type AppSettings, type IpcError, type ToolPermissions } from '@shared';
 import { logger } from '../utils/logger';
+import { addToast } from './toast-store';
 
 export type { AppSettings };
 
@@ -148,7 +149,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
                   set({ lastWriteError: result });
                 }
               })
-              .catch((e) => set({ lastWriteError: reportWriteError(e) }));
+              .catch((e) => {
+                set({ lastWriteError: reportWriteError(e) });
+                addToast(e instanceof Error ? e.message : "同步模型配置失败", "error");
+              });
           }
         }
       } catch (e) {
@@ -176,6 +180,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
         .catch((e) => {
           logger.error('[settings-store] setSettings failed:', e);
           set({ settings: previous, lastWriteError: reportWriteError(e) });
+          addToast(e instanceof Error ? e.message : "保存设置失败", "error");
         });
     },
 
@@ -188,6 +193,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
         .then((result) => {
           if (isIpcError(result)) {
             set({ settings: previous, lastWriteError: result });
+            addToast(result.fallback, "error");
           } else {
             set({ lastWriteError: null });
           }
@@ -195,6 +201,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
         .catch((e) => {
           logger.error('[settings-store] setSettings (reset) failed:', e);
           set({ settings: previous, lastWriteError: reportWriteError(e) });
+          addToast(e instanceof Error ? e.message : "重置设置失败", "error");
         });
     },
 

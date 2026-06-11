@@ -15,11 +15,15 @@ async function installTestIpc(app: ElectronApplication): Promise<void> {
       __currentUiSelectedFiles?: unknown[];
       __currentUiStopCalls?: string[];
       __currentUiAgentAbortCalls?: string[];
+      __testWorkspaces?: Array<{ id: string; name: string; path: string }>;
+      __testCurrentWorkspace?: { id: string; name: string; path: string } | null;
     };
     target.__currentUiPromptCalls = [];
     target.__currentUiSelectedFiles = [];
     target.__currentUiStopCalls = [];
     target.__currentUiAgentAbortCalls = [];
+    target.__testWorkspaces = [];
+    target.__testCurrentWorkspace = null;
 
     ipcMain.removeHandler("pi:status");
     ipcMain.handle("pi:status", async () => ({
@@ -58,6 +62,58 @@ async function installTestIpc(app: ElectronApplication): Promise<void> {
       target.__currentUiSelectedFiles?.push(opts);
       return ["C:\\ai\\pi-agent-desktop\\package.json"];
     });
+
+    ipcMain.removeHandler("workspace:create");
+    ipcMain.handle("workspace:create", async (_event, name: string, path: string) => {
+      const ws = { id: `ws_${name}_${Date.now()}`, name, path };
+      target.__testWorkspaces?.push(ws);
+      target.__testCurrentWorkspace = ws;
+      return ws;
+    });
+
+    ipcMain.removeHandler("workspace:select");
+    ipcMain.handle("workspace:select", async (_event, path: string) => {
+      const ws = target.__testWorkspaces?.find((w) => w.path === path);
+      if (ws) target.__testCurrentWorkspace = ws;
+      return undefined;
+    });
+
+    ipcMain.removeHandler("workspace:list");
+    ipcMain.handle("workspace:list", async () => target.__testWorkspaces ?? []);
+
+    ipcMain.removeHandler("workspace:delete");
+    ipcMain.handle("workspace:delete", async () => undefined);
+
+    ipcMain.removeHandler("session:list");
+    ipcMain.handle("session:list", async () => []);
+
+    ipcMain.removeHandler("session:create");
+    ipcMain.handle("session:create", async (_event, workspaceId: string, title?: string, id?: string) => ({
+      id: id ?? `session_${Date.now()}`,
+      workspaceId,
+      title: title ?? "未命名会话",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      messages: [],
+    }));
+
+    ipcMain.removeHandler("session:appendMessage");
+    ipcMain.handle("session:appendMessage", async () => undefined);
+
+    ipcMain.removeHandler("session:updateMessage");
+    ipcMain.handle("session:updateMessage", async () => undefined);
+
+    ipcMain.removeHandler("session:rename");
+    ipcMain.handle("session:rename", async () => undefined);
+
+    ipcMain.removeHandler("session:delete");
+    ipcMain.handle("session:delete", async () => undefined);
+
+    ipcMain.removeHandler("session:archive");
+    ipcMain.handle("session:archive", async () => undefined);
+
+    ipcMain.removeHandler("plan:set-enabled");
+    ipcMain.handle("plan:set-enabled", async () => undefined);
   });
 }
 
@@ -120,8 +176,6 @@ test.describe("Pi Desktop — current chat UI user path", () => {
 
     await installTestIpc(app);
     await createWorkspace(page, workspacePath);
-    await page.reload();
-    await page.waitForLoadState("domcontentloaded");
     await skipOnboarding(page);
 
     const textarea = page.locator("textarea").first();
@@ -139,7 +193,7 @@ test.describe("Pi Desktop — current chat UI user path", () => {
     await expect(page.getByRole("menuitemcheckbox", { name: "计划模式" })).toBeVisible();
 
     await page.getByRole("menuitem", { name: "添加文件或图片" }).click();
-    await expect(page.getByText("package.json", { exact: true })).toBeVisible();
+    await expect(page.locator('[data-testid="chat-input-shell"]').getByText("package.json", { exact: true })).toBeVisible();
     await expect.poll(async () => app.evaluate(() => {
       const target = globalThis as typeof globalThis & { __currentUiSelectedFiles?: unknown[] };
       return target.__currentUiSelectedFiles?.length ?? 0;

@@ -854,6 +854,9 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
               </button>
             </div>
           ) : tree ? (
+            allFiles.length === 0 ? (
+              <div className="px-4 py-8 text-center text-xs text-[var(--mm-text-secondary)]">目录为空</div>
+            ) : (
             <ul className="m-0 list-none p-2">
               <FileTreeRow
                 node={tree}
@@ -866,6 +869,7 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
                 workspacePath={workspacePath}
               />
             </ul>
+            )
           ) : null}
         </div>
       </aside>

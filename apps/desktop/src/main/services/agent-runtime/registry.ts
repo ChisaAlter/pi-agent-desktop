@@ -31,6 +31,7 @@ interface AgentRuntime {
 
 export class AgentRuntimeRegistry {
     private readonly runtimes = new Map<string, AgentRuntime>();
+    private suppressEventForwarding = false;
 
     constructor(private readonly deps: AgentRuntimeRegistryDeps) {}
 
@@ -81,6 +82,26 @@ export class AgentRuntimeRegistry {
         const text = input.message.trim();
         if (!text) return;
         this.addMessage(runtime, "user", text);
+        await this.promptRuntime(runtime, text, input.streamingBehavior);
+    }
+
+    async promptInternal(agentId: string, message: string): Promise<void> {
+        const runtime = this.requireRuntime(agentId);
+        const text = message.trim();
+        if (!text) return;
+        this.suppressEventForwarding = true;
+        try {
+            await this.promptRuntime(runtime, text);
+        } finally {
+            this.suppressEventForwarding = false;
+        }
+    }
+
+    private async promptRuntime(
+        runtime: AgentRuntime,
+        text: string,
+        streamingBehavior?: SendAgentPromptInput["streamingBehavior"],
+    ): Promise<void> {
         runtime.tab.status = "running";
         runtime.tab.updatedAt = Date.now();
         runtime.isStreaming = true;
@@ -88,7 +109,7 @@ export class AgentRuntimeRegistry {
         try {
             await runtime.session.session.prompt(
                 text,
-                input.streamingBehavior ? { streamingBehavior: input.streamingBehavior } : undefined,
+                streamingBehavior ? { streamingBehavior } : undefined,
             );
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -179,11 +200,13 @@ export class AgentRuntimeRegistry {
             runtime.tab.status = "idle";
             runtime.isStreaming = false;
         }
-        this.deps.send("agents:event", {
-            agentId: runtime.tab.id,
-            workspaceId: runtime.workspace.id,
-            event,
-        });
+        if (!this.suppressEventForwarding) {
+            this.deps.send("agents:event", {
+                agentId: runtime.tab.id,
+                workspaceId: runtime.workspace.id,
+                event,
+            });
+        }
         this.emitState();
     }
 

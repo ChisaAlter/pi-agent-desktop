@@ -91,7 +91,10 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
   const [continuingKey, setContinuingKey] = useState<string | null>(null);
   const { t } = useI18n();
   const sessions = useSessionStore((state) => state.sessions);
+  const sessionsLoading = useSessionStore((state) => state.sessionsLoading);
+  const createSession = useSessionStore((state) => state.createSession);
   const workspaces = useWorkspaceStore((state) => state.workspaces);
+  const currentWorkspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const {
     toggleFavorite,
     setSessionTags,
@@ -266,7 +269,26 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {grouped.length === 0 ? (
+        {sessionsLoading ? (
+          <div className="flex h-full items-center justify-center text-sm text-[var(--mm-text-secondary)]" role="status">
+            加载会话中...
+          </div>
+        ) : grouped.length === 0 && sessions.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-[var(--mm-text-secondary)]">
+            <span>暂无会话，开始新对话吧</span>
+            <button
+              type="button"
+              onClick={() => {
+                const wid = currentWorkspaceId ?? workspaces[0]?.id;
+                if (wid) void createSession(wid).then((s) => { useSessionStore.getState().setCurrentSession(s.id); onOpenChat?.(); });
+              }}
+              disabled={!currentWorkspaceId && workspaces.length === 0}
+              className="rounded-md bg-[#1f1f1f] px-4 py-2 text-sm text-white hover:bg-[#333] disabled:opacity-40"
+            >
+              新建会话
+            </button>
+          </div>
+        ) : grouped.length === 0 ? (
           <div className="flex h-full items-center justify-center text-sm text-[var(--mm-text-secondary)]">
             没有匹配的会话
           </div>
