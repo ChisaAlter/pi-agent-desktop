@@ -4,6 +4,44 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FileWorkspace } from "./FileWorkspace";
 
+// Mock MonacoEditor to render a simple textarea for testing
+vi.mock("../Editor/MonacoEditor", () => ({
+  MonacoEditor: function MockMonacoEditor({
+    value,
+    onChange,
+    onSave,
+    readOnly,
+    language,
+  }: {
+    value: string;
+    onChange?: (value: string) => void;
+    onSave?: () => void;
+    readOnly?: boolean;
+    language?: string;
+  }) {
+    return (
+      <div data-testid="monaco-editor" data-language={language} data-readonly={readOnly}>
+        <textarea
+          value={value}
+          onChange={(e) => onChange?.(e.target.value)}
+          onKeyDown={(e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+              e.preventDefault();
+              onSave?.();
+            }
+          }}
+          aria-label="编辑文件内容"
+          readOnly={readOnly}
+        />
+      </div>
+    );
+  },
+  getLanguageFromFilename: (filename: string) => {
+    const ext = filename.split(".").pop()?.toLowerCase();
+    return ext === "ts" ? "typescript" : "plaintext";
+  },
+}));
+
 const filesGetTree = vi.fn();
 const filesReadTextFile = vi.fn();
 const filesWriteTextFile = vi.fn();
