@@ -27,6 +27,7 @@ import { ChatView } from "./components/ChatView/ChatView";
 import { GitPanel } from "./components/GitPanel/GitPanel";
 import { SessionCenter } from "./components/SessionCenter/SessionCenter";
 import { FileWorkspace } from "./components/FileWorkspace/FileWorkspace";
+import { SearchHistory } from "./components/SearchHistory/SearchHistory";
 import {
     MiniMaxCodeLayout,
     MiniMaxCodeSidebar,
@@ -48,6 +49,7 @@ import { ensurePlanSubscriptions } from "./stores/plan-store";
 import { ensureQueueSubscription } from "./stores/queue-store";
 import type { TerminalCommandMode } from "./utils/terminal-command";
 import { isIpcError } from "@shared";
+import { applyTheme, watchSystemTheme, type Theme } from "./utils/theme";
 
 type MainPanel = "chat" | "skills" | "git" | "sessions" | "files";
 type FileWorkspaceTarget = { path: string; mode?: "edit" | "diff"; nonce: number };
@@ -98,6 +100,7 @@ function AppShell(): React.ReactElement {
     const [paletteOpen, setPaletteOpen] = useState(false);
     const [showCheatsheet, setShowCheatsheet] = useState(false);
     const [showOnboarding, setShowOnboarding] = useState(false);
+    const [showSearchHistory, setShowSearchHistory] = useState(false);
     const [leftCollapsed, setLeftCollapsed] = useState(false);
     const [rightCollapsed, setRightCollapsed] = useState(false);
     const [fileWorkspaceTarget, setFileWorkspaceTarget] = useState<FileWorkspaceTarget | null>(null);
@@ -192,7 +195,16 @@ function AppShell(): React.ReactElement {
 
     // v1.1: 暗色主题切换 — 同步 settings.theme 到 data-theme 属性
     useEffect(() => {
-        document.documentElement.setAttribute("data-theme", settings.theme ?? "light");
+        const theme = (settings.theme as Theme) || "system";
+        applyTheme(theme);
+
+        if (theme === "system") {
+            const unwatch = watchSystemTheme(() => {
+                applyTheme("system");
+            });
+            return unwatch;
+        }
+        return;
     }, [settings.theme]);
 
     // v1.0.17: TaskProgressPanel 接通真数据
@@ -408,8 +420,11 @@ function AppShell(): React.ReactElement {
                 setActiveSection("new-task");
             },
             "show-shortcuts-question": () => setShowCheatsheet((v) => !v),
+            "search-history": () => setShowSearchHistory((v) => !v),
             "close-overlay": () => {
-                if (showCheatsheet) {
+                if (showSearchHistory) {
+                    setShowSearchHistory(false);
+                } else if (showCheatsheet) {
                     setShowCheatsheet(false);
                 } else if (paletteOpen) {
                     setPaletteOpen(false);
@@ -418,7 +433,7 @@ function AppShell(): React.ReactElement {
                 }
             },
         }),
-        [openSettings, paletteOpen, showCheatsheet, showTerminal],
+        [openSettings, paletteOpen, showCheatsheet, showTerminal, showSearchHistory],
     );
     useShortcuts(shortcutHandlers);
 
@@ -531,6 +546,14 @@ function AppShell(): React.ReactElement {
                         <ShortcutsCheatsheet
                             isOpen={showCheatsheet}
                             onClose={() => setShowCheatsheet(false)}
+                        />
+                        <SearchHistory
+                            isOpen={showSearchHistory}
+                            onClose={() => setShowSearchHistory(false)}
+                            onNavigate={(sessionId) => {
+                                useSessionStore.setState({ currentSessionId: sessionId });
+                                setShowSearchHistory(false);
+                            }}
                         />
                         {!status?.installed && <PiStatusPanel />}
                         {showOnboarding && (

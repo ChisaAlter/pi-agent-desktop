@@ -32,6 +32,8 @@ import { useSettingsStore } from "../stores/settings-store";
 import { logger } from "../utils/logger";
 import { useAgentStore } from "../stores/agent-store";
 import { addToast } from "../stores/toast-store";
+import { playCompleteSound } from "../utils/sounds";
+import { notifyTaskComplete, canNotify } from "../utils/notifications";
 
 export interface ToolCallState {
     id: string;
@@ -839,6 +841,12 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 }
                 // v1.0.17: 通知 useTaskProgress agent 结束
                 window.dispatchEvent(new CustomEvent("pi:stream-end"));
+                // 声音和系统通知
+                playCompleteSound();
+                if (canNotify()) {
+                    const currentSession = useSessionStore.getState().getCurrentSession();
+                    notifyTaskComplete(currentSession?.title ?? "对话");
+                }
                 break;
 
             case "extension_error":

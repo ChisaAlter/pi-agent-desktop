@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isIpcError, type FileEntry, type FileTreeNode, type GitStatus, type TextFileContent } from "@shared";
 import { DiffViewer } from "../DiffView/DiffViewer";
+import { MonacoEditor, getLanguageFromFilename } from "../Editor/MonacoEditor";
 
 interface FileWorkspaceProps {
   workspacePath: string;
@@ -625,13 +626,6 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
     window.setTimeout(() => setActionMessage(null), 1600);
   };
 
-  const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
-      event.preventDefault();
-      if (isDirty && viewMode === "edit") void saveDraft();
-    }
-  };
-
   const toggleDirectory = (node: FileTreeNode): void => {
     if (node.type !== "directory") return;
     setExpanded((current) => {
@@ -986,19 +980,16 @@ export function FileWorkspace({ workspacePath, initialTarget }: FileWorkspacePro
               </pre>
             </div>
           ) : content ? (
-            <div className="grid min-h-full grid-cols-[58px_minmax(0,1fr)] overflow-auto font-mono text-[12px] leading-5 text-[#1f2937]">
-              <div className="select-none border-r border-[#ecece7] bg-[#f7f7f4] py-3 text-right text-[11px] text-[var(--mm-text-tertiary)]">
-                {previewLines.map((_, index) => (
-                  <div key={index} className="h-5 px-3">{index + 1}</div>
-                ))}
-              </div>
-              <textarea
+            <div className="min-h-full">
+              <MonacoEditor
                 value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={handleEditorKeyDown}
-                spellCheck={false}
-                aria-label="编辑文件内容"
-                className="min-h-full w-full resize-none border-0 bg-transparent px-3 py-3 font-mono text-[12px] leading-5 outline-none"
+                language={selectedNode?.name ? getLanguageFromFilename(selectedNode.name) : undefined}
+                readOnly={viewMode !== "edit"}
+                onChange={(value) => setDraft(value)}
+                onSave={() => {
+                  if (isDirty && viewMode === "edit") void saveDraft();
+                }}
+                className="h-full min-h-[400px]"
               />
             </div>
           ) : null}

@@ -9,6 +9,7 @@ import { create } from 'zustand';
 import { isIpcError, type AppSettings, type IpcError, type ToolPermissions } from '@shared';
 import { logger } from '../utils/logger';
 import { addToast } from './toast-store';
+import { applyTheme, type Theme } from '../utils/theme';
 
 export type { AppSettings };
 
@@ -45,6 +46,7 @@ interface SettingsState {
   clearWriteError: () => void;
   getWorkspaceToolDefaults: (workspaceId?: string | null) => ToolPermissions;
   updateWorkspaceToolDefaults: (workspaceId: string, permissions: ToolPermissions) => void;
+  setTheme: (theme: Theme) => void;
 }
 
 const defaultSettings: AppSettings = {
@@ -234,6 +236,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
           [workspaceId]: permissions,
         },
       });
+    },
+
+    setTheme: (theme: Theme) => {
+      applyTheme(theme);
+      get().updateSettings({ theme: theme as AppSettings["theme"] });
+      localStorage.setItem("pi-desktop-theme", theme);
     },
   };
 });

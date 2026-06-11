@@ -679,6 +679,7 @@ describe("usePiStream", () => {
             emitPiEvent?.({
                 type: "tool_execution_end",
                 toolCallId: "tc_race",
+                toolName: "bash",
                 isError: false,
             });
             emitPiEvent?.({ type: "agent_end" });
@@ -721,6 +722,7 @@ describe("usePiStream", () => {
             emitPiEvent?.({
                 type: "tool_execution_end",
                 toolCallId: "tc_race2",
+                toolName: "read",
                 isError: false,
             });
             emitPiEvent?.({ type: "agent_end" });
