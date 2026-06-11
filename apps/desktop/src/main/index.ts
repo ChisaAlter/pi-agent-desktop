@@ -33,6 +33,7 @@ import type { AppSettings, Session } from '@shared';
 import { AgentRuntimeRegistry } from './services/agent-runtime/registry';
 import { ConfigManager } from './services/config/config-manager';
 import { CodexSessionImporter } from './services/codex-session/importer';
+import type { PiAgentConfig, PiAgentModel } from './types';
 
 let mainWindow: BrowserWindow | null = null;
 let piAgentConfig: PiAgentConfig | null = null;
@@ -41,29 +42,6 @@ let piDriver: PiDriver | null = null;
 // Pi session (long-lived AgentSession per workspace)
 const piRegistry = new WorkspaceRegistry();
 const piPendingEdits = new PendingEdits();
-
-// Pi Agent 配置结构（从 ~/.pi/agent/ 读取）
-interface PiAgentModel {
-  id: string;
-  name: string;
-  provider: string;
-  providerName: string;
-  contextWindow?: number;
-  maxTokens?: number;
-  reasoning?: boolean;
-  input?: string[];
-}
-
-interface PiAgentConfig {
-  defaultProvider: string;
-  defaultModel: string;
-  providers: Array<{
-    id: string;
-    name: string;
-    baseUrl?: string;
-    models: PiAgentModel[];
-  }>;
-}
 
 const PI_AGENT_DIR = join(homedir(), '.pi', 'agent');
 

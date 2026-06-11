@@ -4,31 +4,8 @@ import { existsSync, readFileSync, readdirSync } from 'fs';
 import log from 'electron-log/main';
 import { ipcError } from '@shared';
 import type { AppSettings } from '@shared';
+import type { PiAgentConfig } from '../types';
 import { settingsSetSchema } from './schemas';
-
-interface PiAgentModel {
-  id: string;
-  name: string;
-  provider: string;
-  providerName: string;
-  contextWindow?: number;
-  maxTokens?: number;
-  reasoning?: boolean;
-  input?: string[];
-}
-
-interface PiAgentProvider {
-  id: string;
-  name: string;
-  baseUrl?: string;
-  models: PiAgentModel[];
-}
-
-export interface PiAgentConfig {
-  defaultProvider: string;
-  defaultModel: string;
-  providers: PiAgentProvider[];
-}
 
 export function setupSettingsIpc(opts: {
   store: { get: (key: 'settings') => AppSettings; set: (key: 'settings', value: AppSettings) => void };

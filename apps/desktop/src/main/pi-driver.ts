@@ -52,27 +52,8 @@ export interface PiInstallProgress {
   percent?: number;
 }
 
-export interface PiAgentModel {
-  id: string;
-  name: string;
-  provider: string;
-  providerName: string;
-  contextWindow?: number;
-  maxTokens?: number;
-  reasoning?: boolean;
-  input?: string[];
-}
-
-export interface PiAgentConfig {
-  defaultProvider: string;
-  defaultModel: string;
-  providers: Array<{
-    id: string;
-    name: string;
-    baseUrl?: string;
-    models: PiAgentModel[];
-  }>;
-}
+import type { PiAgentConfig } from './types';
+export type { PiAgentModel, PiAgentConfig } from './types';
 
 // ── 常量 ────────────────────────────────────────────────────────
 
@@ -367,12 +348,11 @@ export class PiDriver extends EventEmitter {
     // 2. 用 npm config get prefix 拿真实 npm global bin 目录
     try {
       const npm = isWin ? 'npm.cmd' : 'npm';
-      const prefix = execSync(`${npm} config get prefix`, {
+      // 使用 execFileSync 避免 shell 注入
+      const prefix = execFileSync(npm, ['config', 'get', 'prefix'], {
         encoding: 'utf-8',
         timeout: 5000,
         stdio: ['pipe', 'pipe', 'ignore'],
-        // Windows 上 .cmd 必须通过 shell 解析;Unix 直接 exec
-        ...(isWin ? { shell: process.env.ComSpec || 'cmd.exe' as string } : {}),
       }).trim();
       if (prefix) {
         const piCmd = isWin ? 'pi.cmd' : 'pi';
@@ -469,9 +449,9 @@ export class PiDriver extends EventEmitter {
       // continue
     }
 
-    // 3. 最后兜底: execSync(对 .exe 有效)
+    // 3. 最后兜底: 使用 execFileSync 避免 shell 注入
     try {
-      const r: string = execSync(`"${piPath}" --version`, {
+      const r: string = execFileSync(piPath, ['--version'], {
         encoding: 'utf-8',
         timeout: 10000,
         stdio: ['pipe', 'pipe', 'pipe'],

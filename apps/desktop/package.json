@@ -2,6 +2,7 @@
   "name": "@pi-desktop/desktop",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Pi Agent Desktop Application",
   "main": "./out/main/index.js",
   "scripts": {
@@ -19,6 +20,7 @@
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.75.5",
+    "@monaco-editor/react": "^4.7.0",
     "@pi-desktop/shared-types": "workspace:*",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-web-links": "^0.12.0",
