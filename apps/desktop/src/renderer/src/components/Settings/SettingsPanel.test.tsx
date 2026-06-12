@@ -37,11 +37,37 @@ describe("SettingsPanel 配置中心", () => {
                 configSaveRaw: vi.fn(async () => ({ valid: true })),
                 configExport: vi.fn(async () => "{}"),
                 configImport: vi.fn(async () => ({ valid: true })),
+                configListManagedModels: vi.fn(async () => ({
+                    configDir: "C:/Users/demo/.pi/agent",
+                    defaultProvider: "custom_provider",
+                    defaultModel: "custom-model-v1",
+                    models: [
+                        {
+                            providerId: "custom_provider",
+                            providerName: "Custom AI Provider",
+                            modelId: "custom-model-v1",
+                            modelName: "Custom Model V1",
+                            baseUrl: "https://api.custom-ai.com/v1",
+                            apiType: "openai",
+                            source: "json",
+                            isDefault: true,
+                            hasApiKey: true,
+                            apiKeyPreview: "sk-...test",
+                            maxTokens: 4096,
+                        },
+                    ],
+                })),
+                configSaveManagedModel: vi.fn(async () => ({ valid: true })),
+                configDeleteManagedModel: vi.fn(async () => ({ valid: true })),
+                configSetDefaultModel: vi.fn(async () => ({ valid: true })),
                 configFetchModels: vi.fn(async () => []),
                 configTestProvider: vi.fn(async () => ({ ok: true, message: "连接成功" })),
+                setSettings: vi.fn(async (settings) => settings),
+                loadPiConfig: vi.fn(async () => ({ models: [], currentModel: null })),
             },
             configurable: true,
         });
+        vi.spyOn(window, "confirm").mockReturnValue(true);
         useSettingsStore.setState({
             isOpen: true,
             lastWriteError: null,
@@ -98,6 +124,70 @@ describe("SettingsPanel 配置中心", () => {
                 apiKey: "sk-test",
                 modelId: "gpt-4o",
                 apiType: "responses",
+            });
+        });
+    });
+
+    it("模型页展示 Pi Agent 模型列表并可测试连接", async () => {
+        window.piAPI.configGetAuth = vi.fn(async () => ({
+            raw: JSON.stringify({ custom_provider: { key: "sk-real-test" } }),
+            parsed: { custom_provider: { key: "sk-real-test" } },
+        }));
+
+        renderSettings();
+
+        fireEvent.click(screen.getByRole("tab", { name: "模型" }));
+
+        expect(await screen.findByText("Custom Model V1")).toBeTruthy();
+        expect(screen.getByText("Custom AI Provider")).toBeTruthy();
+        expect(screen.getByText("默认")).toBeTruthy();
+
+        fireEvent.click(screen.getByRole("button", { name: "测试 Custom Model V1" }));
+
+        await waitFor(() => {
+            expect(window.piAPI.configTestProvider).toHaveBeenCalledWith({
+                baseUrl: "https://api.custom-ai.com/v1",
+                apiKey: "sk-real-test",
+                modelId: "custom-model-v1",
+                apiType: "openai",
+                headers: undefined,
+            });
+        });
+        expect(await screen.findByText("连接成功")).toBeTruthy();
+    });
+
+    it("模型页可以新增和删除模型", async () => {
+        renderSettings();
+
+        fireEvent.click(screen.getByRole("tab", { name: "模型" }));
+        fireEvent.click(await screen.findByRole("button", { name: "新增模型" }));
+
+        fireEvent.change(screen.getByLabelText("Provider ID"), { target: { value: "openai" } });
+        fireEvent.change(screen.getByLabelText("Provider 名称"), { target: { value: "OpenAI" } });
+        fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://api.openai.com/v1" } });
+        fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "sk-new" } });
+        fireEvent.change(screen.getByLabelText("模型 ID"), { target: { value: "gpt-4o" } });
+        fireEvent.change(screen.getByLabelText("模型名称"), { target: { value: "GPT-4o" } });
+        fireEvent.click(screen.getByRole("button", { name: "保存模型" }));
+
+        await waitFor(() => {
+            expect(window.piAPI.configSaveManagedModel).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    providerId: "openai",
+                    providerName: "OpenAI",
+                    baseUrl: "https://api.openai.com/v1",
+                    apiKey: "sk-new",
+                    modelId: "gpt-4o",
+                    modelName: "GPT-4o",
+                }),
+            );
+        });
+
+        fireEvent.click(await screen.findByRole("button", { name: "删除 Custom Model V1" }));
+        await waitFor(() => {
+            expect(window.piAPI.configDeleteManagedModel).toHaveBeenCalledWith({
+                providerId: "custom_provider",
+                modelId: "custom-model-v1",
             });
         });
     });

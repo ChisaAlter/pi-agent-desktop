@@ -23,6 +23,9 @@ import type {
     CodexImportReport,
     CodexSessionSummary,
     ConfigValidationResult,
+    ManagedModelDeleteInput,
+    ManagedModelSaveInput,
+    ManagedModelsResult,
     PiAuthFile,
     PiModelItem,
     PiModelsFile,
@@ -189,6 +192,14 @@ const piAPI: PiAPI = {
     configExport: () => ipcRenderer.invoke("config:export") as Promise<string>,
     configImport: (packageJson) =>
         ipcRenderer.invoke("config:import", packageJson) as Promise<ConfigValidationResult>,
+    configListManagedModels: () =>
+        ipcRenderer.invoke("config:list-managed-models") as Promise<ManagedModelsResult>,
+    configSaveManagedModel: (input: ManagedModelSaveInput) =>
+        ipcRenderer.invoke("config:save-managed-model", input) as Promise<ConfigValidationResult>,
+    configDeleteManagedModel: (input: ManagedModelDeleteInput) =>
+        ipcRenderer.invoke("config:delete-managed-model", input) as Promise<ConfigValidationResult>,
+    configSetDefaultModel: (providerId, modelId) =>
+        ipcRenderer.invoke("config:set-default-model", providerId, modelId) as Promise<ConfigValidationResult>,
     configFetchModels: (baseUrl, apiKey, apiType) =>
         ipcRenderer.invoke("config:fetch-models", baseUrl, apiKey, apiType) as Promise<PiModelItem[]>,
     configTestProvider: (input) =>

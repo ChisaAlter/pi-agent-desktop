@@ -5,7 +5,7 @@ import { useSettingsStore } from '../../stores/settings-store';
 import { PiStatusPanel } from '../PiStatusPanel';
 import { ShortcutsSettings } from './ShortcutsSettings/ShortcutsSettings';
 import { useI18n, useTranslateIpcError, SUPPORTED_LOCALES, type Locale } from '../../i18n';
-import type { IpcError, PiAuthFile, PiModelsFile, PiSettingsFile } from '@shared';
+import type { IpcError, ManagedModelEntry, ManagedModelsResult, ManagedModelSaveInput, PiAuthFile, PiModelsFile, PiSettingsFile } from '@shared';
 import { isSoundEnabled, setSoundEnabled, getSoundVolume, setSoundVolume } from '../../utils/sounds';
 import { requestNotificationPermission, canNotify } from '../../utils/notifications';
 
@@ -75,7 +75,7 @@ function SwitchControl({
 }
 
 export function SettingsPanel(): React.JSX.Element {
-    const { settings, isOpen, closeSettings, updateSettings, resetSettings, piModels, lastWriteError, clearWriteError } = useSettingsStore();
+    const { settings, isOpen, closeSettings, updateSettings, resetSettings, loadPiConfig, lastWriteError, clearWriteError } = useSettingsStore();
     const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
     const [piFullConfig, setPiFullConfig] = useState<Awaited<ReturnType<typeof window.piAPI.getFullConfig>> | null>(null);
     const [soundEnabled, setSoundEnabledState] = useState(isSoundEnabled());
@@ -101,17 +101,8 @@ export function SettingsPanel(): React.JSX.Element {
 
     if (!isOpen) return <></>;
 
-    const selectedModelKey = settings.provider && settings.model
-        ? `${settings.provider}:${settings.model}`
-        : settings.model;
-    const updateModelFromKey = (key: string): void => {
-        const model = piModels?.find((item) => `${item.provider}:${item.id}` === key || item.id === key);
-        if (model) {
-            updateSettings({ model: model.id, provider: model.provider });
-        }
-    };
-    const updateNumberSetting = (key: 'fontSize' | 'temperature' | 'maxTokens', value: string): void => {
-        const next = key === 'temperature' ? Number.parseFloat(value) : Number.parseInt(value, 10);
+    const updateNumberSetting = (key: 'fontSize', value: string): void => {
+        const next = Number.parseInt(value, 10);
         if (Number.isFinite(next)) {
             updateSettings({ [key]: next });
         }
@@ -246,51 +237,7 @@ export function SettingsPanel(): React.JSX.Element {
 
                         {activeTab === 'model' && (
                             <div role="tabpanel" id="settings-tabpanel-model" aria-labelledby="settings-tab-model">
-                                <SectionTitle title={t('settings.modelTab.heading')} description={t('settings.modelTab.description')} />
-                                <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4">
-                                    <FieldRow label={t('settings.modelTab.current')} description={t('settings.modelTab.currentDescription')}>
-                                        {piModels && piModels.length > 0 ? (
-                                            <select
-                                                id="settings-model"
-                                                value={selectedModelKey}
-                                                onChange={(e) => updateModelFromKey(e.target.value)}
-                                                className="w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2.5 text-sm text-[var(--mm-text-primary)] focus:border-[#1f1f1f] focus:outline-none"
-                                            >
-                                                {piModels.map((model) => (
-                                                    <option key={`${model.provider}:${model.id}`} value={`${model.provider}:${model.id}`}>
-                                                        {model.name} ({model.providerName})
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        ) : (
-                                            <div className="rounded-lg border border-dashed border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2.5 text-sm text-[var(--mm-text-tertiary)]">
-                                                {t('settings.modelTab.empty')}
-                                            </div>
-                                        )}
-                                    </FieldRow>
-                                    <FieldRow label={t('settings.modelTab.temperature', { value: settings.temperature })}>
-                                        <input
-                                            id="settings-temperature"
-                                            type="range"
-                                            min="0"
-                                            max="2"
-                                            step="0.1"
-                                            value={settings.temperature}
-                                            onChange={(e) => updateNumberSetting('temperature', e.target.value)}
-                                            className="w-full"
-                                            aria-label={t('settings.modelTab.temperatureAria')}
-                                        />
-                                    </FieldRow>
-                                    <FieldRow label={t('settings.modelTab.maxTokens')}>
-                                        <input
-                                            id="settings-max-tokens"
-                                            type="number"
-                                            value={settings.maxTokens}
-                                            onChange={(e) => updateNumberSetting('maxTokens', e.target.value)}
-                                            className="w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2.5 text-sm text-[var(--mm-text-primary)] focus:border-[#1f1f1f] focus:outline-none"
-                                        />
-                                    </FieldRow>
-                                </div>
+                                <ManagedModelsPanel onPiConfigChanged={loadPiConfig} />
                             </div>
                         )}
 
@@ -455,6 +402,344 @@ export function SettingsPanel(): React.JSX.Element {
     );
 }
 
+type ModelFormState = {
+    originalProviderId?: string;
+    originalModelId?: string;
+    providerId: string;
+    providerName: string;
+    baseUrl: string;
+    apiType: 'openai' | 'responses';
+    apiKey: string;
+    modelId: string;
+    modelName: string;
+    contextWindow: string;
+    maxTokens: string;
+    reasoning: boolean;
+    setDefault: boolean;
+};
+
+const emptyModelForm: ModelFormState = {
+    providerId: '',
+    providerName: '',
+    baseUrl: '',
+    apiType: 'openai',
+    apiKey: '',
+    modelId: '',
+    modelName: '',
+    contextWindow: '',
+    maxTokens: '',
+    reasoning: false,
+    setDefault: false,
+};
+
+function modelToForm(model: ManagedModelEntry): ModelFormState {
+    return {
+        originalProviderId: model.providerId,
+        originalModelId: model.modelId,
+        providerId: model.providerId,
+        providerName: model.providerName,
+        baseUrl: model.baseUrl ?? '',
+        apiType: model.apiType ?? 'openai',
+        apiKey: '',
+        modelId: model.modelId,
+        modelName: model.modelName,
+        contextWindow: model.contextWindow ? String(model.contextWindow) : '',
+        maxTokens: model.maxTokens ? String(model.maxTokens) : '',
+        reasoning: Boolean(model.reasoning),
+        setDefault: model.isDefault,
+    };
+}
+
+function compactNumber(value?: number): string {
+    if (!value) return '未知';
+    if (value >= 1000) return `${Math.round(value / 1000)}K`;
+    return String(value);
+}
+
+function parseOptionalInteger(value: string): number | undefined {
+    if (!value.trim()) return undefined;
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: () => Promise<void> }): React.JSX.Element {
+    const [result, setResult] = useState<ManagedModelsResult | null>(null);
+    const [message, setMessage] = useState('');
+    const [testingKey, setTestingKey] = useState<string | null>(null);
+    const [form, setForm] = useState<ModelFormState | null>(null);
+
+    const refresh = async (): Promise<void> => {
+        const next = await window.piAPI.configListManagedModels();
+        setResult(next);
+    };
+
+    useEffect(() => {
+        let cancelled = false;
+        void window.piAPI.configListManagedModels()
+            .then((next) => {
+                if (!cancelled) setResult(next);
+            })
+            .catch((error) => {
+                if (!cancelled) setMessage(error instanceof Error ? error.message : String(error));
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    const defaultModel = result?.models.find((model) => model.isDefault);
+
+    const loadApiKey = async (providerId: string): Promise<string | undefined> => {
+        const auth = await window.piAPI.configGetAuth();
+        const item = auth.parsed[providerId];
+        return item?.key || item?.apiKey;
+    };
+
+    const testModel = async (model: ManagedModelEntry): Promise<void> => {
+        if (!model.baseUrl) {
+            setMessage('缺少 Base URL，无法测试连接。');
+            return;
+        }
+        const key = `${model.providerId}:${model.modelId}`;
+        setTestingKey(key);
+        setMessage('测试中...');
+        try {
+            const apiKey = await loadApiKey(model.providerId);
+            const response = await window.piAPI.configTestProvider({
+                baseUrl: model.baseUrl,
+                apiKey,
+                modelId: model.modelId,
+                apiType: model.apiType,
+                headers: model.headers,
+            });
+            setMessage(response.ok ? '连接成功' : response.message);
+        } catch (error) {
+            setMessage(error instanceof Error ? error.message : String(error));
+        } finally {
+            setTestingKey(null);
+        }
+    };
+
+    const saveModel = async (): Promise<void> => {
+        if (!form) return;
+        const input: ManagedModelSaveInput = {
+            originalProviderId: form.originalProviderId,
+            originalModelId: form.originalModelId,
+            providerId: form.providerId.trim(),
+            providerName: form.providerName.trim(),
+            baseUrl: form.baseUrl.trim(),
+            apiType: form.apiType,
+            apiKey: form.apiKey.trim() || undefined,
+            modelId: form.modelId.trim(),
+            modelName: form.modelName.trim(),
+            contextWindow: parseOptionalInteger(form.contextWindow),
+            maxTokens: parseOptionalInteger(form.maxTokens),
+            reasoning: form.reasoning,
+            setDefault: form.setDefault,
+        };
+        const response = await window.piAPI.configSaveManagedModel(input);
+        if (!response.valid) {
+            setMessage(response.error ?? '保存失败');
+            return;
+        }
+        setForm(null);
+        setMessage('模型已保存');
+        await refresh();
+        await onPiConfigChanged();
+    };
+
+    const deleteModel = async (model: ManagedModelEntry): Promise<void> => {
+        if (!window.confirm(`删除模型 ${model.modelName}？`)) return;
+        const response = await window.piAPI.configDeleteManagedModel({
+            providerId: model.providerId,
+            modelId: model.modelId,
+        });
+        if (!response.valid) {
+            setMessage(response.error ?? '删除失败');
+            return;
+        }
+        setMessage('模型已删除');
+        await refresh();
+        await onPiConfigChanged();
+    };
+
+    const setDefault = async (model: ManagedModelEntry): Promise<void> => {
+        const response = await window.piAPI.configSetDefaultModel(model.providerId, model.modelId);
+        if (!response.valid) {
+            setMessage(response.error ?? '设置默认模型失败');
+            return;
+        }
+        setMessage('默认模型已更新');
+        await refresh();
+        await onPiConfigChanged();
+    };
+
+    return (
+        <div className="space-y-4">
+            <div className="flex items-start justify-between gap-4">
+                <SectionTitle title="模型配置" description="管理 Pi Agent 的 Provider 与模型。更改会写入 ~/.pi/agent 配置。" />
+                <button
+                    type="button"
+                    onClick={() => setForm(emptyModelForm)}
+                    className="shrink-0 rounded-lg bg-[#1f1f1f] px-3 py-2 text-sm font-medium text-white hover:bg-[#333]"
+                >
+                    新增模型
+                </button>
+            </div>
+
+            <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <div className="text-xs text-[var(--mm-text-tertiary)]">默认模型</div>
+                        <div className="mt-1 text-sm font-semibold text-[var(--mm-text-primary)]">
+                            {defaultModel ? `${defaultModel.modelName} · ${defaultModel.providerName}` : '未设置'}
+                        </div>
+                    </div>
+                    <div className="font-mono text-xs text-[var(--mm-text-tertiary)]">{result?.configDir ?? '加载中...'}</div>
+                </div>
+            </div>
+
+            {message && (
+                <div className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-xs text-[var(--mm-text-secondary)]">
+                    {message}
+                </div>
+            )}
+
+            <div className="overflow-hidden rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)]">
+                {!result ? (
+                    <div className="p-4 text-sm text-[var(--mm-text-tertiary)]">加载模型配置中...</div>
+                ) : result.models.length === 0 ? (
+                    <div className="p-5 text-sm text-[var(--mm-text-tertiary)]">暂未检测到模型配置。点击“新增模型”开始配置。</div>
+                ) : (
+                    <div className="divide-y divide-[var(--mm-border)]">
+                        {result.models.map((model) => {
+                            const key = `${model.providerId}:${model.modelId}`;
+                            return (
+                                <div key={key} className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 p-4">
+                                    <div className="min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <div className="truncate text-sm font-semibold text-[var(--mm-text-primary)]">{model.modelName}</div>
+                                            {model.isDefault && <span className="rounded bg-[#e8f2ff] px-1.5 py-0.5 text-[11px] text-[#0b67bd]">默认</span>}
+                                            <span className="rounded bg-[#f0f0ed] px-1.5 py-0.5 text-[11px] text-[var(--mm-text-tertiary)]">
+                                                {model.source === 'yaml' ? 'YAML' : 'JSON'}
+                                            </span>
+                                        </div>
+                                        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--mm-text-tertiary)]">
+                                            <span>{model.providerName}</span>
+                                            <span className="font-mono">{model.providerId}/{model.modelId}</span>
+                                            {model.baseUrl && <span className="max-w-[360px] truncate font-mono">{model.baseUrl}</span>}
+                                        </div>
+                                        <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-[var(--mm-text-secondary)]">
+                                            <span>API: {model.apiType ?? model.api ?? '未设置'}</span>
+                                            <span>上下文: {compactNumber(model.contextWindow)}</span>
+                                            <span>最大输出: {compactNumber(model.maxTokens)}</span>
+                                            <span>{model.hasApiKey ? `Key ${model.apiKeyPreview ?? '已配置'}` : '未配置 Key'}</span>
+                                        </div>
+                                    </div>
+                                    <div className="flex shrink-0 items-center gap-1">
+                                        {!model.isDefault && (
+                                            <button type="button" onClick={() => void setDefault(model)} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">
+                                                设为默认
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => void testModel(model)}
+                                            disabled={testingKey === key}
+                                            aria-label={`测试 ${model.modelName}`}
+                                            className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-50"
+                                        >
+                                            测试
+                                        </button>
+                                        <button type="button" onClick={() => setForm(modelToForm(model))} aria-label={`编辑 ${model.modelName}`} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">
+                                            编辑
+                                        </button>
+                                        <button type="button" onClick={() => void deleteModel(model)} aria-label={`删除 ${model.modelName}`} className="rounded-md px-2 py-1 text-xs text-red-600 hover:bg-red-50">
+                                            删除
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+
+            {form && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-6">
+                    <div className="w-[min(680px,calc(100vw-48px))] rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-2xl" role="dialog" aria-modal="true" aria-label="模型编辑">
+                        <div className="flex items-center justify-between border-b border-[var(--mm-border)] px-5 py-4">
+                            <div className="text-sm font-semibold text-[var(--mm-text-primary)]">{form.originalModelId ? '编辑模型' : '新增模型'}</div>
+                            <button type="button" onClick={() => setForm(null)} className="rounded-md px-2 py-1 text-sm hover:bg-[var(--mm-bg-sidebar)]">关闭</button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 p-5">
+                            <FormInput label="Provider ID" value={form.providerId} onChange={(providerId) => setForm({ ...form, providerId })} />
+                            <FormInput label="Provider 名称" value={form.providerName} onChange={(providerName) => setForm({ ...form, providerName })} />
+                            <FormInput className="col-span-2" label="Base URL" value={form.baseUrl} onChange={(baseUrl) => setForm({ ...form, baseUrl })} />
+                            <label className="block text-xs font-medium text-[var(--mm-text-secondary)]">
+                                API 类型
+                                <select
+                                    value={form.apiType}
+                                    onChange={(event) => setForm({ ...form, apiType: event.target.value as ModelFormState['apiType'] })}
+                                    className="mt-1 w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-primary)]"
+                                >
+                                    <option value="openai">OpenAI Chat Completions</option>
+                                    <option value="responses">OpenAI Responses</option>
+                                </select>
+                            </label>
+                            <FormInput label="API Key" value={form.apiKey} onChange={(apiKey) => setForm({ ...form, apiKey })} placeholder={form.originalModelId ? '留空表示不修改' : ''} />
+                            <FormInput label="模型 ID" value={form.modelId} onChange={(modelId) => setForm({ ...form, modelId })} />
+                            <FormInput label="模型名称" value={form.modelName} onChange={(modelName) => setForm({ ...form, modelName })} />
+                            <FormInput label="上下文窗口" value={form.contextWindow} onChange={(contextWindow) => setForm({ ...form, contextWindow })} />
+                            <FormInput label="最大输出 Token" value={form.maxTokens} onChange={(maxTokens) => setForm({ ...form, maxTokens })} />
+                            <label className="flex items-center gap-2 text-sm text-[var(--mm-text-secondary)]">
+                                <input type="checkbox" checked={form.reasoning} onChange={(event) => setForm({ ...form, reasoning: event.target.checked })} />
+                                推理模型
+                            </label>
+                            <label className="flex items-center gap-2 text-sm text-[var(--mm-text-secondary)]">
+                                <input type="checkbox" checked={form.setDefault} onChange={(event) => setForm({ ...form, setDefault: event.target.checked })} />
+                                保存后设为默认
+                            </label>
+                        </div>
+                        <div className="flex justify-end gap-2 border-t border-[var(--mm-border)] px-5 py-4">
+                            <button type="button" onClick={() => setForm(null)} className="rounded-lg px-3 py-2 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]">取消</button>
+                            <button type="button" onClick={() => void saveModel()} className="rounded-lg bg-[#1f1f1f] px-3 py-2 text-sm font-medium text-white hover:bg-[#333]">保存模型</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function FormInput({
+    label,
+    value,
+    onChange,
+    placeholder,
+    className = '',
+}: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    placeholder?: string;
+    className?: string;
+}): React.JSX.Element {
+    const id = `model-form-${label.replace(/\s+/g, '-').toLowerCase()}`;
+    return (
+        <label htmlFor={id} className={`block text-xs font-medium text-[var(--mm-text-secondary)] ${className}`}>
+            {label}
+            <input
+                id={id}
+                value={value}
+                placeholder={placeholder}
+                onChange={(event) => onChange(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-primary)] outline-none focus:border-[#1f1f1f]"
+            />
+        </label>
+    );
+}
+
 function PiConfigEditor(): React.JSX.Element {
     const [fileName, setFileName] = useState<'models.json' | 'auth.json' | 'settings.json'>('models.json');
     const [raw, setRaw] = useState('');
@@ -504,8 +789,8 @@ function PiConfigEditor(): React.JSX.Element {
 
         return {
             baseUrl: provider.baseUrl,
-            apiKey: authResult.parsed[providerId]?.apiKey,
-            apiType: provider.apiType,
+            apiKey: authResult.parsed[providerId]?.key || authResult.parsed[providerId]?.apiKey,
+            apiType: provider.apiType ?? (provider.api === 'openai-responses' ? 'responses' : undefined),
             modelId: provider.models?.[0]?.id,
         };
     };

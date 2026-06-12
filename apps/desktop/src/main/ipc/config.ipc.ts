@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import type { PiAuthFile, PiModelsFile, PiSettingsFile } from "@shared";
+import type { ManagedModelDeleteInput, ManagedModelSaveInput, PiAuthFile, PiModelsFile, PiSettingsFile } from "@shared";
 import type { ConfigManager } from "../services/config/config-manager";
 
 // SSRF 防护: 只阻断云实例元数据端点，允许本地模型提供商（Ollama、LocalAI 等）
@@ -29,7 +29,12 @@ function isSafeUrl(urlString: string): boolean {
     }
 }
 
-export function setupConfigIpc(configManager: ConfigManager): void {
+export function setupConfigIpc(configManager: ConfigManager, opts: { onManagedModelsChanged?: () => void } = {}): void {
+    const notifyIfValid = <T extends { valid: boolean }>(result: T): T => {
+        if (result.valid) opts.onManagedModelsChanged?.();
+        return result;
+    };
+
     ipcMain.handle("config:get-models", () => configManager.getModelsConfig());
     ipcMain.handle("config:get-auth", () => configManager.getAuthConfig());
     ipcMain.handle("config:get-settings", () => configManager.getSettingsConfig());
@@ -41,6 +46,16 @@ export function setupConfigIpc(configManager: ConfigManager): void {
     );
     ipcMain.handle("config:export", () => configManager.exportConfig());
     ipcMain.handle("config:import", (_event, packageJson: string) => configManager.importConfig(packageJson));
+    ipcMain.handle("config:list-managed-models", () => configManager.listManagedModels());
+    ipcMain.handle("config:save-managed-model", async (_event, input: ManagedModelSaveInput) =>
+        notifyIfValid(await configManager.saveManagedModel(input)),
+    );
+    ipcMain.handle("config:delete-managed-model", async (_event, input: ManagedModelDeleteInput) =>
+        notifyIfValid(await configManager.deleteManagedModel(input)),
+    );
+    ipcMain.handle("config:set-default-model", async (_event, providerId: string, modelId: string) =>
+        notifyIfValid(await configManager.setDefaultModel(providerId, modelId)),
+    );
     ipcMain.handle("config:fetch-models", (_event, baseUrl: string, apiKey?: string, apiType?: string) => {
         // SSRF 防护: 验证 URL 安全性
         if (!isSafeUrl(baseUrl)) {
