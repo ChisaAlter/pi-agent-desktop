@@ -13,6 +13,9 @@ export interface PiAgentProvider {
   id: string;
   name: string;
   baseUrl?: string;
+  apiType?: string;
+  api?: string;
+  _piDesktopDeletedModels?: string[];
   models: PiAgentModel[];
 }
 

@@ -72,7 +72,14 @@ function loadPiAgentConfig(): PiAgentConfig | null {
       const modelsData = JSON.parse(readFileSync(modelsJsonPath, 'utf-8'));
       if (modelsData.providers) {
         for (const [providerId, providerData] of Object.entries(modelsData.providers)) {
-          const pd = providerData as { name?: string; baseUrl?: string; models?: Array<Record<string, unknown>> };
+          const pd = providerData as {
+            name?: string;
+            baseUrl?: string;
+            apiType?: string;
+            api?: string;
+            models?: Array<Record<string, unknown>>;
+            _piDesktopDeletedModels?: string[];
+          };
           const models: PiAgentModel[] = (pd.models || []).map((m) => ({
             id: String(m.id),
             name: typeof m.name === 'string' ? m.name : String(m.id),
@@ -83,7 +90,15 @@ function loadPiAgentConfig(): PiAgentConfig | null {
             reasoning: Boolean(m.reasoning),
             input: Array.isArray(m.input) ? m.input as string[] : undefined
           }));
-          providers.push({ id: providerId, name: pd.name || providerId, baseUrl: pd.baseUrl, models });
+          providers.push({
+            id: providerId,
+            name: pd.name || providerId,
+            baseUrl: pd.baseUrl,
+            apiType: pd.apiType,
+            api: pd.api,
+            _piDesktopDeletedModels: Array.isArray(pd._piDesktopDeletedModels) ? pd._piDesktopDeletedModels : undefined,
+            models,
+          });
         }
       }
     }
@@ -100,7 +115,9 @@ function loadPiAgentConfig(): PiAgentConfig | null {
           // 合并模型中不存在的模型
           const existing = providers.find(p => p.id === yp.id);
           if (!existing) continue;
+          const deletedModels = new Set(existing._piDesktopDeletedModels ?? []);
           for (const ym of yp.models) {
+            if (deletedModels.has(ym.id)) continue;
             if (!existing.models.find(m => m.id === ym.id)) {
               existing.models.push(ym);
             }
@@ -127,6 +144,9 @@ function loadYamlProviders(content: string): PiAgentConfig['providers'] {
     const pd = raw as {
       name?: string;
       baseUrl?: string;
+      apiType?: string;
+      api?: string;
+      _piDesktopDeletedModels?: string[];
       models?: Array<Record<string, unknown>>;
     };
     if (!pd || typeof pd !== 'object') continue;
@@ -154,6 +174,11 @@ function loadYamlProviders(content: string): PiAgentConfig['providers'] {
       id: providerId,
       name: typeof pd.name === 'string' ? pd.name : providerId,
       baseUrl: typeof pd.baseUrl === 'string' ? pd.baseUrl : undefined,
+      apiType: typeof pd.apiType === 'string' ? pd.apiType : undefined,
+      api: typeof pd.api === 'string' ? pd.api : undefined,
+      _piDesktopDeletedModels: Array.isArray(pd._piDesktopDeletedModels)
+        ? pd._piDesktopDeletedModels.filter((id): id is string => typeof id === 'string')
+        : undefined,
       models
     });
   }
@@ -283,7 +308,19 @@ function setupIPC(): void {
   });
 
   setupAgentsIpc(agentRegistry);
-  setupConfigIpc(configManager);
+  setupConfigIpc(configManager, {
+    onManagedModelsChanged: () => {
+      piAgentConfig = loadPiAgentConfig();
+      if (piAgentConfig) {
+        const currentSettings = store.get('settings');
+        store.set('settings', {
+          ...currentSettings,
+          provider: piAgentConfig.defaultProvider,
+          model: piAgentConfig.defaultModel,
+        });
+      }
+    },
+  });
   setupCodexSessionsIpc(codexSessionImporter);
 
   // File search (for @ references and CommandPalette)

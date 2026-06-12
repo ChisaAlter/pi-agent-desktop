@@ -155,14 +155,27 @@ export interface CodexImportReport {
 export interface PiModelItem {
     id: string;
     name?: string;
+    api?: string;
+    reasoning?: boolean;
+    input?: string[];
+    contextWindow?: number;
+    maxTokens?: number;
+    headers?: Record<string, string>;
+    compat?: Record<string, unknown>;
+    cost?: Record<string, unknown>;
+    [key: string]: unknown;
 }
 
 export interface PiProviderConfig {
     name?: string;
     baseUrl?: string;
     apiType?: "openai" | "responses";
+    api?: string;
+    apiKey?: string;
     models?: PiModelItem[];
     headers?: Record<string, string>;
+    _piDesktopDeletedModels?: string[];
+    [key: string]: unknown;
 }
 
 export interface PiModelsFile {
@@ -172,6 +185,7 @@ export interface PiModelsFile {
 export interface PiAuthItem {
     type?: string;
     apiKey?: string;
+    key?: string;
 }
 
 export type PiAuthFile = Record<string, PiAuthItem>;
@@ -186,6 +200,59 @@ export interface ProviderTestResult {
     ok: boolean;
     status?: number;
     message: string;
+}
+
+export type ManagedModelSource = "json" | "yaml";
+
+export interface ManagedModelEntry {
+    providerId: string;
+    providerName: string;
+    modelId: string;
+    modelName: string;
+    baseUrl?: string;
+    apiType?: "openai" | "responses";
+    api?: string;
+    contextWindow?: number;
+    maxTokens?: number;
+    reasoning?: boolean;
+    input?: string[];
+    source: ManagedModelSource;
+    isDefault: boolean;
+    hasApiKey: boolean;
+    apiKeyPreview?: string;
+    headers?: Record<string, string>;
+}
+
+export interface ManagedModelsResult {
+    configDir: string;
+    defaultProvider: string;
+    defaultModel: string;
+    models: ManagedModelEntry[];
+}
+
+export interface ManagedModelSaveInput {
+    originalProviderId?: string;
+    originalModelId?: string;
+    providerId: string;
+    providerName?: string;
+    baseUrl?: string;
+    apiType?: "openai" | "responses";
+    api?: string;
+    apiKey?: string;
+    clearApiKey?: boolean;
+    headers?: Record<string, string>;
+    modelId: string;
+    modelName?: string;
+    contextWindow?: number;
+    maxTokens?: number;
+    reasoning?: boolean;
+    input?: string[];
+    setDefault?: boolean;
+}
+
+export interface ManagedModelDeleteInput {
+    providerId: string;
+    modelId: string;
 }
 
 // ── Pi Config + Settings ──────────────────────────────────────────
@@ -662,6 +729,10 @@ export interface PiAPI {
     configSaveRaw(fileName: string, rawJson: string): Promise<ConfigValidationResult>;
     configExport(): Promise<string>;
     configImport(packageJson: string): Promise<ConfigValidationResult>;
+    configListManagedModels(): Promise<ManagedModelsResult>;
+    configSaveManagedModel(input: ManagedModelSaveInput): Promise<ConfigValidationResult>;
+    configDeleteManagedModel(input: ManagedModelDeleteInput): Promise<ConfigValidationResult>;
+    configSetDefaultModel(providerId: string, modelId: string): Promise<ConfigValidationResult>;
     configFetchModels(baseUrl: string, apiKey?: string, apiType?: string): Promise<PiModelItem[]>;
     configTestProvider(input: {
         baseUrl: string;
