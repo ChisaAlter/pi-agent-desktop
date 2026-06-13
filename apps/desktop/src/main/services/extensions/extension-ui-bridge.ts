@@ -19,6 +19,7 @@ type PendingRequest = {
     source: ExtensionUiRequest["source"];
     options?: string[];
     resolve: (value: string | boolean | undefined) => void;
+    timer: NodeJS.Timeout;
 };
 
 interface ExtensionUiBridgeScope {
@@ -27,6 +28,7 @@ interface ExtensionUiBridgeScope {
 
 const pendingRequests = new Map<string, PendingRequest>();
 let currentPermissionMode: "ask" | "smart" | "always" = "smart";
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
 function getWindow(): BrowserWindow | null {
     return BrowserWindow.getAllWindows().find((win) => !win.isDestroyed()) ?? null;
@@ -84,7 +86,24 @@ export function resolveExtensionUiRequest(
     const pending = pendingRequests.get(requestId);
     if (!pending) return;
     pendingRequests.delete(requestId);
+    clearTimeout(pending.timer);
     pending.resolve(coerceDecisionValue(response, pending));
+}
+
+function timeoutValue(kind: ExtensionUiRequest["kind"]): string | boolean | undefined {
+    return kind === "confirm" ? false : undefined;
+}
+
+export function clearPendingExtensionUiRequests(): void {
+    for (const [requestId, pending] of pendingRequests) {
+        clearTimeout(pending.timer);
+        pendingRequests.delete(requestId);
+        pending.resolve(timeoutValue(pending.kind));
+    }
+}
+
+export function _pendingExtensionUiRequestCount(): number {
+    return pendingRequests.size;
 }
 
 export function setDesktopPermissionMode(mode: "ask" | "smart" | "always"): void {
@@ -160,7 +179,13 @@ export function createExtensionUiBridge(workspaceId: string, scope: ExtensionUiB
         };
 
         return new Promise((resolve) => {
-            pendingRequests.set(requestId, { kind, source, options: opts?.options, resolve });
+            const timer = setTimeout(() => {
+                const pending = pendingRequests.get(requestId);
+                if (!pending) return;
+                pendingRequests.delete(requestId);
+                pending.resolve(timeoutValue(pending.kind));
+            }, DEFAULT_REQUEST_TIMEOUT_MS);
+            pendingRequests.set(requestId, { kind, source, options: opts?.options, resolve, timer });
             send(source === "plan" ? "plan:decision-request" : "permission:request", payload);
         });
     };

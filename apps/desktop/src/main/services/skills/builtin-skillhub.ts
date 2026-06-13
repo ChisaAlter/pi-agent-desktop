@@ -1,5 +1,5 @@
 import { execFile } from "child_process";
-import { join } from "path";
+import { isAbsolute, join, relative, resolve } from "path";
 import { existsSync } from "fs";
 import { rm, mkdir, writeFile, readdir } from "fs/promises";
 
@@ -76,11 +76,45 @@ interface InstallResponse {
     error?: string;
 }
 
+function isPathInside(parent: string, child: string): boolean {
+    const root = resolve(parent);
+    const target = resolve(child);
+    const rel = relative(root, target);
+    return rel === "" || (!!rel && !rel.startsWith("..") && !isAbsolute(rel));
+}
+
+function assertSafeSkillTarget(skillsDir: string, targetDir: string): void {
+    if (!isPathInside(skillsDir, targetDir)) {
+        throw new Error("Skill install target escapes skills directory");
+    }
+}
+
+export function isSafeTarEntry(entry: string): boolean {
+    const normalized = entry.replace(/\\/g, "/").trim();
+    if (!normalized) return true;
+    if (normalized.startsWith("/") || normalized.startsWith("~")) return false;
+    if (/^[a-zA-Z]:/.test(normalized)) return false;
+    return normalized.split("/").every((part) => part !== "..");
+}
+
+async function execTar(args: string[], cwd: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        execFile("tar", args, {
+            cwd,
+            timeout: 30000,
+        }, (err, stdout) => {
+            if (err) reject(err);
+            else resolve(String(stdout ?? ""));
+        });
+    });
+}
+
 export async function installSkill(slug: string, cwd: string): Promise<void> {
     const skillsDir = join(cwd, ".agents", "skills");
     await mkdir(skillsDir, { recursive: true });
 
     const targetDir = join(skillsDir, slug);
+    assertSafeSkillTarget(skillsDir, targetDir);
 
     try {
         const url = `${getApiBase()}/install/${encodeURIComponent(slug)}`;
@@ -94,15 +128,13 @@ export async function installSkill(slug: string, cwd: string): Promise<void> {
             const buffer = Buffer.from(await res.arrayBuffer());
             await writeFile(join(targetDir, "skill.tar.gz"), buffer);
 
-            await new Promise<void>((resolve, reject) => {
-                execFile("tar", ["xzf", "skill.tar.gz", "-C", targetDir], {
-                    cwd: targetDir,
-                    timeout: 30000,
-                }, (err) => {
-                    if (err) reject(err);
-                    else resolve();
-                });
-            });
+            const listing = await execTar(["tf", "skill.tar.gz"], targetDir);
+            const unsafeEntry = listing.split(/\r?\n/).find((entry) => !isSafeTarEntry(entry));
+            if (unsafeEntry) {
+                throw new Error(`Unsafe path in skill archive: ${unsafeEntry}`);
+            }
+
+            await execTar(["xzf", "skill.tar.gz", "-C", targetDir], targetDir);
 
             try {
                 const { unlink } = await import("fs/promises");

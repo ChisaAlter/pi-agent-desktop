@@ -778,14 +778,14 @@ export interface PiAPI {
     configSaveManagedModel(input: ManagedModelSaveInput): Promise<ConfigValidationResult>;
     configDeleteManagedModel(input: ManagedModelDeleteInput): Promise<ConfigValidationResult>;
     configSetDefaultModel(providerId: string, modelId: string): Promise<ConfigValidationResult>;
-    configFetchModels(baseUrl: string, apiKey?: string, apiType?: string): Promise<PiModelItem[]>;
+    configFetchModels(baseUrl: string, apiKey?: string, apiType?: string): Promise<PiModelItem[] | IpcError>;
     configTestProvider(input: {
         baseUrl: string;
         apiKey?: string;
         modelId?: string;
         apiType?: string;
         headers?: Record<string, string>;
-    }): Promise<ProviderTestResult>;
+    }): Promise<ProviderTestResult | IpcError>;
 
     // Codex session import
     codexSessionsScan(workspacePath: string): Promise<CodexSessionSummary[]>;

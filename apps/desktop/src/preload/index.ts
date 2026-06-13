@@ -206,9 +206,9 @@ const piAPI: PiAPI = {
     configSetDefaultModel: (providerId, modelId) =>
         ipcRenderer.invoke("config:set-default-model", providerId, modelId) as Promise<ConfigValidationResult>,
     configFetchModels: (baseUrl, apiKey, apiType) =>
-        ipcRenderer.invoke("config:fetch-models", baseUrl, apiKey, apiType) as Promise<PiModelItem[]>,
+        ipcRenderer.invoke("config:fetch-models", baseUrl, apiKey, apiType) as Promise<PiModelItem[] | IpcError>,
     configTestProvider: (input) =>
-        ipcRenderer.invoke("config:test-provider", input) as Promise<ProviderTestResult>,
+        ipcRenderer.invoke("config:test-provider", input) as Promise<ProviderTestResult | IpcError>,
 
     // Codex session import
     codexSessionsScan: (workspacePath) =>

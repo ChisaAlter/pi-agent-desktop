@@ -11,15 +11,21 @@ import { getProtectedPathReason } from "../services/protected-paths";
 import { terminalCreateSchema, terminalInputSchema, terminalResizeSchema } from "./schemas";
 
 export function setupTerminalIpc(): void {
-    const send = (channel: string, id: string, payload: unknown) => {
+    const sendOutput = (id: string, data: string) => {
         const win = BrowserWindow.getAllWindows()[0];
         if (win && !win.isDestroyed()) {
-            win.webContents.send(channel, { id, payload });
+            win.webContents.send("terminal:output", { id, data });
+        }
+    };
+    const sendExit = (id: string, code: number | null) => {
+        const win = BrowserWindow.getAllWindows()[0];
+        if (win && !win.isDestroyed()) {
+            win.webContents.send("terminal:exit", { id, code });
         }
     };
 
-    ptyManager.onOutput((id, data) => send("terminal:output", id, data));
-    ptyManager.onExit((id, code) => send("terminal:exit", id, code));
+    ptyManager.onOutput(sendOutput);
+    ptyManager.onExit(sendExit);
 
     ipcMain.handle("terminal:create", async (_event, opts: { id?: string; cwd?: string; cols?: number; rows?: number }) => {
         try {

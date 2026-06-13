@@ -24,6 +24,7 @@ interface SkillsIpcDeps {
 }
 
 const STATE_FILE_VERSION = 1;
+const SKILL_SLUG_PATTERN = /^[a-zA-Z0-9_-]+$/;
 interface SkillsState {
     version: number;
     disabled: string[]; // slugs that are disabled
@@ -41,6 +42,14 @@ function loadState(file: string): SkillsState {
 function saveState(file: string, state: SkillsState): void {
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, JSON.stringify(state, null, 2), "utf-8");
+}
+
+function invalidSlugError(slug: string) {
+    return ipcError(
+        "ipcErrors.skills.invalidSlug",
+        `技能标识无效: ${slug}，只允许字母、数字、连字符和下划线`,
+        { slug },
+    );
 }
 
 export function setupSkillsIpc(deps: SkillsIpcDeps): void {
@@ -91,6 +100,9 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
                 "请先选择工作区再安装技能",
             );
         }
+        if (!SKILL_SLUG_PATTERN.test(slug)) {
+            return invalidSlugError(slug);
+        }
         try {
             await installSkill(slug, cwd);
             return { success: true };
@@ -113,12 +125,8 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
             );
         }
         // 安全校验: slug 只允许字母、数字、连字符和下划线，防止路径遍历
-        if (!/^[a-zA-Z0-9_-]+$/.test(slug)) {
-            return ipcError(
-                "ipcErrors.skills.invalidSlug",
-                `技能标识无效: ${slug}，只允许字母、数字、连字符和下划线`,
-                { slug },
-            );
+        if (!SKILL_SLUG_PATTERN.test(slug)) {
+            return invalidSlugError(slug);
         }
         try {
             await uninstallSkill(slug, cwd);

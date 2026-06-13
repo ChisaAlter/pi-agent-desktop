@@ -13,6 +13,7 @@ import { createWorkspaceSession, type WorkspaceSession } from "../pi-session/fac
 import { createApprovalInterceptor } from "../approval/interceptor";
 import { createExtensionUiBridge } from "../extensions/extension-ui-bridge";
 import type { PendingEdits } from "../approval/pending-edits";
+import log from "electron-log/main";
 
 type Send = (channel: string, payload: unknown) => void;
 
@@ -194,8 +195,16 @@ export class AgentRuntimeRegistry {
 
         runtime.session.session.subscribe(async (rawEvent: unknown) => {
             const event = rawEvent as PiEvent;
-            await interceptor.handleEvent(event);
-            this.handleEvent(runtime, event);
+            try {
+                await interceptor.handleEvent(event);
+            } catch (error) {
+                log.error("[agent-runtime] interceptor error:", error);
+            }
+            try {
+                this.handleEvent(runtime, event);
+            } catch (error) {
+                log.error("[agent-runtime] event handling error:", error);
+            }
         });
     }
 

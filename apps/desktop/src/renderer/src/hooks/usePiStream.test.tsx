@@ -417,6 +417,33 @@ describe("usePiStream", () => {
         });
     });
 
+    it("does not persist agent-scoped custom messages or usage into the current chat session", async () => {
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({
+                type: "usage_update",
+                usage: { inputTokens: 10, outputTokens: 2 },
+            } as PiEvent);
+            emitPiEvent?.({
+                type: "custom_message",
+                card: {
+                    id: "agent_card",
+                    kind: "result-summary",
+                    title: "Agent card",
+                },
+            } as PiEvent);
+            emitPiEvent?.({ type: "compaction_start" } as PiEvent);
+            emitPiEvent?.({ type: "compaction_end" } as PiEvent);
+        });
+
+        const session = useSessionStore.getState().sessions[0];
+        expect(session.messages).toEqual([]);
+        expect(session.usage).toBeUndefined();
+    });
+
     it("blocks vague agent plan-mode input locally and shows clarification prompt", async () => {
         usePlanStore.setState({ enabled: true });
         await act(async () => {

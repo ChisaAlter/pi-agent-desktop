@@ -9,6 +9,9 @@ const sessions: Array<{
     dispose: ReturnType<typeof vi.fn>;
     subscribe: ReturnType<typeof vi.fn>;
 }> = [];
+const { interceptorHandleMock } = vi.hoisted(() => ({
+    interceptorHandleMock: vi.fn(async () => undefined),
+}));
 
 vi.mock("../../pi-session/factory", () => ({
     createWorkspaceSession: vi.fn(async (opts: { workspaceId: string }) => {
@@ -29,8 +32,14 @@ vi.mock("../../pi-session/factory", () => ({
 
 vi.mock("../../approval/interceptor", () => ({
     createApprovalInterceptor: vi.fn(() => ({
-        handleEvent: vi.fn(async () => undefined),
+        handleEvent: interceptorHandleMock,
     })),
+}));
+
+vi.mock("electron-log/main", () => ({
+    default: {
+        error: vi.fn(),
+    },
 }));
 
 vi.mock("../../extensions/extension-ui-bridge", () => ({
@@ -43,6 +52,8 @@ describe("AgentRuntimeRegistry", () => {
 
     beforeEach(() => {
         sessions.length = 0;
+        interceptorHandleMock.mockReset();
+        interceptorHandleMock.mockResolvedValue(undefined);
         emitted = [];
         registry = new AgentRuntimeRegistry({
             getWorkspace: (workspaceId) =>
@@ -134,6 +145,23 @@ describe("AgentRuntimeRegistry", () => {
             payload: { agentId: agent.id, workspaceId: "ws_1", event: { type: "agent_start" } },
         });
         expect(emitted.find((item) => item.channel === "pi:event")).toBeUndefined();
+    });
+
+    it("still emits agent events when the approval interceptor fails", async () => {
+        interceptorHandleMock.mockRejectedValueOnce(new Error("interceptor failed"));
+        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+        const subscribed = sessions[0].subscribe.mock.calls[0][0];
+
+        await subscribed({ type: "agent_start" });
+
+        expect(registry.getRuntimeState(agent.id)).toMatchObject({
+            status: "running",
+            isStreaming: true,
+        });
+        expect(emitted).toContainEqual({
+            channel: "agents:event",
+            payload: { agentId: agent.id, workspaceId: "ws_1", event: { type: "agent_start" } },
+        });
     });
 
     it("marks the agent as error when prompt fails", async () => {

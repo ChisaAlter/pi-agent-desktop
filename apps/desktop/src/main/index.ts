@@ -27,6 +27,7 @@ import { setupWindowIpc, setupWindowEvents } from './ipc/window.ipc';
 import { setupWorkspaceIpc } from './ipc/workspace.ipc';
 import { setupProjectShellIpc } from './ipc/project-shell.ipc';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
+import { clearPendingExtensionUiRequests } from './services/extensions/extension-ui-bridge';
 import { setupAutoUpdater } from './services/updater';
 import { ptyManager } from './services/shell/pty-manager';
 import type { AppSettings, Session } from '@shared';
@@ -412,6 +413,7 @@ app.on('window-all-closed', () => {
 
   // Clean up all Pi sessions
   clearAllPendingApprovals();
+  clearPendingExtensionUiRequests();
   piPendingEdits.clear();
   piRegistry.disposeAll();
   agentRegistry.disposeAll();

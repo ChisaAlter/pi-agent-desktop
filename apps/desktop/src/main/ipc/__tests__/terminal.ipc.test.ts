@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 const webContentsSend = vi.fn();
-const { createMock, generateIdMock, hasMock, writeMock, resizeMock } = vi.hoisted(() => ({
+const { createMock, generateIdMock, hasMock, writeMock, resizeMock, onOutputMock, onExitMock } = vi.hoisted(() => ({
     createMock: vi.fn(),
     generateIdMock: vi.fn(() => "pty_generated"),
     hasMock: vi.fn(() => false),
     writeMock: vi.fn(),
     resizeMock: vi.fn(),
+    onOutputMock: vi.fn(),
+    onExitMock: vi.fn(),
 }));
 
 vi.mock("electron", () => ({
@@ -35,8 +37,8 @@ vi.mock("electron-log/main", () => ({
 
 vi.mock("../../services/shell/pty-manager", () => ({
     ptyManager: {
-        onOutput: vi.fn(),
-        onExit: vi.fn(),
+        onOutput: onOutputMock,
+        onExit: onExitMock,
         create: createMock,
         generateId: generateIdMock,
         has: hasMock,
@@ -56,6 +58,8 @@ describe("setupTerminalIpc", () => {
         createMock.mockReset();
         writeMock.mockReset();
         resizeMock.mockReset();
+        onOutputMock.mockClear();
+        onExitMock.mockClear();
         generateIdMock.mockClear();
         hasMock.mockReset();
         hasMock.mockReturnValue(false);
@@ -75,6 +79,17 @@ describe("setupTerminalIpc", () => {
             cols: 100,
             rows: 30,
         });
+    });
+
+    it("forwards terminal output and exit with the preload payload contract", () => {
+        const outputListener = onOutputMock.mock.calls[0][0] as (id: string, data: string) => void;
+        const exitListener = onExitMock.mock.calls[0][0] as (id: string, code: number | null) => void;
+
+        outputListener("pty_1", "hello");
+        exitListener("pty_1", 0);
+
+        expect(webContentsSend).toHaveBeenCalledWith("terminal:output", { id: "pty_1", data: "hello" });
+        expect(webContentsSend).toHaveBeenCalledWith("terminal:exit", { id: "pty_1", code: 0 });
     });
 
     it("blocks protected cwd before creating a terminal", async () => {

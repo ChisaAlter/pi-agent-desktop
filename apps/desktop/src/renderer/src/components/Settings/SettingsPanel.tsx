@@ -5,7 +5,7 @@ import { useSettingsStore } from '../../stores/settings-store';
 import { PiStatusPanel } from '../PiStatusPanel';
 import { ShortcutsSettings } from './ShortcutsSettings/ShortcutsSettings';
 import { useI18n, useTranslateIpcError, SUPPORTED_LOCALES, type Locale } from '../../i18n';
-import type { IpcError, ManagedModelEntry, ManagedModelsResult, ManagedModelSaveInput, PiAuthFile, PiModelsFile, PiSettingsFile } from '@shared';
+import { isIpcError, type IpcError, type ManagedModelEntry, type ManagedModelsResult, type ManagedModelSaveInput, type PiAuthFile, type PiModelsFile, type PiSettingsFile } from '@shared';
 import { isSoundEnabled, setSoundEnabled, getSoundVolume, setSoundVolume } from '../../utils/sounds';
 import { requestNotificationPermission, canNotify } from '../../utils/notifications';
 
@@ -487,6 +487,7 @@ function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: () => Pr
     const [testingKey, setTestingKey] = useState<string | null>(null);
     const [form, setForm] = useState<ModelFormState | null>(null);
     const [pendingDeleteModel, setPendingDeleteModel] = useState<ManagedModelEntry | null>(null);
+    const translateIpcError = useTranslateIpcError();
     const providerIdInputRef = useRef<HTMLInputElement>(null);
     const deleteConfirmButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -546,6 +547,10 @@ function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: () => Pr
                 apiType: model.apiType,
                 headers: model.headers,
             });
+            if (isIpcError(response)) {
+                setMessage(translateIpcError(response));
+                return;
+            }
             setMessage(response.ok ? '连接成功' : response.message);
         } catch (error) {
             setMessage(error instanceof Error ? error.message : String(error));
@@ -821,6 +826,7 @@ function FormInput({
 }
 
 function PiConfigEditor(): React.JSX.Element {
+    const translateIpcError = useTranslateIpcError();
     const [fileName, setFileName] = useState<'models.json' | 'auth.json' | 'settings.json'>('models.json');
     const [raw, setRaw] = useState('');
     const [message, setMessage] = useState('');
@@ -949,6 +955,10 @@ function PiConfigEditor(): React.JSX.Element {
                         const provider = await loadProviderSelection(setFetchStatus);
                         if (!provider) return;
                         const models = await window.piAPI.configFetchModels(provider.baseUrl, provider.apiKey, provider.apiType);
+                        if (isIpcError(models)) {
+                            setFetchStatus(`拉取失败: ${translateIpcError(models)}`);
+                            return;
+                        }
                         setFetchStatus(`拉取到 ${models.length} 个模型`);
                     } catch (e) {
                         setFetchStatus(`拉取失败: ${e instanceof Error ? e.message : String(e)}`);
@@ -960,6 +970,10 @@ function PiConfigEditor(): React.JSX.Element {
                         const provider = await loadProviderSelection(setTestStatus);
                         if (!provider) return;
                         const result = await window.piAPI.configTestProvider(provider);
+                        if (isIpcError(result)) {
+                            setTestStatus(`测试失败: ${translateIpcError(result)}`);
+                            return;
+                        }
                         setTestStatus(result.ok ? "连接成功" : `连接失败: ${result.message}`);
                     } catch (e) {
                         setTestStatus(`测试失败: ${e instanceof Error ? e.message : String(e)}`);

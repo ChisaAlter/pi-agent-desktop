@@ -791,6 +791,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
 
             case "usage_update":
             case "context_update": {
+                if (agentIdRef.current) break;
                 const session = useSessionStore.getState().getCurrentSession();
                 if (session) {
                     useSessionStore.getState().updateSessionUsage(session.id, usageFromEvent(event, session.usage));
@@ -799,14 +800,17 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             }
 
             case "compaction_start":
+                if (agentIdRef.current) break;
                 updateCurrentUsage({ compactionStatus: "running" });
                 break;
 
             case "compaction_end":
+                if (agentIdRef.current) break;
                 updateCurrentUsage({ compactionStatus: "completed" });
                 break;
 
             case "custom_message": {
+                if (agentIdRef.current) break;
                 const session = useSessionStore.getState().getCurrentSession();
                 if (!session) break;
                 const card = sanitizeCustomCard((event as unknown as { card?: unknown; details?: unknown }).card ?? (event as unknown as { details?: unknown }).details ?? event);

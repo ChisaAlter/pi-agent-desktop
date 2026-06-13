@@ -1,4 +1,5 @@
 import { ipcMain } from "electron";
+import { ipcError } from "@shared";
 import type { ManagedModelDeleteInput, ManagedModelSaveInput, PiAuthFile, PiModelsFile, PiSettingsFile } from "@shared";
 import type { ConfigManager } from "../services/config/config-manager";
 
@@ -59,14 +60,22 @@ export function setupConfigIpc(configManager: ConfigManager, opts: { onManagedMo
     ipcMain.handle("config:fetch-models", (_event, baseUrl: string, apiKey?: string, apiType?: string) => {
         // SSRF 防护: 验证 URL 安全性
         if (!isSafeUrl(baseUrl)) {
-            return Promise.reject(new Error("不安全的 URL: 禁止访问私有地址或非 HTTP(S) 协议"));
+            return ipcError(
+                "ipcErrors.config.unsafeUrl",
+                "不安全的 URL: 禁止访问云元数据地址或非 HTTP(S) 协议",
+                { url: baseUrl },
+            );
         }
         return configManager.fetchModels(baseUrl, apiKey, apiType);
     });
     ipcMain.handle("config:test-provider", (_event, input: { baseUrl: string; apiKey?: string; modelId?: string; apiType?: string; headers?: Record<string, string> }) => {
         // SSRF 防护: 验证 URL 安全性
         if (!isSafeUrl(input.baseUrl)) {
-            return Promise.reject(new Error("不安全的 URL: 禁止访问私有地址或非 HTTP(S) 协议"));
+            return ipcError(
+                "ipcErrors.config.unsafeUrl",
+                "不安全的 URL: 禁止访问云元数据地址或非 HTTP(S) 协议",
+                { url: input.baseUrl },
+            );
         }
         return configManager.testProviderConnection(input.baseUrl, input.apiKey, input.modelId, input.apiType, input.headers);
     });
