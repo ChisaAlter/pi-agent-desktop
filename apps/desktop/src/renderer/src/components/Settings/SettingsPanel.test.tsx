@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiModelsFile } from "@shared";
 import { I18nProvider } from "../../i18n";
@@ -67,7 +67,6 @@ describe("SettingsPanel 配置中心", () => {
             },
             configurable: true,
         });
-        vi.spyOn(window, "confirm").mockReturnValue(true);
         useSettingsStore.setState({
             isOpen: true,
             lastWriteError: null,
@@ -83,6 +82,15 @@ describe("SettingsPanel 配置中心", () => {
 
         expect(window.piAPI.configFetchModels).not.toHaveBeenCalled();
         expect(await screen.findByText("请先在 models.json 中配置 provider baseUrl")).toBeTruthy();
+    });
+
+    it("设置弹窗和当前标签内容使用轻量过渡类", () => {
+        renderSettings();
+
+        const dialog = screen.getByRole("dialog", { name: "设置" });
+        expect(dialog.className).toContain("settings-shell-enter");
+        expect(dialog.parentElement?.className).toContain("settings-backdrop-enter");
+        expect(screen.getByRole("tabpanel", { name: "外观" }).className).toContain("settings-tab-panel");
     });
 
     it("使用当前配置中的 provider 信息拉取模型并测试连接", async () => {
@@ -184,11 +192,54 @@ describe("SettingsPanel 配置中心", () => {
         });
 
         fireEvent.click(await screen.findByRole("button", { name: "删除 Custom Model V1" }));
+        const confirmDialog = await screen.findByRole("dialog", { name: "删除模型确认" });
+        expect(confirmDialog).toBeTruthy();
+        expect(within(confirmDialog).getByText("Custom Model V1")).toBeTruthy();
+        expect(window.piAPI.configDeleteManagedModel).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
         await waitFor(() => {
             expect(window.piAPI.configDeleteManagedModel).toHaveBeenCalledWith({
                 providerId: "custom_provider",
                 modelId: "custom-model-v1",
             });
+        });
+    });
+
+    it("打开新增模型弹窗后自动聚焦到 Provider ID 输入框", async () => {
+        renderSettings();
+
+        fireEvent.click(screen.getByRole("tab", { name: "模型" }));
+        fireEvent.click(await screen.findByRole("button", { name: "新增模型" }));
+
+        const providerIdInput = await screen.findByLabelText("Provider ID");
+        await waitFor(() => {
+            expect(document.activeElement).toBe(providerIdInput);
+        });
+    });
+
+    it("打开编辑模型弹窗后自动聚焦到 Provider ID 输入框", async () => {
+        renderSettings();
+
+        fireEvent.click(screen.getByRole("tab", { name: "模型" }));
+        fireEvent.click(await screen.findByRole("button", { name: "编辑 Custom Model V1" }));
+
+        const providerIdInput = await screen.findByLabelText("Provider ID");
+        await waitFor(() => {
+            expect(document.activeElement).toBe(providerIdInput);
+        });
+    });
+
+    it("打开删除确认弹窗后自动聚焦到确认删除按钮", async () => {
+        renderSettings();
+
+        fireEvent.click(screen.getByRole("tab", { name: "模型" }));
+        fireEvent.click(await screen.findByRole("button", { name: "删除 Custom Model V1" }));
+
+        const confirmDialog = await screen.findByRole("dialog", { name: "删除模型确认" });
+        const confirmButton = within(confirmDialog).getByRole("button", { name: "确认删除" });
+        await waitFor(() => {
+            expect(document.activeElement).toBe(confirmButton);
         });
     });
 });

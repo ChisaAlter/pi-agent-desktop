@@ -94,7 +94,7 @@ describe("ConfigManager", () => {
         ]);
     });
 
-    it("saves a managed model and stores the provider api key in auth.json", async () => {
+    it("saves a managed model with Pi SDK compatible api and key fields", async () => {
         const result = await manager.saveManagedModel({
             providerId: "custom",
             providerName: "Custom Provider",
@@ -116,6 +116,8 @@ describe("ConfigManager", () => {
                         name: "Custom Provider",
                         baseUrl: "https://api.example.com/v1",
                         apiType: "openai",
+                        api: "openai-completions",
+                        apiKey: "sk-new-secret",
                         models: [{ id: "custom-model", name: "Custom Model", contextWindow: 64000, maxTokens: 8192 }],
                     },
                 },

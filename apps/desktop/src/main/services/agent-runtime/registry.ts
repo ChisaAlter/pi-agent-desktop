@@ -4,6 +4,7 @@ import type {
     AgentRuntimeState,
     AgentTab,
     CreateAgentInput,
+    PiSlashCommand,
     SendAgentPromptInput,
     Workspace,
 } from "@shared";
@@ -59,7 +60,7 @@ export class AgentRuntimeRegistry {
             workspaceId: workspace.id,
             workspacePath: workspace.path,
             sessionPath: input.sessionPath,
-            uiContext: createExtensionUiBridge(workspace.id),
+            uiContext: createExtensionUiBridge(workspace.id, { agentId: id }),
         });
 
         const runtime: AgentRuntime = {
@@ -165,6 +166,14 @@ export class AgentRuntimeRegistry {
         };
     }
 
+    getWorkspaceSession(agentId: string): WorkspaceSession {
+        return this.requireRuntime(agentId).session;
+    }
+
+    listSlashCommands(agentId: string): PiSlashCommand[] {
+        return collectDynamicSlashCommands(this.requireRuntime(agentId).session.session);
+    }
+
     findDefaultAgent(workspaceId: string): AgentTab | undefined {
         return this.list().find((agent) => agent.workspaceId === workspaceId);
     }
@@ -239,4 +248,37 @@ export class AgentRuntimeRegistry {
         if (!runtime) throw new Error(`Agent not found: ${agentId}`);
         return runtime;
     }
+}
+
+function collectDynamicSlashCommands(session: WorkspaceSession["session"]): PiSlashCommand[] {
+    const commands: PiSlashCommand[] = [];
+    const extensionCommands = session.extensionRunner?.getRegisteredCommands?.() ?? [];
+    for (const command of extensionCommands as Array<{ invocationName?: unknown; name?: unknown; description?: unknown }>) {
+        const name = typeof command.invocationName === "string"
+            ? command.invocationName
+            : typeof command.name === "string"
+                ? command.name
+                : "";
+        if (!name) continue;
+        commands.push({
+            name,
+            description: typeof command.description === "string" ? command.description : undefined,
+            source: "extension",
+        });
+    }
+    for (const template of session.promptTemplates ?? []) {
+        commands.push({
+            name: template.name,
+            description: template.description,
+            source: "prompt",
+        });
+    }
+    for (const skill of session.resourceLoader.getSkills().skills) {
+        commands.push({
+            name: `skill:${skill.name}`,
+            description: skill.description,
+            source: "skill",
+        });
+    }
+    return commands;
 }

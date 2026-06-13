@@ -61,6 +61,18 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
         expect(selected).toBe("search");
     });
 
+    it("左下角展示 pi-agent 在线状态", () => {
+        render(<MiniMaxCodeSidebar currentSection="chat" piAgentStatus="online" onSectionChange={() => undefined} />);
+
+        expect(screen.getByRole("status", { name: "pi-agent 在线" })).toBeTruthy();
+    });
+
+    it("左下角展示 pi-agent 不在线状态", () => {
+        render(<MiniMaxCodeSidebar currentSection="chat" piAgentStatus="offline" onSectionChange={() => undefined} />);
+
+        expect(screen.getByRole("status", { name: "pi-agent 不在线" })).toBeTruthy();
+    });
+
     it("左侧主导航展示 Git 入口并可切换", () => {
         let selected = "";
         render(<MiniMaxCodeSidebar currentSection="git" onSectionChange={(section) => { selected = section; }} />);

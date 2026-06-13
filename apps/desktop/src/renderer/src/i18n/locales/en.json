@@ -161,25 +161,7 @@
   "chatView": {
     "welcome": {
       "title": "Ready to get started?",
-      "subtitle": "Describe what you want to build or change, and Pi will spin up an isolated workspace for you.",
-      "cards": {
-        "newFeature": {
-          "title": "New feature",
-          "desc": "Describe the feature you want to add"
-        },
-        "fixBug": {
-          "title": "Fix a bug",
-          "desc": "Describe the bug you've hit"
-        },
-        "review": {
-          "title": "Code review",
-          "desc": "Have AI review your code"
-        },
-        "explain": {
-          "title": "Explain code",
-          "desc": "Have AI explain complex code"
-        }
-      }
+      "subtitle": "Describe what you want to build or change, and Pi will spin up an isolated workspace for you."
     },
     "piCliMissing": {
       "title": "Pi CLI not detected",

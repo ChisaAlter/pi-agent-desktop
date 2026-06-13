@@ -161,25 +161,7 @@
   "chatView": {
     "welcome": {
       "title": "准备好开始了吗？",
-      "subtitle": "描述你想要构建或修改的内容，Pi 会为你创建一个独立的工作环境。",
-      "cards": {
-        "newFeature": {
-          "title": "新建功能",
-          "desc": "描述你想要添加的功能"
-        },
-        "fixBug": {
-          "title": "修复问题",
-          "desc": "描述你遇到的bug"
-        },
-        "review": {
-          "title": "代码审查",
-          "desc": "让AI审查你的代码"
-        },
-        "explain": {
-          "title": "解释代码",
-          "desc": "让AI解释复杂代码"
-        }
-      }
+      "subtitle": "描述你想要构建或修改的内容，Pi 会为你创建一个独立的工作环境。"
     },
     "piCliMissing": {
       "title": "Pi CLI 未检测到",

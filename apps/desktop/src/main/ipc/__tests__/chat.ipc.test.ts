@@ -207,4 +207,96 @@ describe("setupChatIpc", () => {
         expect(result).toBeUndefined();
         expect(rmSyncMock).toHaveBeenCalledWith(expect.stringMatching(/[\\/]repo[\\/]src[\\/]new\.ts$/), { force: true });
     });
+
+    it("lists builtin and dynamic Pi slash commands for the workspace session", async () => {
+        const session = {
+            extensionRunner: {
+                getRegisteredCommands: vi.fn(() => [
+                    { invocationName: "plan", description: "Plan work", sourceInfo: { scope: "project" } },
+                ]),
+            },
+            promptTemplates: [
+                { name: "review", description: "Review code", sourceInfo: { scope: "user" } },
+            ],
+            resourceLoader: {
+                getSkills: vi.fn(() => ({
+                    skills: [
+                        { name: "tdd", description: "Use TDD", sourceInfo: { scope: "user" } },
+                    ],
+                })),
+            },
+        };
+        const registry = {
+            get: vi.fn(async () => ({ session })),
+            has: vi.fn(() => true),
+        };
+
+        setupChatIpc({
+            registry: registry as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+        });
+
+        const handler = handlers.get("pi:list-slash-commands");
+        const result = await handler?.({}, "ws_1");
+
+        expect(result).toEqual(expect.arrayContaining([
+            expect.objectContaining({ name: "model", source: "builtin", desktopAction: "open-models" }),
+            expect.objectContaining({ name: "plan", source: "extension" }),
+            expect.objectContaining({ name: "review", source: "prompt" }),
+            expect.objectContaining({ name: "skill:tdd", source: "skill" }),
+        ]));
+    });
+
+    it("runs compact and reload builtin slash commands against the workspace session", async () => {
+        const compact = vi.fn(async () => ({ summary: "ok" }));
+        const reload = vi.fn(async () => undefined);
+        const session = {
+            compact,
+            reload,
+            extensionRunner: { getRegisteredCommands: vi.fn(() => []) },
+            promptTemplates: [],
+            resourceLoader: { getSkills: vi.fn(() => ({ skills: [] })) },
+        };
+        const registry = {
+            get: vi.fn(async () => ({ session })),
+            has: vi.fn(() => true),
+        };
+
+        setupChatIpc({
+            registry: registry as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+        });
+
+        const handler = handlers.get("pi:run-builtin-slash-command");
+        const compactResult = await handler?.({}, { workspaceId: "ws_1", command: "compact", args: "keep API facts" });
+        const reloadResult = await handler?.({}, { workspaceId: "ws_1", command: "reload", args: "" });
+
+        expect(compact).toHaveBeenCalledWith("keep API facts");
+        expect(reload).toHaveBeenCalledTimes(1);
+        expect(compactResult).toMatchObject({ handled: true, command: "compact", action: "compact" });
+        expect(reloadResult).toMatchObject({ handled: true, command: "reload", action: "reload" });
+    });
+
+    it("returns an unsupported result for interactive CLI-only slash commands", async () => {
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+        });
+
+        const handler = handlers.get("pi:run-builtin-slash-command");
+        const result = await handler?.({}, { workspaceId: "ws_1", command: "tree", args: "" });
+
+        expect(result).toMatchObject({
+            handled: true,
+            command: "tree",
+            action: "unsupported",
+            keepInput: true,
+        });
+    });
 });

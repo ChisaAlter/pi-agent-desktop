@@ -132,7 +132,8 @@ export class ConfigManager {
             models: [...(existingProvider.models ?? [])],
         };
         if (input.apiType) nextProvider.apiType = input.apiType;
-        if (input.api) nextProvider.api = input.api;
+        const api = input.api?.trim() || this.apiFromApiType(input.apiType) || existingProvider.api;
+        if (api) nextProvider.api = api;
         if (input.headers) nextProvider.headers = input.headers;
 
         const existingModel = nextProvider.models?.find((model) => model.id === modelId);
@@ -155,8 +156,14 @@ export class ConfigManager {
 
         if (input.clearApiKey) {
             delete authFile[providerId];
+            delete nextProvider.apiKey;
         } else if (input.apiKey && input.apiKey.trim()) {
-            authFile[providerId] = { type: "api_key", key: input.apiKey.trim() };
+            const apiKey = input.apiKey.trim();
+            authFile[providerId] = { type: "api_key", key: apiKey };
+            nextProvider.apiKey = apiKey;
+        } else {
+            const existingAuthValue = this.getAuthValue(authFile[providerId]) ?? existingProvider.apiKey;
+            if (existingAuthValue) nextProvider.apiKey = existingAuthValue;
         }
 
         await this.saveModelsConfig(modelsFile);
@@ -430,6 +437,12 @@ export class ConfigManager {
     private apiTypeFromApi(api?: string): "openai" | "responses" | undefined {
         if (api === "openai-responses") return "responses";
         if (api === "openai-completions") return "openai";
+        return undefined;
+    }
+
+    private apiFromApiType(apiType?: string): string | undefined {
+        if (apiType === "responses") return "openai-responses";
+        if (apiType === "openai") return "openai-completions";
         return undefined;
     }
 

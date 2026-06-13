@@ -39,6 +39,10 @@ vi.mock("./ChatInput", () => ({
   ),
 }));
 
+vi.mock("../ModelSelector/ModelSelector", () => ({
+  ModelSelector: () => <div data-testid="external-model-selector">external model selector</div>,
+}));
+
 vi.mock("./MessageBubble", () => ({
   MessageBubble: ({
     message,
@@ -213,6 +217,18 @@ describe("ChatView", () => {
     expect(log.className).not.toContain("justify-end");
     expect(scrollRegion.contains(inputShell)).toBe(false);
     expect(root.lastElementChild?.contains(inputShell)).toBe(true);
+  });
+
+  it("does not render a second model selector outside the composer", () => {
+    mockedStreamError = null;
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    expect(screen.queryByTestId("external-model-selector")).toBeNull();
   });
 
   it("auto-scrolls only the chat scroll region instead of the outer document", () => {

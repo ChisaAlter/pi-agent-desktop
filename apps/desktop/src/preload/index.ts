@@ -134,6 +134,11 @@ const piAPI: PiAPI = {
     onAgentEvent: (cb) =>
         subscribe<{ agentId: string; workspaceId: string; event: PiEvent }>("agents:event", cb),
 
+    listSlashCommands: (workspaceId, agentId) =>
+        ipcRenderer.invoke("pi:list-slash-commands", workspaceId, agentId),
+    runBuiltinSlashCommand: (input) =>
+        ipcRenderer.invoke("pi:run-builtin-slash-command", input),
+
     permissionSetMode: (mode: PermissionMode) => ipcRenderer.invoke("permission:set-mode", mode),
     permissionRespond: (
         requestId: string,

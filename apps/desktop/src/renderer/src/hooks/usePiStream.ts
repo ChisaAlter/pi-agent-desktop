@@ -416,6 +416,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             content,
             createdAt: Date.now(),
             ...(planAction ? { planAction } : {}),
+            ...(role === "user" ? { meta: { optimistic: true } } : {}),
         });
     }, []);
 
@@ -895,7 +896,9 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             if (planEnabled && isSlashCommand) {
                 pauseVisibleStreamingForPlanDecision();
             } else {
-                if (!aid && session) {
+                if (aid) {
+                    appendAgentMessage(aid, "user", visibleContent);
+                } else if (session) {
                     addMessage(session.id, {
                         id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
                         role: "user",
@@ -936,10 +939,10 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         // Notify useTaskProgress: streaming started
         window.dispatchEvent(new CustomEvent("pi:stream-start"));
 
-        // Agent workbench messages are owned by AgentRuntimeRegistry; legacy chats
-        // still write the user message to the session store immediately.
-        if (aid && options.visibleContent && options.visibleContent !== content) {
-            appendAgentMessage(aid, "user", options.visibleContent);
+        // Agent runtime will later echo the canonical message list. Add an
+        // optimistic row now so permission prompts cannot leave the chat empty.
+        if (aid) {
+            appendAgentMessage(aid, "user", visibleContent);
         } else if (!aid && session) {
             sessionIdRef.current = session.id;
             addMessage(session.id, {

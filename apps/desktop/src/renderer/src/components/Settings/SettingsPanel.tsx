@@ -1,6 +1,6 @@
 // 设置面板 - MiniMax Code 参考风格: 大模态、左侧分类、浅色密集表单.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useSettingsStore } from '../../stores/settings-store';
 import { PiStatusPanel } from '../PiStatusPanel';
 import { ShortcutsSettings } from './ShortcutsSettings/ShortcutsSettings';
@@ -10,6 +10,16 @@ import { isSoundEnabled, setSoundEnabled, getSoundVolume, setSoundVolume } from 
 import { requestNotificationPermission, canNotify } from '../../utils/notifications';
 
 type SettingsTab = 'appearance' | 'model' | 'piagent' | 'config' | 'general' | 'shortcuts' | 'about';
+
+function isSettingsTab(value: unknown): value is SettingsTab {
+    return value === 'appearance' ||
+        value === 'model' ||
+        value === 'piagent' ||
+        value === 'config' ||
+        value === 'general' ||
+        value === 'shortcuts' ||
+        value === 'about';
+}
 
 function CloseIcon(): React.JSX.Element {
     return (
@@ -64,11 +74,11 @@ function SwitchControl({
             aria-checked={checked}
             aria-label={label}
             onClick={onChange}
-            className={`relative h-6 w-11 rounded-full transition-colors ${checked ? 'bg-[#1f1f1f]' : 'bg-[#d9d9d4]'}`}
+            className={`settings-pressable relative h-6 w-11 rounded-full transition-[transform,background-color] duration-150 ease-out ${checked ? 'bg-[#1f1f1f]' : 'bg-[#d9d9d4]'}`}
         >
             <span
                 aria-hidden="true"
-                className={`absolute top-0.5 h-5 w-5 rounded-full bg-[var(--mm-bg-panel)] shadow-sm transition-transform ${checked ? 'translate-x-5' : 'translate-x-0.5'}`}
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-[var(--mm-bg-panel)] shadow-sm transition-transform duration-200 ease-out ${checked ? 'translate-x-5' : 'translate-x-0.5'}`}
             />
         </button>
     );
@@ -92,6 +102,15 @@ export function SettingsPanel(): React.JSX.Element {
     useEffect(() => {
         if (!isOpen) clearWriteError();
     }, [isOpen, clearWriteError]);
+
+    useEffect(() => {
+        const onSelectTab = (event: Event): void => {
+            const tab = (event as CustomEvent<{ tab?: unknown }>).detail?.tab;
+            if (isSettingsTab(tab)) setActiveTab(tab);
+        };
+        window.addEventListener("settings:select-tab", onSelectTab);
+        return () => window.removeEventListener("settings:select-tab", onSelectTab);
+    }, []);
 
     useEffect(() => {
         if (isOpen && window.piAPI?.getFullConfig) {
@@ -119,9 +138,9 @@ export function SettingsPanel(): React.JSX.Element {
     ];
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-6 backdrop-blur-[1px]">
+        <div className="settings-backdrop-enter fixed inset-0 z-50 flex items-center justify-center bg-black/35 p-6 backdrop-blur-[1px]">
             <div
-                className="flex h-[min(760px,calc(100vh-48px))] w-[min(1040px,calc(100vw-48px))] overflow-hidden rounded-2xl border border-[var(--mm-border)] bg-[var(--mm-bg-main)] shadow-[0_24px_80px_rgba(0,0,0,0.22)]"
+                className="settings-shell-enter flex h-[min(760px,calc(100vh-48px))] w-[min(1040px,calc(100vw-48px))] overflow-hidden rounded-2xl border border-[var(--mm-border)] bg-[var(--mm-bg-main)] shadow-[0_24px_80px_rgba(0,0,0,0.22)]"
                 role="dialog"
                 aria-modal="true"
                 aria-label={t('settings.title')}
@@ -143,7 +162,7 @@ export function SettingsPanel(): React.JSX.Element {
                                     aria-label={tab.label}
                                     id={`settings-tab-${tab.id}`}
                                     onClick={() => setActiveTab(tab.id)}
-                                    className={`mb-1 w-full rounded-lg px-3 py-2.5 text-left transition-colors ${
+                                    className={`settings-pressable mb-1 w-full rounded-lg px-3 py-2.5 text-left transition-[transform,background-color,color,box-shadow] duration-150 ease-out ${
                                         isActive
                                             ? 'bg-[var(--mm-bg-panel)] text-[var(--mm-text-primary)] shadow-sm'
                                             : 'text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]'
@@ -159,7 +178,7 @@ export function SettingsPanel(): React.JSX.Element {
                         <button
                             type="button"
                             onClick={resetSettings}
-                            className="w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
+                            className="settings-pressable w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color,color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
                             aria-label={t('settings.resetAria')}
                         >
                             {t('settings.reset')}
@@ -178,7 +197,7 @@ export function SettingsPanel(): React.JSX.Element {
                         {writeErrorMessage && (
                             <div className="mx-4 flex min-w-0 flex-1 items-center justify-between rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
                                 <span className="truncate">{writeErrorMessage}</span>
-                                <button type="button" onClick={clearWriteError} className="ml-3 flex h-5 w-5 shrink-0 items-center justify-center rounded text-red-500 hover:bg-red-100 hover:text-red-700" aria-label="Dismiss">
+                                <button type="button" onClick={clearWriteError} className="settings-pressable ml-3 flex h-5 w-5 shrink-0 items-center justify-center rounded text-red-500 transition-[transform,background-color,color] duration-150 ease-out hover:bg-red-100 hover:text-red-700" aria-label="Dismiss">
                                     <CloseIcon />
                                 </button>
                             </div>
@@ -186,7 +205,7 @@ export function SettingsPanel(): React.JSX.Element {
                         <button
                             type="button"
                             onClick={closeSettings}
-                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--mm-text-tertiary)] transition-colors hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)]"
+                            className="settings-pressable flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--mm-text-tertiary)] transition-[transform,background-color,color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)]"
                             aria-label={t('common.close')}
                             title={t('common.close')}
                         >
@@ -196,7 +215,7 @@ export function SettingsPanel(): React.JSX.Element {
 
                     <div className="min-h-0 flex-1 overflow-y-auto px-7 py-6">
                         {activeTab === 'appearance' && (
-                            <div role="tabpanel" id="settings-tabpanel-appearance" aria-labelledby="settings-tab-appearance">
+                            <div className="settings-tab-panel" role="tabpanel" id="settings-tabpanel-appearance" aria-labelledby="settings-tab-appearance">
                                 <SectionTitle title={t('settings.appearance.heading')} description={t('settings.appearance.description')} />
                                 <div className="grid grid-cols-3 gap-3">
                                     {(['light', 'dark', 'system'] as const).map((theme) => {
@@ -206,7 +225,7 @@ export function SettingsPanel(): React.JSX.Element {
                                                 key={theme}
                                                 type="button"
                                                 onClick={() => useSettingsStore.getState().setTheme(theme)}
-                                                className={`rounded-xl border p-3 text-left transition-colors ${
+                                                className={`settings-pressable rounded-xl border p-3 text-left transition-[transform,background-color,border-color,box-shadow] duration-150 ease-out ${
                                                     active ? 'border-[#1f1f1f] bg-[var(--mm-bg-panel)]' : 'border-[var(--mm-border)] bg-[var(--mm-bg-panel)] hover:border-[#cfcfca]'
                                                 }`}
                                             >
@@ -236,13 +255,13 @@ export function SettingsPanel(): React.JSX.Element {
                         )}
 
                         {activeTab === 'model' && (
-                            <div role="tabpanel" id="settings-tabpanel-model" aria-labelledby="settings-tab-model">
+                            <div className="settings-tab-panel" role="tabpanel" id="settings-tabpanel-model" aria-labelledby="settings-tab-model">
                                 <ManagedModelsPanel onPiConfigChanged={loadPiConfig} />
                             </div>
                         )}
 
                         {activeTab === 'piagent' && (
-                            <div role="tabpanel" id="settings-tabpanel-piagent" aria-labelledby="settings-tab-piagent">
+                            <div className="settings-tab-panel" role="tabpanel" id="settings-tabpanel-piagent" aria-labelledby="settings-tab-piagent">
                                 <SectionTitle title={t('settings.piagent.heading')} description={t('settings.piagent.description')} />
                                 <PiStatusPanel />
 
@@ -288,7 +307,7 @@ export function SettingsPanel(): React.JSX.Element {
                         )}
 
                         {activeTab === 'general' && (
-                            <div role="tabpanel" id="settings-tabpanel-general" aria-labelledby="settings-tab-general">
+                            <div className="settings-tab-panel" role="tabpanel" id="settings-tabpanel-general" aria-labelledby="settings-tab-general">
                                 <SectionTitle title={t('settings.general.heading')} description={t('settings.general.description')} />
                                 <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4">
                                     <FieldRow label={t('settings.language.label')} description={t('settings.language.description')}>
@@ -369,13 +388,13 @@ export function SettingsPanel(): React.JSX.Element {
                         )}
 
                         {activeTab === 'shortcuts' && (
-                            <div role="tabpanel" id="settings-tabpanel-shortcuts" aria-labelledby="settings-tab-shortcuts">
+                            <div className="settings-tab-panel" role="tabpanel" id="settings-tabpanel-shortcuts" aria-labelledby="settings-tab-shortcuts">
                                 <ShortcutsSettings />
                             </div>
                         )}
 
                         {activeTab === 'about' && (
-                            <div role="tabpanel" id="settings-tabpanel-about" aria-labelledby="settings-tab-about">
+                            <div className="settings-tab-panel" role="tabpanel" id="settings-tabpanel-about" aria-labelledby="settings-tab-about">
                                 <SectionTitle title={t('settings.about.heading')} />
                                 <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-4 text-sm leading-6 text-[var(--mm-text-secondary)]">
                                     <p className="m-0 text-[var(--mm-text-primary)]">{t('settings.about.version', { version: '0.2.0' })}</p>
@@ -390,7 +409,7 @@ export function SettingsPanel(): React.JSX.Element {
                         <button
                             type="button"
                             onClick={closeSettings}
-                            className="rounded-lg bg-[#1f1f1f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#333]"
+                            className="settings-pressable rounded-lg bg-[#1f1f1f] px-4 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:bg-[#333]"
                             aria-label={t('settings.closeAria')}
                         >
                             {t('common.done')}
@@ -467,6 +486,9 @@ function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: () => Pr
     const [message, setMessage] = useState('');
     const [testingKey, setTestingKey] = useState<string | null>(null);
     const [form, setForm] = useState<ModelFormState | null>(null);
+    const [pendingDeleteModel, setPendingDeleteModel] = useState<ManagedModelEntry | null>(null);
+    const providerIdInputRef = useRef<HTMLInputElement>(null);
+    const deleteConfirmButtonRef = useRef<HTMLButtonElement>(null);
 
     const refresh = async (): Promise<void> => {
         const next = await window.piAPI.configListManagedModels();
@@ -488,6 +510,18 @@ function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: () => Pr
     }, []);
 
     const defaultModel = result?.models.find((model) => model.isDefault);
+    const formFocusKey = form ? `${form.originalProviderId ?? ''}:${form.originalModelId ?? ''}:${form.originalModelId ? 'edit' : 'new'}` : null;
+    const pendingDeleteFocusKey = pendingDeleteModel ? `${pendingDeleteModel.providerId}:${pendingDeleteModel.modelId}` : null;
+
+    useEffect(() => {
+        if (!formFocusKey) return;
+        providerIdInputRef.current?.focus();
+    }, [formFocusKey]);
+
+    useEffect(() => {
+        if (!pendingDeleteFocusKey) return;
+        deleteConfirmButtonRef.current?.focus();
+    }, [pendingDeleteFocusKey]);
 
     const loadApiKey = async (providerId: string): Promise<string | undefined> => {
         const auth = await window.piAPI.configGetAuth();
@@ -549,7 +583,6 @@ function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: () => Pr
     };
 
     const deleteModel = async (model: ManagedModelEntry): Promise<void> => {
-        if (!window.confirm(`删除模型 ${model.modelName}？`)) return;
         const response = await window.piAPI.configDeleteManagedModel({
             providerId: model.providerId,
             modelId: model.modelId,
@@ -558,6 +591,7 @@ function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: () => Pr
             setMessage(response.error ?? '删除失败');
             return;
         }
+        setPendingDeleteModel(null);
         setMessage('模型已删除');
         await refresh();
         await onPiConfigChanged();
@@ -581,7 +615,7 @@ function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: () => Pr
                 <button
                     type="button"
                     onClick={() => setForm(emptyModelForm)}
-                    className="shrink-0 rounded-lg bg-[#1f1f1f] px-3 py-2 text-sm font-medium text-white hover:bg-[#333]"
+                    className="settings-pressable shrink-0 rounded-lg bg-[#1f1f1f] px-3 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:bg-[#333]"
                 >
                     新增模型
                 </button>
@@ -615,7 +649,7 @@ function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: () => Pr
                         {result.models.map((model) => {
                             const key = `${model.providerId}:${model.modelId}`;
                             return (
-                                <div key={key} className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 p-4">
+                                <div key={key} className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 p-4 transition-colors duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)]">
                                     <div className="min-w-0">
                                         <div className="flex flex-wrap items-center gap-2">
                                             <div className="truncate text-sm font-semibold text-[var(--mm-text-primary)]">{model.modelName}</div>
@@ -638,7 +672,7 @@ function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: () => Pr
                                     </div>
                                     <div className="flex shrink-0 items-center gap-1">
                                         {!model.isDefault && (
-                                            <button type="button" onClick={() => void setDefault(model)} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">
+                                            <button type="button" onClick={() => void setDefault(model)} className="settings-pressable rounded-md px-2 py-1 text-xs transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">
                                                 设为默认
                                             </button>
                                         )}
@@ -647,14 +681,14 @@ function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: () => Pr
                                             onClick={() => void testModel(model)}
                                             disabled={testingKey === key}
                                             aria-label={`测试 ${model.modelName}`}
-                                            className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-50"
+                                            className="settings-pressable rounded-md px-2 py-1 text-xs transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--mm-bg-hover)] disabled:opacity-50"
                                         >
                                             测试
                                         </button>
-                                        <button type="button" onClick={() => setForm(modelToForm(model))} aria-label={`编辑 ${model.modelName}`} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">
+                                        <button type="button" onClick={() => setForm(modelToForm(model))} aria-label={`编辑 ${model.modelName}`} className="settings-pressable rounded-md px-2 py-1 text-xs transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">
                                             编辑
                                         </button>
-                                        <button type="button" onClick={() => void deleteModel(model)} aria-label={`删除 ${model.modelName}`} className="rounded-md px-2 py-1 text-xs text-red-600 hover:bg-red-50">
+                                        <button type="button" onClick={() => setPendingDeleteModel(model)} aria-label={`删除 ${model.modelName}`} className="settings-pressable rounded-md px-2 py-1 text-xs text-red-600 transition-[transform,background-color] duration-150 ease-out hover:bg-red-50">
                                             删除
                                         </button>
                                     </div>
@@ -666,14 +700,14 @@ function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: () => Pr
             </div>
 
             {form && (
-                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-6">
-                    <div className="w-[min(680px,calc(100vw-48px))] rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-2xl" role="dialog" aria-modal="true" aria-label="模型编辑">
+                <div className="settings-subdialog-backdrop fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-6">
+                    <div className="settings-subdialog w-[min(680px,calc(100vw-48px))] rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-2xl" role="dialog" aria-modal="true" aria-label="模型编辑">
                         <div className="flex items-center justify-between border-b border-[var(--mm-border)] px-5 py-4">
                             <div className="text-sm font-semibold text-[var(--mm-text-primary)]">{form.originalModelId ? '编辑模型' : '新增模型'}</div>
-                            <button type="button" onClick={() => setForm(null)} className="rounded-md px-2 py-1 text-sm hover:bg-[var(--mm-bg-sidebar)]">关闭</button>
+                            <button type="button" onClick={() => setForm(null)} className="settings-pressable rounded-md px-2 py-1 text-sm transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)]">关闭</button>
                         </div>
                         <div className="grid grid-cols-2 gap-4 p-5">
-                            <FormInput label="Provider ID" value={form.providerId} onChange={(providerId) => setForm({ ...form, providerId })} />
+                            <FormInput inputRef={providerIdInputRef} label="Provider ID" value={form.providerId} onChange={(providerId) => setForm({ ...form, providerId })} />
                             <FormInput label="Provider 名称" value={form.providerName} onChange={(providerName) => setForm({ ...form, providerName })} />
                             <FormInput className="col-span-2" label="Base URL" value={form.baseUrl} onChange={(baseUrl) => setForm({ ...form, baseUrl })} />
                             <label className="block text-xs font-medium text-[var(--mm-text-secondary)]">
@@ -702,8 +736,51 @@ function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: () => Pr
                             </label>
                         </div>
                         <div className="flex justify-end gap-2 border-t border-[var(--mm-border)] px-5 py-4">
-                            <button type="button" onClick={() => setForm(null)} className="rounded-lg px-3 py-2 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]">取消</button>
-                            <button type="button" onClick={() => void saveModel()} className="rounded-lg bg-[#1f1f1f] px-3 py-2 text-sm font-medium text-white hover:bg-[#333]">保存模型</button>
+                            <button type="button" onClick={() => setForm(null)} className="settings-pressable rounded-lg px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)]">取消</button>
+                            <button type="button" onClick={() => void saveModel()} className="settings-pressable rounded-lg bg-[#1f1f1f] px-3 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:bg-[#333]">保存模型</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {pendingDeleteModel && (
+                <div className="settings-subdialog-backdrop fixed inset-0 z-[70] flex items-center justify-center bg-black/30 p-6 backdrop-blur-[1px]">
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="删除模型确认"
+                        className="settings-subdialog w-[min(440px,calc(100vw-48px))] overflow-hidden rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-[0_24px_80px_rgba(0,0,0,0.22)]"
+                    >
+                        <div className="border-b border-[var(--mm-border)] px-5 py-4">
+                            <div className="text-[15px] font-semibold text-[var(--mm-text-primary)]">删除模型</div>
+                            <div className="mt-1 text-xs leading-5 text-[var(--mm-text-tertiary)]">
+                                此操作会更新 Pi Agent 配置。删除默认模型时会自动切换到下一个可用模型。
+                            </div>
+                        </div>
+                        <div className="px-5 py-4">
+                            <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2">
+                                <div className="truncate text-sm font-medium text-red-700">{pendingDeleteModel.modelName}</div>
+                                <div className="mt-1 truncate font-mono text-xs text-red-500">
+                                    {pendingDeleteModel.providerId}/{pendingDeleteModel.modelId}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2 border-t border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-5 py-4">
+                            <button
+                                type="button"
+                                onClick={() => setPendingDeleteModel(null)}
+                                className="settings-pressable rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]"
+                            >
+                                取消
+                            </button>
+                            <button
+                                ref={deleteConfirmButtonRef}
+                                type="button"
+                                onClick={() => void deleteModel(pendingDeleteModel)}
+                                className="settings-pressable rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:bg-red-700"
+                            >
+                                确认删除
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -717,12 +794,14 @@ function FormInput({
     value,
     onChange,
     placeholder,
+    inputRef,
     className = '',
 }: {
     label: string;
     value: string;
     onChange: (value: string) => void;
     placeholder?: string;
+    inputRef?: React.Ref<HTMLInputElement>;
     className?: string;
 }): React.JSX.Element {
     const id = `model-form-${label.replace(/\s+/g, '-').toLowerCase()}`;
@@ -730,6 +809,7 @@ function FormInput({
         <label htmlFor={id} className={`block text-xs font-medium text-[var(--mm-text-secondary)] ${className}`}>
             {label}
             <input
+                ref={inputRef}
                 id={id}
                 value={value}
                 placeholder={placeholder}
@@ -831,7 +911,7 @@ function PiConfigEditor(): React.JSX.Element {
     };
 
     return (
-        <div className="space-y-4" role="tabpanel" id="settings-tabpanel-config" aria-labelledby="settings-tab-config">
+        <div className="settings-tab-panel space-y-4" role="tabpanel" id="settings-tabpanel-config" aria-labelledby="settings-tab-config">
             <SectionTitle title="Pi 配置中心" description="编辑 models.json、auth.json 和 settings.json。" />
             <div className="flex flex-wrap items-center gap-2">
                 {(['models.json', 'auth.json', 'settings.json'] as const).map((name) => (
@@ -839,7 +919,7 @@ function PiConfigEditor(): React.JSX.Element {
                         key={name}
                         type="button"
                         onClick={() => setFileName(name)}
-                        className={`rounded-md px-3 py-1.5 text-sm ${
+                        className={`settings-pressable rounded-md px-3 py-1.5 text-sm transition-[transform,background-color,color] duration-150 ease-out ${
                             fileName === name ? 'bg-[#1f1f1f] text-white' : 'bg-[#ececea] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]'
                         }`}
                     >
@@ -860,9 +940,9 @@ function PiConfigEditor(): React.JSX.Element {
                 </div>
             ))}
             <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={save} className="rounded-md bg-[#1f1f1f] px-3 py-2 text-sm text-white hover:bg-[#333]">保存当前文件</button>
-                <button type="button" onClick={exportConfig} className="rounded-md bg-[#ececea] px-3 py-2 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]">导出配置包</button>
-                <button type="button" onClick={importConfig} className="rounded-md bg-[#ececea] px-3 py-2 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]">从编辑区导入配置包</button>
+                <button type="button" onClick={save} className="settings-pressable rounded-md bg-[#1f1f1f] px-3 py-2 text-sm text-white transition-[transform,background-color] duration-150 ease-out hover:bg-[#333]">保存当前文件</button>
+                <button type="button" onClick={exportConfig} className="settings-pressable rounded-md bg-[#ececea] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">导出配置包</button>
+                <button type="button" onClick={importConfig} className="settings-pressable rounded-md bg-[#ececea] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">从编辑区导入配置包</button>
                 <button type="button" onClick={async () => {
                     setFetchStatus("拉取中...");
                     try {
@@ -873,7 +953,7 @@ function PiConfigEditor(): React.JSX.Element {
                     } catch (e) {
                         setFetchStatus(`拉取失败: ${e instanceof Error ? e.message : String(e)}`);
                     }
-                }} className="rounded-md bg-[#ececea] px-3 py-2 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]">拉取模型列表</button>
+                }} className="settings-pressable rounded-md bg-[#ececea] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">拉取模型列表</button>
                 <button type="button" onClick={async () => {
                     setTestStatus("测试中...");
                     try {
@@ -884,7 +964,7 @@ function PiConfigEditor(): React.JSX.Element {
                     } catch (e) {
                         setTestStatus(`测试失败: ${e instanceof Error ? e.message : String(e)}`);
                     }
-                }} className="rounded-md bg-[#ececea] px-3 py-2 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]">测试 Provider</button>
+                }} className="settings-pressable rounded-md bg-[#ececea] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">测试 Provider</button>
             </div>
         </div>
     );

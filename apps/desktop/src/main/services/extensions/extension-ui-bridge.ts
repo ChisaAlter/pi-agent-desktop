@@ -21,6 +21,10 @@ type PendingRequest = {
     resolve: (value: string | boolean | undefined) => void;
 };
 
+interface ExtensionUiBridgeScope {
+    agentId?: string;
+}
+
 const pendingRequests = new Map<string, PendingRequest>();
 let currentPermissionMode: "ask" | "smart" | "always" = "smart";
 
@@ -128,7 +132,7 @@ export function emitPlanCard(card: PlanCard, workspaceId?: string): void {
     });
 }
 
-export function createExtensionUiBridge(workspaceId: string): ExtensionUIContext {
+export function createExtensionUiBridge(workspaceId: string, scope: ExtensionUiBridgeScope = {}): ExtensionUIContext {
     const request = async (
         kind: ExtensionUiRequest["kind"],
         rawTitle: string,
@@ -145,6 +149,7 @@ export function createExtensionUiBridge(workspaceId: string): ExtensionUIContext
         const payload: ExtensionUiRequest = {
             requestId,
             workspaceId,
+            agentId: scope.agentId,
             kind,
             source,
             title: split.title,
@@ -180,13 +185,13 @@ export function createExtensionUiBridge(workspaceId: string): ExtensionUIContext
             return request("editor", title, { message: prefill }) as Promise<string | undefined>;
         },
         notify(message: string, type?: "info" | "warning" | "error") {
-            send("permission:update", { message, type, workspaceId });
+            send("permission:update", { message, type, workspaceId, agentId: scope.agentId });
         },
         onTerminalInput() {
             return () => undefined;
         },
         setStatus(key: string, text: string | undefined) {
-            send("permission:update", { key, text, workspaceId });
+            send("permission:update", { key, text, workspaceId, agentId: scope.agentId });
         },
         setWorkingMessage() {},
         setWorkingVisible() {},
@@ -197,6 +202,7 @@ export function createExtensionUiBridge(workspaceId: string): ExtensionUIContext
                 const lines = Array.isArray(content) ? content.filter((item): item is string => typeof item === "string") : [];
                 send("plan:progress", {
                     workspaceId,
+                    agentId: scope.agentId,
                     items: parsePlanWidgetLines(lines),
                     status: lines.length > 0 ? "executing" : "idle",
                 });
@@ -205,7 +211,7 @@ export function createExtensionUiBridge(workspaceId: string): ExtensionUIContext
         setFooter() {},
         setHeader() {},
         setTitle(title: string) {
-            send("permission:update", { title, workspaceId });
+            send("permission:update", { title, workspaceId, agentId: scope.agentId });
         },
         async custom(_factory: unknown) {
             return undefined as never;

@@ -66,6 +66,8 @@ const defaultSettings: AppSettings = {
   workspaceToolDefaults: {},
 };
 
+const SETTINGS_WRITE_DEBOUNCE_MS = 120;
+
 export const TOOL_PERMISSION_PRESETS: Record<"minimal" | "development" | "all", ToolPermissions> = {
   minimal: {
     fileRead: true,
@@ -103,7 +105,96 @@ function getPiAPI(): Window["piAPI"] | undefined {
   return typeof window !== "undefined" ? window.piAPI : undefined;
 }
 
+function shouldSyncPiDefaultModel(updates: Partial<AppSettings>, next: AppSettings): boolean {
+  return (updates.model !== undefined || updates.provider !== undefined) && Boolean(next.model && next.provider);
+}
+
+async function syncPiDefaultModel(piAPI: Window["piAPI"], next: AppSettings): Promise<void> {
+  const result = await piAPI.configSetDefaultModel(next.provider, next.model);
+  if (isIpcError(result)) {
+    throw new Error(result.fallback);
+  }
+  if (!result.valid) {
+    throw new Error(result.error ?? "同步 Pi 默认模型失败");
+  }
+}
+
 export const useSettingsStore = create<SettingsState>((set, get) => {
+  let pendingSettingsWriteTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingSettingsUpdates: Partial<AppSettings> | null = null;
+  let pendingPreviousSettings: AppSettings | null = null;
+  let pendingMergedSettings: AppSettings | null = null;
+  let pendingSyncModelDefault = false;
+  let settingsWriteRevision = 0;
+
+  const clearPendingSettingsWrite = (): void => {
+    if (pendingSettingsWriteTimer) {
+      clearTimeout(pendingSettingsWriteTimer);
+      pendingSettingsWriteTimer = null;
+    }
+    pendingSettingsUpdates = null;
+    pendingPreviousSettings = null;
+    pendingMergedSettings = null;
+    pendingSyncModelDefault = false;
+  };
+
+  const scheduleSettingsWrite = (
+    piAPI: Window["piAPI"],
+    updates: Partial<AppSettings>,
+    previous: AppSettings,
+    merged: AppSettings,
+  ): void => {
+    settingsWriteRevision += 1;
+    const revision = settingsWriteRevision;
+    pendingSettingsUpdates = { ...(pendingSettingsUpdates ?? {}), ...updates };
+    pendingPreviousSettings ??= previous;
+    pendingMergedSettings = merged;
+    pendingSyncModelDefault = pendingSyncModelDefault || shouldSyncPiDefaultModel(updates, merged);
+
+    if (pendingSettingsWriteTimer) clearTimeout(pendingSettingsWriteTimer);
+    pendingSettingsWriteTimer = setTimeout(() => {
+      const updatesToSave = pendingSettingsUpdates;
+      const previousSettings = pendingPreviousSettings;
+      const mergedSettings = pendingMergedSettings;
+      const syncModelDefault = pendingSyncModelDefault && Boolean(mergedSettings?.model && mergedSettings.provider);
+      clearPendingSettingsWrite();
+
+      if (!updatesToSave || !previousSettings || !mergedSettings) return;
+
+      void (async () => {
+        try {
+          const result = await piAPI.setSettings(updatesToSave);
+          if (isIpcError(result)) {
+            if (revision === settingsWriteRevision) {
+              set({ settings: previousSettings, lastWriteError: result });
+            } else {
+              set({ lastWriteError: result });
+            }
+            return;
+          }
+          if (syncModelDefault) {
+            await syncPiDefaultModel(piAPI, mergedSettings);
+          }
+          set({ lastWriteError: null });
+        } catch (e) {
+          logger.error('[settings-store] setSettings failed:', e);
+          if (revision === settingsWriteRevision) {
+            set({ settings: previousSettings, lastWriteError: reportWriteError(e) });
+          } else {
+            set({ lastWriteError: reportWriteError(e) });
+          }
+          if (syncModelDefault && revision === settingsWriteRevision) {
+            void piAPI.setSettings({ model: previousSettings.model, provider: previousSettings.provider })
+              .catch((restoreError) => {
+                logger.error('[settings-store] restore model settings failed:', restoreError);
+              });
+          }
+          addToast(e instanceof Error ? e.message : "保存设置失败", "error");
+        }
+      })();
+    }, SETTINGS_WRITE_DEBOUNCE_MS);
+  };
+
   // Load persisted settings from main process
   const loadSettings = async () => {
     try {
@@ -169,25 +260,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
       set({ settings: merged });
       const piAPI = getPiAPI();
       if (!piAPI) return;
-      // v1.0.6.1 后 setSettings 不再 throw, 但仍 try/catch 兜底老 throw 路径
-      piAPI.setSettings(updates)
-        .then((result) => {
-          if (isIpcError(result)) {
-            // 写失败: 本地回滚 + 暴露错误
-            set({ settings: previous, lastWriteError: result });
-          } else {
-            set({ lastWriteError: null });
-          }
-        })
-        .catch((e) => {
-          logger.error('[settings-store] setSettings failed:', e);
-          set({ settings: previous, lastWriteError: reportWriteError(e) });
-          addToast(e instanceof Error ? e.message : "保存设置失败", "error");
-        });
+      scheduleSettingsWrite(piAPI, updates, previous, merged);
     },
 
     resetSettings: () => {
       const previous = get().settings;
+      settingsWriteRevision += 1;
+      clearPendingSettingsWrite();
       set({ settings: defaultSettings });
       const piAPI = getPiAPI();
       if (!piAPI) return;

@@ -123,6 +123,47 @@ export interface SendAgentPromptInput {
     streamingBehavior?: "steer" | "followUp";
 }
 
+export type PiSlashCommandSource = "builtin" | "extension" | "prompt" | "skill";
+
+export type PiSlashDesktopAction =
+    | "open-settings"
+    | "open-models"
+    | "open-sessions"
+    | "open-hotkeys"
+    | "new-session"
+    | "compact"
+    | "reload"
+    | "export"
+    | "copy"
+    | "quit"
+    | "unsupported";
+
+export interface PiSlashCommand {
+    name: string;
+    description?: string;
+    source: PiSlashCommandSource;
+    desktopAction?: PiSlashDesktopAction;
+    requiresArgument?: boolean;
+}
+
+export interface RunBuiltinSlashCommandInput {
+    workspaceId: string;
+    agentId?: string;
+    command: string;
+    args: string;
+}
+
+export interface SlashCommandRunResult {
+    handled: boolean;
+    command: string;
+    action?: PiSlashDesktopAction;
+    message?: string;
+    tone?: "success" | "error" | "info";
+    keepInput?: boolean;
+    forwardToAgent?: boolean;
+    content?: string;
+}
+
 export type CodexImportStatus = "new" | "current" | "outdated";
 
 export interface CodexSessionSummary {
@@ -350,6 +391,7 @@ export type PermissionDecision =
 export interface ExtensionUiRequest {
     requestId: string;
     workspaceId?: string;
+    agentId?: string;
     kind: "select" | "confirm" | "input" | "editor";
     source: "permission" | "plan" | "extension";
     title: string;
@@ -686,6 +728,9 @@ export interface PiAPI {
     onAgentsState(cb: (agents: AgentTab[]) => void): Unsubscribe;
     onAgentMessages(cb: (payload: { agentId: string; messages: AgentMessage[] }) => void): Unsubscribe;
     onAgentEvent(cb: (payload: { agentId: string; workspaceId: string; event: PiEvent }) => void): Unsubscribe;
+
+    listSlashCommands(workspaceId: string, agentId?: string): Promise<PiSlashCommand[] | IpcError>;
+    runBuiltinSlashCommand(input: RunBuiltinSlashCommandInput): Promise<SlashCommandRunResult | IpcError>;
 
     // Extension UI bridge
     permissionSetMode(mode: PermissionMode): Promise<void>;

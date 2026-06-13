@@ -52,6 +52,7 @@ vi.mock("./components/GitPanel/GitPanel", () => ({
 
 import App from "./App";
 import { useAgentStore } from "./stores/agent-store";
+import { usePermissionStore } from "./stores/permission-store";
 import { useSessionStore } from "./stores/session-store";
 import { useWorkspaceStore } from "./stores/workspace-store";
 
@@ -126,6 +127,10 @@ describe("App sidebar session navigation", () => {
             runtimeByAgent: {},
             initialized: true,
         });
+        usePermissionStore.setState({
+            mode: "smart",
+            pending: [],
+        });
     });
 
     it("点击历史 session 只切换当前 session，不创建新的 Agent", async () => {
@@ -192,5 +197,17 @@ describe("App sidebar session navigation", () => {
                 updatedAt: 1,
             });
         });
+    });
+
+    it("启动空态不会自动注入 dev 权限请求", async () => {
+        vi.useFakeTimers();
+        render(<App />);
+
+        act(() => {
+            vi.advanceTimersByTime(1600);
+        });
+
+        expect(usePermissionStore.getState().pending).toHaveLength(0);
+        vi.useRealTimers();
     });
 });

@@ -770,9 +770,98 @@ code {
   animation: settings-fade-in 150ms ease-out;
 }
 
+.settings-backdrop-enter {
+  animation: settings-backdrop-in 160ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.settings-shell-enter {
+  animation: settings-shell-in 180ms cubic-bezier(0.2, 0, 0, 1);
+  will-change: transform, opacity;
+}
+
+.settings-tab-panel {
+  animation: settings-tab-panel-in 170ms cubic-bezier(0.2, 0, 0, 1);
+  will-change: transform, opacity;
+}
+
+.settings-subdialog-backdrop {
+  animation: settings-backdrop-in 140ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.settings-subdialog {
+  animation: settings-subdialog-in 180ms cubic-bezier(0.2, 0, 0, 1);
+  will-change: transform, opacity;
+}
+
+.settings-pressable {
+  will-change: transform;
+}
+
+.settings-pressable:active {
+  transform: scale(0.96);
+}
+
 @keyframes settings-fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+@keyframes settings-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes settings-shell-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes settings-tab-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes settings-subdialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-backdrop-enter,
+  .settings-shell-enter,
+  .settings-tab-panel,
+  .settings-subdialog-backdrop,
+  .settings-subdialog {
+    animation: none;
+    will-change: auto;
+  }
+
+  .settings-pressable {
+    transition-duration: 1ms !important;
+    will-change: auto;
+  }
+
+  .settings-pressable:active {
+    transform: none;
+  }
 }
 
 /* ===== Dark Mode — 全局属性级覆盖 =====

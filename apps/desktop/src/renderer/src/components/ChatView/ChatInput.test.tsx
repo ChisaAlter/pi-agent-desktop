@@ -641,4 +641,171 @@ describe("ChatInput", () => {
     fireEvent.click(screen.getByRole("button", { name: "暂停执行" }));
     expect(onStop).toHaveBeenCalledTimes(1);
   });
+
+  it("shows Pi slash command candidates and completes a selected command", async () => {
+    Object.defineProperty(window, "piAPI", {
+      value: {
+        listSlashCommands: vi.fn(async () => [
+          { name: "model", description: "Select model", source: "builtin", desktopAction: "open-models" },
+          { name: "settings", description: "Open settings", source: "builtin", desktopAction: "open-settings" },
+        ]),
+      },
+      configurable: true,
+    });
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    const textbox = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(textbox, { target: { value: "/mo", selectionStart: 3 } });
+
+    expect(await screen.findByRole("listbox", { name: "Pi 命令候选" })).toBeTruthy();
+    fireEvent.keyDown(textbox, { key: "Tab" });
+
+    await waitFor(() => {
+      expect(textbox.value).toBe("/model");
+    });
+  });
+
+  it("keeps the highlighted Pi slash command scrolled into view when using arrow keys", async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
+      value: scrollIntoView,
+      configurable: true,
+    });
+    Object.defineProperty(window, "piAPI", {
+      value: {
+        listSlashCommands: vi.fn(async () => [
+          { name: "changelog", description: "Show changelog entries", source: "builtin", desktopAction: "unsupported" },
+          { name: "clone", description: "Duplicate the current session at the current position", source: "builtin", desktopAction: "unsupported" },
+          { name: "compact", description: "Manually compact the session context", source: "builtin", desktopAction: "compact" },
+        ]),
+      },
+      configurable: true,
+    });
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    const textbox = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(textbox, { target: { value: "/", selectionStart: 1 } });
+    const listbox = await screen.findByRole("listbox", { name: "Pi 命令候选" });
+    const options = await screen.findAllByRole("option");
+
+    expect(listbox.className).toContain("w-[min(520px,calc(100vw-48px))]");
+    expect(options[0].className).toContain("h-9");
+
+    fireEvent.keyDown(textbox, { key: "ArrowDown" });
+
+    await waitFor(() => {
+      expect(options[1].getAttribute("aria-selected")).toBe("true");
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    });
+  });
+
+  it("runs mapped desktop slash commands without sending them as prompts", async () => {
+    const onSend = vi.fn(async () => undefined);
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    Object.defineProperty(window, "piAPI", {
+      value: {
+        listSlashCommands: vi.fn(async () => [
+          { name: "model", description: "Select model", source: "builtin", desktopAction: "open-models" },
+        ]),
+        runBuiltinSlashCommand: vi.fn(async () => ({
+          handled: true,
+          command: "model",
+          action: "open-models",
+          message: "已打开模型设置",
+        })),
+      },
+      configurable: true,
+    });
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={onSend}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "/model" } });
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(window.piAPI.runBuiltinSlashCommand).toHaveBeenCalledWith({
+        workspaceId: "ws1",
+        command: "model",
+        args: "",
+      });
+    });
+    expect(onSend).not.toHaveBeenCalled();
+    expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: "slash-command:open-settings-tab" }));
+
+    dispatchSpy.mockRestore();
+  });
+
+  it("does not send slash commands with attachments", async () => {
+    const onSend = vi.fn(async () => undefined);
+    useAttachmentsStore.getState().add("ws1", {
+      id: "att1",
+      kind: "file",
+      name: "app.ts",
+      value: "C:/repo/src/app.ts",
+    });
+    Object.defineProperty(window, "piAPI", {
+      value: {
+        listSlashCommands: vi.fn(async () => [
+          { name: "compact", description: "Compact", source: "builtin", desktopAction: "compact" },
+        ]),
+      },
+      configurable: true,
+    });
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={onSend}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "/compact" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(screen.getByRole("alert").textContent).toContain("Slash 命令不能和附件一起发送");
+    expect(onSend).not.toHaveBeenCalled();
+    expect(useAttachmentsStore.getState().list("ws1")).toHaveLength(1);
+  });
 });

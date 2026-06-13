@@ -394,6 +394,29 @@ describe("usePiStream", () => {
         });
     });
 
+    it("adds an optimistic agent user message before the main-process echo arrives", async () => {
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            screen.getByText("send-agent-follow-up").click();
+        });
+
+        expect(useAgentStore.getState().messagesByAgent.agent_1).toMatchObject([
+            {
+                agentId: "agent_1",
+                role: "user",
+                content: "agent follow up",
+                meta: { optimistic: true },
+            },
+        ]);
+        expect(agentsPrompt).toHaveBeenCalledWith({
+            agentId: "agent_1",
+            message: "agent follow up",
+        });
+    });
+
     it("blocks vague agent plan-mode input locally and shows clarification prompt", async () => {
         usePlanStore.setState({ enabled: true });
         await act(async () => {

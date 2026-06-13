@@ -21,7 +21,6 @@ import { ShortcutsCheatsheet } from "./components/ShortcutsCheatsheet/ShortcutsC
 import { SkillsPanel } from "./components/SkillsPanel/SkillsPanel";
 import { TerminalPanel } from "./components/Terminal/TerminalPanel";
 import { ApprovalPanel } from "./components/ApprovalPanel/ApprovalPanel";
-import { PiStatusPanel } from "./components/PiStatusPanel/PiStatusPanel";
 import { Onboarding } from "./components/Onboarding/Onboarding";
 import { ChatView } from "./components/ChatView/ChatView";
 import { GitPanel } from "./components/GitPanel/GitPanel";
@@ -118,7 +117,7 @@ function AppShell(): React.ReactElement {
     const workspaceError = useWorkspaceStore((state) => state.lastError);
     const clearWorkspaceError = useWorkspaceStore((state) => state.clearError);
     const { loadPiConfig, openSettings, settings } = useSettingsStore();
-    const { status, refreshStatus } = usePiStatusStore();
+    const { status, loading: piStatusLoading, refreshStatus } = usePiStatusStore();
     const pendingApprovalCount = useApprovalStore(
         (s) => s.changes.filter((c) => c.status === "pending").length,
     );
@@ -209,11 +208,11 @@ function AppShell(): React.ReactElement {
 
     // v1.0.17: TaskProgressPanel 接通真数据
     const taskProgress = useTaskProgress();
-    const titleBarStatus = taskProgress.tasks.some((task) => task.status === "running")
-        ? { label: "运行中", tone: "busy" as const }
-        : status?.installed
-            ? { label: "Pi 已就绪", tone: "ready" as const }
-            : { label: "Pi 未安装", tone: "error" as const };
+    const piAgentStatus = piStatusLoading || !status
+        ? "checking"
+        : status.installed
+            ? "online"
+            : "offline";
 
     // 启动时拉 Pi 状态
     useEffect(() => {
@@ -409,6 +408,30 @@ function AppShell(): React.ReactElement {
         }
     }, [routeSection]);
 
+    useEffect(() => {
+        const onOpenSettingsTab = (event: Event): void => {
+            const detail = (event as CustomEvent<{ tab?: string }>).detail;
+            openSettings();
+            window.setTimeout(() => {
+                window.dispatchEvent(new CustomEvent("settings:select-tab", { detail }));
+            }, 0);
+        };
+        const onOpenSessions = (): void => routeSection("sessions");
+        const onOpenHotkeys = (): void => setShowCheatsheet(true);
+        const onNewTask = (): void => routeSection("new-task");
+
+        window.addEventListener("slash-command:open-settings-tab", onOpenSettingsTab);
+        window.addEventListener("slash-command:open-sessions", onOpenSessions);
+        window.addEventListener("slash-command:open-hotkeys", onOpenHotkeys);
+        window.addEventListener("slash-command:new-task", onNewTask);
+        return () => {
+            window.removeEventListener("slash-command:open-settings-tab", onOpenSettingsTab);
+            window.removeEventListener("slash-command:open-sessions", onOpenSessions);
+            window.removeEventListener("slash-command:open-hotkeys", onOpenHotkeys);
+            window.removeEventListener("slash-command:new-task", onNewTask);
+        };
+    }, [openSettings, routeSection]);
+
     // 全局快捷键
     const shortcutHandlers = useMemo(
         () => ({
@@ -470,8 +493,6 @@ function AppShell(): React.ReactElement {
             <MiniMaxCodeLayout
                 title="Pi Agent"
                 subtitle={currentWorkspace ? currentWorkspace.path : "未选择工作区"}
-                statusLabel={titleBarStatus.label}
-                statusTone={titleBarStatus.tone}
                 leftCollapsed={leftCollapsed}
                 rightCollapsed={rightCollapsed}
                 onCollapseLeft={() => setLeftCollapsed((v) => !v)}
@@ -480,6 +501,7 @@ function AppShell(): React.ReactElement {
                     <MiniMaxCodeSidebar
                         currentSection={activeSection}
                         currentWorkspaceId={currentWorkspace?.id}
+                        piAgentStatus={piAgentStatus}
                         onSectionChange={routeSection}
                     />
                 }
@@ -555,7 +577,6 @@ function AppShell(): React.ReactElement {
                                 setShowSearchHistory(false);
                             }}
                         />
-                        {!status?.installed && <PiStatusPanel />}
                         {showOnboarding && (
                             <Onboarding onComplete={() => setShowOnboarding(false)} />
                         )}

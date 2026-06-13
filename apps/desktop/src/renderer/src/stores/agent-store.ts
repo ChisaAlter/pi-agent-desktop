@@ -24,6 +24,27 @@ interface AgentStore {
 let unsubscribeState: (() => void) | undefined;
 let unsubscribeMessages: (() => void) | undefined;
 
+function hasSameVisibleMessage(left: AgentMessage, right: AgentMessage): boolean {
+    return left.role === right.role && left.content === right.content;
+}
+
+function isLocalOnlyMessage(message: AgentMessage): boolean {
+    return message.meta?.optimistic === true || /^(?:um|am|pm)_/.test(message.id);
+}
+
+function mergeRemoteAgentMessages(localMessages: AgentMessage[] = [], remoteMessages: AgentMessage[]): AgentMessage[] {
+    const remoteIds = new Set(remoteMessages.map((message) => message.id));
+    const preservedLocal = localMessages.filter((message) => {
+        if (remoteIds.has(message.id)) return false;
+        if (!isLocalOnlyMessage(message)) return false;
+        if (message.meta?.optimistic === true && remoteMessages.some((remote) => hasSameVisibleMessage(message, remote))) {
+            return false;
+        }
+        return true;
+    });
+    return [...remoteMessages, ...preservedLocal].sort((a, b) => a.createdAt - b.createdAt);
+}
+
 export const useAgentStore = create<AgentStore>((set, get) => ({
     agents: [],
     currentAgentId: null,
@@ -57,6 +78,23 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         unsubscribeMessages = window.piAPI.onAgentMessages(({ agentId, messages }) => {
             get().setAgentMessages(agentId, messages);
         });
+        await Promise.all(agents.map(async (agent) => {
+            try {
+                const [messages, runtime] = await Promise.all([
+                    window.piAPI.agentsMessages(agent.id),
+                    window.piAPI.agentsRuntimeState(agent.id),
+                ]);
+                set((state) => ({
+                    messagesByAgent: {
+                        ...state.messagesByAgent,
+                        [agent.id]: mergeRemoteAgentMessages(state.messagesByAgent[agent.id], messages),
+                    },
+                    runtimeByAgent: { ...state.runtimeByAgent, [agent.id]: runtime },
+                }));
+            } catch (error) {
+                logger.warn("[agent-store] failed to hydrate agent", agent.id, error);
+            }
+        }));
     },
 
     createAgent: async (workspaceId, title, sessionPath) => {
@@ -134,7 +172,10 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
 
     setAgentMessages: (agentId, messages) =>
         set((state) => ({
-            messagesByAgent: { ...state.messagesByAgent, [agentId]: messages },
+            messagesByAgent: {
+                ...state.messagesByAgent,
+                [agentId]: mergeRemoteAgentMessages(state.messagesByAgent[agentId], messages),
+            },
         })),
 
     appendStreamMessage: (agentId, message) =>

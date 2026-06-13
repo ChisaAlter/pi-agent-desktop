@@ -105,4 +105,52 @@ describe("agent-store", () => {
 
         expect(useAgentStore.getState().messagesByAgent.agent_1).toHaveLength(1);
     });
+
+    it("hydrates existing agent messages during init", async () => {
+        api.agentsList.mockResolvedValueOnce([
+            { id: "agent_existing", workspaceId: "ws_1", title: "Existing", status: "running", createdAt: 1, updatedAt: 2 },
+        ]);
+        api.agentsMessages.mockResolvedValueOnce([
+            { id: "msg_existing", agentId: "agent_existing", role: "user", content: "需要触发权限确认的对话", createdAt: 3 },
+        ]);
+        api.agentsRuntimeState.mockResolvedValueOnce({ agentId: "agent_existing", status: "running", isStreaming: true });
+
+        await useAgentStore.getState().init();
+
+        expect(useAgentStore.getState().currentAgentId).toBe("agent_existing");
+        expect(useAgentStore.getState().messagesByAgent.agent_existing).toEqual([
+            { id: "msg_existing", agentId: "agent_existing", role: "user", content: "需要触发权限确认的对话", createdAt: 3 },
+        ]);
+        expect(useAgentStore.getState().runtimeByAgent.agent_existing).toMatchObject({
+            agentId: "agent_existing",
+            isStreaming: true,
+        });
+    });
+
+    it("merges canonical agent messages without dropping local streaming rows", () => {
+        useAgentStore.setState({
+            messagesByAgent: {
+                agent_1: [
+                    {
+                        id: "um_local",
+                        agentId: "agent_1",
+                        role: "user",
+                        content: "触发权限确认",
+                        createdAt: 1,
+                        meta: { optimistic: true },
+                    },
+                    { id: "am_local", agentId: "agent_1", role: "assistant", content: "处理中", createdAt: 2 },
+                ],
+            },
+        });
+
+        useAgentStore.getState().setAgentMessages("agent_1", [
+            { id: "remote_user", agentId: "agent_1", role: "user", content: "触发权限确认", createdAt: 1 },
+        ]);
+
+        expect(useAgentStore.getState().messagesByAgent.agent_1).toEqual([
+            { id: "remote_user", agentId: "agent_1", role: "user", content: "触发权限确认", createdAt: 1 },
+            { id: "am_local", agentId: "agent_1", role: "assistant", content: "处理中", createdAt: 2 },
+        ]);
+    });
 });

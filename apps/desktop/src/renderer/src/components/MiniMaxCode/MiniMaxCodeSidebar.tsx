@@ -53,6 +53,8 @@ export interface MiniMaxCodeSidebarProps {
     currentSection: string;
     /** 当前 workspace;历史列表只显示这个 workspace 的会话 */
     currentWorkspaceId?: string | null;
+    /** pi-agent 运行状态，用于左下角状态条 */
+    piAgentStatus?: "online" | "offline" | "checking";
     /** 点击某项时回调,父级决定路由切换 */
     onSectionChange: (section: string) => void;
 }
@@ -273,6 +275,7 @@ function SmallActionButton({
 export function MiniMaxCodeSidebar({
     currentSection,
     currentWorkspaceId,
+    piAgentStatus = "checking",
     onSectionChange,
 }: MiniMaxCodeSidebarProps): React.JSX.Element {
     const sessions = useSessionStore((state) => state.sessions);
@@ -289,6 +292,14 @@ export function MiniMaxCodeSidebar({
         .filter((session) => !currentWorkspaceId || session.workspaceId === currentWorkspaceId)
         .slice()
         .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+    const agentOnline = piAgentStatus === "online";
+    const agentChecking = piAgentStatus === "checking";
+    const agentStatusLabel = agentChecking ? "pi-agent 检测中" : agentOnline ? "pi-agent 在线" : "pi-agent 不在线";
+    const agentDotClass = agentChecking
+        ? "bg-[var(--mm-text-tertiary)]"
+        : agentOnline
+            ? "bg-[var(--color-success)]"
+            : "bg-[var(--color-error)]";
 
     return (
         <div
@@ -451,7 +462,17 @@ export function MiniMaxCodeSidebar({
                 ))}
             </nav>
 
-            {/* 设置入口已经合并到主操作列表。 */}
+            <div className="shrink-0 border-t border-[var(--mm-border)] px-3 py-3">
+                <div
+                    className="flex h-9 items-center gap-2 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 text-[12px] text-[var(--mm-text-secondary)]"
+                    role="status"
+                    aria-label={agentStatusLabel}
+                    title={agentStatusLabel}
+                >
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${agentDotClass}`} aria-hidden="true" />
+                    <span className="truncate">{agentStatusLabel}</span>
+                </div>
+            </div>
         </div>
     );
 }

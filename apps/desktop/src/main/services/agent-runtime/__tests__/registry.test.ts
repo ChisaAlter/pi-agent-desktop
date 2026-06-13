@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentRuntimeRegistry } from "../registry";
 import { PendingEdits } from "../../approval/pending-edits";
+import { createExtensionUiBridge } from "../../extensions/extension-ui-bridge";
 
 const sessions: Array<{
     prompt: ReturnType<typeof vi.fn>;
@@ -62,6 +63,12 @@ describe("AgentRuntimeRegistry", () => {
         expect(second.workspaceId).toBe("ws_1");
         expect(sessions).toHaveLength(2);
         expect(registry.list().map((agent) => agent.title)).toEqual(["A", "B"]);
+    });
+
+    it("scopes extension UI permission requests to the created agent", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+
+        expect(createExtensionUiBridge).toHaveBeenCalledWith("ws_1", { agentId: agent.id });
     });
 
     it("routes prompt, messages, and state by agent id", async () => {

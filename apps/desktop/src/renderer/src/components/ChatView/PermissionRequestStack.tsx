@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo } from "react";
 import { usePermissionStore } from "../../stores/permission-store";
 import { Popover } from "../common/Popover";
 
@@ -8,24 +8,43 @@ const MORE_DECISIONS = [
   { value: "deny_session", label: "拒绝本轮" },
 ] as const;
 
-export function PermissionRequestStack(): React.JSX.Element | null {
+interface PermissionRequestStackProps {
+  workspaceId?: string;
+  agentId?: string | null;
+}
+
+function isVisibleInScope(
+  request: ReturnType<typeof usePermissionStore.getState>["pending"][number],
+  workspaceId?: string,
+  agentId?: string | null,
+): boolean {
+  if (request.workspaceId && request.workspaceId !== workspaceId) return false;
+  if (request.agentId) return request.agentId === agentId;
+  return true;
+}
+
+export function PermissionRequestStack({ workspaceId, agentId = null }: PermissionRequestStackProps): React.JSX.Element | null {
   const { pending, respond } = usePermissionStore();
+  const visiblePending = useMemo(
+    () => pending.filter((request) => isVisibleInScope(request, workspaceId, agentId)),
+    [agentId, pending, workspaceId],
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape" && pending[0]) {
-        respond(pending[0].requestId, "deny");
+      if (event.key === "Escape" && visiblePending[0]) {
+        respond(visiblePending[0].requestId, "deny");
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [pending, respond]);
+  }, [visiblePending, respond]);
 
-  if (pending.length === 0) return null;
+  if (visiblePending.length === 0) return null;
 
   return (
     <div className="mx-auto mb-2 max-w-[768px] space-y-2">
-      {pending.map((request, index) => (
+      {visiblePending.map((request, index) => (
         <div
           key={request.requestId}
           className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-4 py-3 shadow-sm"

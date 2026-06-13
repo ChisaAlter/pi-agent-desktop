@@ -32,7 +32,7 @@ describe("PermissionRequestStack", () => {
   });
 
   it("renders pending permission and allows the current session", () => {
-    render(<PermissionRequestStack />);
+    render(<PermissionRequestStack workspaceId="ws1" />);
     expect(screen.getByRole("alertdialog", { name: "权限请求 1" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "仅本对话" }));
@@ -45,7 +45,7 @@ describe("PermissionRequestStack", () => {
   });
 
   it("denies the first pending request with Escape", () => {
-    render(<PermissionRequestStack />);
+    render(<PermissionRequestStack workspaceId="ws1" />);
 
     fireEvent.keyDown(window, { key: "Escape" });
 
@@ -53,5 +53,50 @@ describe("PermissionRequestStack", () => {
       requestId: "perm_1",
       decision: "deny",
     });
+  });
+
+  it("hides pending requests from other agents in the same workspace", () => {
+    usePermissionStore.setState((state) => ({
+      pending: [
+        {
+          ...state.pending[0],
+          requestId: "perm_other_agent",
+          workspaceId: "ws1",
+          agentId: "agent_other",
+        },
+      ],
+    }));
+
+    render(<PermissionRequestStack workspaceId="ws1" agentId="agent_current" />);
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("handles Escape against the first visible request only", () => {
+    usePermissionStore.setState((state) => ({
+      pending: [
+        {
+          ...state.pending[0],
+          requestId: "perm_hidden",
+          workspaceId: "ws1",
+          agentId: "agent_other",
+        },
+        {
+          ...state.pending[0],
+          requestId: "perm_visible",
+          workspaceId: "ws1",
+          agentId: "agent_current",
+        },
+      ],
+    }));
+
+    render(<PermissionRequestStack workspaceId="ws1" agentId="agent_current" />);
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(permissionRespond).toHaveBeenCalledWith("perm_visible", {
+      requestId: "perm_visible",
+      decision: "deny",
+    });
+    expect(permissionRespond).not.toHaveBeenCalledWith("perm_hidden", expect.anything());
   });
 });

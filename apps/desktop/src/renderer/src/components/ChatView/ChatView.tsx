@@ -5,11 +5,9 @@ import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { usePiStream } from '../../hooks/usePiStream';
 import { useSessionStore } from '../../stores/session-store';
 import { useWorkspaceStore } from '../../stores/workspace-store';
-import { usePiStatusStore } from '../../stores/pi-status-store';
 import { useAgentStore } from '../../stores/agent-store';
 import { MessageBubble } from './MessageBubble';
 import { ChatInput } from './ChatInput';
-import { ModelSelector } from '../ModelSelector/ModelSelector';
 import { useI18n } from '../../i18n';
 import { usePlanStore } from '../../stores/plan-store';
 import type { Message } from '../../stores/session-store';
@@ -148,7 +146,6 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
   const sessions = useSessionStore((state) => state.sessions);
   const { getCurrentWorkspace } = useWorkspaceStore();
   const { init: initAgents, getCurrentAgent, getCurrentMessages } = useAgentStore();
-  const { install, isOperating, progress } = usePiStatusStore();
   const { t } = useI18n();
   const [sendError, setSendError] = useState<string | null>(null);
   const [sessionActionError, setSessionActionError] = useState<string | null>(null);
@@ -164,29 +161,6 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
   const currentAgent = getCurrentAgent();
   const agentMessages = getCurrentMessages();
   const hasAgent = Boolean(currentAgent);
-  const workspaceLabel = currentWorkspace?.path ?? currentWorkspace?.name ?? "尚未选择工作区";
-  const starterCards = [
-    {
-      title: t('chatView.welcome.cards.newFeature.title'),
-      desc: t('chatView.welcome.cards.newFeature.desc'),
-      icon: "M12 5v14m-7-7h14",
-    },
-    {
-      title: t('chatView.welcome.cards.fixBug.title'),
-      desc: t('chatView.welcome.cards.fixBug.desc'),
-      icon: "M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-2.5L13.73 4c-.77-.83-1.96-.83-2.73 0L3.34 16.5c-.77.83.19 2.5 1.73 2.5z",
-    },
-    {
-      title: t('chatView.welcome.cards.review.title'),
-      desc: t('chatView.welcome.cards.review.desc'),
-      icon: "M9 12l2 2 4-4m5 2a8 8 0 11-16 0 8 8 0 0116 0z",
-    },
-    {
-      title: t('chatView.welcome.cards.explain.title'),
-      desc: t('chatView.welcome.cards.explain.desc'),
-      icon: "M8 10h8M8 14h5m9-2a9 9 0 11-18 0 9 9 0 0118 0z",
-    },
-  ];
 
   useEffect(() => {
     const scrollRegion = scrollRegionRef.current;
@@ -485,13 +459,6 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
       <div ref={scrollRegionRef} data-testid="chat-scroll-region" className="min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 ? (
           <div className="flex min-h-full flex-col items-center justify-center px-8 py-12 text-center">
-            <div className="mb-5 flex items-center gap-3 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-1.5 text-xs text-[var(--mm-text-secondary)] shadow-[var(--mm-shadow-elevated)]">
-              <span className={`h-2 w-2 rounded-full ${isConnected ? "bg-[var(--color-success)]" : "bg-[var(--color-error)]"}`} aria-hidden />
-              <span className="max-w-[560px] truncate" title={workspaceLabel}>
-                {isConnected ? "Pi 已连接" : "Pi 未连接"} · {workspaceLabel}
-              </span>
-            </div>
-
             <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--mm-bg-active)]">
               <span className="text-xl font-semibold text-[var(--mm-text-on-active)]">π</span>
             </div>
@@ -503,77 +470,20 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
               {t('chatView.welcome.subtitle')}
             </p>
 
-            <div className="mb-6 grid w-full max-w-[770px] grid-cols-2 gap-2 text-left">
-              {starterCards.map((card) => (
-                <div key={card.title} className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-3">
-                  <div className="mb-2 flex h-7 w-7 items-center justify-center rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-input)] text-[var(--mm-text-secondary)]">
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={card.icon} />
-                    </svg>
-                  </div>
-                  <div className="text-sm font-medium text-[var(--mm-text-primary)]">{card.title}</div>
-                  <div className="mt-1 text-xs leading-5 text-[var(--mm-text-secondary)]">{card.desc}</div>
-                </div>
-              ))}
-            </div>
-
-            <div className="w-full max-w-[900px]">
-              <div className="mb-3 flex justify-center">
-                <ModelSelector />
-              </div>
-              <ChatInput
-                isConnected={isConnected}
-                isProcessing={isStreaming}
-                runContext={activePlanExecution?.phase === "executing" || activePlanExecution?.phase === "pausing" ? "plan_execution" : null}
-                onSend={handleSend}
-                onStop={handleStop}
-                workspaceId={currentWorkspace?.id}
-                workspacePath={currentWorkspace?.path}
-                prefill={prefill.text}
-                prefillKey={prefill.nonce}
-                onPrefillConsumed={() => setPrefill((p) => ({ ...p, text: '' }))}
-                focusKey={composerFocusKey}
-              />
-            </div>
-
-            {/* 错误提示 — 强 CTA：未装 Pi CLI 时引导用户立即安装 */}
-            {!isConnected && (
-              <div
-                className="mt-6 max-w-md w-full inline-flex flex-col gap-3 px-4 py-4 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] rounded-lg text-left"
-                role="alert"
-              >
-                <div className="flex items-center gap-2">
-                  <svg className="w-4 h-4 text-[var(--color-error)] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                  </svg>
-                  <span className="text-sm text-[var(--color-error)] font-medium">
-                    {t('chatView.piCliMissing.title')}
-                  </span>
-                </div>
-                <p className="text-xs text-[var(--mm-text-secondary)]">
-                  {t('chatView.piCliMissing.description')}
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => void install()}
-                    disabled={isOperating}
-                    className="flex-1 px-4 py-2 bg-[var(--color-error)] text-white rounded-md hover:opacity-90 transition-colors text-sm font-medium disabled:opacity-50"
-                  >
-                    {isOperating
-                      ? progress?.percent != null
-                        ? t('chatView.piCliMissing.installingProgress', { percent: progress.percent })
-                        : t('chatView.piCliMissing.installingEllipsis')
-                      : t('chatView.piCliMissing.install')}
-                  </button>
-                  <button
-                    onClick={() => window.open("https://github.com/badlogic/pi-mono", "_blank")}
-                    className="px-4 py-2 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] text-[var(--mm-text-secondary)] rounded-md hover:bg-[var(--mm-bg-hover)] transition-colors text-sm"
-                  >
-                    {t('chatView.piCliMissing.viewDocs')}
-                  </button>
-                </div>
-              </div>
-            )}
+            <ChatInput
+              isConnected={isConnected}
+              isProcessing={isStreaming}
+              runContext={activePlanExecution?.phase === "executing" || activePlanExecution?.phase === "pausing" ? "plan_execution" : null}
+              onSend={handleSend}
+              onStop={handleStop}
+              workspaceId={currentWorkspace?.id}
+              workspacePath={currentWorkspace?.path}
+              agentId={agentId}
+              prefill={prefill.text}
+              prefillKey={prefill.nonce}
+              onPrefillConsumed={() => setPrefill((p) => ({ ...p, text: '' }))}
+              focusKey={composerFocusKey}
+            />
 
             {/* Chat send 失败的错误 — 重试按钮 */}
             {isConnected && (streamError || sendError || sessionActionError) && (
@@ -707,24 +617,20 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
             </div>
           </div>
         ) : (
-          <div className="shrink-0 bg-[var(--mm-bg-main)]">
-            <div className="flex justify-center border-t border-[var(--mm-border)] px-4 py-2">
-              <ModelSelector />
-            </div>
-            <ChatInput
-              isConnected={isConnected}
-              isProcessing={isStreaming}
-              runContext={activePlanExecution?.phase === "executing" || activePlanExecution?.phase === "pausing" ? "plan_execution" : null}
-              onSend={handleSend}
-              onStop={handleStop}
-              workspaceId={currentWorkspace?.id}
-              workspacePath={currentWorkspace?.path}
-              prefill={prefill.text}
-              prefillKey={prefill.nonce}
-              onPrefillConsumed={() => setPrefill((p) => ({ ...p, text: '' }))}
-              focusKey={composerFocusKey}
-            />
-          </div>
+          <ChatInput
+            isConnected={isConnected}
+            isProcessing={isStreaming}
+            runContext={activePlanExecution?.phase === "executing" || activePlanExecution?.phase === "pausing" ? "plan_execution" : null}
+            onSend={handleSend}
+            onStop={handleStop}
+            workspaceId={currentWorkspace?.id}
+            workspacePath={currentWorkspace?.path}
+            agentId={agentId}
+            prefill={prefill.text}
+            prefillKey={prefill.nonce}
+            onPrefillConsumed={() => setPrefill((p) => ({ ...p, text: '' }))}
+            focusKey={composerFocusKey}
+          />
         )
       )}
     </div>

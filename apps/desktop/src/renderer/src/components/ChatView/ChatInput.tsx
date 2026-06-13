@@ -8,6 +8,7 @@ import { useAttachmentsStore } from "../../stores/attachments-store";
 import { useI18n } from "../../i18n";
 import { Popover } from "../common/Popover";
 import { useMentions } from "../../hooks/useMentions";
+import { useSlashCommands } from "../../hooks/useSlashCommands";
 import { usePermissionStore } from "../../stores/permission-store";
 import { usePlanStore } from "../../stores/plan-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
@@ -23,6 +24,7 @@ interface ChatInputProps {
   onStop: () => void;
   workspaceId?: string;
   workspacePath?: string;
+  agentId?: string | null;
   prefill?: string;
   prefillKey?: number;
   onPrefillConsumed?: () => void;
@@ -60,6 +62,42 @@ function mergePrefillDraft(current: string, incoming: string): string {
   if (!existing) return incoming;
   if (existing.includes(text)) return current;
   return `${existing} ${text}${incoming.endsWith(" ") ? " " : ""}`;
+}
+
+function parseSlashCommandDraft(value: string): { command: string; args: string } | null {
+  const text = value.trimStart();
+  if (!text.startsWith("/")) return null;
+  const match = text.match(/^\/([^\s]+)(?:\s+([\s\S]*))?$/);
+  if (!match) return null;
+  return {
+    command: match[1],
+    args: match[2]?.trim() ?? "",
+  };
+}
+
+function dispatchSlashDesktopAction(action: string | undefined): void {
+  switch (action) {
+    case "open-settings":
+      window.dispatchEvent(new CustomEvent("slash-command:open-settings-tab", { detail: { tab: "appearance" } }));
+      return;
+    case "open-models":
+      window.dispatchEvent(new CustomEvent("slash-command:open-settings-tab", { detail: { tab: "model" } }));
+      return;
+    case "open-sessions":
+      window.dispatchEvent(new CustomEvent("slash-command:open-sessions"));
+      return;
+    case "open-hotkeys":
+      window.dispatchEvent(new CustomEvent("slash-command:open-hotkeys"));
+      return;
+    case "new-session":
+      window.dispatchEvent(new CustomEvent("slash-command:new-task"));
+      return;
+    case "quit":
+      void window.piAPI?.windowClose?.();
+      return;
+    default:
+      return;
+  }
 }
 
 function PermissionModeIcon({ mode }: { mode: PermissionMode }): React.JSX.Element {
@@ -109,6 +147,7 @@ export function ChatInput({
   onStop,
   workspaceId,
   workspacePath,
+  agentId,
   prefill,
   prefillKey,
   onPrefillConsumed,
@@ -120,7 +159,12 @@ export function ChatInput({
   const [sendError, setSendError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const slashListboxRef = useRef<HTMLDivElement>(null);
+  const slashOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const sendingRef = useRef(false);
+  const syncCursorPosition = useCallback((textarea: HTMLTextAreaElement) => {
+    setCursorPos(textarea.selectionStart ?? textarea.value.length);
+  }, []);
   const { settings, updateSettings, piModels } = useSettingsStore();
   const permissionStore = usePermissionStore();
   const planStore = usePlanStore();
@@ -137,7 +181,22 @@ export function ChatInput({
     close: closeMentions,
   } = useMentions(inputValue, cursorPos, workspacePath);
 
+  const {
+    activeCommand,
+    candidates: slashCandidates,
+    highlightIndex: slashHighlightIndex,
+    setHighlightIndex: setSlashHighlightIndex,
+    selectCandidate: selectSlashCandidate,
+    close: closeSlashCommands,
+  } = useSlashCommands(inputValue, cursorPos, workspaceId, agentId);
+
   const attachments = workspaceId ? listAttachments(workspaceId) : [];
+
+  useEffect(() => {
+    if (!activeCommand || slashCandidates.length === 0) return;
+    const option = slashOptionRefs.current[slashHighlightIndex];
+    option?.scrollIntoView?.({ block: "nearest" });
+  }, [activeCommand, slashCandidates.length, slashHighlightIndex]);
 
   // 图片粘贴
   const handlePaste = useCallback(
@@ -207,9 +266,49 @@ export function ChatInput({
 
   const handleSend = async (): Promise<void> => {
     if (sendingRef.current || !inputValue.trim() || !isConnected) return;
+    const slashDraft = parseSlashCommandDraft(inputValue);
+    if (slashDraft && attachments.length > 0) {
+      setAttachmentError("Slash 命令不能和附件一起发送");
+      return;
+    }
     sendingRef.current = true;
     setIsSending(true);
     setSendError(null);
+    if (slashDraft && window.piAPI?.runBuiltinSlashCommand) {
+      try {
+        const result = await window.piAPI.runBuiltinSlashCommand({
+          workspaceId: workspaceId ?? "",
+          ...(agentId ? { agentId } : {}),
+          command: slashDraft.command,
+          args: slashDraft.args,
+        });
+        if (isIpcError(result)) {
+          setSendError(result.fallback);
+          sendingRef.current = false;
+          setIsSending(false);
+          return;
+        }
+        if (result.handled) {
+          dispatchSlashDesktopAction(result.action);
+          if (result.tone === "error" && result.message) {
+            setSendError(result.message);
+          }
+          if (!result.keepInput) {
+            setInputValue("");
+            setAttachmentError(null);
+            if (textareaRef.current) textareaRef.current.style.height = "auto";
+          }
+          sendingRef.current = false;
+          setIsSending(false);
+          return;
+        }
+      } catch (err) {
+        setSendError(`发送失败: ${errorMessage(err, "未知错误")}`);
+        sendingRef.current = false;
+        setIsSending(false);
+        return;
+      }
+    }
     const imageAttachments = attachments.filter((attachment) => attachment.kind === "image");
     let imagePrefix = "";
     if (imageAttachments.length > 0) {
@@ -311,6 +410,40 @@ export function ChatInput({
       }
     }
 
+    if (!activeMention && activeCommand && slashCandidates.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSlashHighlightIndex((i) => Math.min(i + 1, slashCandidates.length - 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSlashHighlightIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        const selected = slashCandidates[slashHighlightIndex];
+        if (selected) {
+          const newText = selectSlashCandidate(selected);
+          setInputValue(newText);
+          requestAnimationFrame(() => {
+            if (textareaRef.current) {
+              const pos = newText.length;
+              textareaRef.current.setSelectionRange(pos, pos);
+              setCursorPos(pos);
+            }
+          });
+        }
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeSlashCommands();
+        return;
+      }
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (e.repeat) return;
@@ -321,9 +454,9 @@ export function ChatInput({
   const handleSelect = useCallback((): void => {
     const ta = textareaRef.current;
     if (ta) {
-      setCursorPos(ta.selectionStart);
+      syncCursorPosition(ta);
     }
-  }, []);
+  }, [syncCursorPosition]);
 
   const handlePickFiles = useCallback(async (): Promise<void> => {
     if (!window.piAPI?.selectFiles) {
@@ -479,8 +612,8 @@ export function ChatInput({
   const stopAriaLabel = runContext === "plan_execution" ? "暂停执行" : t("chatView.stopGeneration");
 
   return (
-    <div className="bg-transparent px-8 pt-2 pb-3">
-      <PermissionRequestStack />
+    <div className="w-full bg-transparent px-8 pt-2 pb-3">
+      <PermissionRequestStack workspaceId={workspaceId} agentId={agentId} />
       <div
         data-testid="chat-input-shell"
         className="mx-auto max-w-[770px] overflow-visible rounded-[18px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-[0_18px_44px_rgba(20,20,18,0.08),0_2px_10px_rgba(20,20,18,0.05)] transition-all focus-within:border-[var(--mm-border)] focus-within:shadow-[0_18px_44px_rgba(20,20,18,0.08),0_0_0_3px_rgba(36,36,35,0.035)]"
@@ -555,12 +688,14 @@ export function ChatInput({
               value={inputValue}
               onChange={(e) => {
                 setInputValue(e.target.value);
-                setCursorPos(e.target.selectionStart);
+                syncCursorPosition(e.currentTarget);
                 if (attachmentError) setAttachmentError(null);
                 if (sendError) setSendError(null);
               }}
               onPaste={handlePaste}
               onSelect={handleSelect}
+              onClick={handleSelect}
+              onKeyUp={handleSelect}
               onKeyDown={handleKeyDown}
               placeholder={inputPlaceholder}
               className="min-h-[62px] w-full resize-none border-0 bg-transparent px-0 py-0 text-sm leading-relaxed text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus-visible:!outline-none focus-visible:!shadow-none disabled:opacity-50"
@@ -604,6 +739,52 @@ export function ChatInput({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                     <span className="truncate font-mono text-xs">{c.path}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {!activeMention && activeCommand && slashCandidates.length > 0 && (
+              <div
+                ref={slashListboxRef}
+                role="listbox"
+                aria-label="Pi 命令候选"
+                className="absolute left-0 bottom-full z-50 mb-1 max-h-64 w-[min(520px,calc(100vw-48px))] overflow-y-auto rounded-lg border border-[var(--color-border)] bg-[var(--mm-bg-sidebar)] py-1 shadow-lg"
+              >
+                {slashCandidates.map((candidate, i) => (
+                  <button
+                    key={`${candidate.command.source}:${candidate.command.name}`}
+                    ref={(node) => {
+                      slashOptionRefs.current[i] = node;
+                    }}
+                    type="button"
+                    role="option"
+                    aria-selected={i === slashHighlightIndex}
+                    title={`/${candidate.command.name} ${candidate.command.description ?? candidate.command.source}`}
+                    className={`flex h-9 w-full items-center gap-2 overflow-hidden px-3 text-left text-sm ${
+                      i === slashHighlightIndex
+                        ? "bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)]"
+                        : "text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
+                    }`}
+                    onClick={() => {
+                      const newText = selectSlashCandidate(candidate);
+                      setInputValue(newText);
+                      requestAnimationFrame(() => {
+                        if (textareaRef.current) {
+                          const pos = newText.length;
+                          textareaRef.current.setSelectionRange(pos, pos);
+                          setCursorPos(pos);
+                        }
+                      });
+                    }}
+                    onMouseEnter={() => setSlashHighlightIndex(i)}
+                  >
+                    <span className="max-w-[13rem] shrink-0 truncate font-mono text-xs opacity-90">/{candidate.command.name}</span>
+                    <span className="min-w-0 flex-1 truncate text-xs opacity-80">
+                      {candidate.command.description ?? candidate.command.source}
+                    </span>
+                    <span className="shrink-0 rounded border border-current/15 px-1.5 py-0.5 text-[10px] leading-none opacity-60">
+                      {candidate.command.source}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -772,7 +953,7 @@ export function ChatInput({
                           )}
                         </button>
                       ))}
-                      <div className="my-1 border-t border-[var(--mm-border-subtle)]" />
+                      <div className="mx-3 my-1.5 h-px bg-[var(--mm-border)] opacity-70" aria-hidden="true" />
                     </>
                   )}
                   <button
