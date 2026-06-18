@@ -2,7 +2,14 @@
 
 All notable changes to Pi Desktop will be documented here. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased] — v1.0.1 hotfix
+## [Unreleased]
+
+### Planned
+- main/index.ts config parsing delegation to ConfigManager
+- Dual persistence convergence (SQLite or electron-store)
+- Electron 35+ bump to unblock e2e
+
+## [1.0.1] - 2026-06-01
 
 ### Fixed
 - **CI**: Add `eslint.config.js` (ESLint 9 flat config) so lint actually runs; project had no config and CI was silently passing.
@@ -21,6 +28,66 @@ All notable changes to Pi Desktop will be documented here. Format follows [Keep 
 
 ### Tests
 - 107 passed, 2 skipped, 0 failed (17 test files) — unchanged.
+
+## [1.0.9] - 2026-06-09
+
+### Added
+- utils/format.ts: toDate/formatTime/formatRelative/formatDuration single entry
+- settings-store write error UI (red banner + clearWriteError)
+- Tests: +37 (format 27, settings-store 10)
+
+## [1.0.8] - 2026-06-08
+
+### Added
+- PiStatusPanel + Onboarding step1 IpcError translation
+- Tests: +37 (workspace-store 12, approval-store 14, pi-status-store 11)
+
+## [1.0.7] - 2026-06-07
+
+### Changed
+- Lint: 7 eslint-disable cleared; `@typescript-eslint/no-explicit-any: error` enforced
+
+## [1.0.6.1] - 2026-06-06
+
+### Added
+- IPC: IpcError structured contract + ipcError() factory + isIpcError() guard
+- 4 setup modules + main/index.ts 23 handlers return IpcError instead of throw
+- Renderer translateIpcError() hook + en/zh-CN ipcErrors.* (7 namespaces, 27 scenarios)
+
+## [1.0.6] - 2026-06-06
+
+### Changed
+- Logging: 12 console → electron-log unified channel
+
+## [1.0.5] - 2026-06-05
+
+### Changed
+- Types: 49 `any`/`as any` cleared; preload strong types; store types narrowed
+
+## [1.0.4] - 2026-06-04
+
+### Added
+- i18n: i18next + react-i18next + locale detection + zh-CN/en-US bilingual extraction + Settings language switcher
+
+## [1.0.3] - 2026-06-03
+
+### Added
+- Usability: 3-step first-run wizard + empty/loading/error states unified
+- A11y baseline: 9 components aria-label/focus-visible + a11y.spec.ts
+- Shortcuts: central registry (8 entries) + ShortcutsCheatsheet (?) panel + tooltips
+
+## [1.0.2] - 2026-06-02
+
+### Added
+- Security: Zod schema validation for high-risk IPC handlers (git, files, terminal, sessions, agents, skills, workbench, codex/claude import)
+- Observability: electron-log across all main process modules; ErrorBoundary in renderer
+- i18n: IpcError contract + translateIpcError hook + 27 IPC error scenarios localized
+
+### Removed
+- messaging/gateway (IM bridge): deleted feishu/qq/wechat adapters + GatewayPanel
+
+### Fixed
+- CI: restore lint gate (was silently passing)
 
 ---
 
