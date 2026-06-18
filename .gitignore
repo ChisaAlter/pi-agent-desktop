@@ -102,3 +102,25 @@ scripts/click-hwnd.ps1
 scripts/focus-window.ps1
 scripts/screenshot.ps1
 scripts/manual-launch-screenshot.png
+
+# Python scratch
+__pycache__/
+*.pyc
+calculator.py
+
+# Probe / scratch
+_probe.bat
+test-results.csv
+test-cases.md
+opencode.jsonc
+
+# Tooling dirs (agent session state, not project)
+.mimocode/
+.opencode/
+.claude/
+
+# Dev scratch screenshots
+apps/desktop/test-sidebar-*.png
+apps/desktop/test-sidebar-*.mjs
+apps/desktop/app_stderr.log
+apps/desktop/app_stdout.log
