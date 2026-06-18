@@ -26,6 +26,7 @@ import { Onboarding } from "./components/Onboarding/Onboarding";
 import { ChatView } from "./components/ChatView/ChatView";
 import { SearchHistory } from "./components/SearchHistory/SearchHistory";
 import { TopTabBar } from "./components/TopTabBar/TopTabBar";
+import { WorkspaceSwitcher } from "./components/TopTabBar/WorkspaceSwitcher";
 import {
     MiniMaxCodeLayout,
     MiniMaxCodeSidebar,
@@ -54,7 +55,7 @@ type TerminalCommandTarget = { command: string; mode: TerminalCommandMode; nonce
 type PaletteCommandStatus = { message: string; tone: "success" | "error" };
 
 function panelForSection(section: string): MainPanel {
-    if (section === "skills") return "skills";
+    if (section === "skills" || section === "tools") return "skills";
     if (section === "git") return "git";
     return "chat";
 }
@@ -169,12 +170,15 @@ function AppShell(): React.ReactElement {
         ensureQueueSubscription();
     }, []);
 
-    // v2.0: 自动右栏 — 空对话页隐藏右栏, 有消息后显示
+    // v2.0: 自动右栏 — 首条消息到达时展开, 之后由用户控制
+    const prevMessageCountRef = useRef(0);
     useEffect(() => {
-        const hasMessages = (currentSession?.messages?.length ?? 0) > 0;
-        useSettingsStore.setState((s) => ({
-            rightRailCollapsed: hasMessages ? false : s.rightRailCollapsed,
-        }));
+        const count = currentSession?.messages?.length ?? 0;
+        const hadMessages = prevMessageCountRef.current > 0;
+        prevMessageCountRef.current = count;
+        if (count > 0 && !hadMessages) {
+            useSettingsStore.setState({ rightRailCollapsed: false });
+        }
     }, [currentSession?.messages?.length]);
 
     useEffect(() => {
@@ -298,9 +302,8 @@ function AppShell(): React.ReactElement {
             setActiveSection("chat");
             return;
         }
-        // TODO: Implement dedicated memory panel route
         if (section === "memory") {
-            setPaletteOpen(true);
+            setShowSearchHistory(true);
             return;
         }
         if (section === "new-task") {
@@ -468,6 +471,7 @@ function AppShell(): React.ReactElement {
                     <TopTabBar
                         activeTab={activeSection === "new-task" ? "chat" : activeSection}
                         onTabChange={routeSection}
+                        rightSlot={<WorkspaceSwitcher />}
                     />
                 }
                 leftCollapsed={leftCollapsed}

@@ -74,6 +74,7 @@
     "settings": "设置",
     "git": "Git",
     "subtitle": "桌面工作台",
+    "workspaceNone": "未选择工作区",
     "newConversation": "新建对话",
     "groupByDate": "按时间分组",
     "groupByWorkspace": "按工作区分组",
