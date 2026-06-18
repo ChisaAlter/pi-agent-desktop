@@ -116,6 +116,7 @@
   --mm-width-sidebar-left: 240px; /* 左侧栏固定宽度(任务/技能/历史导航) */
   --mm-width-sidebar-right: 280px;/* 右侧栏固定宽度(上下文/详情面板) */
   --mm-height-titlebar: 32px;     /* 窗口标题栏占位高度(后续接 macOS/Windows title bar) */
+  --mm-height-tabbar: 36px;       /* 会话标签栏高度 */
 }
 
 /* 基础样式 */

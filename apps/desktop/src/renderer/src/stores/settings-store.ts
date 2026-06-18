@@ -34,6 +34,8 @@ interface SettingsState {
   piModels: PiModelInfo[] | null;
   /** v1.0.9: 最近一次写错误 (IpcError | string | null). SettingsPanel 订阅后翻译显示. */
   lastWriteError: IpcError | string | null;
+  rightRailCollapsed: boolean;
+  sidebarGroupMode: 'date' | 'workspace';
 
   // Actions
   updateSettings: (updates: Partial<AppSettings>) => void;
@@ -47,6 +49,8 @@ interface SettingsState {
   getWorkspaceToolDefaults: (workspaceId?: string | null) => ToolPermissions;
   updateWorkspaceToolDefaults: (workspaceId: string, permissions: ToolPermissions) => void;
   setTheme: (theme: Theme) => void;
+  toggleRightRail: () => void;
+  setSidebarGroupMode: (mode: 'date' | 'workspace') => void;
 }
 
 const defaultSettings: AppSettings = {
@@ -215,6 +219,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
     isOpen: false,
     piModels: null,
     lastWriteError: null,
+    rightRailCollapsed: true,
+    sidebarGroupMode: 'date',
 
     // 从 Pi CLI 加载本地配置
     loadPiConfig: async () => {
@@ -323,5 +329,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
       get().updateSettings({ theme: theme as AppSettings["theme"] });
       localStorage.setItem("pi-desktop-theme", theme);
     },
+
+    toggleRightRail: () => set((state) => ({ rightRailCollapsed: !state.rightRailCollapsed })),
+    setSidebarGroupMode: (mode: 'date' | 'workspace') => set({ sidebarGroupMode: mode }),
   };
 });
