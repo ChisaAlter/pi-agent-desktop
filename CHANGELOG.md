@@ -5,29 +5,7 @@ All notable changes to Pi Desktop will be documented here. Format follows [Keep 
 ## [Unreleased]
 
 ### Planned
-- main/index.ts config parsing delegation to ConfigManager
-- Dual persistence convergence (SQLite or electron-store)
 - Electron 35+ bump to unblock e2e
-
-## [1.0.1] - 2026-06-01
-
-### Fixed
-- **CI**: Add `eslint.config.js` (ESLint 9 flat config) so lint actually runs; project had no config and CI was silently passing.
-- **CI**: Remove `continue-on-error: true` from lint and build steps (was hiding real failures).
-- **CI**: Bump Node version 20 → 22 to match documented requirement.
-- **Security**: Parameterize all `git` shell invocations in main process (`execSync` → `execFileSync`) — closes command injection in `git:add`, `git:commit`, `git:diff`, `git:log`, `git:undo`.
-- **Memory leak**: Chat IPC no longer re-subscribes to Pi session events on every `pi:send` — bridge and interceptor are now created once per workspace session.
-
-### Removed
-- **messaging/gateway (IM bridge)**: Deleted `src/main/messaging/` (feishu/qq/wechat adapters + gateway) and `src/renderer/src/components/GatewayPanel/`. v0.1.0 product decision: focus on AI coding agent GUI, defer IM bridge to v2.0+.
-- `CODEBUDDY.md` (was stale and contradicted README).
-
-### Changed
-- `package.json` `engines.node`: `>=18.0.0` → `>=22.19.0` (matches README prerequisite).
-- `WorkspaceData` interface: now includes optional `lastActiveAt` field (was previously `as any` cast).
-
-### Tests
-- 107 passed, 2 skipped, 0 failed (17 test files) — unchanged.
 
 ## [1.0.9] - 2026-06-09
 
@@ -90,6 +68,26 @@ All notable changes to Pi Desktop will be documented here. Format follows [Keep 
 - CI: restore lint gate (was silently passing)
 
 ---
+
+## [1.0.1] - 2026-06-01
+
+### Fixed
+- **CI**: Add `eslint.config.js` (ESLint 9 flat config) so lint actually runs; project had no config and CI was silently passing.
+- **CI**: Remove `continue-on-error: true` from lint and build steps (was hiding real failures).
+- **CI**: Bump Node version 20 → 22 to match documented requirement.
+- **Security**: Parameterize all `git` shell invocations in main process (`execSync` → `execFileSync`) — closes command injection in `git:add`, `git:commit`, `git:diff`, `git:log`, `git:undo`.
+- **Memory leak**: Chat IPC no longer re-subscribes to Pi session events on every `pi:send` — bridge and interceptor are now created once per workspace session.
+
+### Removed
+- **messaging/gateway (IM bridge)**: Deleted `src/main/messaging/` (feishu/qq/wechat adapters + gateway) and `src/renderer/src/components/GatewayPanel/`. v0.1.0 product decision: focus on AI coding agent GUI, defer IM bridge to v2.0+.
+- `CODEBUDDY.md` (was stale and contradicted README).
+
+### Changed
+- `package.json` `engines.node`: `>=18.0.0` → `>=22.19.0` (matches README prerequisite).
+- `WorkspaceData` interface: now includes optional `lastActiveAt` field (was previously `as any` cast).
+
+### Tests
+- 107 passed, 2 skipped, 0 failed (17 test files) — unchanged.
 
 ## [0.1.0] - 2026-06-01
 

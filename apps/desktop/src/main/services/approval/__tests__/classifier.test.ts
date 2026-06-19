@@ -62,19 +62,27 @@ describe("classifyToolCall", () => {
         });
     });
 
-    describe("classifier hardening", () => {
+    describe("existing patterns still work", () => {
         it.each([
             ["echo rm -rf /", "high"],
             ["sudo --user root bash", "high"],
             ["`rm -rf /`", "high"],
             ["$(rm -rf /)", "high"],
+            ["git log --oneline", "read"],
+            ["ls -la", "read"],
+        ])("classifies %s as %s", (cmd, expected) => {
+            const result = classifyToolCall(t("bash", { command: cmd }));
+            expect(result.risk).toBe(expected);
+        });
+    });
+
+    describe("extra high-risk patterns (Windows)", () => {
+        it.each([
             ["sc delete MyService", "high"],
             ["bcdedit /set", "high"],
             ["net user admin pass /add", "high"],
             ["powershell Invoke-Expression 'rm -rf /'", "high"],
             ["Stop-Process -Force -Name explorer", "high"],
-            ["git log --oneline", "read"],
-            ["ls -la", "read"],
         ])("classifies %s as %s", (cmd, expected) => {
             const result = classifyToolCall(t("bash", { command: cmd }));
             expect(result.risk).toBe(expected);

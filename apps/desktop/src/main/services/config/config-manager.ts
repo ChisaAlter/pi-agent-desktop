@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import { homedir } from "os";
 import yaml from "js-yaml";
+import log from "electron-log/main";
 import type {
     ConfigValidationResult,
     ManagedModelDeleteInput,
@@ -50,16 +51,18 @@ export class ConfigManager {
                             models?: Array<Record<string, unknown>>;
                             _piDesktopDeletedModels?: string[];
                         };
-                        const models: PiAgentModel[] = (pd.models || []).map((m) => ({
-                            id: String(m.id),
-                            name: typeof m.name === "string" ? m.name : String(m.id),
-                            provider: providerId,
-                            providerName: pd.name || providerId,
-                            contextWindow: typeof m.contextWindow === "number" ? m.contextWindow : undefined,
-                            maxTokens: typeof m.maxTokens === "number" ? m.maxTokens : undefined,
-                            reasoning: Boolean(m.reasoning),
-                            input: Array.isArray(m.input) ? (m.input as string[]) : undefined,
-                        }));
+                        const models: PiAgentModel[] = (pd.models || [])
+                            .filter((m): m is Record<string, unknown> => !!m && typeof m === "object" && typeof m.id === "string")
+                            .map((m) => ({
+                                id: m.id as string,
+                                name: typeof m.name === "string" ? m.name : (m.id as string),
+                                provider: providerId,
+                                providerName: pd.name || providerId,
+                                contextWindow: typeof m.contextWindow === "number" ? m.contextWindow : undefined,
+                                maxTokens: typeof m.maxTokens === "number" ? m.maxTokens : undefined,
+                                reasoning: Boolean(m.reasoning),
+                                input: Array.isArray(m.input) ? (m.input as string[]) : undefined,
+                            }));
                         providers.push({
                             id: providerId,
                             name: pd.name || providerId,
@@ -95,7 +98,8 @@ export class ConfigManager {
             }
 
             return { defaultProvider, defaultModel, providers };
-        } catch {
+        } catch (e) {
+            log.error("Failed to load Pi Agent config:", e);
             return null;
         }
     }
