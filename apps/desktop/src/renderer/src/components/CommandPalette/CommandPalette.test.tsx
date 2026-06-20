@@ -151,7 +151,7 @@ describe("CommandPalette", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "命令" }));
 
-    expect(await screen.findByRole("button", { name: "打开 Files" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "打开文件" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "打开 Source Control" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "打开 Sessions" })).toBeTruthy();
 
@@ -389,7 +389,7 @@ describe("CommandPalette", () => {
     const { onClose } = renderPalette({ workspacePath: "C:/repo", onRunCommand });
 
     fireEvent.click(screen.getByRole("tab", { name: "命令" }));
-    fireEvent.click(await screen.findByRole("button", { name: "打开 Files" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开文件" }));
 
     expect(onRunCommand).toHaveBeenCalledWith("open_files");
     expect(onClose).toHaveBeenCalled();

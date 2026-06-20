@@ -62,14 +62,6 @@ function statusDot(status: string): string {
   return "border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] text-transparent";
 }
 
-function PanelChevron(): React.JSX.Element {
-  return (
-    <svg className="h-3.5 w-3.5 text-[#aaa]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 9l-7 7-7-7" />
-    </svg>
-  );
-}
-
 function RowIcon({ children }: { children: React.ReactNode }): React.JSX.Element {
   return (
     <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[var(--mm-text-tertiary)]" aria-hidden="true">
@@ -534,12 +526,6 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
             <span>输出 {formatToken(usage?.outputTokens)}</span>
             <span>费用 {usage?.estimatedCostUsd === undefined ? "unknown" : `$${usage.estimatedCostUsd.toFixed(4)}`}</span>
           </div>
-          <p
-            className="mt-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1.5 text-[11px] leading-4 text-[var(--mm-text-tertiary)]"
-            title="当前 Pi runtime 未暴露手动压缩 API"
-          >
-            手动压缩将在 runtime 支持后启用
-          </p>
         </div>
       </section>
 
@@ -550,7 +536,6 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
       <section className="rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="m-0 text-[13px] font-medium">环境信息</h2>
-          <PanelChevron />
         </div>
         <p className="mb-3 truncate font-mono text-[11px] leading-none text-[var(--mm-text-tertiary)]">
           {git?.branch ?? "无 Git"}
@@ -682,7 +667,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
         <div className="mb-3 flex items-center justify-between">
           <h2 className="m-0 text-[13px] font-medium">进度</h2>
           <span className="rounded-full bg-[var(--mm-bg-sidebar)] px-2 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">
-            {taskFlowItems.length > 0 ? `${taskFlowItems.length} tasks` : "idle"}
+            {taskFlowItems.length > 0 ? `${taskFlowItems.length} 项` : "idle"}
           </span>
         </div>
         {queue.lastError && (
@@ -704,7 +689,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
         {taskFlowItems.length > 0 && (
           <div className="mb-3 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-2">
             <div className="mb-2 flex items-center justify-between text-[11px] text-[var(--mm-text-tertiary)]">
-              <span>任务流</span>
+              <span>运行队列</span>
               <span>{queue.autoRetrying ? "自动重试" : queue.running ? "运行中" : "排队"}</span>
             </div>
             <ul className="m-0 list-none space-y-1.5 p-0">
@@ -802,7 +787,6 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
       <section className="min-h-0 rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="m-0 text-[13px] font-medium">文件输出</h2>
-          <PanelChevron />
         </div>
         {fileOutputs.length > 0 ? (
           <ul className="m-0 max-h-[220px] list-none space-y-2 overflow-y-auto p-0">
@@ -820,7 +804,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
                     onClick={() => openWorkspaceFile(item.path)}
                     className="rounded px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
                   >
-                    Files
+                    预览
                   </button>
                   <button
                     type="button"

@@ -9,8 +9,19 @@ vi.mock("./components/MiniMaxCode", async () => {
     const actual = await vi.importActual<typeof import("./components/MiniMaxCode")>("./components/MiniMaxCode");
     return {
         ...actual,
-        MiniMaxCodeLayout: ({ leftSlot, centerSlot }: { leftSlot: React.ReactNode; centerSlot: React.ReactNode }) => (
-            <div>
+        MiniMaxCodeLayout: ({
+            leftSlot,
+            centerSlot,
+            topBarSlot,
+            rightCollapsed,
+        }: {
+            leftSlot: React.ReactNode;
+            centerSlot: React.ReactNode;
+            topBarSlot?: React.ReactNode;
+            rightCollapsed?: boolean;
+        }) => (
+            <div data-testid="layout-shell" data-right-collapsed={String(Boolean(rightCollapsed))}>
+                {topBarSlot}
                 <aside>{leftSlot}</aside>
                 <main>{centerSlot}</main>
             </div>
@@ -51,6 +62,7 @@ import App from "./App";
 import { useAgentStore } from "./stores/agent-store";
 import { usePermissionStore } from "./stores/permission-store";
 import { useSessionStore } from "./stores/session-store";
+import { useSettingsStore } from "./stores/settings-store";
 import { useWorkspaceStore } from "./stores/workspace-store";
 
 const piAPI = {
@@ -72,6 +84,7 @@ const piAPI = {
     refreshPiStatus: vi.fn(async () => ({ installed: true, version: "test" })),
     listWorkspaces: vi.fn(async () => []),
     listSessions: vi.fn(async () => []),
+    openSettingsWindow: vi.fn(async () => undefined),
 };
 
 describe("App sidebar session navigation", () => {
@@ -127,6 +140,9 @@ describe("App sidebar session navigation", () => {
         usePermissionStore.setState({
             mode: "smart",
             pending: [],
+        });
+        useSettingsStore.setState({
+            rightRailCollapsed: true,
         });
     });
 
@@ -206,5 +222,49 @@ describe("App sidebar session navigation", () => {
 
         expect(usePermissionStore.getState().pending).toHaveLength(0);
         vi.useRealTimers();
+    });
+
+    it("主导航只展示 Pi Agent 当前真实一级入口，设置通过按钮打开独立窗口", () => {
+        render(<App />);
+
+        expect(screen.getByRole("tab", { name: "对话" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "技能" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "Git" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "历史" })).toBeTruthy();
+        expect(screen.queryByRole("tab", { name: "任务" })).toBeNull();
+        expect(screen.queryByRole("tab", { name: "记忆" })).toBeNull();
+        expect(screen.queryByRole("tab", { name: "工具" })).toBeNull();
+        expect(screen.queryByRole("tab", { name: "设置" })).toBeNull();
+
+        fireEvent.click(screen.getByRole("button", { name: "打开设置窗口" }));
+
+        expect(window.piAPI.openSettingsWindow).toHaveBeenCalledTimes(1);
+    });
+
+    it("agent 对话收到首条消息时自动展开右栏", async () => {
+        useSessionStore.setState((state) => ({
+            sessions: state.sessions.map((session) => ({ ...session, messages: [] })),
+            currentSessionId: "s_1",
+        }));
+        useAgentStore.setState((state) => ({
+            ...state,
+            messagesByAgent: {
+                agent_1: [
+                    {
+                        id: "agent-message-1",
+                        agentId: "agent_1",
+                        role: "assistant",
+                        content: "done",
+                        createdAt: Date.now(),
+                    },
+                ],
+            },
+        }));
+
+        await act(async () => {
+            render(<App />);
+        });
+
+        expect(screen.getByTestId("layout-shell").getAttribute("data-right-collapsed")).toBe("false");
     });
 });

@@ -20,13 +20,13 @@ import { CommandPalette } from "./components/CommandPalette/CommandPalette";
 import { ShortcutsCheatsheet } from "./components/ShortcutsCheatsheet/ShortcutsCheatsheet";
 import { SkillsPanel } from "./components/SkillsPanel/SkillsPanel";
 import { GitPanel } from "./components/GitPanel/GitPanel";
+import { FileWorkspace } from "./components/FileWorkspace/FileWorkspace";
 import { TerminalPanel } from "./components/Terminal/TerminalPanel";
 import { ApprovalPanel } from "./components/ApprovalPanel/ApprovalPanel";
 import { Onboarding } from "./components/Onboarding/Onboarding";
 import { ChatView } from "./components/ChatView/ChatView";
 import { SearchHistory } from "./components/SearchHistory/SearchHistory";
 import { TopTabBar } from "./components/TopTabBar/TopTabBar";
-import { WorkspaceSwitcher } from "./components/TopTabBar/WorkspaceSwitcher";
 import {
     MiniMaxCodeLayout,
     MiniMaxCodeSidebar,
@@ -50,14 +50,24 @@ import type { TerminalCommandMode } from "./utils/terminal-command";
 import { isIpcError } from "@shared";
 import { applyTheme, watchSystemTheme, type Theme } from "./utils/theme";
 
-type MainPanel = "chat" | "skills" | "git";
+type MainPanel = "chat" | "skills" | "git" | "files";
 type TerminalCommandTarget = { command: string; mode: TerminalCommandMode; nonce: number };
 type PaletteCommandStatus = { message: string; tone: "success" | "error" };
+type FileWorkspaceTarget = { path: string; mode?: "edit" | "diff"; nonce: number };
 
 function panelForSection(section: string): MainPanel {
+    if (section === "files") return "files";
     if (section === "skills" || section === "tools") return "skills";
     if (section === "git") return "git";
     return "chat";
+}
+
+function normalizeWorkspaceTarget(path: string, workspacePath?: string): string {
+    const trimmed = path.trim().replace(/^["']|["']$/g, "");
+    if (!workspacePath || /^[A-Za-z]:[\\/]/.test(trimmed) || trimmed.startsWith("\\\\")) {
+        return trimmed;
+    }
+    return `${workspacePath.replace(/[\\/]+$/, "")}\\${trimmed.replace(/^[\\/]+/, "")}`;
 }
 
 function emitCommandPaletteStatus(status: PaletteCommandStatus): void {
@@ -98,6 +108,7 @@ function AppShell(): React.ReactElement {
     const [showSearchHistory, setShowSearchHistory] = useState(false);
     const [leftCollapsed, setLeftCollapsed] = useState(false);
     const [terminalCommandTarget, setTerminalCommandTarget] = useState<TerminalCommandTarget | null>(null);
+    const [fileWorkspaceTarget, setFileWorkspaceTarget] = useState<FileWorkspaceTarget | null>(null);
     const sessions = useSessionStore((s) => s.sessions);
     const currentSessionId = useSessionStore((s) => s.currentSessionId);
     const currentSession = useSessionStore((s) =>
@@ -116,6 +127,7 @@ function AppShell(): React.ReactElement {
         (s) => s.changes.filter((c) => c.status === "pending").length,
     );
     const agents = useAgentStore((s) => s.agents);
+    const messagesByAgent = useAgentStore((s) => s.messagesByAgent);
     const agentsInitialized = useAgentStore((s) => s.initialized);
     const createAgent = useAgentStore((s) => s.createAgent);
     const currentWorkspace = getCurrentWorkspace();
@@ -172,14 +184,23 @@ function AppShell(): React.ReactElement {
 
     // v2.0: 自动右栏 — 首条消息到达时展开, 之后由用户控制
     const prevMessageCountRef = useRef(0);
+    const currentWorkspaceAgent = useMemo(
+        () => currentWorkspace
+            ? agents.find((agent) => agent.workspaceId === currentWorkspace.id)
+            : undefined,
+        [agents, currentWorkspace],
+    );
+    const currentAgentMessageCount = currentWorkspaceAgent
+        ? messagesByAgent[currentWorkspaceAgent.id]?.length ?? 0
+        : 0;
     useEffect(() => {
-        const count = currentSession?.messages?.length ?? 0;
+        const count = Math.max(currentSession?.messages?.length ?? 0, currentAgentMessageCount);
         const hadMessages = prevMessageCountRef.current > 0;
         prevMessageCountRef.current = count;
         if (count > 0 && !hadMessages) {
             useSettingsStore.setState({ rightRailCollapsed: false });
         }
-    }, [currentSession?.messages?.length]);
+    }, [currentAgentMessageCount, currentSession?.messages?.length]);
 
     useEffect(() => {
         if (activeSection === "new-task" && currentSession) {
@@ -264,13 +285,41 @@ function AppShell(): React.ReactElement {
             setTerminalCommandTarget({ command, mode: detail?.mode ?? "run", nonce: Date.now() });
             setShowTerminal(true);
         };
+        const onOpenFile = (e: Event): void => {
+            const detail = (e as CustomEvent<{ path?: string; mode?: "edit" | "diff" }>).detail;
+            const path = detail?.path?.trim();
+            const workspacePath = useWorkspaceStore.getState().getCurrentWorkspace()?.path;
+            if (!path || !workspacePath) return;
+            setFileWorkspaceTarget({
+                path: normalizeWorkspaceTarget(path, workspacePath),
+                mode: detail?.mode,
+                nonce: Date.now(),
+            });
+            setActiveSection("files");
+        };
+        const onOpenGitDiff = (e: Event): void => {
+            const detail = (e as CustomEvent<{ file?: string }>).detail;
+            const file = detail?.file?.trim();
+            const workspacePath = useWorkspaceStore.getState().getCurrentWorkspace()?.path;
+            if (!file || !workspacePath) return;
+            setFileWorkspaceTarget({
+                path: normalizeWorkspaceTarget(file, workspacePath),
+                mode: "diff",
+                nonce: Date.now(),
+            });
+            setActiveSection("files");
+        };
         window.addEventListener("chatpanel:prefill", onPrefill);
         window.addEventListener("app:switch-section", onSwitchSection);
         window.addEventListener("terminal:run-command", onRunTerminalCommand);
+        window.addEventListener("workspace:open-file", onOpenFile);
+        window.addEventListener("workspace:open-git-diff", onOpenGitDiff);
         return () => {
             window.removeEventListener("chatpanel:prefill", onPrefill);
             window.removeEventListener("app:switch-section", onSwitchSection);
             window.removeEventListener("terminal:run-command", onRunTerminalCommand);
+            window.removeEventListener("workspace:open-file", onOpenFile);
+            window.removeEventListener("workspace:open-git-diff", onOpenGitDiff);
         };
     }, []);
 
@@ -297,12 +346,8 @@ function AppShell(): React.ReactElement {
             setPaletteOpen(true);
             return;
         }
-        // TODO: Implement dedicated tasks panel route
-        if (section === "tasks") {
-            setActiveSection("chat");
-            return;
-        }
-        if (section === "memory") {
+        if (section === "history" || section === "memory") {
+            setActiveSection("history");
             setShowSearchHistory(true);
             return;
         }
@@ -337,6 +382,20 @@ function AppShell(): React.ReactElement {
                 return;
             case "open_skills":
                 routeSection("skills");
+                return;
+            case "open_files":
+                if (!currentWorkspace) {
+                    emitCommandPaletteStatus({ message: "请先选择工作区", tone: "error" });
+                    return;
+                }
+                setFileWorkspaceTarget(null);
+                setActiveSection("files");
+                return;
+            case "open_git":
+                routeSection("git");
+                return;
+            case "open_sessions":
+                routeSection("history");
                 return;
             case "open_settings":
                 routeSection("settings");
@@ -385,7 +444,7 @@ function AppShell(): React.ReactElement {
             default:
                 logger.warn("[App] unknown command palette cmd:", cmdId);
         }
-    }, [routeSection]);
+    }, [currentWorkspace, routeSection]);
 
     useEffect(() => {
         const onOpenSettingsTab = (event: Event): void => {
@@ -396,14 +455,17 @@ function AppShell(): React.ReactElement {
             }, 0);
         };
         const onOpenHotkeys = (): void => setShowCheatsheet(true);
+        const onOpenSessions = (): void => setShowSearchHistory(true);
         const onNewTask = (): void => routeSection("new-task");
 
         window.addEventListener("slash-command:open-settings-tab", onOpenSettingsTab);
         window.addEventListener("slash-command:open-hotkeys", onOpenHotkeys);
+        window.addEventListener("slash-command:open-sessions", onOpenSessions);
         window.addEventListener("slash-command:new-task", onNewTask);
         return () => {
             window.removeEventListener("slash-command:open-settings-tab", onOpenSettingsTab);
             window.removeEventListener("slash-command:open-hotkeys", onOpenHotkeys);
+            window.removeEventListener("slash-command:open-sessions", onOpenSessions);
             window.removeEventListener("slash-command:new-task", onNewTask);
         };
         }, [routeSection]);
@@ -469,9 +531,15 @@ function AppShell(): React.ReactElement {
                 title="Pi Agent"
                 topBarSlot={
                     <TopTabBar
-                        activeTab={activeSection === "new-task" ? "chat" : activeSection}
+                        activeTab={
+                            activeSection === "new-task"
+                                ? "chat"
+                                : activeSection === "tools"
+                                  ? "skills"
+                                  : activeSection
+                        }
                         onTabChange={routeSection}
-                        rightSlot={<WorkspaceSwitcher />}
+                        rightSlot={null}
                     />
                 }
                 leftCollapsed={leftCollapsed}
@@ -505,6 +573,17 @@ function AppShell(): React.ReactElement {
                         {activePanel === "git" && currentWorkspace && (
                             <ErrorBoundary fallback={panelFallback("Git")}>
                                 <GitPanel workspacePath={currentWorkspace.path} />
+                            </ErrorBoundary>
+                        )}
+                        {activePanel === "files" && currentWorkspace && (
+                            <ErrorBoundary fallback={panelFallback("文件")}>
+                                <div className="flex-1 overflow-hidden">
+                                    <FileWorkspace
+                                        workspacePath={currentWorkspace.path}
+                                        workspaceId={currentWorkspace.id}
+                                        initialTarget={fileWorkspaceTarget}
+                                    />
+                                </div>
                             </ErrorBoundary>
                         )}
                     </>

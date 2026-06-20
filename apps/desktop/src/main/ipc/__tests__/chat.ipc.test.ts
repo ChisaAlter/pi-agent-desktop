@@ -87,6 +87,57 @@ describe("setupChatIpc", () => {
         expect(webContentsSend).toHaveBeenCalledWith("pi:event", event);
     });
 
+    it("wraps plan mode prompts before sending them to Pi", async () => {
+        const prompt = vi.fn(async () => undefined);
+        const registry = {
+            get: vi.fn(async () => ({
+                session: { prompt, abort: vi.fn() },
+            })),
+            has: vi.fn(() => true),
+        };
+
+        setupChatIpc({
+            registry: registry as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+        });
+
+        const handler = handlers.get("pi:send");
+        await handler?.({}, "ws_1", "改输入区", { mode: "plan" });
+
+        expect(prompt).toHaveBeenCalledTimes(1);
+        const outbound = prompt.mock.calls[0]?.[0] as string;
+        expect(outbound).toContain("Plan mode is active");
+        expect(outbound).toContain("改输入区");
+    });
+
+    it("adds compose slash commands only for compose mode", async () => {
+        const session = {
+            extensionRunner: { getRegisteredCommands: vi.fn(() => []) },
+            promptTemplates: [],
+            resourceLoader: { getSkills: vi.fn(() => ({ skills: [] })) },
+        };
+        const registry = {
+            get: vi.fn(async () => ({ session })),
+            has: vi.fn(() => true),
+        };
+
+        setupChatIpc({
+            registry: registry as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+        });
+
+        const handler = handlers.get("pi:list-slash-commands");
+        const buildResult = await handler?.({}, "ws_1", undefined, "build") as Array<{ name: string }>;
+        const composeResult = await handler?.({}, "ws_1", undefined, "compose") as Array<{ name: string }>;
+
+        expect(buildResult.some((command) => command.name === "compose:plan")).toBe(false);
+        expect(composeResult.some((command) => command.name === "compose:plan")).toBe(true);
+    });
+
     it("does not fall back to the default workspace when a provided workspace id is unknown", async () => {
         const registry = {
             get: vi.fn(),

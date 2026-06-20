@@ -7,6 +7,7 @@ import { useSessionStore } from "../../stores/session-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { usePiStatusStore } from "../../stores/pi-status-store";
 import { usePlanStore } from "../../stores/plan-store";
+import { useAgentStore } from "../../stores/agent-store";
 import { ChatView } from "./ChatView";
 
 const clearError = vi.fn();
@@ -30,8 +31,8 @@ vi.mock("../../hooks/usePiStream", () => ({
 }));
 
 vi.mock("./ChatInput", () => ({
-  ChatInput: ({ onSend }: { onSend: (message: string) => Promise<void> }) => (
-    <div data-testid="chat-input-shell">
+  ChatInput: ({ agentId, onSend }: { agentId?: string | null; onSend: (message: string) => Promise<void> }) => (
+    <div data-testid="chat-input-shell" data-agent-id={agentId ?? ""}>
       <button type="button" data-testid="chat-input" onClick={() => void onSend("draft hello")}>
         send
       </button>
@@ -97,6 +98,13 @@ describe("ChatView", () => {
       progress: null,
     });
     usePlanStore.getState().reset();
+    useAgentStore.setState({
+      agents: [],
+      currentAgentId: null,
+      messagesByAgent: {},
+      runtimeByAgent: {},
+      initialized: true,
+    });
     Object.defineProperty(window, "piAPI", {
       value: {
         createSession: vi.fn(async (workspaceId: string, title?: string, id?: string) => ({
@@ -277,6 +285,65 @@ describe("ChatView", () => {
     });
     expect(useSessionStore.getState().currentSessionId).toBeTruthy();
     await waitFor(() => expect(startStreaming).toHaveBeenCalledWith("ws1", "draft hello"));
+  });
+
+  it("uses the agent that belongs to the current workspace", async () => {
+    mockedStreamError = null;
+    useWorkspaceStore.setState({
+      workspaces: [
+        {
+          id: "ws1",
+          name: "repo one",
+          path: "C:/repo-one",
+          createdAt: new Date(0),
+          lastActiveAt: new Date(0),
+        },
+        {
+          id: "ws2",
+          name: "repo two",
+          path: "C:/repo-two",
+          createdAt: new Date(0),
+          lastActiveAt: new Date(1),
+        },
+      ],
+      currentWorkspaceId: "ws2",
+    });
+    useAgentStore.setState({
+      agents: [
+        {
+          id: "agent_ws1",
+          workspaceId: "ws1",
+          title: "Repo one Agent",
+          status: "idle",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+        {
+          id: "agent_ws2",
+          workspaceId: "ws2",
+          title: "Repo two Agent",
+          status: "idle",
+          createdAt: 2,
+          updatedAt: 2,
+        },
+      ],
+      currentAgentId: "agent_ws1",
+      messagesByAgent: {},
+      runtimeByAgent: {},
+      initialized: true,
+    });
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByTestId("chat-input-shell").getAttribute("data-agent-id")).toBe("agent_ws2");
+
+    fireEvent.click(screen.getByTestId("chat-input"));
+
+    await waitFor(() => expect(startStreaming).toHaveBeenCalledWith("ws2", "draft hello"));
   });
 
   it("shows an inline error when continuing a read-only session fails", async () => {

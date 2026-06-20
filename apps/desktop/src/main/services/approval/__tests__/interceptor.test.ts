@@ -88,6 +88,59 @@ describe("createApprovalInterceptor", () => {
         );
     });
 
+    it("aborts non-plan-file writes while plan mode is active", async () => {
+        interceptor = createApprovalInterceptor("ws_1", {
+            abort,
+            pendingEdits,
+            send,
+            workspacePath: "C:/workspace",
+            getMode: () => "plan",
+        });
+
+        await interceptor.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_plan_block",
+            toolName: "write",
+            args: { file_path: "src/app.ts", content: "x" },
+        });
+
+        expect(abort).toHaveBeenCalledTimes(1);
+        expect(pendingEdits.list()).toHaveLength(0);
+        expect(send).toHaveBeenCalledWith(
+            "permission:update",
+            "ws_1",
+            expect.objectContaining({
+                type: "error",
+                message: expect.stringContaining("Plan 模式禁止"),
+            }),
+        );
+    });
+
+    it("allows plan-file writes while plan mode is active", async () => {
+        interceptor = createApprovalInterceptor("ws_1", {
+            abort,
+            pendingEdits,
+            send,
+            workspacePath: "C:/workspace",
+            getMode: () => "plan",
+        });
+
+        await interceptor.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_plan_allow",
+            toolName: "write",
+            args: { file_path: ".pi/plans/input.md", content: "x" },
+        });
+
+        expect(abort).not.toHaveBeenCalled();
+        expect(pendingEdits.list()).toHaveLength(1);
+        expect(send).toHaveBeenCalledWith(
+            "approval:deferred",
+            "ws_1",
+            expect.objectContaining({ toolCallId: "tc_plan_allow", filePath: ".pi/plans/input.md" }),
+        );
+    });
+
     it("on tool_execution_end for write/edit, reads file and sends review", async () => {
         // 先 track 一个 edit
         const changeId = pendingEdits.track("tc_3", "write", "src/bar.ts", { content: "old" });

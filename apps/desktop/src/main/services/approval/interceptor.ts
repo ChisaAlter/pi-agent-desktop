@@ -8,12 +8,15 @@ import { readFile } from "fs/promises";
 import { join } from "path";
 import type { PiEvent, PiToolExecutionStart, PiToolExecutionEnd } from "@shared/events";
 import type { PendingEdits } from "./pending-edits";
+import type { AgentMode } from "@shared";
+import { isPlanModeToolAllowed } from "../agent-modes";
 
 export interface InterceptorDeps {
     abort: () => void;
     pendingEdits: PendingEdits;
     send: (channel: string, workspaceId: string, payload: unknown) => void;
     workspacePath: string;
+    getMode?: () => AgentMode;
 }
 
 export interface ApprovalInterceptor {
@@ -38,6 +41,20 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                 if (!toolName) return;
                 const safeArgs: Record<string, unknown> =
                     (args as Record<string, unknown> | undefined) ?? {};
+                if (deps.getMode?.() === "plan" && !isPlanModeToolAllowed({
+                    toolName,
+                    args: safeArgs,
+                    workspacePath: deps.workspacePath,
+                })) {
+                    deps.abort();
+                    deps.send("permission:update", workspaceId, {
+                        type: "error",
+                        message: `Plan 模式禁止执行 ${toolName}。请先完成计划并切换到 Build 模式，或仅写入 .pi/plans/*.md。`,
+                        workspaceId,
+                        toolCallId,
+                    });
+                    return;
+                }
                 const c = classifyToolCall({ name: toolName, args: safeArgs });
                 if (c.risk === "read") return;
 

@@ -333,6 +333,7 @@ export const agentsPromptSchema = z.object({
     agentId: z.string().min(1, "agentId must be a non-empty string"),
     message: z.string().min(1, "message must be a non-empty string"),
     streamingBehavior: z.enum(["followUp", "newTurn"]).optional(),
+    mode: z.enum(["build", "plan", "compose"]).optional(),
 });
 
 export const agentsIdSchema = z.tuple([

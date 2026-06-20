@@ -242,8 +242,11 @@ export function DateGroupedSessionList({
 
   if (groups.length === 0 && archivedSessions.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-[var(--mm-border)] px-3 py-3 text-[11px] leading-5 text-[var(--mm-text-tertiary)]">
-        {t("sidebar.sessions.empty")}
+      <div className="flex flex-col gap-2" aria-label={t("sidebar.sessions.empty")}>
+        <span className="sr-only">{t("sidebar.sessions.empty")}</span>
+        <div className="px-2 py-3 text-[11px] leading-5 text-[#888888]">
+          还没有会话。发送第一条消息后会出现在这里。
+        </div>
       </div>
     );
   }

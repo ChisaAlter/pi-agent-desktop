@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { useAttachmentsStore } from "../../stores/attachments-store";
+import { useAgentModeStore } from "../../stores/agent-mode-store";
 import { usePlanStore } from "../../stores/plan-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
@@ -40,6 +41,7 @@ describe("ChatInput", () => {
       configurable: true,
     });
     useAttachmentsStore.setState({ byWorkspace: new Map() });
+    useAgentModeStore.setState({ byWorkspace: {} });
     usePlanStore.setState({
       enabled: false,
       activeCard: null,
@@ -71,7 +73,7 @@ describe("ChatInput", () => {
     vi.spyOn(window, "alert").mockImplementation(() => undefined);
   });
 
-  it("groups attachment, skills, and plan mode inside the plus menu", () => {
+  it("keeps attachment and slash buttons before the mode selector in the reference composer", () => {
     render(
       <I18nProvider>
         <ChatInput
@@ -81,46 +83,66 @@ describe("ChatInput", () => {
           workspacePath="C:/repo"
           onSend={vi.fn(async () => undefined)}
           onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    const controls = screen.getByTestId("chat-input-reference-controls");
+    expect([...controls.querySelectorAll("button")].map((button) => button.getAttribute("aria-label"))).toEqual([
+      "添加文件或图片",
+      "打开 Slash 命令",
+      "选择 Agent 模式",
+      "发送",
+    ]);
+  });
+
+  it("selects plan mode from the reference composer mode menu without enabling the old plan store", () => {
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "选择 Agent 模式" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Plan/ }));
+
+    expect(useAgentModeStore.getState().getMode("ws1")).toBe("plan");
+    expect(usePlanStore.getState().enabled).toBe(false);
+  });
+
+  it("lets the reference composer resize from the top handle", () => {
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
         />
       </I18nProvider>,
     );
 
     const shell = screen.getByTestId("chat-input-shell");
-    expect(shell.textContent).not.toContain("附件");
-    expect(shell.textContent).not.toContain("计划模式");
-
-    openComposerMenu();
-
-    expect(screen.getByRole("menuitem", { name: "添加文件或图片" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "技能" })).toBeTruthy();
-    expect(screen.getByRole("menuitemcheckbox", { name: "计划模式" }).getAttribute("aria-checked")).toBe("false");
-  });
-
-  it("shows a plan mode tag above the input after selecting plan mode from the plus menu", () => {
-    Object.defineProperty(window, "piAPI", {
-      value: { planSetEnabled: vi.fn() },
-      configurable: true,
+    fireEvent.pointerDown(screen.getByRole("separator", { name: "调整输入框高度" }), {
+      clientY: 400,
+      pointerId: 1,
     });
+    fireEvent.pointerMove(window, { clientY: 340, pointerId: 1 });
+    fireEvent.pointerUp(window, { pointerId: 1 });
 
-    render(
-      <I18nProvider>
-        <ChatInput
-          isConnected
-          isProcessing={false}
-          workspaceId="ws1"
-          workspacePath="C:/repo"
-          onSend={vi.fn(async () => undefined)}
-          onStop={vi.fn()}
-        />
-      </I18nProvider>,
-    );
-
-    openComposerMenu();
-    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "计划模式" }));
-
-    expect(screen.getByLabelText("计划模式已启用")).toBeTruthy();
-    expect(usePlanStore.getState().enabled).toBe(true);
-    expect(window.piAPI.planSetEnabled).toHaveBeenCalledWith("ws1", true);
+    expect((shell as HTMLElement).style.height).toBe("155px");
   });
 
   it("shows attachment picker failures inline instead of window.alert", () => {

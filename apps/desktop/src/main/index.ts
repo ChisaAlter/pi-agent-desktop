@@ -109,12 +109,14 @@ const claudeSessionImporter = new ClaudeSessionImporter();
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 1024,
-    minHeight: 768,
+    width: 689,
+    height: 756,
+    minWidth: 689,
+    minHeight: 756,
     show: false,
     autoHideMenuBar: true,
+    transparent: process.platform === "win32",
+    backgroundColor: "#00000000",
     // Custom title bar (renderer-controlled)
     //  - darwin: hiddenInset preserves native traffic lights
     //  - 其他: frame:false 全部由 renderer 渲染 drag region + 按钮
@@ -128,6 +130,7 @@ function createWindow(): void {
       nodeIntegration: false
     }
   });
+  mainWindow.webContents.setZoomFactor(1.5);
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show();
@@ -227,7 +230,7 @@ function setupIPC(): void {
     piAgentDir: PI_AGENT_DIR,
   });
 
-  setupSettingsWindowIpc();
+  setupSettingsWindowIpc(() => mainWindow);
 
   // Terminal (node-pty)
   setupTerminalIpc();

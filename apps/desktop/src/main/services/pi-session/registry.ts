@@ -7,6 +7,7 @@ import { createWorkspaceSession, type WorkspaceSession } from "./factory";
 import { createEventBridge, type IpcSender } from "./event-bridge";
 import { createApprovalInterceptor } from "../approval/interceptor";
 import { createExtensionUiBridge } from "../extensions/extension-ui-bridge";
+import type { AgentMode } from "@shared";
 import type { PiEvent } from "@shared/events";
 import type { PendingEdits } from "../approval/pending-edits";
 import log from "electron-log/main";
@@ -25,6 +26,7 @@ export class WorkspaceRegistry {
         workspacePath: string,
         pendingEdits?: PendingEdits,
         send?: IpcSender,
+        getMode?: () => AgentMode,
     ): Promise<WorkspaceSession> {
         const existing = this.entries.get(workspaceId);
         if (existing) return existing.session;
@@ -38,7 +40,7 @@ export class WorkspaceRegistry {
         this.entries.set(workspaceId, entry);
 
         if (send && pendingEdits) {
-            this.ensureSubscribed(entry, workspaceId, workspacePath, pendingEdits, send);
+            this.ensureSubscribed(entry, workspaceId, workspacePath, pendingEdits, send, getMode);
         }
 
         return session;
@@ -54,6 +56,7 @@ export class WorkspaceRegistry {
         workspacePath: string,
         pendingEdits: PendingEdits,
         send: IpcSender,
+        getMode?: () => AgentMode,
     ): void {
         if (entry.subscribed) return;
         const bridge = createEventBridge(workspaceId, send);
@@ -62,6 +65,7 @@ export class WorkspaceRegistry {
             pendingEdits,
             send,
             workspacePath,
+            getMode,
         });
         // 订阅事件: 先过 interceptor (决策), 再过 bridge (推 renderer)
         // 外部包 @earendil-works/pi-coding-agent 的 subscribe 签名是 (cb: (event: unknown) => void)

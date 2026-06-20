@@ -11,7 +11,7 @@
 // 不持有任何业务状态:全部由父级传入,layout 只负责排版与占位。
 // v2.0: 支持左右栏折叠 + CSS 动画过渡
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { MiniMaxCodeTitleBar } from "./MiniMaxCodeTitleBar";
 
 export interface MiniMaxCodeLayoutProps {
@@ -90,62 +90,88 @@ export function MiniMaxCodeLayout({
     onCollapseRight,
     className = "",
 }: MiniMaxCodeLayoutProps): React.JSX.Element {
+    const [isMaximized, setIsMaximized] = useState(false);
+
+    useEffect(() => {
+        if (typeof window === "undefined" || !window.piAPI) return;
+        void window.piAPI.windowIsMaximized?.().then(setIsMaximized).catch(() => undefined);
+        const unsub = window.piAPI.onWindowMaximizeChanged?.((max) => setIsMaximized(max));
+        return () => { if (typeof unsub === "function") unsub(); };
+    }, []);
+
     return (
         <div
-            className={`flex h-screen w-screen flex-col overflow-hidden bg-[var(--mm-bg-main)] text-[var(--mm-text-primary)] ${className}`}
+            className={`flex h-screen w-screen overflow-hidden bg-transparent text-[var(--mm-text-primary)] p-0 ${className}`}
             data-mmcode-layout="root"
         >
-            <MiniMaxCodeTitleBar
-                title={title}
-                subtitle={subtitle}
-                statusLabel={statusLabel}
-                statusTone={statusTone}
-            />
-            {topBarSlot}
-
-            <div className="relative flex min-h-0 flex-1 w-full">
-                <FloatingToggleButton
-                    side="left"
-                    collapsed={leftCollapsed}
-                    onClick={onCollapseLeft}
-                />
-                <FloatingToggleButton
-                    side="right"
-                    collapsed={rightCollapsed}
-                    onClick={onCollapseRight}
+            <div
+                className={`flex min-h-0 flex-1 flex-col overflow-hidden border border-[var(--mm-border)] bg-[var(--mm-bg-main)] ${
+                    isMaximized ? "rounded-none shadow-none" : "rounded-[var(--mm-window-radius)] shadow-[var(--mm-window-shadow)]"
+                }`}
+                data-mmcode-layout="window-frame"
+                data-mm-window-kind="main"
+            >
+                <MiniMaxCodeTitleBar
+                    title={title}
+                    subtitle={subtitle}
+                    statusLabel={statusLabel}
+                    statusTone={statusTone}
+                    navigationSlot={topBarSlot}
                 />
 
-                {/* 左侧栏 */}
-                <aside
-                    className="flex shrink-0 flex-col bg-[var(--mm-bg-sidebar)] animate-layout overflow-hidden"
-                    style={{ width: leftCollapsed ? 0 : "var(--mm-width-sidebar-left)", opacity: leftCollapsed ? 0 : 1 }}
-                    data-mmcode-region="left"
-                    aria-label="primary navigation"
+                <div
+                    className="relative flex min-h-0 w-full flex-1 data-[has-global-composer=true]:pb-[var(--pi-global-composer-height,103px)]"
+                    data-mmcode-region="body"
                 >
-                    <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" style={{ minWidth: leftCollapsed ? 0 : undefined }}>
-                        {leftSlot}
-                    </div>
-                </aside>
+                    <FloatingToggleButton
+                        side="left"
+                        collapsed={leftCollapsed}
+                        onClick={onCollapseLeft}
+                    />
+                    <FloatingToggleButton
+                        side="right"
+                        collapsed={rightCollapsed}
+                        onClick={onCollapseRight}
+                    />
 
-                <main
-                    className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--mm-bg-main)]"
-                    data-mmcode-region="center"
-                    aria-label="main content"
-                >
-                    {centerSlot}
-                </main>
+                    {/* 左侧栏 */}
+                    <aside
+                        className="flex shrink-0 flex-col border-r border-[#ededef] bg-[var(--mm-bg-sidebar)] animate-layout overflow-hidden"
+                        style={{ width: leftCollapsed ? 0 : "var(--mm-width-sidebar-left)", opacity: leftCollapsed ? 0 : 1 }}
+                        data-mmcode-region="left"
+                        aria-label="primary navigation"
+                    >
+                        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" style={{ minWidth: leftCollapsed ? 0 : undefined }}>
+                            {leftSlot}
+                        </div>
+                    </aside>
 
-                {/* 右侧栏 */}
-                <aside
-                    className="flex shrink-0 flex-col bg-[var(--mm-bg-main)] animate-layout overflow-hidden"
-                    style={{ width: rightCollapsed ? 0 : "var(--mm-width-sidebar-right)", opacity: rightCollapsed ? 0 : 1 }}
-                    data-mmcode-region="right"
-                    aria-label="context panel"
-                >
-                    <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" style={{ minWidth: rightCollapsed ? 0 : undefined }}>
-                        {rightSlot}
-                    </div>
-                </aside>
+                    <main
+                        className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--mm-bg-main)]"
+                        data-mmcode-region="center"
+                        aria-label="main content"
+                    >
+                        {centerSlot}
+                    </main>
+
+                    {/* 右侧栏 */}
+                    <aside
+                        className="flex shrink-0 flex-col bg-[var(--mm-bg-main)] animate-layout overflow-hidden"
+                        style={{ width: rightCollapsed ? 0 : "var(--mm-width-sidebar-right)", opacity: rightCollapsed ? 0 : 1 }}
+                        data-mmcode-region="right"
+                        aria-label="context panel"
+                    >
+                        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" style={{ minWidth: rightCollapsed ? 0 : undefined }}>
+                            {rightSlot}
+                        </div>
+                    </aside>
+
+                    <div
+                        id="pi-global-composer-root"
+                        className="pointer-events-none absolute inset-x-0 bottom-0 z-40"
+                        aria-live="polite"
+                    />
+                </div>
             </div>
         </div>
     );

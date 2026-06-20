@@ -314,17 +314,23 @@
     "title": "Settings",
     "tabsAria": "Settings categories",
     "tab": {
-      "appearance": "Appearance",
-      "general": "General",
       "model": "Model",
-      "piagent": "Pi Agent",
+      "piagent": "Agent",
+      "permissions": "Permissions",
+      "appearance": "Interface",
+      "general": "General",
+      "shortcuts": "Shortcuts",
+      "config": "Config files",
       "about": "About"
     },
     "tabCaption": {
+      "model": "Providers and models",
+      "piagent": "CLI and status",
+      "permissions": "Tool defaults",
       "appearance": "Theme and font",
-      "general": "Language and editor",
-      "model": "Model parameters",
-      "piagent": "CLI and providers",
+      "general": "Language and alerts",
+      "shortcuts": "Keyboard controls",
+      "config": "Advanced JSON",
       "about": "Version info"
     },
     "appearance": {
@@ -446,10 +452,9 @@
   },
   "topbar": {
     "chat": "Chat",
-    "tasks": "Tasks",
-    "memory": "Memory",
-    "tools": "Tools",
-    "settings": "Settings",
+    "skills": "Skills",
+    "git": "Git",
+    "history": "History",
     "ariaLabel": "Top tab bar"
   },
   "app": {

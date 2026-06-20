@@ -7,6 +7,7 @@ import { usePiStream } from "./usePiStream";
 import { useSessionStore } from "../stores/session-store";
 import { usePlanStore } from "../stores/plan-store";
 import { useAgentStore } from "../stores/agent-store";
+import { useAgentModeStore } from "../stores/agent-mode-store";
 
 let emitPiEvent: ((event: PiEvent) => void) | null = null;
 const sendPrompt = vi.fn(async () => undefined);
@@ -140,9 +141,46 @@ beforeEach(() => {
         runtimeByAgent: {},
         initialized: false,
     });
+    useAgentModeStore.setState({
+        byWorkspace: {},
+    });
 });
 
 describe("usePiStream", () => {
+    it("passes the selected workspace agent mode to pi:send", async () => {
+        useAgentModeStore.getState().setMode("ws1", "compose");
+
+        await act(async () => {
+            render(<HookStateHost />);
+        });
+        await act(async () => {
+            screen.getByText("send-follow-up").click();
+        });
+
+        expect(sendPrompt).toHaveBeenCalledWith(
+            "ws1",
+            expect.stringContaining("follow up"),
+            { mode: "compose" },
+        );
+    });
+
+    it("passes the selected workspace agent mode to agent prompts", async () => {
+        useAgentModeStore.getState().setMode("ws1", "plan");
+
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+        await act(async () => {
+            screen.getByText("send-agent-follow-up").click();
+        });
+
+        expect(agentsPrompt).toHaveBeenCalledWith({
+            agentId: "agent_1",
+            message: expect.stringContaining("agent follow up"),
+            mode: "plan",
+        });
+    });
+
     it("handles SDK message_update events emitted immediately after subscription", async () => {
         await act(async () => {
             render(<HookHost />);
@@ -364,7 +402,7 @@ describe("usePiStream", () => {
         });
 
         const session = useSessionStore.getState().sessions[0];
-        expect(sendPrompt).toHaveBeenCalledWith("ws1", "follow up");
+        expect(sendPrompt).toHaveBeenCalledWith("ws1", "follow up", { mode: "build" });
         expect(session.messages).toHaveLength(2);
         expect(session.messages[0]).toMatchObject({ role: "assistant", content: "partial answer" });
         expect(session.messages[1]).toMatchObject({ role: "user", content: "follow up" });
@@ -390,6 +428,7 @@ describe("usePiStream", () => {
         expect(agentsPrompt).toHaveBeenCalledWith({
             agentId: "agent_1",
             message: "agent follow up",
+            mode: "build",
             streamingBehavior: "followUp",
         });
     });
@@ -414,6 +453,7 @@ describe("usePiStream", () => {
         expect(agentsPrompt).toHaveBeenCalledWith({
             agentId: "agent_1",
             message: "agent follow up",
+            mode: "build",
         });
     });
 
@@ -493,7 +533,7 @@ describe("usePiStream", () => {
             screen.getByText("send-follow-up").click();
         });
 
-        expect(sendPrompt).toHaveBeenCalledWith("ws1", "follow up");
+        expect(sendPrompt).toHaveBeenCalledWith("ws1", "follow up", { mode: "build" });
     });
 
     it("stops showing the current turn as thinking once a plan card is waiting for a decision", async () => {

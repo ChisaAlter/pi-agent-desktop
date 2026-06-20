@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { isIpcError, type PiSlashCommand } from "@shared";
+import { isIpcError, type AgentMode, type PiSlashCommand } from "@shared";
 import { fuzzyScore } from "../utils/fuzzy-match";
 
 export interface SlashCommandMatch {
@@ -47,6 +47,7 @@ export function useSlashCommands(
     cursorPosition: number,
     workspaceId: string | undefined,
     agentId?: string | null,
+    mode?: AgentMode,
 ): UseSlashCommandsReturn {
     const [activeCommand, setActiveCommand] = useState<SlashCommandMatch | null>(null);
     const [commands, setCommands] = useState<PiSlashCommand[]>([]);
@@ -65,7 +66,7 @@ export function useSlashCommands(
             return;
         }
         let cancelled = false;
-        window.piAPI.listSlashCommands(workspaceId, agentId ?? undefined)
+        window.piAPI.listSlashCommands(workspaceId, agentId ?? undefined, mode)
             .then((result) => {
                 if (cancelled) return;
                 setCommands(isIpcError(result) ? [] : result);
@@ -76,7 +77,7 @@ export function useSlashCommands(
         return () => {
             cancelled = true;
         };
-    }, [agentId, workspaceId]);
+    }, [agentId, mode, workspaceId]);
 
     const candidates = useMemo(() => {
         if (!activeCommand) return [];

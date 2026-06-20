@@ -119,10 +119,17 @@ export interface CreateAgentInput {
     sessionPath?: string;
 }
 
+export type AgentMode = "build" | "plan" | "compose";
+
+export interface SendPromptOptions {
+    mode?: AgentMode;
+}
+
 export interface SendAgentPromptInput {
     agentId: string;
     message: string;
     streamingBehavior?: "steer" | "followUp";
+    mode?: AgentMode;
 }
 
 export type PiSlashCommandSource = "builtin" | "extension" | "prompt" | "skill";
@@ -682,7 +689,7 @@ export type Unsubscribe = () => void;
 
 export interface PiAPI {
     // Pi Driver
-    sendPrompt(workspaceId: string, message: string): Promise<unknown>;
+    sendPrompt(workspaceId: string, message: string, options?: SendPromptOptions): Promise<unknown>;
     onEvent(cb: (e: PiEvent) => void): Unsubscribe;
     onError(cb: (err: string) => void): Unsubscribe;
     onPiJsonEvent(cb: (data: Record<string, unknown>) => void): Unsubscribe;
@@ -775,7 +782,7 @@ export interface PiAPI {
     onAgentMessages(cb: (payload: { agentId: string; messages: AgentMessage[] }) => void): Unsubscribe;
     onAgentEvent(cb: (payload: { agentId: string; workspaceId: string; event: PiEvent }) => void): Unsubscribe;
 
-    listSlashCommands(workspaceId: string, agentId?: string): Promise<PiSlashCommand[] | IpcError>;
+    listSlashCommands(workspaceId: string, agentId?: string, mode?: AgentMode): Promise<PiSlashCommand[] | IpcError>;
     runBuiltinSlashCommand(input: RunBuiltinSlashCommandInput): Promise<SlashCommandRunResult | IpcError>;
 
     // Extension UI bridge

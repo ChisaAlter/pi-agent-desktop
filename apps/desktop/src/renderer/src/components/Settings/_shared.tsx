@@ -12,9 +12,9 @@ export function CloseIcon(): React.JSX.Element {
 
 export function SectionTitle({ title, description }: { title: string; description?: string }): React.JSX.Element {
     return (
-        <div className="mb-5">
-            <h3 className="m-0 text-[15px] font-semibold text-[var(--mm-text-primary)]">{title}</h3>
-            {description && <p className="m-0 mt-1 text-xs leading-5 text-[var(--mm-text-tertiary)]">{description}</p>}
+        <div className="mb-2">
+            <h3 className="m-0 text-[12px] font-medium text-[var(--mm-text-primary)]">{title}</h3>
+            {description && <p className="m-0 mt-0.5 text-[9px] leading-3 text-[var(--mm-text-tertiary)]">{description}</p>}
         </div>
     );
 }

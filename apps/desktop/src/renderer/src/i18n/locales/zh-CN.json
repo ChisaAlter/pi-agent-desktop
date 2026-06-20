@@ -160,7 +160,7 @@
     },
     "commands": {
       "new_chat": "新建对话",
-      "open_files": "打开 Files",
+      "open_files": "打开文件",
       "open_git": "打开 Source Control",
       "open_sessions": "打开 Sessions",
       "git_open_change": "打开变更 {{file}}",
@@ -312,17 +312,23 @@
     "title": "设置",
     "tabsAria": "设置分类",
     "tab": {
-      "appearance": "外观",
-      "general": "通用",
       "model": "模型",
-      "piagent": "Pi Agent",
+      "piagent": "Agent",
+      "permissions": "权限",
+      "appearance": "界面",
+      "general": "通用",
+      "shortcuts": "快捷键",
+      "config": "配置文件",
       "about": "关于"
     },
     "tabCaption": {
+      "model": "Provider 与模型",
+      "piagent": "CLI 与状态",
+      "permissions": "工具默认权限",
       "appearance": "主题与字体",
-      "general": "语言与编辑",
-      "model": "模型参数",
-      "piagent": "CLI 与 Provider",
+      "general": "语言与通知",
+      "shortcuts": "键盘操作",
+      "config": "高级 JSON",
       "about": "版本信息"
     },
     "appearance": {
@@ -444,10 +450,9 @@
   },
   "topbar": {
     "chat": "对话",
-    "tasks": "任务",
-    "memory": "记忆",
-    "tools": "工具",
-    "settings": "设置",
+    "skills": "技能",
+    "git": "Git",
+    "history": "历史",
     "ariaLabel": "顶部标签栏"
   },
   "app": {

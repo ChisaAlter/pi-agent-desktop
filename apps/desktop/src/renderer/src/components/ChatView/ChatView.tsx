@@ -2,6 +2,7 @@
 // v1.0.4: 用户可见文案走 t()
 
 import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { usePiStream } from '../../hooks/usePiStream';
 import { useSessionStore } from '../../stores/session-store';
 import { useWorkspaceStore } from '../../stores/workspace-store';
@@ -11,7 +12,9 @@ import { VirtualizedMessageList } from './VirtualizedMessageList';
 import { ChatInput } from './ChatInput';
 import { useI18n } from '../../i18n';
 import { usePlanStore } from '../../stores/plan-store';
+import { useSettingsStore } from '../../stores/settings-store';
 import type { Message } from '../../stores/session-store';
+import type { AgentMessage } from '@shared';
 
 interface ChatViewProps {
     /** v1.0.14: 外部注入的预填文本(由 App.tsx 监听 'chatpanel:prefill' 事件传来,用于跨组件切到 chat 时把 prompt 灌进 ChatInput) */
@@ -32,6 +35,8 @@ type ChatMessage = Message & {
   thinkingCount?: number;
 };
 
+const EMPTY_AGENT_MESSAGES: AgentMessage[] = [];
+
 function stripThinking(content: string): string {
   return content
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
@@ -41,6 +46,37 @@ function stripThinking(content: string): string {
 
 function visibleText(message: Message): string {
   return stripThinking(message.content);
+}
+
+function EmptyConversationIntro({
+  workspaceName,
+  modelSummary,
+  permissionLabel,
+  thinkingLabel,
+}: {
+  workspaceName: string;
+  modelSummary: string;
+  permissionLabel: string;
+  thinkingLabel: string;
+}): React.JSX.Element {
+  return (
+    <div className="mx-auto flex w-full max-w-[456px] flex-1 flex-col px-5 pb-2 pt-8 text-left">
+      <div className="relative -left-[20px] w-[461px] rounded-[6px] border border-[#f5f6f8] bg-[#f5f6f8] px-4 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.025)]">
+        <div className="text-[14px] font-medium leading-5 text-[var(--mm-text-primary)]">新对话</div>
+        <div className="mt-1 text-[12px] text-[#8a939c]">输入消息后，Pi Agent 会在当前工作区开始运行。</div>
+        <div className="mt-4 grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-2 text-[11px] leading-4">
+          <span className="text-[var(--mm-text-tertiary)]">工作区</span>
+          <span className="truncate text-[var(--mm-text-secondary)]">{workspaceName}</span>
+          <span className="text-[var(--mm-text-tertiary)]">模型</span>
+          <span className="truncate text-[var(--mm-text-secondary)]">{modelSummary}</span>
+          <span className="text-[var(--mm-text-tertiary)]">权限</span>
+          <span className="text-[var(--mm-text-secondary)]">{permissionLabel}</span>
+          <span className="text-[var(--mm-text-tertiary)]">思考</span>
+          <span className="text-[var(--mm-text-secondary)]">{thinkingLabel}</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function isCumulativeAssistantUpdate(previous: Message, next: Message): boolean {
@@ -132,7 +168,17 @@ function mergeAdjacentThinkingMessages(messages: Message[]): ChatMessage[] {
 export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {}): React.JSX.Element {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollRegionRef = useRef<HTMLDivElement>(null);
-  const agentId = useAgentStore((state) => state.currentAgentId);
+  const currentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace());
+  const agents = useAgentStore((state) => state.agents);
+  const currentAgentId = useAgentStore((state) => state.currentAgentId);
+  const currentAgent = useMemo(() => {
+    if (!currentWorkspace) return null;
+    const selectedAgent = currentAgentId
+      ? agents.find((agent) => agent.id === currentAgentId && agent.workspaceId === currentWorkspace.id)
+      : undefined;
+    return selectedAgent ?? agents.find((agent) => agent.workspaceId === currentWorkspace.id) ?? null;
+  }, [agents, currentAgentId, currentWorkspace]);
+  const agentId = currentAgent?.id ?? null;
   const {
     isStreaming,
     isConnected,
@@ -145,22 +191,21 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
   const { getCurrentSession, createSession, renameSession, setCurrentSession, continueSession } = useSessionStore();
   const updateMessage = useSessionStore((state) => state.updateMessage);
   const sessions = useSessionStore((state) => state.sessions);
-  const { getCurrentWorkspace } = useWorkspaceStore();
-  const { init: initAgents, getCurrentAgent, getCurrentMessages } = useAgentStore();
+  const settings = useSettingsStore((state) => state.settings);
+  const initAgents = useAgentStore((state) => state.init);
+  const agentMessages = useAgentStore((state) => agentId ? state.messagesByAgent[agentId] ?? EMPTY_AGENT_MESSAGES : EMPTY_AGENT_MESSAGES);
   const { t } = useI18n();
   const [sendError, setSendError] = useState<string | null>(null);
   const [sessionActionError, setSessionActionError] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [composerFocusKey, setComposerFocusKey] = useState(0);
+  const [globalComposerRoot, setGlobalComposerRoot] = useState<HTMLElement | null>(null);
   const activePlanCard = usePlanStore((state) => state.activeCard);
   const renderedPlanCardIds = usePlanStore((state) => state.renderedPlanCardIds);
   const activePlanExecution = usePlanStore((state) => state.activeExecution);
 
   const currentSession = getCurrentSession();
-  const currentWorkspace = getCurrentWorkspace();
-  const currentAgent = getCurrentAgent();
-  const agentMessages = getCurrentMessages();
   const hasAgent = Boolean(currentAgent);
 
   useEffect(() => {
@@ -307,6 +352,40 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
     .filter((session) => !session.archived && session.workspaceId === currentWorkspace?.id)
     .slice()
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  const permissionLabel =
+    settings.permissionLevel === "always"
+      ? "始终授权"
+      : settings.permissionLevel === "ask"
+        ? "主动询问"
+        : "智能授权";
+  const thinkingLabel =
+    settings.thinkingLevel === "high"
+      ? "高"
+      : settings.thinkingLevel === "low"
+        ? "低"
+        : settings.thinkingLevel === "none"
+          ? "关闭"
+          : "中";
+  const modelSummary = [settings.provider, settings.model].filter(Boolean).join(" / ") || "未配置模型";
+  const workspaceName = currentWorkspace?.name ?? "未选择";
+  const shouldUseGlobalComposer = !currentSession?.readOnly;
+
+  useEffect(() => {
+    const layoutBody = document.querySelector<HTMLElement>('[data-mmcode-region="body"]');
+    const composerRoot = document.getElementById("pi-global-composer-root");
+
+    if (shouldUseGlobalComposer && composerRoot) {
+      layoutBody?.setAttribute("data-has-global-composer", "true");
+      setGlobalComposerRoot(composerRoot);
+    } else {
+      layoutBody?.removeAttribute("data-has-global-composer");
+      setGlobalComposerRoot(null);
+    }
+
+    return () => {
+      layoutBody?.removeAttribute("data-has-global-composer");
+    };
+  }, [shouldUseGlobalComposer]);
 
   const commitTitle = (): void => {
     if (!currentSession) return;
@@ -405,8 +484,43 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
     }
   }, [prefillText, onPrefillConsumed]);
 
+  const composer = shouldUseGlobalComposer ? (
+    <ChatInput
+      isConnected={isConnected}
+      isProcessing={isStreaming}
+      runContext={activePlanExecution?.phase === "executing" || activePlanExecution?.phase === "pausing" ? "plan_execution" : null}
+      onSend={handleSend}
+      onStop={handleStop}
+      workspaceId={currentWorkspace?.id}
+      workspacePath={currentWorkspace?.path}
+      agentId={agentId}
+      prefill={prefill.text}
+      prefillKey={prefill.nonce}
+      onPrefillConsumed={() => setPrefill((p) => ({ ...p, text: '' }))}
+      focusKey={composerFocusKey}
+      referenceFrame
+    />
+  ) : null;
+  const renderedComposer = composer && globalComposerRoot ? createPortal(composer, globalComposerRoot) : composer;
+
   return (
-    <div data-testid="chat-view-root" className="flex h-[calc(100vh-var(--mm-height-titlebar))] min-h-0 flex-1 flex-col overflow-hidden bg-[var(--mm-bg-main)] text-[var(--mm-text-primary)]">
+    <div data-testid="chat-view-root" className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--mm-bg-main)] text-[var(--mm-text-primary)]">
+      <div className="flex min-h-[42px] shrink-0 items-center justify-between gap-3 border-b border-[#e5e5e5] bg-[var(--mm-bg-main)] px-4 text-[12px]">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-[var(--mm-text-secondary)]">
+          <span className="min-w-0 truncate">
+            工作区: <span className="text-[var(--mm-text-primary)]">{workspaceName}</span>
+          </span>
+          <span className="min-w-0 truncate">
+            模型: <span className="font-mono text-[var(--mm-text-primary)]">{modelSummary}</span>
+          </span>
+          <span>权限: <span className="text-[var(--mm-text-primary)]">{permissionLabel}</span></span>
+          <span>思考: <span className="text-[var(--mm-text-primary)]">{thinkingLabel}</span></span>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5 text-[var(--mm-text-secondary)]" role="status" aria-label={isStreaming ? "运行中" : isConnected ? "已连接" : "未连接"}>
+          <span className={`h-1.5 w-1.5 rounded-full ${isStreaming ? "bg-[var(--color-success)]" : isConnected ? "bg-[var(--color-success)]" : "bg-[var(--color-error)]"}`} aria-hidden="true" />
+          <span>{isStreaming ? "运行中" : isConnected ? "已连接" : "未连接"}</span>
+        </div>
+      </div>
       {messages.length > 0 && (
         <div className="flex h-14 shrink-0 items-center justify-between px-4">
           <div className="mx-auto flex w-full max-w-[770px] items-center gap-2 text-sm text-[var(--mm-text-primary)]">
@@ -424,7 +538,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                 }}
                 autoFocus
                 className="min-w-0 flex-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-2 py-1 text-sm font-medium text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-bg-active)]"
-                aria-label="重命名当前任务"
+                aria-label="重命名当前会话"
               />
             ) : (
               <button
@@ -434,7 +548,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                   setEditingTitle(true);
                 }}
                 className="min-w-0 truncate rounded-md px-1 py-1 text-left font-medium hover:bg-[var(--mm-bg-hover)]"
-                title="重命名任务"
+                title="重命名会话"
               >
                 {currentSession?.title || "未命名会话"}
               </button>
@@ -445,7 +559,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                 if (event.target.value) setCurrentSession(event.target.value);
               }}
               className="max-w-[220px] rounded-md border border-transparent bg-transparent px-1 py-1 text-xs text-[var(--mm-text-secondary)] hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-hover)]"
-              aria-label="切换任务"
+              aria-label="切换会话"
             >
               {workspaceSessions.map((session) => (
                 <option key={session.id} value={session.id}>
@@ -459,37 +573,17 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
       {/* 消息区域 */}
       <div ref={scrollRegionRef} data-testid="chat-scroll-region" className="min-h-0 flex-1 overflow-y-auto">
         {messages.length === 0 ? (
-          <div className="flex min-h-full flex-col items-center justify-center px-8 py-12 text-center">
-            <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--mm-bg-active)]">
-              <span className="text-xl font-semibold text-[var(--mm-text-on-active)]">π</span>
-            </div>
-
-            <h2 className="mb-2 text-[22px] font-semibold text-[var(--mm-text-primary)]">
-              {t('chatView.welcome.title')}
-            </h2>
-            <p className="mb-6 max-w-xl text-sm leading-6 text-[var(--mm-text-secondary)]">
-              {t('chatView.welcome.subtitle')}
-            </p>
-
-            <ChatInput
-              isConnected={isConnected}
-              isProcessing={isStreaming}
-              runContext={activePlanExecution?.phase === "executing" || activePlanExecution?.phase === "pausing" ? "plan_execution" : null}
-              onSend={handleSend}
-              onStop={handleStop}
-              workspaceId={currentWorkspace?.id}
-              workspacePath={currentWorkspace?.path}
-              agentId={agentId}
-              prefill={prefill.text}
-              prefillKey={prefill.nonce}
-              onPrefillConsumed={() => setPrefill((p) => ({ ...p, text: '' }))}
-              focusKey={composerFocusKey}
+          <div className="flex min-h-full flex-col px-0 pb-0 pt-0 text-center">
+            <EmptyConversationIntro
+              workspaceName={workspaceName}
+              modelSummary={modelSummary}
+              permissionLabel={permissionLabel}
+              thinkingLabel={thinkingLabel}
             />
-
             {/* Chat send 失败的错误 — 重试按钮 */}
             {isConnected && (streamError || sendError || sessionActionError) && (
               <div
-                className="mt-6 max-w-md w-full inline-flex flex-col gap-3 px-4 py-4 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] rounded-lg text-left"
+                className="mx-3 mb-3 mt-2 inline-flex max-w-md flex-col gap-2 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-left"
                 role="alert"
               >
                 <div className="flex items-center gap-2">
@@ -612,8 +706,9 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
         )}
       </div>
 
-      {messages.length > 0 && (
-        currentSession?.readOnly ? (
+      {renderedComposer}
+
+      {messages.length > 0 && currentSession?.readOnly && (
           <div className="border-t border-[var(--mm-border-subtle)] bg-[var(--mm-bg-main)] px-4 py-3">
             <div className="mx-auto flex max-w-[770px] items-center justify-between gap-3 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-xs">
               <span className="text-[var(--mm-text-secondary)]">当前为只读历史会话</span>
@@ -626,22 +721,6 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
               </button>
             </div>
           </div>
-        ) : (
-          <ChatInput
-            isConnected={isConnected}
-            isProcessing={isStreaming}
-            runContext={activePlanExecution?.phase === "executing" || activePlanExecution?.phase === "pausing" ? "plan_execution" : null}
-            onSend={handleSend}
-            onStop={handleStop}
-            workspaceId={currentWorkspace?.id}
-            workspacePath={currentWorkspace?.path}
-            agentId={agentId}
-            prefill={prefill.text}
-            prefillKey={prefill.nonce}
-            onPrefillConsumed={() => setPrefill((p) => ({ ...p, text: '' }))}
-            focusKey={composerFocusKey}
-          />
-        )
       )}
     </div>
   );

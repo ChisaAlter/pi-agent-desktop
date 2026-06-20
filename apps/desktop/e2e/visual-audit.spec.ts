@@ -28,9 +28,13 @@ async function screenshot(page: Page, dir: string, name: string): Promise<void> 
 }
 
 async function expectSingleSidebarCurrent(page: Page, label: string): Promise<void> {
-    const currentItems = page.locator('nav[aria-label="主导航"] button[aria-current="page"]');
+    const currentItems = page.locator('nav[aria-label="会话列表"] button[aria-current="page"]');
     await expect(currentItems).toHaveCount(1);
     await expect(currentItems.first()).toHaveAttribute("aria-label", label);
+}
+
+async function expectTopTabSelected(page: Page, label: string): Promise<void> {
+    await expect(page.getByRole("tab", { name: label })).toHaveAttribute("aria-selected", "true");
 }
 
 test.describe("Pi Desktop — visual function audit", () => {
@@ -91,18 +95,18 @@ test.describe("Pi Desktop — visual function audit", () => {
 
         ({ app, page } = await launchApp(userDataDir));
 
-        await expect(page.locator('nav[aria-label="主导航"]')).toBeVisible({ timeout: 15_000 });
-        await expect(page.locator('nav[aria-label="主导航"]').getByRole("button", { name: "Git" })).toBeVisible();
+        await expect(page.getByRole("tablist", { name: "顶部标签栏" })).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByRole("tab", { name: "Git" })).toBeVisible();
         await expectHealthyLayout(page);
         await screenshot(page, screenshotDir, "01-initial-loaded");
 
         await page.locator('button[data-mmcode-section="new-task"]').click();
-        await expect(page.getByText("描述你想要构建或修改的内容")).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByRole("button", { name: /添加附件/ })).toBeVisible();
+        await expect(page.getByText("输入消息后，Pi Agent 会在当前工作区开始运行。")).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByRole("button", { name: /添加文件|添加附件/ })).toBeVisible();
         await expectHealthyLayout(page);
         await screenshot(page, screenshotDir, "02-new-task");
 
-        await page.locator('button[data-mmcode-section="session:visual-audit-session"]').click();
+        await page.getByRole("button", { name: "UI 巡检会话", exact: true }).click();
         await expect(page.getByRole("article", { name: /你 ·/ })).toContainText("请检查这个桌面应用");
         await expect(page.getByRole("article", { name: /Pi ·/ })).toContainText("主要界面已加载");
         await expect(page.getByText("查看 1 个文件")).toBeVisible();
@@ -110,24 +114,27 @@ test.describe("Pi Desktop — visual function audit", () => {
         await expectHealthyLayout(page);
         await screenshot(page, screenshotDir, "03-session-detail");
 
-        await page.locator('button[data-mmcode-section="skills"]').click();
+        await page.getByRole("tab", { name: "技能" }).click();
+        await expectTopTabSelected(page, "技能");
         await expect(page.getByRole("region", { name: "插件面板" })).toBeVisible();
         await expect(page.getByRole("tab", { name: "Pi 插件" })).toBeVisible();
         await expect(page.getByText("加载 Pi 插件市场...")).toBeHidden({ timeout: 30_000 });
         await expect(page.getByText(/spawn pi|Command failed|ENOENT/)).toHaveCount(0);
         await expect(page.locator('[role="alert"]')).toHaveCount(0);
-        await expectSingleSidebarCurrent(page, "插件");
         await expectHealthyLayout(page);
         await screenshot(page, screenshotDir, "04-skills");
 
-        await page.locator('button[data-mmcode-section="settings"]').click();
-        const settingsDialog = page.getByRole("dialog", { name: "设置" });
-        await expect(settingsDialog).toBeVisible();
-        await expect(settingsDialog.getByRole("tablist", { name: "设置分类" })).toBeVisible();
-        await expectHealthyLayout(page);
-        await screenshot(page, screenshotDir, "05-settings");
-        await settingsDialog.locator('button[aria-label="关闭"]').click();
-        await expect(settingsDialog).toBeHidden();
+        const settingsWindowPromise = app.waitForEvent("window");
+        await page.getByRole("button", { name: "打开设置窗口" }).click();
+        const settingsWindow = await settingsWindowPromise;
+        await settingsWindow.waitForLoadState("domcontentloaded");
+        await expect(settingsWindow.getByRole("tablist", { name: "设置分类" })).toBeVisible();
+        await expectHealthyLayout(settingsWindow);
+        await screenshot(settingsWindow, screenshotDir, "05-settings");
+        const settingsClosed = settingsWindow.waitForEvent("close");
+        await settingsWindow.getByRole("button", { name: "关闭窗口" }).click();
+        await settingsClosed;
+        await page.bringToFront();
 
         await page.keyboard.press("Control+k");
         const palette = page.locator('[role="dialog"][aria-label*="命令面板"]');

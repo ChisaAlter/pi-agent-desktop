@@ -9,12 +9,12 @@ import { useI18n } from "../../i18n";
 import { Popover } from "../common/Popover";
 import { useMentions } from "../../hooks/useMentions";
 import { useSlashCommands } from "../../hooks/useSlashCommands";
+import { useAgentModeStore } from "../../stores/agent-mode-store";
 import { usePermissionStore } from "../../stores/permission-store";
-import { usePlanStore } from "../../stores/plan-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { logger } from "../../utils/logger";
 import { PermissionRequestStack } from "./PermissionRequestStack";
-import { isIpcError, type PermissionMode } from "@shared";
+import { isIpcError, type AgentMode, type PermissionMode } from "@shared";
 
 interface ChatInputProps {
   isConnected: boolean;
@@ -29,6 +29,7 @@ interface ChatInputProps {
   prefillKey?: number;
   onPrefillConsumed?: () => void;
   focusKey?: number;
+  referenceFrame?: boolean;
 }
 
 const PERMISSION_OPTIONS: Array<{ value: PermissionMode; label: string; desc: string }> = [
@@ -36,6 +37,15 @@ const PERMISSION_OPTIONS: Array<{ value: PermissionMode; label: string; desc: st
   { value: "smart", label: "智能授权", desc: "只读自动放行，写入询问" },
   { value: "always", label: "始终授权", desc: "尽量自动允许，保留审计" },
 ];
+
+const AGENT_MODE_OPTIONS: Array<{ value: AgentMode; label: string; desc: string }> = [
+  { value: "build", label: "Build", desc: "正常实现模式，可按权限读写和执行工具" },
+  { value: "plan", label: "Plan", desc: "只制定计划，仅允许写入 .pi/plans/*.md" },
+  { value: "compose", label: "Compose", desc: "按 MiMo 风格编排工作流和技能" },
+];
+
+const COMPOSER_MIN_HEIGHT = 95;
+const COMPOSER_MAX_HEIGHT = 240;
 
 function normalizePermissionMode(value: unknown): PermissionMode {
   if (value === "ask" || value === "read") return "ask";
@@ -122,23 +132,6 @@ function PermissionModeIcon({ mode }: { mode: PermissionMode }): React.JSX.Eleme
   );
 }
 
-function ToggleSwitch({ checked }: { checked: boolean }): React.JSX.Element {
-  return (
-    <span
-      className={`relative inline-flex h-[18px] w-[31px] shrink-0 rounded-full p-0.5 transition-colors ${
-        checked ? "bg-[var(--color-info)]" : "bg-[var(--mm-border)]"
-      }`}
-      aria-hidden
-    >
-      <span
-        className={`h-3.5 w-3.5 rounded-full bg-[var(--mm-bg-panel)] shadow-[0_1px_2px_rgba(0,0,0,0.14)] transition-transform ${
-          checked ? "translate-x-[13px]" : "translate-x-0"
-        }`}
-      />
-    </span>
-  );
-}
-
 export function ChatInput({
   isConnected,
   isProcessing,
@@ -152,22 +145,26 @@ export function ChatInput({
   prefillKey,
   onPrefillConsumed,
   focusKey,
+  referenceFrame = false,
 }: ChatInputProps): React.JSX.Element {
   const [inputValue, setInputValue] = useState("");
   const [cursorPos, setCursorPos] = useState(0);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  const [composerHeight, setComposerHeight] = useState(COMPOSER_MIN_HEIGHT);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const slashListboxRef = useRef<HTMLDivElement>(null);
   const slashOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const sendingRef = useRef(false);
+  const resizeStateRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const syncCursorPosition = useCallback((textarea: HTMLTextAreaElement) => {
     setCursorPos(textarea.selectionStart ?? textarea.value.length);
   }, []);
   const { settings, updateSettings, piModels } = useSettingsStore();
   const permissionStore = usePermissionStore();
-  const planStore = usePlanStore();
+  const currentAgentMode = useAgentModeStore((state) => state.getMode(workspaceId));
+  const setAgentMode = useAgentModeStore((state) => state.setMode);
   const { workspaces, getCurrentWorkspace, setCurrentWorkspace, addWorkspace, createWorkspace } = useWorkspaceStore();
   const { add: addAttachment, remove: removeAttachment, clear: clearAttachments, list: listAttachments } = useAttachmentsStore();
   const { t } = useI18n();
@@ -188,7 +185,7 @@ export function ChatInput({
     setHighlightIndex: setSlashHighlightIndex,
     selectCandidate: selectSlashCandidate,
     close: closeSlashCommands,
-  } = useSlashCommands(inputValue, cursorPos, workspaceId, agentId);
+  } = useSlashCommands(inputValue, cursorPos, workspaceId, agentId, currentAgentMode);
 
   const attachments = workspaceId ? listAttachments(workspaceId) : [];
 
@@ -515,10 +512,63 @@ export function ChatInput({
     },
     [updateSettings],
   );
-  const handlePlanToggle = useCallback(() => {
-    planStore.setEnabled(workspaceId, !planStore.enabled);
+  const handleAgentModeSelect = useCallback((mode: AgentMode) => {
+    if (workspaceId) setAgentMode(workspaceId, mode);
     requestAnimationFrame(() => textareaRef.current?.focus());
-  }, [planStore, workspaceId]);
+  }, [setAgentMode, workspaceId]);
+
+  const commitComposerHeight = useCallback((height: number) => {
+    const next = Math.max(COMPOSER_MIN_HEIGHT, Math.min(COMPOSER_MAX_HEIGHT, Math.round(height)));
+    setComposerHeight(next);
+    document.documentElement.style.setProperty("--pi-global-composer-height", `${next + 8}px`);
+    window.dispatchEvent(new CustomEvent("pi:composer-height-change", { detail: { height: next } }));
+  }, []);
+
+  const handleResizePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    resizeStateRef.current = {
+      startY: event.clientY,
+      startHeight: composerHeight,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }, [composerHeight]);
+
+  useEffect(() => {
+    if (!referenceFrame) return;
+    commitComposerHeight(composerHeight);
+  }, [commitComposerHeight, composerHeight, referenceFrame]);
+
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent): void => {
+      const state = resizeStateRef.current;
+      if (!state) return;
+      commitComposerHeight(state.startHeight + (state.startY - event.clientY));
+    };
+    const handlePointerUp = (): void => {
+      resizeStateRef.current = null;
+    };
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [commitComposerHeight]);
+  const openSlashCommands = useCallback(() => {
+    setInputValue((current) => {
+      const next = current.trimStart().startsWith("/")
+        ? current
+        : current.length === 0
+          ? "/"
+          : `${current}${current.endsWith(" ") ? "" : " "}/`;
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+        textareaRef.current?.setSelectionRange(next.length, next.length);
+        setCursorPos(next.length);
+      });
+      return next;
+    });
+  }, []);
   const handleSwitchWorkspace = useCallback(
     async (id: string): Promise<void> => {
       const ws = workspaces.find((w) => w.id === id);
@@ -598,8 +648,11 @@ export function ChatInput({
 
   const canSend = inputValue.trim().length > 0 && isConnected && !isSending;
   const currentPermissionLabel = PERMISSION_OPTIONS.find((p) => p.value === currentPermission)?.label ?? "智能授权";
+  const currentModelLabel = [settings.provider, currentModel].filter(Boolean).join(" / ") || "未配置模型";
   const inputPlaceholder = !isConnected
     ? t("chatInput.placeholder.noConnection")
+    : referenceFrame
+      ? "输入消息，使用 / 调用命令、@ 引用文件..."
     : isProcessing
       ? runContext === "plan_execution"
         ? "正在执行计划，输入内容会作为补充指令发送"
@@ -612,14 +665,27 @@ export function ChatInput({
   const stopAriaLabel = runContext === "plan_execution" ? "暂停执行" : t("chatView.stopGeneration");
 
   return (
-    <div className="w-full bg-transparent px-8 pt-2 pb-3">
+    <div className={`${referenceFrame ? "pointer-events-auto w-full px-2 pb-2" : "w-full px-3 pb-6"} bg-transparent pt-1`}>
       <PermissionRequestStack workspaceId={workspaceId} agentId={agentId} />
       <div
         data-testid="chat-input-shell"
-        className="mx-auto max-w-[770px] overflow-visible rounded-[18px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-[0_18px_44px_rgba(20,20,18,0.08),0_2px_10px_rgba(20,20,18,0.05)] transition-all focus-within:border-[var(--mm-border)] focus-within:shadow-[0_18px_44px_rgba(20,20,18,0.08),0_0_0_3px_rgba(36,36,35,0.035)]"
+        className={`${referenceFrame ? "mx-0 w-full max-w-none" : "mx-auto max-w-[770px]"} relative overflow-visible rounded-[7px] border border-[#e7e7e9] bg-[#f9f9fb] shadow-none transition-all focus-within:border-[#e7e7e9]`}
+        style={referenceFrame ? { height: `${composerHeight}px` } : undefined}
       >
+        {referenceFrame ? (
+          <div
+            role="separator"
+            aria-label="调整输入框高度"
+            aria-orientation="horizontal"
+            tabIndex={0}
+            onPointerDown={handleResizePointerDown}
+            className="absolute left-2 right-2 top-0 z-10 flex h-2 cursor-ns-resize items-start justify-center"
+          >
+            <span className="mt-[2px] h-[2px] w-9 rounded-full bg-[#d8dce2]" aria-hidden />
+          </div>
+        ) : null}
         {isProcessing && (
-          <div className="flex items-center justify-between gap-3 rounded-t-[18px] bg-[var(--mm-bg-sidebar)] px-4 py-2 text-xs">
+          <div className="flex items-center justify-between gap-2 rounded-t-[7px] bg-[var(--mm-bg-sidebar)] px-3 py-1.5 text-[11px]">
             <div className="flex min-w-0 items-center gap-2 text-[var(--mm-text-secondary)]">
               <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--mm-bg-active)]" aria-hidden />
               <span className="truncate">{runningLabel}</span>
@@ -668,18 +734,18 @@ export function ChatInput({
         )}
 
         {/* 输入框 + 发送按钮 + @mention 弹窗 */}
-        <div className="relative flex gap-3 px-[18px] pt-[17px] pb-2">
+        <div className={`relative flex gap-2 px-3 ${referenceFrame ? "pb-0 pt-3" : "pb-1.5 pt-3"}`}>
           <div className="flex-1 relative">
-            {planStore.enabled && (
+            {currentAgentMode !== "build" && (
               <div className="mb-2 flex">
                 <span
                   className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-hover)] px-2.5 text-xs font-semibold text-[var(--color-success)]"
-                  aria-label="计划模式已启用"
+                  aria-label={`${currentAgentMode} 模式已启用`}
                 >
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />
                   </svg>
-                  计划模式
+                  {AGENT_MODE_OPTIONS.find((mode) => mode.value === currentAgentMode)?.label ?? currentAgentMode}
                 </span>
               </div>
             )}
@@ -698,7 +764,7 @@ export function ChatInput({
               onKeyUp={handleSelect}
               onKeyDown={handleKeyDown}
               placeholder={inputPlaceholder}
-              className="min-h-[62px] w-full resize-none border-0 bg-transparent px-0 py-0 text-sm leading-relaxed text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus-visible:!outline-none focus-visible:!shadow-none disabled:opacity-50"
+              className="min-h-[38px] w-full resize-none border-0 bg-transparent px-0 py-0 text-[12px] leading-5 text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus-visible:!outline-none focus-visible:!shadow-none disabled:opacity-50"
               rows={1}
               disabled={!isConnected}
               aria-label={t("chatInput.send")}
@@ -794,7 +860,7 @@ export function ChatInput({
             type="button"
             onClick={() => void handleSend()}
             disabled={!canSend}
-            className={`flex h-9 w-9 flex-shrink-0 items-center justify-center self-end rounded-lg transition-all ${
+            className={`${referenceFrame ? "hidden" : "flex"} h-7 w-8 flex-shrink-0 items-center justify-center self-end rounded-[5px] transition-all ${
               isProcessing
                 ? "border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:border-[var(--mm-border-subtle)] disabled:text-[var(--mm-text-tertiary)]"
                 : "bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)] hover:opacity-90 disabled:cursor-not-allowed disabled:bg-[var(--mm-bg-selected)] disabled:text-[var(--mm-text-tertiary)]"
@@ -830,7 +896,79 @@ export function ChatInput({
         )}
 
         {/* 控制栏 */}
-        <div className="flex flex-wrap items-center justify-between gap-2 px-3 pb-[11px] pt-0">
+        {referenceFrame ? (
+          <div className="flex h-[34px] items-start justify-between px-3 pb-2 pt-0" data-testid="chat-input-reference-controls">
+            <div className="flex items-center gap-3 text-[var(--mm-text-secondary)]">
+              <button type="button" onClick={() => void handlePickFiles()} className="flex h-6 w-6 items-center justify-center rounded-[3px] hover:bg-[var(--mm-bg-hover)]" aria-label="添加文件或图片">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3 3 0 1 1 4 4L8.5 18.5a1.5 1.5 0 1 1-2-2L15 8" />
+                </svg>
+              </button>
+              <button type="button" onClick={openSlashCommands} className="flex h-6 w-6 items-center justify-center rounded-[3px] hover:bg-[var(--mm-bg-hover)]" aria-label="打开 Slash 命令">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="m8 9-4 3 4 3m8-6 4 3-4 3M14 5l-4 14" />
+                </svg>
+              </button>
+              <Popover
+                align="start"
+                contentClassName="w-[246px] rounded-[10px] border border-[var(--mm-border)] bg-white p-1.5 shadow-[0_16px_38px_rgba(20,31,50,0.14)]"
+                trigger={
+                  <button type="button" className="flex h-6 items-center gap-1 rounded-[4px] px-1.5 text-[11px] hover:bg-[var(--mm-bg-hover)]" aria-label="选择 Agent 模式">
+                    <span className="font-medium text-[var(--mm-text-primary)]">
+                      {AGENT_MODE_OPTIONS.find((mode) => mode.value === currentAgentMode)?.label ?? "Build"}
+                    </span>
+                    <svg className="h-3 w-3 text-[var(--mm-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6" />
+                    </svg>
+                  </button>
+                }
+              >
+                {(close) => (
+                  <div role="menu" aria-label="Agent 模式">
+                    {AGENT_MODE_OPTIONS.map((mode) => (
+                      <button
+                        key={mode.value}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={currentAgentMode === mode.value}
+                        onClick={() => {
+                          handleAgentModeSelect(mode.value);
+                          close();
+                        }}
+                        className={`flex w-full items-start gap-2 rounded-[7px] px-2 py-2 text-left hover:bg-[var(--mm-bg-hover)] ${
+                          currentAgentMode === mode.value ? "bg-[#eef5ff]" : ""
+                        }`}
+                      >
+                        <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${currentAgentMode === mode.value ? "bg-[#126dd8]" : "bg-[#c7cbd1]"}`} aria-hidden />
+                        <span className="min-w-0">
+                          <span className="block text-[12px] font-medium text-[var(--mm-text-primary)]">{mode.label}</span>
+                          <span className="block text-[10px] leading-4 text-[var(--mm-text-secondary)]">{mode.desc}</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </Popover>
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="flex h-7 w-[155px] items-center rounded-[3px] border border-[var(--mm-border)] bg-[#fbfbfb] px-2 text-[10px] text-[var(--mm-text-secondary)]" aria-label={`当前模型 ${currentModelLabel}`} role="status">
+                <span className="truncate">{currentModelLabel}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleSend()}
+                disabled={!canSend}
+                className="mt-[-6px] flex h-[32px] w-[51px] translate-x-[2px] items-center justify-center rounded-[5px] bg-[#126dd8] text-white shadow-[0_1px_2px_rgba(10,35,80,0.14)] transition-opacity hover:opacity-90 disabled:opacity-100"
+                aria-label={t("chatInput.send")}
+              >
+                <svg className="h-5 w-5 -rotate-12" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3 11.7 21 3.8 13.1 21l-2.3-7.1L3 11.7Zm8.7 1.1 1.2 3.7 4-8.7-8.6 3.8 3.4 1.2Z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        ) : (
+        <div className="flex flex-wrap items-center justify-between gap-1.5 px-2 pb-2 pt-0">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <Popover
               align="start"
@@ -838,7 +976,7 @@ export function ChatInput({
               trigger={
                 <button
                   type="button"
-                  className="flex h-[30px] w-[30px] items-center justify-center rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] text-xl leading-none text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
+                  className="flex h-[22px] w-[22px] items-center justify-center rounded-[4px] border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] text-base leading-none text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
                   aria-label="添加附件和工具"
                   data-testid="chat-input-plus-trigger"
                 >
@@ -869,8 +1007,12 @@ export function ChatInput({
                   <button
                     type="button"
                     role="menuitem"
+                    onClick={() => {
+                      close();
+                      window.dispatchEvent(new CustomEvent("app:switch-section", { detail: { section: "skills" } }));
+                    }}
                     className="flex min-h-8 w-full items-center justify-between gap-3 rounded-[9px] px-2 text-left text-sm text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
-                    aria-label="技能"
+                    aria-label="打开技能面板"
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <svg className="h-3.5 w-3.5 shrink-0 text-[var(--mm-text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -878,26 +1020,7 @@ export function ChatInput({
                       </svg>
                       技能
                     </span>
-                    <span className="text-[var(--mm-text-tertiary)]" aria-hidden>›</span>
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitemcheckbox"
-                    aria-checked={planStore.enabled}
-                    onClick={() => {
-                      handlePlanToggle();
-                      close();
-                    }}
-                    className="flex min-h-8 w-full items-center justify-between gap-3 rounded-[9px] px-2 text-left text-sm text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
-                    aria-label="计划模式"
-                  >
-                    <span className="flex min-w-0 items-center gap-2">
-                      <svg className="h-3.5 w-3.5 shrink-0 text-[var(--mm-text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />
-                      </svg>
-                      计划模式
-                    </span>
-                    <ToggleSwitch checked={planStore.enabled} />
+                    <span className="text-[var(--mm-text-tertiary)]" aria-hidden>打开</span>
                   </button>
                 </div>
               )}
@@ -908,7 +1031,7 @@ export function ChatInput({
               contentClassName="min-w-[220px]"
               trigger={
                 <div
-                  className="flex h-[30px] max-w-[210px] cursor-pointer items-center gap-1.5 rounded-[10px] border border-transparent px-2 text-xs text-[var(--mm-text-secondary)] transition-all hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"
+                  className="flex h-[22px] max-w-[110px] cursor-pointer items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-all hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"
                   role="button"
                   tabIndex={0}
                   aria-label={currentWorkspace ? `当前工作目录: ${currentWorkspace.name}` : "选择工作目录"}
@@ -980,7 +1103,7 @@ export function ChatInput({
               contentClassName="min-w-[158px]"
               trigger={
                 <div
-                  className="flex h-[30px] cursor-pointer items-center gap-1.5 rounded-[10px] border border-transparent px-2 text-xs text-[var(--mm-text-secondary)] transition-all hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"
+                  className="flex h-[22px] cursor-pointer items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-all hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"
                   role="button"
                   tabIndex={0}
                   aria-label={`权限: ${currentPermissionLabel}`}
@@ -1045,7 +1168,7 @@ export function ChatInput({
               contentClassName="min-w-[220px]"
               trigger={
                 <div
-                  className="flex h-[30px] max-w-[180px] cursor-pointer items-center gap-1.5 rounded-[10px] border border-transparent px-2 text-xs text-[var(--mm-text-secondary)] transition-all hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"
+                  className="flex h-[22px] max-w-[96px] cursor-pointer items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-all hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"
                   role="button"
                   tabIndex={0}
                   aria-label={currentModel ? `当前模型: ${currentModel}` : "未选择模型"}
@@ -1099,6 +1222,7 @@ export function ChatInput({
             </Popover>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

@@ -59,7 +59,7 @@ type CommandResult = {
 
 const COMMANDS: readonly CommandDef[] = Object.freeze([
     { id: "new_chat", labelKey: "commandPalette.commands.new_chat", hint: "Ctrl+N" },
-    { id: "open_files", labelKey: "commandPalette.commands.open_files", hint: "Files" },
+    { id: "open_files", labelKey: "commandPalette.commands.open_files", hint: "文件" },
     { id: "open_git", labelKey: "commandPalette.commands.open_git", hint: "Git" },
     { id: "open_sessions", labelKey: "commandPalette.commands.open_sessions", hint: "History" },
     { id: "open_skills", labelKey: "commandPalette.commands.open_skills", hint: "Ctrl+Shift+S" },

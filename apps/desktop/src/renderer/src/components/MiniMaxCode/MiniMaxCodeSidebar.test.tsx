@@ -73,22 +73,22 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
         expect(selected).toBe("new-task");
     });
 
-    it("左下角展示 pi-agent 在线状态", () => {
+    it("不在会话侧栏展示 pi-agent 在线状态", () => {
         renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" piAgentStatus="online" onSectionChange={() => undefined} />);
 
-        expect(screen.getByRole("status", { name: "pi-agent 在线" })).toBeTruthy();
+        expect(screen.queryByRole("status", { name: "pi-agent 在线" })).toBeNull();
     });
 
-    it("左下角展示 pi-agent 不在线状态", () => {
+    it("不在会话侧栏展示 pi-agent 不在线状态", () => {
         renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" piAgentStatus="offline" onSectionChange={() => undefined} />);
 
-        expect(screen.getByRole("status", { name: "pi-agent 不在线" })).toBeTruthy();
+        expect(screen.queryByRole("status", { name: "pi-agent 不在线" })).toBeNull();
     });
 
-    it("设置固定在底部", () => {
+    it("不再把设置作为会话侧栏入口", () => {
         renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" onSectionChange={() => undefined} />);
 
-        expect(screen.getByRole("button", { name: "设置" })).toBeTruthy();
+        expect(screen.queryByRole("button", { name: "设置" })).toBeNull();
     });
 
     it("按项目分组会话 — 当前工作区展开显示会话", () => {
@@ -198,11 +198,10 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
         expect(useSessionStore.getState().currentSessionId).toBe("s_archived");
     });
 
-    it("设置项在 currentSection='settings' 时高亮", () => {
+    it("currentSection='settings' 不会在会话侧栏产生高亮入口", () => {
         renderWithI18n(<MiniMaxCodeSidebar currentSection="settings" onSectionChange={() => undefined} />);
 
-        const settingsBtn = screen.getByRole("button", { name: "设置" });
-        expect(settingsBtn.getAttribute("aria-current")).toBe("page");
+        expect(screen.queryByRole("button", { name: "设置" })).toBeNull();
     });
 
     it("点击删除 → 显示确认对话框，取消后不删除", () => {

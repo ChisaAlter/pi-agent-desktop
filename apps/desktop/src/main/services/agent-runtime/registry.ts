@@ -7,11 +7,13 @@ import type {
     PiSlashCommand,
     SendAgentPromptInput,
     Workspace,
+    AgentMode,
 } from "@shared";
 import type { PiEvent } from "@shared/events";
 import { createWorkspaceSession, type WorkspaceSession } from "../pi-session/factory";
 import { createApprovalInterceptor } from "../approval/interceptor";
 import { createExtensionUiBridge } from "../extensions/extension-ui-bridge";
+import { buildAgentModePrompt, normalizeAgentMode } from "../agent-modes";
 import type { PendingEdits } from "../approval/pending-edits";
 import log from "electron-log/main";
 
@@ -29,6 +31,7 @@ interface AgentRuntime {
     session: WorkspaceSession;
     messages: AgentMessage[];
     isStreaming: boolean;
+    mode: AgentMode;
     thinkingLevel?: "none" | "low" | "medium" | "high";
 }
 
@@ -71,6 +74,7 @@ export class AgentRuntimeRegistry {
             session,
             messages: [],
             isStreaming: false,
+            mode: "build",
         };
         this.runtimes.set(id, runtime);
         this.subscribe(runtime);
@@ -84,8 +88,10 @@ export class AgentRuntimeRegistry {
         const runtime = this.requireRuntime(input.agentId);
         const text = input.message.trim();
         if (!text) return;
-        this.addMessage(runtime, "user", text);
-        await this.promptRuntime(runtime, text, input.streamingBehavior);
+        const mode = normalizeAgentMode(input.mode);
+        runtime.mode = mode;
+        this.addMessage(runtime, "user", text, { mode });
+        await this.promptRuntime(runtime, buildAgentModePrompt(mode, text), input.streamingBehavior);
     }
 
     async promptInternal(agentId: string, message: string): Promise<void> {
@@ -198,6 +204,7 @@ export class AgentRuntimeRegistry {
             pendingEdits: this.deps.pendingEdits,
             send: (channel, _workspaceId, payload) => this.deps.send(channel, payload),
             workspacePath: runtime.workspace.path,
+            getMode: () => runtime.mode,
         });
 
         runtime.session.session.subscribe(async (rawEvent: unknown) => {

@@ -288,7 +288,7 @@ describe("RightRail", () => {
 
     expect(screen.getByText("梳理界面")).toBeTruthy();
     expect(screen.getByText("执行计划")).toBeTruthy();
-    expect(screen.getByText("任务流")).toBeTruthy();
+    expect(screen.getByText("运行队列")).toBeTruthy();
     expect(screen.getByText("普通任务")).toBeTruthy();
   });
 
@@ -317,11 +317,11 @@ describe("RightRail", () => {
 
     render(<RightRail workspacePath="C:/repo" />);
 
-    expect(screen.getByText("任务流")).toBeTruthy();
+    expect(screen.getByText("运行队列")).toBeTruthy();
     expect(screen.getByText("修复 Git 工作流")).toBeTruthy();
     expect(screen.getByText("改成只提交 staged")).toBeTruthy();
     expect(screen.getByText("跑完整测试")).toBeTruthy();
-    expect(screen.getByText("3 tasks")).toBeTruthy();
+    expect(screen.getByText("3 项")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: /修复 Git 工作流/ }));
     expect(switchSpy).toHaveBeenCalledWith(
@@ -393,7 +393,7 @@ describe("RightRail", () => {
       />,
     );
 
-    expect(screen.getByText("任务流")).toBeTruthy();
+    expect(screen.getByText("运行队列")).toBeTruthy();
     expect(screen.getAllByText("运行测试").length).toBeGreaterThan(0);
     expect(screen.getByText("Tool")).toBeTruthy();
   });

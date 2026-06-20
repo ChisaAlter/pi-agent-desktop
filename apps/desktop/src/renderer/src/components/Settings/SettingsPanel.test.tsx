@@ -77,7 +77,7 @@ describe("SettingsPanel 配置中心", () => {
     it("没有 provider 时拉取模型不会传空 baseUrl", async () => {
         renderSettings();
 
-        fireEvent.click(screen.getByRole("tab", { name: "配置中心" }));
+        fireEvent.click(screen.getByRole("tab", { name: "配置文件" }));
         fireEvent.click(await screen.findByRole("button", { name: "拉取模型列表" }));
 
         expect(window.piAPI.configFetchModels).not.toHaveBeenCalled();
@@ -90,7 +90,23 @@ describe("SettingsPanel 配置中心", () => {
         const dialog = screen.getByRole("dialog", { name: "设置" });
         expect(dialog.className).toContain("settings-shell-enter");
         expect(dialog.parentElement?.className).toContain("settings-backdrop-enter");
-        expect(screen.getByRole("tabpanel", { name: "外观" }).className).toContain("settings-tab-panel");
+        expect(screen.getByRole("tabpanel", { name: "模型" }).className).toContain("settings-tab-panel");
+    });
+
+    it("设置导航按 Pi Agent 真实功能分组，默认进入模型页", async () => {
+        renderSettings();
+
+        expect(screen.getByRole("tab", { name: "模型" }).getAttribute("aria-selected")).toBe("true");
+        expect(await screen.findByText("Custom Model V1")).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "Agent" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "权限" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "界面" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "通用" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "快捷键" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "配置文件" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "关于" })).toBeTruthy();
+        expect(screen.queryByRole("tab", { name: "外观" })).toBeNull();
+        expect(screen.queryByRole("tab", { name: "Pi Agent" })).toBeNull();
     });
 
     it("使用当前配置中的 provider 信息拉取模型并测试连接", async () => {
@@ -115,7 +131,7 @@ describe("SettingsPanel 配置中心", () => {
 
         renderSettings();
 
-        fireEvent.click(screen.getByRole("tab", { name: "配置中心" }));
+        fireEvent.click(screen.getByRole("tab", { name: "配置文件" }));
         fireEvent.click(await screen.findByRole("button", { name: "拉取模型列表" }));
         await waitFor(() => {
             expect(window.piAPI.configFetchModels).toHaveBeenCalledWith(
@@ -148,7 +164,7 @@ describe("SettingsPanel 配置中心", () => {
 
         expect(await screen.findByText("Custom Model V1")).toBeTruthy();
         expect(screen.getByText("Custom AI Provider")).toBeTruthy();
-        expect(screen.getByText("默认")).toBeTruthy();
+        expect(screen.getAllByText("默认").length).toBeGreaterThan(0);
 
         fireEvent.click(screen.getByRole("button", { name: "测试 Custom Model V1" }));
 

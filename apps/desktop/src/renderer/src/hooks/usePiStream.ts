@@ -29,6 +29,7 @@ import {
 import { useSessionStore } from "../stores/session-store";
 import { usePlanStore } from "../stores/plan-store";
 import { useSettingsStore } from "../stores/settings-store";
+import { useAgentModeStore } from "../stores/agent-mode-store";
 import { logger } from "../utils/logger";
 import { useAgentStore } from "../stores/agent-store";
 import { addToast } from "../stores/toast-store";
@@ -891,7 +892,8 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         if (!content.trim()) return;
         const aid = agentIdRef.current;
         const session = aid ? null : getCurrentSession();
-        const planEnabled = usePlanStore.getState().enabled;
+        const selectedMode = useAgentModeStore.getState().getMode(workspaceId);
+        const planEnabled = selectedMode === "build" && usePlanStore.getState().enabled;
         const isFollowUpWhileStreaming = isStreamingRef.current || promptInFlightRef.current;
         const isSlashCommand = content.trimStart().startsWith("/");
         const shouldUsePlanMode = planEnabled && !isSlashCommand && !isFollowUpWhileStreaming;
@@ -912,9 +914,9 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 }
                 try {
                     if (aid) {
-                        await window.piAPI.agentsPrompt({ agentId: aid, message: content, streamingBehavior: "followUp" });
+                        await window.piAPI.agentsPrompt({ agentId: aid, message: content, streamingBehavior: "followUp", mode: selectedMode });
                     } else {
-                        const result = await window.piAPI.sendPrompt(workspaceId, content);
+                        const result = await window.piAPI.sendPrompt(workspaceId, content, { mode: selectedMode });
                         if (isIpcError(result)) {
                             setError(result.fallback);
                         }
@@ -1009,10 +1011,10 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             const guardedContent = `${permissionPrefix}${clarifiedPlanContent ?? content}`;
             const outbound = guardedContent;
             if (aid) {
-                await window.piAPI.agentsPrompt({ agentId: aid, message: outbound });
+                await window.piAPI.agentsPrompt({ agentId: aid, message: outbound, mode: selectedMode });
             } else {
                 try {
-                    const result = await window.piAPI.sendPrompt(workspaceId, outbound);
+                    const result = await window.piAPI.sendPrompt(workspaceId, outbound, { mode: selectedMode });
                     if (isIpcError(result)) {
                         setError(result.fallback);
                         // Add visible error message in chat

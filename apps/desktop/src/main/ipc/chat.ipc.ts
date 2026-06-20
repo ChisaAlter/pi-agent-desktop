@@ -19,15 +19,18 @@ import {
 } from "../services/extensions/extension-ui-bridge";
 import type {
     ExtensionUiResponse,
+    AgentMode,
     PermissionDecision,
     PermissionMode,
     PiSlashCommand,
     RunBuiltinSlashCommandInput,
+    SendPromptOptions,
     SlashCommandRunResult,
 } from "@shared";
 import type { AgentRuntimeRegistry } from "../services/agent-runtime/registry";
 import { getProtectedPathReason } from "../services/protected-paths";
 import { gitUndoSchema } from "./schemas";
+import { buildAgentModePrompt, composeSlashCommands, normalizeAgentMode } from "../services/agent-modes";
 
 interface WorkspaceLite {
     id: string;
@@ -208,7 +211,7 @@ function slashResult(
 }
 
 export function setupChatIpc(deps: ChatIpcDeps): void {
-    const planModeByWorkspace = new Map<string, boolean>();
+    const agentModeByWorkspace = new Map<string, AgentMode>();
     const send: IpcSender = (channel, _workspaceId, payload) => {
         const win: BrowserWindowType | null = BrowserWindow.getAllWindows()[0] ?? null;
         if (win && !win.isDestroyed()) {
@@ -255,7 +258,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
                 { id: workspaceId },
             );
         }
-        planModeByWorkspace.set(ws.id, enabled);
+        void enabled;
         return undefined;
     });
 
@@ -263,7 +266,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         resolveExtensionUiRequest(requestId, { requestId, value: decision === "execute" ? true : text ?? "" });
     });
 
-    ipcMain.handle("pi:list-slash-commands", async (_event, workspaceId: string, agentId?: string) => {
+    ipcMain.handle("pi:list-slash-commands", async (_event, workspaceId: string, agentId?: string, rawMode?: AgentMode) => {
         const ws = workspaceId ? deps.getWorkspace(workspaceId) : undefined;
         if (!ws) {
             return ipcError(
@@ -274,7 +277,9 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         }
         try {
             const session = await getSlashSession(ws, agentId);
-            return uniqueSlashCommands([...builtinSlashCommands(), ...collectDynamicSlashCommands(session)]);
+            const mode = normalizeAgentMode(rawMode);
+            const modeCommands = mode === "compose" ? composeSlashCommands() : [];
+            return uniqueSlashCommands([...builtinSlashCommands(), ...collectDynamicSlashCommands(session), ...modeCommands]);
         } catch (err) {
             log.error("[chat.ipc] list slash commands failed:", err);
             return ipcError(
@@ -380,7 +385,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         log.info(`[chat.ipc] autoApprove set to: ${value}`);
     });
 
-    ipcMain.handle("pi:send", async (_event, workspaceId: string, text: string) => {
+    ipcMain.handle("pi:send", async (_event, workspaceId: string, text: string, options?: SendPromptOptions) => {
         const ws = workspaceId ? deps.getWorkspace(workspaceId) : undefined;
         if (!ws) {
             return ipcError(
@@ -395,6 +400,9 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         const prompt = contextFile
             ? `[Currently viewing: ${contextFile}]\n\n${text}`
             : text;
+        const mode = normalizeAgentMode(options?.mode);
+        const outbound = buildAgentModePrompt(mode, prompt);
+        agentModeByWorkspace.set(ws.id, mode);
 
         try {
             if (deps.agentRegistry) {
@@ -405,13 +413,19 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
                         title: `${ws.name} Agent`,
                     });
                 }
-                await deps.agentRegistry.prompt({ agentId: agent.id, message: prompt });
+                await deps.agentRegistry.prompt({ agentId: agent.id, message: prompt, mode });
                 return undefined;
             }
             // registry.get() 内部会 lazy-init: 第一次创建 session + bridge + interceptor
             // 并只订阅一次 Pi 事件 (修复之前的订阅泄漏 + 重复处理 bug)
-            const wsSession = await deps.registry.get(ws.id, ws.path, deps.pendingEdits, send);
-            await wsSession.session.prompt(prompt);
+            const wsSession = await deps.registry.get(
+                ws.id,
+                ws.path,
+                deps.pendingEdits,
+                send,
+                () => agentModeByWorkspace.get(ws.id) ?? "build",
+            );
+            await wsSession.session.prompt(outbound);
             return undefined; // 显式返 void 满足 TS 全部路径 return 一致
         } catch (err) {
             log.error("[chat.ipc] prompt failed:", err);

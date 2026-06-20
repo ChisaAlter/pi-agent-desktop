@@ -46,13 +46,13 @@ export function WorkspaceSwitcher(): React.JSX.Element {
                 onClick={() => setOpen((v) => !v)}
                 aria-haspopup="true"
                 aria-expanded={open}
-                className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
+                className="flex h-[24px] items-center gap-1 rounded-[4px] px-1.5 text-[11px] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 title={current?.path ?? t("sidebar.workspaceNone")}
             >
                 <span className="flex h-4 w-4 items-center justify-center" aria-hidden="true">
                     <IconFolder />
                 </span>
-                <span className="max-w-[140px] truncate">{current?.name ?? t("sidebar.workspaceNone")}</span>
+                <span className="max-w-[48px] truncate">{current?.name ?? t("sidebar.workspaceNone")}</span>
                 <IconChevronDown />
             </button>
             {open && workspaces.length > 0 && (

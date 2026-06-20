@@ -55,7 +55,7 @@ type NodeAPI = import("@shared").NodeAPI;
 
 const piAPI: PiAPI = {
     // M1: 长连接 Pi session
-    sendPrompt: (workspaceId, message) => ipcRenderer.invoke("pi:send", workspaceId, message),
+    sendPrompt: (workspaceId, message, options) => ipcRenderer.invoke("pi:send", workspaceId, message, options),
 
     onEvent: (cb) => subscribe<PiEvent>("pi:event", cb),
     onError: (cb) => subscribe<string>("pi:error", cb),
@@ -139,8 +139,8 @@ const piAPI: PiAPI = {
     onAgentEvent: (cb) =>
         subscribe<{ agentId: string; workspaceId: string; event: PiEvent }>("agents:event", cb),
 
-    listSlashCommands: (workspaceId, agentId) =>
-        ipcRenderer.invoke("pi:list-slash-commands", workspaceId, agentId),
+    listSlashCommands: (workspaceId, agentId, mode) =>
+        ipcRenderer.invoke("pi:list-slash-commands", workspaceId, agentId, mode),
     runBuiltinSlashCommand: (input) =>
         ipcRenderer.invoke("pi:run-builtin-slash-command", input),
 
