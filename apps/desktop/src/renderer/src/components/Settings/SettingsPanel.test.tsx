@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiModelsFile } from "@shared";
 import { I18nProvider } from "../../i18n";
 import { useSettingsStore } from "../../stores/settings-store";
+import { useSessionStore, type Session } from "../../stores/session-store";
+import { useWorkspaceStore } from "../../stores/workspace-store";
 import { SettingsPanel } from "./SettingsPanel";
 
 vi.mock("../PiStatusPanel", () => ({
@@ -72,6 +74,26 @@ describe("SettingsPanel 配置中心", () => {
             lastWriteError: null,
             piModels: null,
         });
+        useWorkspaceStore.setState({
+            workspaces: [
+                {
+                    id: "ws-main",
+                    name: "Pi Desktop",
+                    path: "C:/Ai/pi-desktop",
+                    createdAt: new Date("2026-06-01T00:00:00.000Z"),
+                    lastActiveAt: new Date("2026-06-20T00:00:00.000Z"),
+                },
+            ],
+            currentWorkspaceId: "ws-main",
+            lastError: null,
+        });
+        useSessionStore.setState({
+            sessions: [],
+            currentSessionId: null,
+            sessionsLoading: false,
+            persistErrorCount: 0,
+            lastPersistError: null,
+        });
     });
 
     it("没有 provider 时拉取模型不会传空 baseUrl", async () => {
@@ -100,6 +122,8 @@ describe("SettingsPanel 配置中心", () => {
         expect(await screen.findByText("Custom Model V1")).toBeTruthy();
         expect(screen.getByRole("tab", { name: "Agent" })).toBeTruthy();
         expect(screen.getByRole("tab", { name: "权限" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "用量" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "长程能力" })).toBeTruthy();
         expect(screen.getByRole("tab", { name: "界面" })).toBeTruthy();
         expect(screen.getByRole("tab", { name: "通用" })).toBeTruthy();
         expect(screen.getByRole("tab", { name: "快捷键" })).toBeTruthy();
@@ -107,6 +131,79 @@ describe("SettingsPanel 配置中心", () => {
         expect(screen.getByRole("tab", { name: "关于" })).toBeTruthy();
         expect(screen.queryByRole("tab", { name: "外观" })).toBeNull();
         expect(screen.queryByRole("tab", { name: "Pi Agent" })).toBeNull();
+    });
+
+    it("用量页展示 Token 统计、图表和悬浮详情", async () => {
+        const baseSession = {
+            workspaceId: "ws-main",
+            createdAt: new Date("2026-06-01T00:00:00.000Z"),
+            updatedAt: new Date("2026-06-20T09:00:00.000Z"),
+            messages: [],
+            archived: false,
+        };
+        useSessionStore.setState({
+            sessions: [
+                {
+                    ...baseSession,
+                    id: "s-1",
+                    title: "实现用量统计",
+                    usage: {
+                        provider: "glm",
+                        model: "GLM-5.2",
+                        inputTokens: 80000000,
+                        outputTokens: 40000000,
+                        estimatedCostUsd: 12.4,
+                        updatedAt: new Date("2026-06-20T09:00:00.000Z").getTime(),
+                    },
+                },
+                {
+                    ...baseSession,
+                    id: "s-2",
+                    title: "修复图表 tooltip",
+                    updatedAt: new Date("2026-06-15T09:00:00.000Z"),
+                    usage: {
+                        provider: "glm",
+                        model: "glm-5.1",
+                        inputTokens: 30000000,
+                        outputTokens: 32000000,
+                        estimatedCostUsd: 2.1,
+                        updatedAt: new Date("2026-06-15T09:00:00.000Z").getTime(),
+                    },
+                },
+            ] satisfies Session[],
+        });
+
+        renderSettings();
+
+        fireEvent.click(screen.getByRole("tab", { name: "用量" }));
+
+        expect(await screen.findByRole("tabpanel", { name: "用量" })).toBeTruthy();
+        expect(screen.getByText("使用统计")).toBeTruthy();
+        expect(screen.getByText("Token 用量")).toBeTruthy();
+        expect(screen.getAllByText("1.8亿").length).toBeGreaterThan(0);
+        expect(screen.getAllByText("2").length).toBeGreaterThan(0);
+        expect(screen.getAllByText("GLM-5.2").length).toBeGreaterThan(0);
+        expect(screen.getByText("活跃热力图")).toBeTruthy();
+        expect(screen.getByText("按天 Token 趋势")).toBeTruthy();
+        expect(screen.getByText("模型用量")).toBeTruthy();
+        expect(screen.getByText("会话排行")).toBeTruthy();
+        expect(screen.getByText("实现用量统计")).toBeTruthy();
+
+        fireEvent.mouseEnter(screen.getByLabelText("2026-06-20 用量详情"));
+        expect((await screen.findByRole("tooltip")).textContent).toContain("2026-06-20");
+        expect(screen.getByRole("tooltip").textContent).toContain("120M tokens");
+
+        fireEvent.mouseEnter(screen.getByLabelText("GLM-5.2 模型用量详情"));
+        expect((await screen.findByRole("tooltip")).textContent).toContain("GLM-5.2");
+        expect(screen.getByRole("tooltip").textContent).toContain("66%");
+    });
+
+    it("用量页没有采集数据时展示空状态", async () => {
+        renderSettings();
+
+        fireEvent.click(screen.getByRole("tab", { name: "用量" }));
+
+        expect(await screen.findByText("等待会话产生 Token 用量事件")).toBeTruthy();
     });
 
     it("使用当前配置中的 provider 信息拉取模型并测试连接", async () => {

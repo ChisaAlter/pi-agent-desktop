@@ -11,6 +11,7 @@ export const workspaceCreateSchema = z.tuple([
 ]);
 
 const permissionModeSchema = z.enum(["ask", "smart", "always", "read", "partial", "full"]);
+const agentModeSchema = z.enum(["build", "plan", "compose", "max"]);
 
 const piConfigSchema = z
     .object({
@@ -18,6 +19,23 @@ const piConfigSchema = z
         model: z.string(),
         apiKey: z.string().optional(),
         baseUrl: z.string().optional(),
+    })
+    .strict();
+
+const longHorizonToggleSchema = z.object({ enabled: z.boolean() }).strict();
+
+const longHorizonSchema = z
+    .object({
+        enabled: z.boolean(),
+        defaultMode: agentModeSchema,
+        maxMode: longHorizonToggleSchema.extend({
+            candidates: z.number().int().min(1).max(20).optional(),
+        }),
+        memory: longHorizonToggleSchema,
+        checkpoint: longHorizonToggleSchema,
+        goal: longHorizonToggleSchema,
+        subagents: longHorizonToggleSchema,
+        composeWorkflow: longHorizonToggleSchema,
     })
     .strict();
 
@@ -47,6 +65,7 @@ const appSettingsSchema = z
             "network",
             "extensions",
         ]), z.boolean())).optional(),
+        longHorizon: longHorizonSchema.optional(),
     })
     .strict();
 
@@ -333,7 +352,7 @@ export const agentsPromptSchema = z.object({
     agentId: z.string().min(1, "agentId must be a non-empty string"),
     message: z.string().min(1, "message must be a non-empty string"),
     streamingBehavior: z.enum(["followUp", "newTurn"]).optional(),
-    mode: z.enum(["build", "plan", "compose"]).optional(),
+    mode: agentModeSchema.optional(),
 });
 
 export const agentsIdSchema = z.tuple([

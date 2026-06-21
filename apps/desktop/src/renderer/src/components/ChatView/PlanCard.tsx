@@ -7,7 +7,7 @@ import { MarkdownRenderer } from "./MarkdownRenderer";
 export interface PlanStepItem {
   id: string;
   text: string;
-  status: "pending" | "running" | "completed" | "failed" | "waiting";
+  status: "pending" | "running" | "completed" | "failed" | "waiting" | "blocked";
 }
 
 export interface PlanChoiceOption {

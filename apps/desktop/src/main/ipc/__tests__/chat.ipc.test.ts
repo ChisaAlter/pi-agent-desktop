@@ -112,6 +112,54 @@ describe("setupChatIpc", () => {
         expect(outbound).toContain("改输入区");
     });
 
+    it("rebuilds long-horizon context before storing the current prompt in memory", async () => {
+        const order: string[] = [];
+        const prompt = vi.fn(async () => undefined);
+        const registry = {
+            get: vi.fn(async () => ({
+                session: { prompt, abort: vi.fn() },
+            })),
+            has: vi.fn(() => true),
+        };
+
+        setupChatIpc({
+            registry: registry as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+            memoryService: {
+                put: vi.fn(() => {
+                    order.push("put");
+                    return {};
+                }),
+            } as any,
+            checkpointService: {
+                rebuildContext: vi.fn(() => {
+                    order.push("rebuild");
+                    return "<long_horizon_context>history</long_horizon_context>";
+                }),
+            } as any,
+            getSettings: () => ({
+                longHorizon: {
+                    enabled: true,
+                    defaultMode: "build",
+                    maxMode: { enabled: true, candidates: 5 },
+                    memory: { enabled: true },
+                    checkpoint: { enabled: true },
+                    goal: { enabled: true },
+                    subagents: { enabled: true },
+                    composeWorkflow: { enabled: true },
+                },
+            }) as any,
+        });
+
+        const handler = handlers.get("pi:send");
+        await handler?.({}, "ws_1", "当前用户目标");
+
+        expect(order).toEqual(["rebuild", "put"]);
+        expect(prompt.mock.calls[0]?.[0]).toContain("<long_horizon_context>history</long_horizon_context>");
+    });
+
     it("adds compose slash commands only for compose mode", async () => {
         const session = {
             extensionRunner: { getRegisteredCommands: vi.fn(() => []) },

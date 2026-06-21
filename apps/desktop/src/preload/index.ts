@@ -38,6 +38,8 @@ import type {
     GitBranch,
     GitChangedFile,
     Workspace,
+    GoalSetInput,
+    GoalState,
 } from "@shared";
 
 // 内部 helper: 把 ipcRenderer.on 的 (_event, payload) 签名转成 (payload)
@@ -161,6 +163,10 @@ const piAPI: PiAPI = {
     onPlanCard: (cb) => subscribe<PlanCard>("plan:card", cb),
     onPlanDecisionRequest: (cb) => subscribe<PlanDecisionRequest>("plan:decision-request", cb),
     onPlanProgress: (cb) => subscribe<PlanProgressUpdate>("plan:progress", cb),
+    goalSet: (input: GoalSetInput) => ipcRenderer.invoke("goal:set", input) as Promise<GoalState | IpcError>,
+    goalClear: (workspaceId, agentId) => ipcRenderer.invoke("goal:clear", workspaceId, agentId) as Promise<GoalState | IpcError>,
+    goalGet: (workspaceId, agentId) => ipcRenderer.invoke("goal:get", workspaceId, agentId) as Promise<GoalState | null | IpcError>,
+    onGoalChanged: (cb) => subscribe<GoalState>("goal:changed", cb),
 
     // Git
     getGitStatus: (workspacePath) => ipcRenderer.invoke("git:status", workspacePath) as Promise<GitStatus | null | IpcError>,
@@ -317,6 +323,9 @@ const piAPI: PiAPI = {
             "approval:respond",
             "approval:set-auto-approve",
             "plan:respond",
+            "goal:set",
+            "goal:clear",
+            "goal:get",
             "permission:respond",
         ];
         if (!ALLOWED.includes(channel)) {

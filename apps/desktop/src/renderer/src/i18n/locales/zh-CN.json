@@ -315,6 +315,8 @@
       "model": "模型",
       "piagent": "Agent",
       "permissions": "权限",
+      "usage": "用量",
+      "longHorizon": "长程能力",
       "appearance": "界面",
       "general": "通用",
       "shortcuts": "快捷键",
@@ -325,6 +327,8 @@
       "model": "Provider 与模型",
       "piagent": "CLI 与状态",
       "permissions": "工具默认权限",
+      "usage": "Token 统计",
+      "longHorizon": "模式、Goal 与记忆",
       "appearance": "主题与字体",
       "general": "语言与通知",
       "shortcuts": "键盘操作",
@@ -338,6 +342,47 @@
     "general": {
       "heading": "通用设置",
       "description": "控制语言、保存行为和编辑器显示偏好。"
+    },
+    "longHorizon": {
+      "heading": "长程能力",
+      "description": "控制 MiMoCode 风格的模式、Goal、计划联动、记忆、checkpoint 和 Max Mode 适配层。",
+      "enabled": {
+        "label": "启用增强能力",
+        "description": "关闭后不注入模式 prompt、不处理 Goal judge、不写记忆或 checkpoint，并隐藏增强命令。"
+      },
+      "defaultMode": {
+        "label": "默认会话模式",
+        "description": "默认保持 Build；Max 只有在实验开关开启后才可选。"
+      },
+      "maxMode": {
+        "label": "Max Mode",
+        "description": "实验增强模式：生成多个候选并由 judge 选优，不作为默认第四主模式。",
+        "candidates": "候选数"
+      },
+      "systems": {
+        "heading": "子系统",
+        "description": "这些开关只在总开关开启时生效。"
+      },
+      "goal": {
+        "label": "Goal / 停止条件",
+        "description": "启用 /goal、独立 judge 检查和右侧任务目标展示。"
+      },
+      "memory": {
+        "label": "持久记忆",
+        "description": "保存项目、会话、任务进度和用户笔记，恢复上下文时检索注入。"
+      },
+      "checkpoint": {
+        "label": "Checkpoint",
+        "description": "生成结构化 checkpoint，用于长上下文恢复和接近阈值时重建。"
+      },
+      "subagents": {
+        "label": "系统 Subagents",
+        "description": "启用 checkpoint-writer、dream、distill 等系统 agent 适配能力。"
+      },
+      "composeWorkflow": {
+        "label": "Compose Workflow",
+        "description": "让 compose 模式使用任务状态驱动的工作流，而不是单纯 prompt 包装。"
+      }
     },
     "language": {
       "label": "语言",

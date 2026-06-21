@@ -18,6 +18,7 @@ import {
     setDesktopPermissionMode,
 } from "../services/extensions/extension-ui-bridge";
 import type {
+    AppSettings,
     ExtensionUiResponse,
     AgentMode,
     PermissionDecision,
@@ -28,9 +29,12 @@ import type {
     SlashCommandRunResult,
 } from "@shared";
 import type { AgentRuntimeRegistry } from "../services/agent-runtime/registry";
+import type { GoalService } from "../services/long-horizon/goal-service";
+import type { CheckpointService } from "../services/long-horizon/checkpoint-service";
+import type { MemoryService } from "../services/long-horizon/memory-service";
 import { getProtectedPathReason } from "../services/protected-paths";
 import { gitUndoSchema } from "./schemas";
-import { buildAgentModePrompt, composeSlashCommands, normalizeAgentMode } from "../services/agent-modes";
+import { buildAgentModePrompt, composeSlashCommands, goalSlashCommands, normalizeAgentMode } from "../services/agent-modes";
 
 interface WorkspaceLite {
     id: string;
@@ -48,6 +52,10 @@ interface ChatIpcDeps {
     pendingEdits: PendingEdits;
     /** 新工作台运行时；存在时 legacy pi:* 入口转发到 agent 语义 */
     agentRegistry?: AgentRuntimeRegistry;
+    getSettings?: () => AppSettings;
+    goalService?: GoalService;
+    memoryService?: MemoryService;
+    checkpointService?: CheckpointService;
 }
 
 type SlashSession = {
@@ -210,6 +218,40 @@ function slashResult(
     };
 }
 
+function slashInfo(command: string, message: string, extra: Partial<SlashCommandRunResult> = {}): SlashCommandRunResult {
+    return {
+        handled: true,
+        command,
+        message,
+        tone: "success",
+        ...extra,
+    };
+}
+
+function longHorizonSettings(settings?: AppSettings): NonNullable<AppSettings["longHorizon"]> {
+    return {
+        enabled: settings?.longHorizon?.enabled ?? true,
+        defaultMode: settings?.longHorizon?.defaultMode ?? "build",
+        maxMode: {
+            enabled: settings?.longHorizon?.maxMode?.enabled ?? true,
+            candidates: settings?.longHorizon?.maxMode?.candidates ?? 5,
+        },
+        memory: { enabled: settings?.longHorizon?.memory?.enabled ?? true },
+        checkpoint: { enabled: settings?.longHorizon?.checkpoint?.enabled ?? true },
+        goal: { enabled: settings?.longHorizon?.goal?.enabled ?? true },
+        subagents: { enabled: settings?.longHorizon?.subagents?.enabled ?? true },
+        composeWorkflow: { enabled: settings?.longHorizon?.composeWorkflow?.enabled ?? true },
+    };
+}
+
+function modeOptions(settings?: AppSettings): { longHorizonEnabled: boolean; maxModeEnabled: boolean } {
+    const longHorizon = longHorizonSettings(settings);
+    return {
+        longHorizonEnabled: longHorizon.enabled,
+        maxModeEnabled: longHorizon.maxMode.enabled,
+    };
+}
+
 export function setupChatIpc(deps: ChatIpcDeps): void {
     const agentModeByWorkspace = new Map<string, AgentMode>();
     const send: IpcSender = (channel, _workspaceId, payload) => {
@@ -262,6 +304,43 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         return undefined;
     });
 
+    ipcMain.handle("goal:set", async (_event, input: { workspaceId?: unknown; agentId?: unknown; condition?: unknown }) => {
+        const workspaceId = typeof input?.workspaceId === "string" ? input.workspaceId : "";
+        const condition = typeof input?.condition === "string" ? input.condition.trim() : "";
+        const agentId = typeof input?.agentId === "string" ? input.agentId : undefined;
+        const ws = workspaceId ? deps.getWorkspace(workspaceId) : undefined;
+        const longHorizon = longHorizonSettings(deps.getSettings?.());
+        if (!ws) {
+            return ipcError("ipcErrors.chat.workspaceNotFound", `Workspace not found: ${workspaceId}`, { id: workspaceId });
+        }
+        if (!longHorizon.enabled || !longHorizon.goal.enabled || !deps.goalService) {
+            return ipcError("ipcErrors.chat.goalDisabled", "长程 Goal 能力已关闭");
+        }
+        if (!condition) {
+            return ipcError("ipcErrors.chat.goalInvalid", "任务目标不能为空");
+        }
+        return deps.goalService.set({ workspaceId: ws.id, agentId, condition });
+    });
+
+    ipcMain.handle("goal:clear", async (_event, workspaceId: string, agentId?: string) => {
+        const ws = workspaceId ? deps.getWorkspace(workspaceId) : undefined;
+        if (!ws) {
+            return ipcError("ipcErrors.chat.workspaceNotFound", `Workspace not found: ${workspaceId}`, { id: workspaceId });
+        }
+        if (!deps.goalService) {
+            return ipcError("ipcErrors.chat.goalDisabled", "长程 Goal 能力已关闭");
+        }
+        return deps.goalService.clear(ws.id, agentId);
+    });
+
+    ipcMain.handle("goal:get", async (_event, workspaceId: string, agentId?: string) => {
+        const ws = workspaceId ? deps.getWorkspace(workspaceId) : undefined;
+        if (!ws) {
+            return ipcError("ipcErrors.chat.workspaceNotFound", `Workspace not found: ${workspaceId}`, { id: workspaceId });
+        }
+        return deps.goalService?.get(ws.id, agentId) ?? null;
+    });
+
     ipcMain.on("plan:respond", (_event, requestId: string, decision: string, text?: string) => {
         resolveExtensionUiRequest(requestId, { requestId, value: decision === "execute" ? true : text ?? "" });
     });
@@ -277,9 +356,15 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         }
         try {
             const session = await getSlashSession(ws, agentId);
-            const mode = normalizeAgentMode(rawMode);
-            const modeCommands = mode === "compose" ? composeSlashCommands() : [];
-            return uniqueSlashCommands([...builtinSlashCommands(), ...collectDynamicSlashCommands(session), ...modeCommands]);
+            const longHorizon = longHorizonSettings(deps.getSettings?.());
+            const mode = normalizeAgentMode(rawMode, modeOptions(deps.getSettings?.()));
+            const modeCommands = longHorizon.enabled && longHorizon.composeWorkflow.enabled && mode === "compose"
+                ? composeSlashCommands()
+                : [];
+            const goalCommands = longHorizon.enabled && longHorizon.goal.enabled && deps.goalService
+                ? goalSlashCommands()
+                : [];
+            return uniqueSlashCommands([...builtinSlashCommands(), ...goalCommands, ...collectDynamicSlashCommands(session), ...modeCommands]);
         } catch (err) {
             log.error("[chat.ipc] list slash commands failed:", err);
             return ipcError(
@@ -301,6 +386,21 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
                 `Workspace not found: ${workspaceId}`,
                 { id: workspaceId },
             );
+        }
+        const longHorizon = longHorizonSettings(deps.getSettings?.());
+        if (command === "goal" && longHorizon.enabled && longHorizon.goal.enabled && deps.goalService) {
+            if (args.toLowerCase() === "clear") {
+                deps.goalService.clear(ws.id, input.agentId);
+                return slashInfo(command, "已清除任务目标");
+            }
+            if (!args) {
+                return slashInfo(command, "请提供任务目标，例如 /goal 完成测试并通过验证", {
+                    tone: "error",
+                    keepInput: true,
+                });
+            }
+            deps.goalService.set({ workspaceId: ws.id, agentId: input.agentId, condition: args });
+            return slashInfo(command, `任务目标已设置：${args}`);
         }
         if (!BUILTIN_SLASH_COMMANDS.some((item) => item.name === command)) {
             return {
@@ -400,8 +500,30 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         const prompt = contextFile
             ? `[Currently viewing: ${contextFile}]\n\n${text}`
             : text;
-        const mode = normalizeAgentMode(options?.mode);
-        const outbound = buildAgentModePrompt(mode, prompt);
+        const settings = deps.getSettings?.();
+        const longHorizon = longHorizonSettings(settings);
+        const currentModeOptions = modeOptions(settings);
+        const mode = normalizeAgentMode(options?.mode, currentModeOptions);
+        const activeGoal = deps.goalService?.get(ws.id);
+        const contextBlock = longHorizon.enabled && longHorizon.checkpoint.enabled
+            ? deps.checkpointService?.rebuildContext({
+                workspaceId: ws.id,
+                goal: activeGoal?.condition,
+                recentTail: [text.trim()].filter(Boolean),
+                query: text,
+            })
+            : undefined;
+        if (longHorizon.enabled && longHorizon.memory.enabled) {
+            deps.memoryService?.put({
+                scope: "project",
+                workspaceId: ws.id,
+                kind: "note",
+                text: prompt.slice(0, 2000),
+                tags: ["recent-user-intent"],
+            });
+        }
+        const promptWithContext = contextBlock ? `${contextBlock}\n\n${prompt}` : prompt;
+        const outbound = buildAgentModePrompt(mode, promptWithContext, currentModeOptions);
         agentModeByWorkspace.set(ws.id, mode);
 
         try {
@@ -413,7 +535,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
                         title: `${ws.name} Agent`,
                     });
                 }
-                await deps.agentRegistry.prompt({ agentId: agent.id, message: prompt, mode });
+                await deps.agentRegistry.prompt({ agentId: agent.id, message: promptWithContext, mode });
                 return undefined;
             }
             // registry.get() 内部会 lazy-init: 第一次创建 session + bridge + interceptor

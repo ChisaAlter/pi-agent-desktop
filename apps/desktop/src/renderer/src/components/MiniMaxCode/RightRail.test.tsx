@@ -49,6 +49,7 @@ describe("RightRail", () => {
       enabled: false,
       activeCard: null,
       decisionRequest: null,
+      goal: null,
       steps: [],
       status: "idle",
     });
@@ -290,6 +291,29 @@ describe("RightRail", () => {
     expect(screen.getByText("执行计划")).toBeTruthy();
     expect(screen.getByText("运行队列")).toBeTruthy();
     expect(screen.getByText("普通任务")).toBeTruthy();
+  });
+
+  it("shows the active goal above plan progress from the shared plan store", () => {
+    usePlanStore.setState({
+      goal: {
+        id: "goal-1",
+        workspaceId: "w1",
+        condition: "完成长程能力集成",
+        status: "checking",
+        reason: "等待 judge 检查",
+        updatedAt: Date.now(),
+      },
+      steps: [
+        { id: "T1", text: "实现 Goal 状态", status: "running" },
+      ],
+    });
+
+    render(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
+
+    expect(screen.getByText("任务目标：完成长程能力集成")).toBeTruthy();
+    expect(screen.getByText("judge 检查中")).toBeTruthy();
+    expect(screen.getByText("等待 judge 检查")).toBeTruthy();
+    expect(screen.getByText("实现 Goal 状态")).toBeTruthy();
   });
 
   it("shows queue activity as a clickable task flow", () => {

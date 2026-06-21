@@ -119,7 +119,7 @@ export interface CreateAgentInput {
     sessionPath?: string;
 }
 
-export type AgentMode = "build" | "plan" | "compose";
+export type AgentMode = "build" | "plan" | "compose" | "max";
 
 export interface SendPromptOptions {
     mode?: AgentMode;
@@ -160,6 +160,57 @@ export interface RunBuiltinSlashCommandInput {
     agentId?: string;
     command: string;
     args: string;
+}
+
+export type LongHorizonToggle = { enabled: boolean };
+
+export interface LongHorizonSettings {
+    enabled: boolean;
+    defaultMode: AgentMode;
+    maxMode: LongHorizonToggle & {
+        candidates?: number;
+    };
+    memory: LongHorizonToggle;
+    checkpoint: LongHorizonToggle;
+    goal: LongHorizonToggle;
+    subagents: LongHorizonToggle;
+    composeWorkflow: LongHorizonToggle;
+}
+
+export const DEFAULT_LONG_HORIZON_SETTINGS: LongHorizonSettings = {
+    enabled: true,
+    defaultMode: "build",
+    maxMode: { enabled: true, candidates: 5 },
+    memory: { enabled: true },
+    checkpoint: { enabled: true },
+    goal: { enabled: true },
+    subagents: { enabled: true },
+    composeWorkflow: { enabled: true },
+};
+
+export type GoalStatus = "running" | "checking" | "satisfied" | "impossible" | "cleared";
+
+export interface GoalState {
+    id: string;
+    workspaceId: string;
+    agentId?: string;
+    condition: string;
+    status: GoalStatus;
+    reason?: string;
+    createdAt?: number;
+    updatedAt: number;
+}
+
+export interface GoalJudgeResult {
+    ok: boolean;
+    impossible?: boolean;
+    reason?: string;
+}
+
+export interface GoalSetInput {
+    workspaceId: string;
+    agentId?: string;
+    condition: string;
 }
 
 export interface SlashCommandRunResult {
@@ -375,6 +426,8 @@ export interface AppSettings {
     showThinking?: boolean;
     /** 思考级别: none / low / medium / high */
     thinkingLevel?: "none" | "low" | "medium" | "high";
+    /** 长程能力：MiMoCode 风格 mode/goal/memory/checkpoint/task/max 适配层 */
+    longHorizon?: LongHorizonSettings;
 }
 
 export type ToolPermissionKey =
@@ -465,7 +518,7 @@ export interface PlanCard {
 export interface PlanProgressItem {
     id: string;
     text: string;
-    status: "pending" | "running" | "completed" | "failed" | "waiting";
+    status: "pending" | "running" | "completed" | "failed" | "waiting" | "blocked";
 }
 
 export interface PlanProgressUpdate {
@@ -796,6 +849,10 @@ export interface PiAPI {
     onPlanCard(cb: (card: PlanCard) => void): Unsubscribe;
     onPlanDecisionRequest(cb: (req: PlanDecisionRequest) => void): Unsubscribe;
     onPlanProgress(cb: (update: PlanProgressUpdate) => void): Unsubscribe;
+    goalSet(input: GoalSetInput): Promise<GoalState | IpcError>;
+    goalClear(workspaceId: string, agentId?: string): Promise<GoalState | IpcError>;
+    goalGet(workspaceId: string, agentId?: string): Promise<GoalState | null | IpcError>;
+    onGoalChanged(cb: (goal: GoalState) => void): Unsubscribe;
 
     // Git
     getGitStatus(workspacePath: string): Promise<GitStatus | null | IpcError>;

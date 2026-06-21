@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentRuntimeRegistry } from "../registry";
 import { PendingEdits } from "../../approval/pending-edits";
 import { createExtensionUiBridge } from "../../extensions/extension-ui-bridge";
+import { createApprovalInterceptor } from "../../approval/interceptor";
 
 const sessions: Array<{
     prompt: ReturnType<typeof vi.fn>;
     abort: ReturnType<typeof vi.fn>;
     dispose: ReturnType<typeof vi.fn>;
     subscribe: ReturnType<typeof vi.fn>;
+    subscribers: Array<(event: unknown) => void | Promise<void>>;
 }> = [];
 const { interceptorHandleMock } = vi.hoisted(() => ({
     interceptorHandleMock: vi.fn(async () => undefined),
@@ -15,11 +17,21 @@ const { interceptorHandleMock } = vi.hoisted(() => ({
 
 vi.mock("../../pi-session/factory", () => ({
     createWorkspaceSession: vi.fn(async (opts: { workspaceId: string }) => {
+        const index = sessions.length + 1;
+        const subscribers: Array<(event: unknown) => void | Promise<void>> = [];
         const session = {
-            prompt: vi.fn(async () => undefined),
+            prompt: vi.fn(async () => {
+                const delta = index === 2 ? "short" : index === 3 ? "longer candidate answer" : "";
+                if (delta) {
+                    await Promise.all(subscribers.map((subscriber) => subscriber({ type: "text_delta", delta })));
+                }
+            }),
             abort: vi.fn(),
             dispose: vi.fn(),
-            subscribe: vi.fn(),
+            subscribe: vi.fn((subscriber: (event: unknown) => void | Promise<void>) => {
+                subscribers.push(subscriber);
+            }),
+            subscribers,
         };
         sessions.push(session);
         return {
@@ -105,6 +117,89 @@ describe("AgentRuntimeRegistry", () => {
         await registry.prompt({ agentId: agent.id, message: "follow later", streamingBehavior: "followUp" });
 
         expect(sessions[0].prompt).toHaveBeenCalledWith("follow later", { streamingBehavior: "followUp" });
+    });
+
+    it("routes max mode through the max runner and replays the winner into the primary session", async () => {
+        const maxRun = vi.fn(async (input: { prompt: string; replayWinner: (content: string) => Promise<void> }) => {
+            expect(input.prompt).toContain("Max mode is active");
+            expect(input.prompt).toContain("solve hard task");
+            await input.replayWinner("winner plan");
+            return {
+                winnerId: "candidate-2",
+                reason: "best",
+                overhead: { candidates: 5, promptChars: 10, resultChars: 20 },
+            };
+        });
+        registry = new AgentRuntimeRegistry({
+            getWorkspace: (workspaceId) =>
+                workspaceId === "ws_1"
+                    ? { id: "ws_1", name: "demo", path: "C:/demo", createdAt: 1 }
+                    : undefined,
+            pendingEdits: new PendingEdits(),
+            send: (channel, payload) => emitted.push({ channel, payload }),
+            getModeOptions: () => ({ longHorizonEnabled: true, maxModeEnabled: true }),
+            maxModeService: { run: maxRun } as never,
+        });
+        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+
+        await registry.prompt({ agentId: agent.id, message: "solve hard task", mode: "max" });
+
+        expect(maxRun).toHaveBeenCalledTimes(1);
+        expect(sessions[0].prompt).toHaveBeenCalledWith("winner plan", undefined);
+        expect(sessions[0].prompt).not.toHaveBeenCalledWith(expect.stringContaining("solve hard task"), undefined);
+    });
+
+    it("uses real temporary candidate and judge sessions for max mode when no runner is injected", async () => {
+        registry = new AgentRuntimeRegistry({
+            getWorkspace: (workspaceId) =>
+                workspaceId === "ws_1"
+                    ? { id: "ws_1", name: "demo", path: "C:/demo", createdAt: 1 }
+                    : undefined,
+            pendingEdits: new PendingEdits(),
+            send: (channel, payload) => emitted.push({ channel, payload }),
+            getModeOptions: () => ({ longHorizonEnabled: true, maxModeEnabled: true, maxCandidates: 2 }),
+        });
+        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+
+        await registry.prompt({ agentId: agent.id, message: "solve hard task", mode: "max" });
+
+        expect(sessions).toHaveLength(4);
+        expect(sessions[1].prompt).toHaveBeenCalledWith(expect.stringContaining("solve hard task"));
+        expect(sessions[2].prompt).toHaveBeenCalledWith(expect.stringContaining("solve hard task"));
+        expect(sessions[3].prompt).toHaveBeenCalledWith(expect.stringContaining("candidate-1"));
+        expect(sessions[3].prompt).toHaveBeenCalledWith(expect.stringContaining("candidate-2"));
+        expect(sessions[0].prompt).toHaveBeenCalledWith("longer candidate answer", undefined);
+        expect(sessions[1].dispose).toHaveBeenCalled();
+        expect(sessions[2].dispose).toHaveBeenCalled();
+        expect(sessions[3].dispose).toHaveBeenCalled();
+    });
+
+    it("routes max candidate tool events through the approval interceptor in plan mode", async () => {
+        registry = new AgentRuntimeRegistry({
+            getWorkspace: (workspaceId) =>
+                workspaceId === "ws_1"
+                    ? { id: "ws_1", name: "demo", path: "C:/demo", createdAt: 1 }
+                    : undefined,
+            pendingEdits: new PendingEdits(),
+            send: (channel, payload) => emitted.push({ channel, payload }),
+            getModeOptions: () => ({ longHorizonEnabled: true, maxModeEnabled: true, maxCandidates: 1 }),
+        });
+        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+        await registry.prompt({ agentId: agent.id, message: "solve hard task", mode: "max" });
+        interceptorHandleMock.mockClear();
+
+        await sessions[1].subscribers[0]?.({
+            type: "tool_execution_start",
+            toolName: "write",
+            args: { path: "src/a.ts" },
+            toolCallId: "tc1",
+        });
+
+        expect(interceptorHandleMock).toHaveBeenCalledWith(expect.objectContaining({ type: "tool_execution_start" }));
+        const candidateInterceptorDeps = vi.mocked(createApprovalInterceptor).mock.calls.find((call) =>
+            String((call[1] as { getMode?: () => string }).getMode?.()) === "plan"
+        );
+        expect(candidateInterceptorDeps).toBeTruthy();
     });
 
     it("restarts with the same session path and replaces runtime", async () => {

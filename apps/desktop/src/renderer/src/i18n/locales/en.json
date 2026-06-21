@@ -317,6 +317,8 @@
       "model": "Model",
       "piagent": "Agent",
       "permissions": "Permissions",
+      "usage": "Usage",
+      "longHorizon": "Long horizon",
       "appearance": "Interface",
       "general": "General",
       "shortcuts": "Shortcuts",
@@ -327,6 +329,8 @@
       "model": "Providers and models",
       "piagent": "CLI and status",
       "permissions": "Tool defaults",
+      "usage": "Token statistics",
+      "longHorizon": "Modes, Goal, and memory",
       "appearance": "Theme and font",
       "general": "Language and alerts",
       "shortcuts": "Keyboard controls",
@@ -340,6 +344,47 @@
     "general": {
       "heading": "General settings",
       "description": "Control language, save behavior, and editor display preferences."
+    },
+    "longHorizon": {
+      "heading": "Long-horizon capabilities",
+      "description": "Control the MiMoCode-style modes, Goal, plan linkage, memory, checkpoints, and Max Mode adaptation.",
+      "enabled": {
+        "label": "Enable enhancements",
+        "description": "When disabled, Pi Desktop sends raw prompts, skips Goal judge, avoids memory/checkpoint writes, and hides enhanced commands."
+      },
+      "defaultMode": {
+        "label": "Default session mode",
+        "description": "Build remains the default. Max is selectable only when the experimental switch is enabled."
+      },
+      "maxMode": {
+        "label": "Max Mode",
+        "description": "Experimental mode: generate multiple candidates and let a judge pick the best path. It is not a default fourth primary mode.",
+        "candidates": "Candidates"
+      },
+      "systems": {
+        "heading": "Subsystems",
+        "description": "These switches take effect only when the main enhancement switch is enabled."
+      },
+      "goal": {
+        "label": "Goal / stop condition",
+        "description": "Enable /goal, independent judge checks, and the right-rail task goal row."
+      },
+      "memory": {
+        "label": "Persistent memory",
+        "description": "Store project, session, task progress, and notes for retrieval during context rebuild."
+      },
+      "checkpoint": {
+        "label": "Checkpoint",
+        "description": "Write structured checkpoints for long-context recovery and threshold rebuilds."
+      },
+      "subagents": {
+        "label": "System subagents",
+        "description": "Enable adapted checkpoint-writer, dream, and distill system agents."
+      },
+      "composeWorkflow": {
+        "label": "Compose workflow",
+        "description": "Let compose mode use task-state-driven workflows instead of prompt wrapping alone."
+      }
     },
     "language": {
       "label": "Language",

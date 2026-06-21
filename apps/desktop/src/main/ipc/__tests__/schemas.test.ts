@@ -55,6 +55,21 @@ describe("settingsSetSchema", () => {
         expect(() => settingsSetSchema.parse([{ theme: "dark", fontSize: 14 }])).not.toThrow();
     });
 
+    it("accepts long-horizon capability settings", () => {
+        expect(() => settingsSetSchema.parse([{
+            longHorizon: {
+                enabled: true,
+                defaultMode: "build",
+                maxMode: { enabled: true, candidates: 5 },
+                memory: { enabled: true },
+                checkpoint: { enabled: true },
+                goal: { enabled: true },
+                subagents: { enabled: true },
+                composeWorkflow: { enabled: true },
+            },
+        }])).not.toThrow();
+    });
+
     it("rejects an empty object", () => {
         expect(() => settingsSetSchema.parse([{}])).toThrow(ZodError);
     });

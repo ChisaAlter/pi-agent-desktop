@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { PlanCard, PlanDecisionRequest, PlanProgressItem, PlanProgressUpdate } from "@shared";
+import type { GoalState, PlanCard, PlanDecisionRequest, PlanProgressItem, PlanProgressUpdate } from "@shared";
 
 export type PlanFlowPhase =
   | "idle"
@@ -27,6 +27,7 @@ interface PlanState {
   pendingPlanClarification: { workspaceId: string; originalContent: string } | null;
   renderedPlanCardIds: string[];
   activeExecution: ActivePlanExecution | null;
+  goal: GoalState | null;
   steps: PlanProgressItem[];
   status: PlanProgressUpdate["status"];
   lastError: string | null;
@@ -46,6 +47,7 @@ interface PlanState {
   markFailed: () => void;
   clearPlanFlow: () => void;
   setProgress: (update: PlanProgressUpdate) => void;
+  setGoal: (goal: GoalState | null) => void;
   applyDoneMarkers: (content: string) => void;
   reset: () => void;
 }
@@ -101,6 +103,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   pendingPlanClarification: null,
   renderedPlanCardIds: [],
   activeExecution: null,
+  goal: null,
   steps: [],
   status: "idle",
   lastError: null,
@@ -242,6 +245,8 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     });
   },
 
+  setGoal: (goal) => set({ goal: goal?.status === "cleared" ? null : goal }),
+
   applyDoneMarkers: (content) => {
     const done = [...content.matchAll(/\[DONE:(\d+)\]/g)].map((match) => Number(match[1]));
     if (done.length === 0) return;
@@ -252,7 +257,7 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     }));
   },
 
-  reset: () => set({ activeCard: null, decisionRequest: null, pendingPlanClarification: null, renderedPlanCardIds: [], activeExecution: null, steps: [], status: "idle" }),
+  reset: () => set({ activeCard: null, decisionRequest: null, pendingPlanClarification: null, renderedPlanCardIds: [], activeExecution: null, goal: null, steps: [], status: "idle" }),
 }));
 
 let subscribed = false;
@@ -263,4 +268,5 @@ export function ensurePlanSubscriptions(): void {
   window.piAPI.onPlanCard((card) => usePlanStore.getState().setCard(card));
   window.piAPI.onPlanDecisionRequest((request) => usePlanStore.getState().setDecisionRequest(request));
   window.piAPI.onPlanProgress((update) => usePlanStore.getState().setProgress(update));
+  window.piAPI.onGoalChanged?.((goal) => usePlanStore.getState().setGoal(goal));
 }

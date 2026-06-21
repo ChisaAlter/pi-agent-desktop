@@ -42,6 +42,7 @@ const AGENT_MODE_OPTIONS: Array<{ value: AgentMode; label: string; desc: string 
   { value: "build", label: "Build", desc: "正常实现模式，可按权限读写和执行工具" },
   { value: "plan", label: "Plan", desc: "只制定计划，仅允许写入 .pi/plans/*.md" },
   { value: "compose", label: "Compose", desc: "按 MiMo 风格编排工作流和技能" },
+  { value: "max", label: "Max", desc: "实验增强：多候选生成并由 judge 选优" },
 ];
 
 const COMPOSER_MIN_HEIGHT = 95;
@@ -163,7 +164,17 @@ export function ChatInput({
   }, []);
   const { settings, updateSettings, piModels } = useSettingsStore();
   const permissionStore = usePermissionStore();
-  const currentAgentMode = useAgentModeStore((state) => state.getMode(workspaceId));
+  const longHorizon = settings.longHorizon;
+  const longHorizonEnabled = longHorizon?.enabled ?? true;
+  const defaultAgentMode = longHorizonEnabled ? (longHorizon?.defaultMode ?? "build") : "build";
+  const maxModeVisible = longHorizonEnabled && (longHorizon?.maxMode.enabled ?? true);
+  const agentModeOptions = longHorizonEnabled
+    ? AGENT_MODE_OPTIONS.filter((mode) => mode.value !== "max" || maxModeVisible)
+    : AGENT_MODE_OPTIONS.filter((mode) => mode.value === "build");
+  const currentAgentMode = useAgentModeStore((state) => {
+    const mode = state.getMode(workspaceId, defaultAgentMode);
+    return agentModeOptions.some((option) => option.value === mode) ? mode : "build";
+  });
   const setAgentMode = useAgentModeStore((state) => state.setMode);
   const { workspaces, getCurrentWorkspace, setCurrentWorkspace, addWorkspace, createWorkspace } = useWorkspaceStore();
   const { add: addAttachment, remove: removeAttachment, clear: clearAttachments, list: listAttachments } = useAttachmentsStore();
@@ -745,7 +756,7 @@ export function ChatInput({
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />
                   </svg>
-                  {AGENT_MODE_OPTIONS.find((mode) => mode.value === currentAgentMode)?.label ?? currentAgentMode}
+                  {agentModeOptions.find((mode) => mode.value === currentAgentMode)?.label ?? currentAgentMode}
                 </span>
               </div>
             )}
@@ -915,7 +926,7 @@ export function ChatInput({
                 trigger={
                   <button type="button" className="flex h-6 items-center gap-1 rounded-[4px] px-1.5 text-[11px] hover:bg-[var(--mm-bg-hover)]" aria-label="选择 Agent 模式">
                     <span className="font-medium text-[var(--mm-text-primary)]">
-                      {AGENT_MODE_OPTIONS.find((mode) => mode.value === currentAgentMode)?.label ?? "Build"}
+                      {agentModeOptions.find((mode) => mode.value === currentAgentMode)?.label ?? "Build"}
                     </span>
                     <svg className="h-3 w-3 text-[var(--mm-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m6 9 6 6 6-6" />
@@ -925,7 +936,7 @@ export function ChatInput({
               >
                 {(close) => (
                   <div role="menu" aria-label="Agent 模式">
-                    {AGENT_MODE_OPTIONS.map((mode) => (
+                    {agentModeOptions.map((mode) => (
                       <button
                         key={mode.value}
                         type="button"

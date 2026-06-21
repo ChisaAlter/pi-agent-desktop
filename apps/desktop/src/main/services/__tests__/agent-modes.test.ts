@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     buildAgentModePrompt,
     composeSlashCommands,
+    goalSlashCommands,
     isPlanModeToolAllowed,
     normalizeAgentMode,
 } from "../agent-modes";
@@ -10,12 +11,21 @@ describe("agent modes", () => {
     it("normalizes unknown values to build", () => {
         expect(normalizeAgentMode("plan")).toBe("plan");
         expect(normalizeAgentMode("compose")).toBe("compose");
+        expect(normalizeAgentMode("max", { longHorizonEnabled: true, maxModeEnabled: true })).toBe("max");
+        expect(normalizeAgentMode("max", { longHorizonEnabled: true, maxModeEnabled: false })).toBe("build");
+        expect(normalizeAgentMode("max", { longHorizonEnabled: false, maxModeEnabled: true })).toBe("build");
         expect(normalizeAgentMode("other")).toBe("build");
         expect(normalizeAgentMode(undefined)).toBe("build");
     });
 
     it("leaves build prompts unchanged", () => {
         expect(buildAgentModePrompt("build", "hello")).toBe("hello");
+    });
+
+    it("does not inject mode prompts when long horizon is disabled", () => {
+        expect(buildAgentModePrompt("plan", "hello", { longHorizonEnabled: false })).toBe("hello");
+        expect(buildAgentModePrompt("compose", "hello", { longHorizonEnabled: false })).toBe("hello");
+        expect(buildAgentModePrompt("max", "hello", { longHorizonEnabled: false, maxModeEnabled: true })).toBe("hello");
     });
 
     it("wraps plan prompts with a MiMo-style read-only planning reminder", () => {
@@ -40,6 +50,12 @@ describe("agent modes", () => {
         expect(composeSlashCommands()).toEqual(expect.arrayContaining([
             expect.objectContaining({ name: "compose:plan", source: "skill" }),
             expect.objectContaining({ name: "compose:verify", source: "skill" }),
+        ]));
+    });
+
+    it("exposes goal slash commands only through the long-horizon command bundle", () => {
+        expect(goalSlashCommands()).toEqual(expect.arrayContaining([
+            expect.objectContaining({ name: "goal", source: "builtin", requiresArgument: true }),
         ]));
     });
 

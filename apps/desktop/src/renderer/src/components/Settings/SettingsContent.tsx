@@ -15,6 +15,8 @@ import { AboutTab } from './tabs/AboutTab';
 import { ManagedModelsPanel } from './tabs/ManagedModelsPanel';
 import { PiConfigEditor } from './tabs/PiConfigEditor';
 import { PermissionsTab } from './tabs/PermissionsTab';
+import { UsageTab } from './tabs/UsageTab';
+import { LongHorizonTab } from './tabs/LongHorizonTab';
 import { isSettingsTab, type SettingsTab } from './tab-defs';
 
 interface SettingsContentProps {
@@ -49,13 +51,15 @@ export function SettingsContent({ onClose }: SettingsContentProps = {}): React.J
         { id: 'model', label: t('settings.tab.model'), caption: t('settings.tabCaption.model') },
         { id: 'piagent', label: t('settings.tab.piagent'), caption: t('settings.tabCaption.piagent') },
         { id: 'permissions', label: t('settings.tab.permissions'), caption: t('settings.tabCaption.permissions') },
+        { id: 'usage', label: t('settings.tab.usage'), caption: t('settings.tabCaption.usage') },
+        { id: 'longHorizon', label: t('settings.tab.longHorizon'), caption: t('settings.tabCaption.longHorizon') },
         { id: 'appearance', label: t('settings.tab.appearance'), caption: t('settings.tabCaption.appearance') },
         { id: 'general', label: t('settings.tab.general'), caption: t('settings.tabCaption.general') },
         { id: 'shortcuts', label: t('settings.tab.shortcuts'), caption: t('settings.tabCaption.shortcuts') },
         { id: 'config', label: t('settings.tab.config'), caption: t('settings.tabCaption.config') },
         { id: 'about', label: t('settings.tab.about'), caption: t('settings.tabCaption.about') },
     ];
-    const primaryTabs = tabs.filter((tab) => tab.id === 'model' || tab.id === 'piagent' || tab.id === 'permissions');
+    const primaryTabs = tabs.filter((tab) => tab.id === 'model' || tab.id === 'piagent' || tab.id === 'permissions' || tab.id === 'usage' || tab.id === 'longHorizon');
 
     return (
         <>
@@ -112,6 +116,8 @@ export function SettingsContent({ onClose }: SettingsContentProps = {}): React.J
                     )}
                     {activeTab === 'piagent' && <PiAgentTab />}
                     {activeTab === 'permissions' && <PermissionsTab />}
+                    {activeTab === 'usage' && <UsageTab />}
+                    {activeTab === 'longHorizon' && <LongHorizonTab />}
                     {activeTab === 'general' && <GeneralTab />}
                     {activeTab === 'config' && <PiConfigEditor />}
                     {activeTab === 'shortcuts' && (

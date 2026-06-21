@@ -1,10 +1,58 @@
 import { isAbsolute, relative, resolve } from "path";
 import type { AgentMode, PiSlashCommand } from "@shared";
 
+export interface AgentModeRuntimeOptions {
+    longHorizonEnabled?: boolean;
+    maxModeEnabled?: boolean;
+}
+
+export interface AgentRegistryEntry {
+    id: string;
+    mode: AgentMode;
+    role: "primary" | "subagent";
+    experimental?: boolean;
+    description: string;
+}
+
 interface ComposeSkill {
     name: string;
     description: string;
 }
+
+export const SYSTEM_SUBAGENTS: AgentRegistryEntry[] = [
+    {
+        id: "checkpoint-writer",
+        mode: "build",
+        role: "subagent",
+        description: "Writes structured checkpoints for context recovery.",
+    },
+    {
+        id: "dream",
+        mode: "build",
+        role: "subagent",
+        description: "Explores alternate approaches before execution.",
+    },
+    {
+        id: "distill",
+        mode: "build",
+        role: "subagent",
+        description: "Distills long conversations into durable memory notes.",
+    },
+];
+
+const PRIMARY_AGENTS: AgentRegistryEntry[] = [
+    { id: "build", mode: "build", role: "primary", description: "Default implementation mode." },
+    { id: "plan", mode: "plan", role: "primary", description: "Read-only planning mode with .pi/plans/*.md as the only write target." },
+    { id: "compose", mode: "compose", role: "primary", description: "Workflow/task orchestrator mode." },
+];
+
+const MAX_AGENT: AgentRegistryEntry = {
+    id: "max",
+    mode: "max",
+    role: "primary",
+    experimental: true,
+    description: "Experimental candidate generation and judge mode.",
+};
 
 const COMPOSE_SKILLS: ComposeSkill[] = [
     { name: "compose:brainstorm", description: "澄清目标、约束和成功标准，形成可执行设计。" },
@@ -16,6 +64,15 @@ const COMPOSE_SKILLS: ComposeSkill[] = [
     { name: "compose:ask", description: "需要用户决策时提出短问题；可推断时继续执行。" },
     { name: "compose:tdd", description: "先写失败测试，再实现最小代码，再重构。" },
     { name: "compose:debug", description: "系统化排查：复现、假设、证据、修复、回归测试。" },
+];
+
+const GOAL_COMMANDS: PiSlashCommand[] = [
+    {
+        name: "goal",
+        description: "Set or clear a long-horizon stop condition. Usage: /goal <condition> or /goal clear",
+        source: "builtin",
+        requiresArgument: true,
+    },
 ];
 
 const READ_ONLY_TOOLS = new Set([
@@ -48,8 +105,20 @@ const MUTATING_OR_HIGH_RISK_TOOLS = new Set([
     "web",
 ]);
 
-export function normalizeAgentMode(value: unknown): AgentMode {
-    return value === "plan" || value === "compose" ? value : "build";
+export function agentRegistry(options: AgentModeRuntimeOptions = {}): AgentRegistryEntry[] {
+    const longHorizonEnabled = options.longHorizonEnabled ?? true;
+    const maxModeEnabled = options.maxModeEnabled ?? true;
+    if (!longHorizonEnabled) return [PRIMARY_AGENTS[0]];
+    return maxModeEnabled ? [...PRIMARY_AGENTS, MAX_AGENT, ...SYSTEM_SUBAGENTS] : [...PRIMARY_AGENTS, ...SYSTEM_SUBAGENTS];
+}
+
+export function normalizeAgentMode(value: unknown, options: AgentModeRuntimeOptions = {}): AgentMode {
+    const longHorizonEnabled = options.longHorizonEnabled ?? true;
+    const maxModeEnabled = options.maxModeEnabled ?? true;
+    if (!longHorizonEnabled) return "build";
+    if (value === "plan" || value === "compose") return value;
+    if (value === "max" && maxModeEnabled) return "max";
+    return "build";
 }
 
 export function composeSlashCommands(): PiSlashCommand[] {
@@ -61,8 +130,13 @@ export function composeSlashCommands(): PiSlashCommand[] {
     }));
 }
 
-export function buildAgentModePrompt(mode: AgentMode, text: string): string {
+export function goalSlashCommands(): PiSlashCommand[] {
+    return GOAL_COMMANDS.map((command) => ({ ...command }));
+}
+
+export function buildAgentModePrompt(mode: AgentMode, text: string, options: AgentModeRuntimeOptions = {}): string {
     const content = text.trim();
+    if (options.longHorizonEnabled === false) return content;
     if (mode === "build") return content;
     if (mode === "plan") {
         return [
@@ -77,6 +151,15 @@ export function buildAgentModePrompt(mode: AgentMode, text: string): string {
             "2. Ask concise clarification questions only when they materially change the plan.",
             "3. Write or update a concise implementation plan under `.pi/plans/`.",
             "4. End by asking the user whether to switch to Build mode and execute the plan, continue refining, or cancel.",
+            "</system-reminder>",
+            "",
+            content,
+        ].join("\n");
+    }
+    if (mode === "max") {
+        return [
+            "<system-reminder>",
+            "Max mode is active. Generate a high-confidence implementation path after comparing candidate approaches. Keep execution grounded in the current repository and avoid claiming native MiMo Max internals exist.",
             "</system-reminder>",
             "",
             content,

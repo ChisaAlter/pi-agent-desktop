@@ -6,7 +6,7 @@
 //          启动时由 loadPiConfig 真从 Pi CLI 配置读;读不到时 Pi ChatInput / SettingsPanel 走空态
 
 import { create } from 'zustand';
-import { isIpcError, type AppSettings, type IpcError, type ToolPermissions } from '@shared';
+import { DEFAULT_LONG_HORIZON_SETTINGS, isIpcError, type AppSettings, type IpcError, type ToolPermissions } from '@shared';
 import { logger } from '../utils/logger';
 import { addToast } from './toast-store';
 import { applyTheme, type Theme } from '../utils/theme';
@@ -69,6 +69,7 @@ const defaultSettings: AppSettings = {
   workspaceToolDefaults: {},
   showThinking: true,
   thinkingLevel: 'medium',
+  longHorizon: DEFAULT_LONG_HORIZON_SETTINGS,
 };
 
 const SETTINGS_WRITE_DEBOUNCE_MS = 120;

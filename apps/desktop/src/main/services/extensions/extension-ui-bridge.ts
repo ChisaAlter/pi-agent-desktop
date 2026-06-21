@@ -126,7 +126,7 @@ export function setDesktopPermissionMode(mode: "ask" | "smart" | "always"): void
 
 function parsePlanWidgetLines(lines: string[]): PlanProgressItem[] {
     return lines
-        .map((raw, index) => {
+        .map((raw, index): PlanProgressItem | null => {
             const text = raw.replace(/^[\s\-*]+/, "").replace(/^\[[ xX~!]\]\s*/, "").trim();
             if (!text) return null;
             const done = /\[[xX]\]|\[DONE:\d+\]|✅/.test(raw);

@@ -55,11 +55,11 @@ export function SwitchControl({
             aria-checked={checked}
             aria-label={label}
             onClick={onChange}
-            className={`settings-pressable relative h-6 w-11 rounded-full transition-[transform,background-color] duration-150 ease-out ${checked ? 'bg-[#1f1f1f]' : 'bg-[#d9d9d4]'}`}
+            className={`settings-pressable relative h-6 w-11 shrink-0 overflow-hidden rounded-full transition-[transform,background-color] duration-150 ease-out ${checked ? 'bg-[#1f1f1f]' : 'bg-[#d9d9d4]'}`}
         >
             <span
                 aria-hidden="true"
-                className={`absolute top-0.5 h-5 w-5 rounded-full bg-[var(--mm-bg-panel)] shadow-sm transition-transform duration-200 ease-out ${checked ? 'translate-x-5' : 'translate-x-0.5'}`}
+                className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-[var(--mm-bg-panel)] shadow-sm transition-transform duration-200 ease-out ${checked ? 'translate-x-5' : 'translate-x-0'}`}
             />
         </button>
     );

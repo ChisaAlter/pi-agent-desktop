@@ -32,11 +32,14 @@ import { clearAllPendingApprovals } from './services/approval/approval-bridge';
 import { clearPendingExtensionUiRequests } from './services/extensions/extension-ui-bridge';
 import { setupAutoUpdater } from './services/updater';
 import { ptyManager } from './services/shell/pty-manager';
-import type { AppSettings, Session } from '@shared';
+import { DEFAULT_LONG_HORIZON_SETTINGS, type AppSettings, type Session } from '@shared';
 import { AgentRuntimeRegistry } from './services/agent-runtime/registry';
 import { ConfigManager } from './services/config/config-manager';
 import { CodexSessionImporter } from './services/codex-session/importer';
 import { ClaudeSessionImporter } from './services/claude-session/importer';
+import { GoalService } from './services/long-horizon/goal-service';
+import { MemoryService } from './services/long-horizon/memory-service';
+import { CheckpointService } from './services/long-horizon/checkpoint-service';
 import type { PiAgentConfig } from './types';
 
 let mainWindow: BrowserWindow | null = null;
@@ -87,7 +90,8 @@ const store = new Store<StoreSchema>({
       permissionLevel: 'smart',
       runtimeChannel: 'stable',
       autoCompactionEnabled: false,
-      workspaceToolDefaults: {}
+      workspaceToolDefaults: {},
+      longHorizon: DEFAULT_LONG_HORIZON_SETTINGS
     }
   }
 });
@@ -98,14 +102,27 @@ const sendToRenderer = (channel: string, payload: unknown) => {
   }
 };
 
+const getLongHorizonModeOptions = () => {
+  const longHorizon = store.get('settings').longHorizon ?? DEFAULT_LONG_HORIZON_SETTINGS;
+  return {
+    longHorizonEnabled: longHorizon.enabled,
+    maxModeEnabled: longHorizon.maxMode.enabled,
+    maxCandidates: longHorizon.maxMode.candidates,
+  };
+};
+
 const agentRegistry = new AgentRuntimeRegistry({
   getWorkspace: (workspaceId: string) => store.get('workspaces').find((workspace) => workspace.id === workspaceId),
   pendingEdits: piPendingEdits,
   send: sendToRenderer,
+  getModeOptions: getLongHorizonModeOptions,
 });
 const configManager = new ConfigManager(PI_AGENT_DIR);
 const codexSessionImporter = new CodexSessionImporter();
 const claudeSessionImporter = new ClaudeSessionImporter();
+let goalService: GoalService | null = null;
+let memoryService: MemoryService | null = null;
+let checkpointService: CheckpointService | null = null;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -166,10 +183,20 @@ function initializePiDriver(): void {
 // IPC Handlers
 function setupIPC(): void {
   // Pi session (long-lived AgentSession)
+  goalService ??= new GoalService(
+    join(app.getPath('userData'), 'long-horizon', 'goals.json'),
+    (channel, _workspaceId, payload) => sendToRenderer(channel, payload),
+  );
+  memoryService ??= new MemoryService({ rootDir: join(app.getPath('userData'), 'long-horizon', 'memory') });
+  checkpointService ??= new CheckpointService(memoryService);
   setupChatIpc({
     registry: piRegistry,
     agentRegistry,
     pendingEdits: piPendingEdits,
+    goalService,
+    memoryService,
+    checkpointService,
+    getSettings: () => store.get('settings'),
     getWorkspace: (id: string) => store.get('workspaces').find((w) => w.id === id),
     getDefaultWorkspace: () => {
       const ws = store.get('workspaces');

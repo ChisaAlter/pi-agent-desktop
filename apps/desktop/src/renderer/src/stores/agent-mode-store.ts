@@ -3,12 +3,12 @@ import type { AgentMode } from "@shared";
 
 interface AgentModeState {
   byWorkspace: Record<string, AgentMode>;
-  getMode: (workspaceId?: string | null) => AgentMode;
+  getMode: (workspaceId?: string | null, fallback?: AgentMode) => AgentMode;
   setMode: (workspaceId: string, mode: AgentMode) => void;
 }
 
 function normalizeAgentMode(value: unknown): AgentMode {
-  return value === "plan" || value === "compose" ? value : "build";
+  return value === "plan" || value === "compose" || value === "max" ? value : "build";
 }
 
 function loadModes(): Record<string, AgentMode> {
@@ -30,9 +30,9 @@ function persistModes(modes: Record<string, AgentMode>): void {
 
 export const useAgentModeStore = create<AgentModeState>((set, get) => ({
   byWorkspace: loadModes(),
-  getMode: (workspaceId) => {
-    if (!workspaceId) return "build";
-    return get().byWorkspace[workspaceId] ?? "build";
+  getMode: (workspaceId, fallback = "build") => {
+    if (!workspaceId) return normalizeAgentMode(fallback);
+    return get().byWorkspace[workspaceId] ?? normalizeAgentMode(fallback);
   },
   setMode: (workspaceId, mode) => {
     const next = {

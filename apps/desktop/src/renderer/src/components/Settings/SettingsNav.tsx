@@ -10,6 +10,8 @@ function SettingsNavIcon({ id }: { id: SettingsTab }): React.JSX.Element {
         model: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8Zm0-5v3m0 12v3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M3 12h3m12 0h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" />,
         piagent: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M2.5 8.5a15 15 0 0 1 19 0M5.5 11.5a10.5 10.5 0 0 1 13 0M8.5 14.5a6 6 0 0 1 7 0M12 18h.01" />,
         permissions: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M4 8h16v11H4zM7 8V5h10v3M8 13h8" />,
+        usage: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M4 19V5m0 14h16M8 16v-4m4 4V8m4 8v-7M7 5h10" />,
+        longHorizon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M4 6h7v7H4zM13 4h7v7h-7zM6 15h7v5H6zM15 13h5v7h-5zM11 9h2m-1 4v2" />,
         appearance: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M12 3l7 3v5c0 4.2-2.7 7.7-7 9-4.3-1.3-7-4.8-7-9V6l7-3Zm-3 9 2 2 4-5" />,
         general: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2c0 .5-.2 1-.6 1.4L4 17h5m2 3h2" />,
         shortcuts: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M3 12a9 9 0 0 1 15-6.7M21 5v5h-5M21 12a9 9 0 0 1-15 6.7M3 19v-5h5" />,

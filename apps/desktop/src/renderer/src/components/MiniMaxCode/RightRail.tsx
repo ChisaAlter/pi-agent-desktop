@@ -57,7 +57,7 @@ function countDiffStats(diff: string): DiffStats {
 function statusDot(status: string): string {
   if (status === "completed") return "bg-[#666] text-white";
   if (status === "running") return "bg-[#1f1f1f] text-white";
-  if (status === "failed" || status === "error") return "bg-[var(--color-error)] text-white";
+  if (status === "failed" || status === "error" || status === "blocked") return "bg-[var(--color-error)] text-white";
   if (status === "waiting") return "bg-[#f59e0b] text-white";
   return "border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] text-transparent";
 }
@@ -133,12 +133,20 @@ function ProgressStatusIcon({ status }: { status: string }): React.JSX.Element {
         <CheckIcon />
       ) : status === "running" ? (
         <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      ) : status === "failed" || status === "error" ? (
+      ) : status === "failed" || status === "error" || status === "blocked" ? (
         <span className="text-[12px] leading-none">!</span>
       ) : null}
     </span>
   );
 }
+
+const GOAL_STATUS_LABELS: Record<string, string> = {
+  running: "执行中",
+  checking: "judge 检查中",
+  satisfied: "已满足",
+  impossible: "不可完成",
+  cleared: "已清除",
+};
 
 function formatToken(value?: number): string {
   if (value === undefined) return "unknown";
@@ -210,7 +218,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
   const [diffStats, setDiffStats] = useState<DiffStats>({ additions: 0, deletions: 0 });
   const [filesExpanded, setFilesExpanded] = useState(false);
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
-  const { steps, activeCard } = usePlanStore();
+  const { steps, activeCard, goal } = usePlanStore();
   const settings = useSettingsStore((state) => state.settings);
   const queue = useQueueStore();
   const currentSession = useSessionStore((state) =>
@@ -477,7 +485,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
         : "上下文健康";
 
   return (
-    <aside className="flex h-full w-full flex-col gap-3 bg-transparent px-4 py-[48px] text-[var(--mm-text-primary)]">
+    <aside className="flex min-h-full w-full flex-col gap-3 bg-transparent px-4 py-[48px] text-[var(--mm-text-primary)]">
       {railActionStatus && (
         <div
           className={`rounded-[14px] border px-3 py-2 text-xs ${
@@ -683,6 +691,23 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
         {queue.lastActivity && (
           <div className="mb-3 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-xs leading-5 text-[var(--mm-text-secondary)]" role="status">
             {queue.lastActivity}
+          </div>
+        )}
+        {goal && (
+          <div className="mb-3 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-xs leading-5" role="status">
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <span className="min-w-0 truncate font-medium" title={goal.condition}>
+                任务目标：{goal.condition}
+              </span>
+              <span className="shrink-0 rounded-full bg-[var(--mm-bg-sidebar)] px-2 py-0.5 text-[10px] text-[var(--mm-text-secondary)]">
+                {GOAL_STATUS_LABELS[goal.status] ?? goal.status}
+              </span>
+            </div>
+            {goal.reason && (
+              <p className="m-0 mt-1 truncate text-[11px] text-[var(--mm-text-tertiary)]" title={goal.reason}>
+                {goal.reason}
+              </p>
+            )}
           </div>
         )}
 
