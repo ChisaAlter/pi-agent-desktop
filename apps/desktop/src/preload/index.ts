@@ -191,6 +191,7 @@ const piAPI: PiAPI = {
     // Settings
     getSettings: () => ipcRenderer.invoke("settings:get"),
     setSettings: (settings) => ipcRenderer.invoke("settings:set", settings),
+    onSettingsChanged: (cb) => subscribe("settings:changed", cb),
     loadPiConfig: () => ipcRenderer.invoke("settings:load-pi-config"),
     getFullConfig: () => ipcRenderer.invoke("pi:get-full-config"),
 

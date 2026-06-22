@@ -55,6 +55,10 @@ describe("settingsSetSchema", () => {
         expect(() => settingsSetSchema.parse([{ theme: "dark", fontSize: 14 }])).not.toThrow();
     });
 
+    it("accepts the system theme mode", () => {
+        expect(() => settingsSetSchema.parse([{ theme: "system" }])).not.toThrow();
+    });
+
     it("accepts long-horizon capability settings", () => {
         expect(() => settingsSetSchema.parse([{
             longHorizon: {
@@ -79,7 +83,7 @@ describe("settingsSetSchema", () => {
     });
 
     it("rejects invalid enum and numeric ranges", () => {
-        expect(() => settingsSetSchema.parse([{ theme: "system" }])).toThrow(ZodError);
+        expect(() => settingsSetSchema.parse([{ theme: "solarized" }])).toThrow(ZodError);
         expect(() => settingsSetSchema.parse([{ temperature: 3 }])).toThrow(ZodError);
         expect(() => settingsSetSchema.parse([{ maxTokens: 0 }])).toThrow(ZodError);
     });

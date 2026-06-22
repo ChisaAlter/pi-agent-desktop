@@ -804,7 +804,7 @@ export function ChatInput({
               onKeyUp={handleSelect}
               onKeyDown={handleKeyDown}
               placeholder={inputPlaceholder}
-              className="min-h-[38px] w-full resize-none border-0 bg-transparent px-0 py-0 text-[12px] leading-5 text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus-visible:!outline-none focus-visible:!shadow-none disabled:opacity-50"
+              className="min-h-[38px] w-full resize-none border-0 bg-transparent px-0 py-0 text-sm leading-5 text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus-visible:!outline-none focus-visible:!shadow-none disabled:opacity-50"
               rows={1}
               disabled={!isConnected}
               aria-label={t("chatInput.send")}

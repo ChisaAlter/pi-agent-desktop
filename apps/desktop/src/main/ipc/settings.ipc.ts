@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { BrowserWindow, ipcMain } from 'electron';
 import { join } from 'path';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import log from 'electron-log/main';
@@ -13,6 +13,14 @@ export function setupSettingsIpc(opts: {
   piAgentDir: string;
 }): void {
   const { store, getPiAgentConfig, piAgentDir } = opts;
+
+  const broadcastSettingsChanged = (settings: AppSettings): void => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) {
+        win.webContents.send("settings:changed", settings);
+      }
+    }
+  };
 
   ipcMain.handle('settings:get', async () => {
     return store.get('settings');
@@ -31,6 +39,7 @@ export function setupSettingsIpc(opts: {
     const current = store.get('settings');
     const updated = { ...current, ...settings };
     store.set('settings', updated);
+    broadcastSettingsChanged(updated);
     return updated;
   });
 
@@ -62,6 +71,7 @@ export function setupSettingsIpc(opts: {
           model: currentModel.model,
           provider: currentModel.provider,
         });
+        broadcastSettingsChanged(store.get('settings'));
       }
     }
 

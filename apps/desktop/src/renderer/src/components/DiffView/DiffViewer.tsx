@@ -10,6 +10,8 @@ interface DiffViewerProps {
 }
 
 function DiffLineRow({ line }: { line: DiffLine }): React.JSX.Element {
+  const monoStyle = { fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace", fontSize: "var(--font-size-mono-small)" };
+
   const getLineBg = () => {
     switch (line.type) {
       case 'add': return 'bg-[#dcfce7]';
@@ -38,22 +40,22 @@ function DiffLineRow({ line }: { line: DiffLine }): React.JSX.Element {
     <tr className={`${getLineBg()} hover:brightness-95 transition-all`}>
       {/* 旧文件行号 */}
       <td className="w-[50px] px-2 py-0 text-right select-none text-[var(--mm-text-tertiary)] text-xs border-r border-[var(--mm-border)] whitespace-nowrap"
-          style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace", fontSize: '11px' }}>
+          style={monoStyle}>
         {line.oldLine ?? ''}
       </td>
       {/* 新文件行号 */}
       <td className="w-[50px] px-2 py-0 text-right select-none text-[var(--mm-text-tertiary)] text-xs border-r border-[var(--mm-border)] whitespace-nowrap"
-          style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace", fontSize: '11px' }}>
+          style={monoStyle}>
         {line.newLine ?? ''}
       </td>
       {/* 前缀 (+/-/空) */}
       <td className="w-[20px] px-1 py-0 text-center select-none text-xs"
-          style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace", fontSize: '11px' }}>
+          style={monoStyle}>
         <span className={getLineTextColor()}>{getPrefix()}</span>
       </td>
       {/* 代码内容 */}
       <td className="px-2 py-0 whitespace-pre overflow-x-auto"
-          style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace", fontSize: '11px' }}>
+          style={monoStyle}>
         <span className={getLineTextColor()}>{line.content}</span>
       </td>
     </tr>
@@ -110,7 +112,7 @@ function FoldRow({ count, oldStart, newStart, oldEnd, newEnd }: { count: number;
     <tr className="bg-[var(--mm-bg-sidebar)] hover:bg-[var(--mm-bg-hover)] cursor-pointer transition-colors"
         onClick={() => setExpanded(true)}>
       <td colSpan={4} className="px-3 py-1 text-center text-[11px] text-[var(--mm-text-tertiary)] select-none"
-          style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace" }}
+          style={{ fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace", fontSize: "var(--font-size-mono-small)" }}
           title={label}
           aria-label={label}>
         ⋯ {oldStart ?? '?'}→{oldEnd ?? '?'} · {newStart ?? '?'}→{newEnd ?? '?'} · {label} ⋯

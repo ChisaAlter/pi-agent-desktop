@@ -1,5 +1,7 @@
 import React, { useCallback, useRef } from "react";
 import Editor, { type OnMount, type OnChange } from "@monaco-editor/react";
+import { useSettingsStore } from "../../stores/settings-store";
+import { getEditorFontSize } from "../../utils/theme";
 
 interface MonacoEditorProps {
   value: string;
@@ -56,6 +58,8 @@ export const MonacoEditor = React.memo(function MonacoEditor({
   className,
 }: MonacoEditorProps): React.JSX.Element {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const fontSize = useSettingsStore((state) => state.settings.fontSize);
+  const editorFontSize = getEditorFontSize(fontSize);
 
   const handleMount: OnMount = useCallback(
     (editor, monaco) => {
@@ -97,8 +101,8 @@ export const MonacoEditor = React.memo(function MonacoEditor({
         options={{
           readOnly,
           minimap: { enabled: false },
-          fontSize: 13,
-          lineHeight: 20,
+          fontSize: editorFontSize,
+          lineHeight: Math.round(editorFontSize * 1.55),
           fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
           wordWrap: "on",
           automaticLayout: true,

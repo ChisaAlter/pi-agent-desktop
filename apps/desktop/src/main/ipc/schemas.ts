@@ -41,7 +41,7 @@ const longHorizonSchema = z
 
 const appSettingsSchema = z
     .object({
-        theme: z.enum(["light", "dark"]),
+        theme: z.enum(["light", "dark", "system"]),
         fontSize: z.number().int().min(10).max(32),
         model: z.string(),
         provider: z.string(),

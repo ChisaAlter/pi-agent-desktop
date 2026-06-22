@@ -6,6 +6,8 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { isIpcError } from "@shared";
 import type { TerminalCommandMode } from "../../utils/terminal-command";
+import { useSettingsStore } from "../../stores/settings-store";
+import { getEditorFontSize } from "../../utils/theme";
 import "@xterm/xterm/css/xterm.css";
 
 const MAX_OUTPUT_BUFFER = 20000;
@@ -36,6 +38,8 @@ export function TerminalPanel({ workspacePath, isOpen, onClose, initialCommand }
     const [createError, setCreateError] = useState<string | null>(null);
     const [inputError, setInputError] = useState<string | null>(null);
     const [copyError, setCopyError] = useState<string | null>(null);
+    const settingsFontSize = useSettingsStore((state) => state.settings.fontSize);
+    const terminalFontSize = getEditorFontSize(settingsFontSize);
 
     const createTab = async (): Promise<string | null> => {
         if (!window.piAPI) return null;
@@ -46,7 +50,7 @@ export function TerminalPanel({ workspacePath, isOpen, onClose, initialCommand }
         const term = new Terminal({
             cursorBlink: true,
             fontFamily: 'Menlo, "Cascadia Code", Consolas, monospace',
-            fontSize: 13,
+            fontSize: terminalFontSize,
             theme: { background: "#ffffff" },
         });
         const fitAddon = new FitAddon();
@@ -134,6 +138,18 @@ export function TerminalPanel({ workspacePath, isOpen, onClose, initialCommand }
     useEffect(() => {
         tabsRef.current = tabs;
     }, [tabs]);
+
+    useEffect(() => {
+        for (const tab of tabsRef.current) {
+            tab.terminal.options.fontSize = terminalFontSize;
+            try {
+                tab.fitAddon.fit();
+                void window.piAPI?.terminalResize(tab.id, tab.terminal.cols, tab.terminal.rows);
+            } catch {
+                // xterm can throw while a hidden tab has not been opened yet; it will fit on activation.
+            }
+        }
+    }, [terminalFontSize]);
 
     useEffect(() => {
         return () => {

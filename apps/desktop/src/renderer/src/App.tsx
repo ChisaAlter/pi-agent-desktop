@@ -657,7 +657,7 @@ function AppShell(): React.ReactElement {
                         bottom: 0,
                         height: 280,
                         zIndex: 40,
-                        background: "#ffffff",
+                        background: "var(--mm-bg-panel)",
                         borderTop: "1px solid var(--mm-border)",
                     }}
                 >

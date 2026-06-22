@@ -5,6 +5,20 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { ipcError } from "@shared";
 import type { AppSettings } from "@shared";
 
+function createLocalStorageMock(): Storage {
+    const values = new Map<string, string>();
+    return {
+        get length() {
+            return values.size;
+        },
+        clear: vi.fn(() => values.clear()),
+        getItem: vi.fn((key: string) => values.get(key) ?? null),
+        key: vi.fn((index: number) => Array.from(values.keys())[index] ?? null),
+        removeItem: vi.fn((key: string) => values.delete(key)),
+        setItem: vi.fn((key: string, value: string) => values.set(key, value)),
+    };
+}
+
 // mock window.piAPI; 每个 case 单独覆盖
 const mockApi = {
     getSettings: vi.fn(),
@@ -21,7 +35,26 @@ async function flushPendingSettingsWrite(): Promise<void> {
 
 beforeEach(() => {
     vi.useRealTimers();
-    (globalThis as { window: unknown }).window = { piAPI: mockApi };
+    const localStorage = createLocalStorageMock();
+    const documentElement = {
+        setAttribute: vi.fn(),
+        getAttribute: vi.fn(),
+        style: {
+            setProperty: vi.fn(),
+        },
+    };
+    const document = { documentElement };
+    (globalThis as { window: unknown }).window = {
+        piAPI: mockApi,
+        localStorage,
+        matchMedia: vi.fn(() => ({
+            matches: true,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+        })),
+    };
+    (globalThis as { document: unknown }).document = document;
+    (globalThis as { localStorage: Storage }).localStorage = localStorage;
     vi.clearAllMocks();
 });
 
@@ -82,6 +115,8 @@ describe("settings-store: updateSettings 走 IPC 错误路径", () => {
         expect(s.settings.fontSize).toBe(18);
         expect(s.lastWriteError).toBeNull();
         expect(mockApi.setSettings).toHaveBeenCalledWith({ fontSize: 18 });
+        expect(document.documentElement.style.setProperty).toHaveBeenCalledWith("--font-size-body", "18px");
+        expect(window.localStorage.setItem).toHaveBeenCalledWith("pi-desktop-font-size", "18");
     });
 
     it("成功: 清除上一次写错误", async () => {
@@ -135,6 +170,9 @@ describe("settings-store: updateSettings 走 IPC 错误路径", () => {
         const s = useSettingsStore.getState();
         expect(s.settings.fontSize).toBe(14); // 回滚
         expect(s.lastWriteError).toEqual(err);
+        expect(document.documentElement.style.setProperty).toHaveBeenCalledWith("--font-size-body", "18px");
+        expect(document.documentElement.style.setProperty).toHaveBeenCalledWith("--font-size-body", "14px");
+        expect(window.localStorage.setItem).toHaveBeenCalledWith("pi-desktop-font-size", "14");
     });
 
     it("连续更新会合并为一次后台保存，避免拖动设置时频繁 IPC", async () => {
@@ -206,6 +244,27 @@ describe("settings-store: updateSettings 走 IPC 错误路径", () => {
         expect(s.settings.provider).toBe("old-provider");
         expect(String(s.lastWriteError)).toContain("模型不存在");
         expect(mockApi.setSettings).toHaveBeenLastCalledWith({ model: "old-model", provider: "old-provider" });
+    });
+
+    it("setTheme('system') applies the resolved theme but persists the selected system mode", async () => {
+        vi.useFakeTimers();
+        mockApi.setSettings.mockResolvedValue({});
+        useSettingsStore.setState({
+            settings: {
+                theme: "light", fontSize: 14, model: "", provider: "",
+                temperature: 0.7, maxTokens: 4096, autoSave: true,
+                showLineNumbers: true, wordWrap: true,
+            },
+            lastWriteError: null,
+        });
+
+        useSettingsStore.getState().setTheme("system");
+        await flushPendingSettingsWrite();
+
+        expect(useSettingsStore.getState().settings.theme).toBe("system");
+        expect(mockApi.setSettings).toHaveBeenCalledWith({ theme: "system" });
+        expect(window.localStorage.setItem).toHaveBeenCalledWith("pi-desktop-theme", "system");
+        expect(document.documentElement.setAttribute).toHaveBeenCalledWith("data-theme", "dark");
     });
 });
 

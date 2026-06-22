@@ -401,7 +401,7 @@ export interface PiConfig {
 }
 
 export interface AppSettings {
-    theme: "light" | "dark";
+    theme: "light" | "dark" | "system";
     fontSize: number;
     model: string;
     provider: string;
@@ -876,6 +876,7 @@ export interface PiAPI {
     // Settings
     getSettings(): Promise<AppSettings>;
     setSettings(settings: Partial<AppSettings>): Promise<AppSettings>;
+    onSettingsChanged(cb: (settings: AppSettings) => void): Unsubscribe;
     loadPiConfig(): Promise<unknown>;
     getFullConfig(): Promise<PiAgentFullConfig>;
 

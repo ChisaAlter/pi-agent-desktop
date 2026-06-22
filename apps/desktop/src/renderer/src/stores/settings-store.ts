@@ -9,7 +9,7 @@ import { create } from 'zustand';
 import { DEFAULT_LONG_HORIZON_SETTINGS, isIpcError, type AppSettings, type IpcError, type ToolPermissions } from '@shared';
 import { logger } from '../utils/logger';
 import { addToast } from './toast-store';
-import { applyTheme, getInitialTheme, resolveTheme, type Theme } from '../utils/theme';
+import { applyFontSize, applyTheme, getInitialFontSize, getInitialTheme, normalizeFontSize, type Theme } from '../utils/theme';
 
 export type { AppSettings };
 
@@ -54,8 +54,8 @@ interface SettingsState {
 }
 
 const defaultSettings: AppSettings = {
-  theme: resolveTheme(getInitialTheme()),
-  fontSize: 14,
+  theme: getInitialTheme(),
+  fontSize: getInitialFontSize(),
   model: '',
   provider: '',
   temperature: 0.7,
@@ -71,6 +71,36 @@ const defaultSettings: AppSettings = {
   thinkingLevel: 'medium',
   longHorizon: DEFAULT_LONG_HORIZON_SETTINGS,
 };
+
+function cacheTheme(theme: Theme): void {
+  try {
+    if (typeof window !== "undefined") {
+      window.localStorage?.setItem("pi-desktop-theme", theme);
+    }
+  } catch {
+    // localStorage can be unavailable in restricted renderer contexts.
+  }
+}
+
+function applyAndCacheTheme(theme: Theme): void {
+  applyTheme(theme);
+  cacheTheme(theme);
+}
+
+function cacheFontSize(fontSize: number): void {
+  try {
+    if (typeof window !== "undefined") {
+      window.localStorage?.setItem("pi-desktop-font-size", String(fontSize));
+    }
+  } catch {
+    // localStorage can be unavailable in restricted renderer contexts.
+  }
+}
+
+function applyAndCacheFontSize(fontSize: number): void {
+  const normalized = applyFontSize(fontSize);
+  cacheFontSize(normalized);
+}
 
 const SETTINGS_WRITE_DEBOUNCE_MS = 120;
 
@@ -172,6 +202,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
           const result = await piAPI.setSettings(updatesToSave);
           if (isIpcError(result)) {
             if (revision === settingsWriteRevision) {
+              if (updatesToSave.theme !== undefined) {
+                applyAndCacheTheme(previousSettings.theme as Theme);
+              }
+              if (updatesToSave.fontSize !== undefined) {
+                applyAndCacheFontSize(previousSettings.fontSize);
+              }
               set({ settings: previousSettings, lastWriteError: result });
             } else {
               set({ lastWriteError: result });
@@ -185,6 +221,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
         } catch (e) {
           logger.error('[settings-store] setSettings failed:', e);
           if (revision === settingsWriteRevision) {
+            if (updatesToSave.theme !== undefined) {
+              applyAndCacheTheme(previousSettings.theme as Theme);
+            }
+            if (updatesToSave.fontSize !== undefined) {
+              applyAndCacheFontSize(previousSettings.fontSize);
+            }
             set({ settings: previousSettings, lastWriteError: reportWriteError(e) });
           } else {
             set({ lastWriteError: reportWriteError(e) });
@@ -207,13 +249,23 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
       const piAPI = getPiAPI();
       if (piAPI) {
         const persisted = await piAPI.getSettings();
-        set({ settings: { ...defaultSettings, ...persisted } });
+        const next = { ...defaultSettings, ...persisted };
+        applyAndCacheTheme(next.theme as Theme);
+        applyAndCacheFontSize(next.fontSize);
+        set({ settings: next });
       }
     } catch (e) {
       logger.error('[settings-store] Failed to load settings:', e);
     }
   };
   loadSettings();
+
+  getPiAPI()?.onSettingsChanged?.((settings) => {
+    const next = { ...defaultSettings, ...settings };
+    applyAndCacheTheme(next.theme as Theme);
+    applyAndCacheFontSize(next.fontSize);
+    set({ settings: next, lastWriteError: null });
+  });
 
   return {
     settings: defaultSettings,
@@ -264,6 +316,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
     updateSettings: (updates: Partial<AppSettings>) => {
       const previous = get().settings;
       const merged = { ...previous, ...updates };
+      if (updates.theme !== undefined) {
+        applyAndCacheTheme(updates.theme as Theme);
+      }
+      if (updates.fontSize !== undefined) {
+        applyAndCacheFontSize(normalizeFontSize(updates.fontSize));
+      }
       // 乐观更新: 立刻改本地, 失败时回滚
       set({ settings: merged });
       const piAPI = getPiAPI();
@@ -275,12 +333,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
       const previous = get().settings;
       settingsWriteRevision += 1;
       clearPendingSettingsWrite();
+      applyAndCacheTheme(defaultSettings.theme as Theme);
+      applyAndCacheFontSize(defaultSettings.fontSize);
       set({ settings: defaultSettings });
       const piAPI = getPiAPI();
       if (!piAPI) return;
       piAPI.setSettings(defaultSettings)
         .then((result) => {
           if (isIpcError(result)) {
+            applyAndCacheTheme(previous.theme as Theme);
+            applyAndCacheFontSize(previous.fontSize);
             set({ settings: previous, lastWriteError: result });
             addToast(result.fallback, "error");
           } else {
@@ -289,6 +351,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
         })
         .catch((e) => {
           logger.error('[settings-store] setSettings (reset) failed:', e);
+          applyAndCacheTheme(previous.theme as Theme);
+          applyAndCacheFontSize(previous.fontSize);
           set({ settings: previous, lastWriteError: reportWriteError(e) });
           addToast(e instanceof Error ? e.message : "重置设置失败", "error");
         });
@@ -326,9 +390,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
     },
 
     setTheme: (theme: Theme) => {
-      applyTheme(theme);
-      get().updateSettings({ theme: theme as AppSettings["theme"] });
-      localStorage.setItem("pi-desktop-theme", theme);
+      get().updateSettings({ theme });
     },
 
     toggleRightRail: () => set((state) => ({ rightRailCollapsed: !state.rightRailCollapsed })),

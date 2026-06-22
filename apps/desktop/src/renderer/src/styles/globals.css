@@ -168,6 +168,36 @@ html, body {
   background: transparent;
 }
 
+#root .text-xs,
+#settings-root .text-xs {
+  font-size: var(--font-size-xs);
+}
+
+#root .text-sm,
+#settings-root .text-sm {
+  font-size: var(--font-size-sm);
+}
+
+#root .text-base,
+#settings-root .text-base {
+  font-size: var(--font-size-base);
+}
+
+#root .text-lg,
+#settings-root .text-lg {
+  font-size: var(--font-size-lg);
+}
+
+#root .text-xl,
+#settings-root .text-xl {
+  font-size: var(--font-size-xl);
+}
+
+#root .text-2xl,
+#settings-root .text-2xl {
+  font-size: var(--font-size-2xl);
+}
+
 [data-mmcode-layout="window-frame"] {
   position: relative;
   --mm-edge-right-shadow: transparent;
@@ -460,7 +490,8 @@ select:focus-visible,
 
 /* ── 状态色背景 → 深色版 ── */
 [data-theme="dark"] .bg-\[\#fef2f2\],
-[data-theme="dark"] .bg-\[\#fee2e2\] {
+[data-theme="dark"] .bg-\[\#fee2e2\],
+[data-theme="dark"] .bg-red-50 {
   background-color: #3b1c1c !important;
 }
 
@@ -479,7 +510,8 @@ select:focus-visible,
 }
 
 [data-theme="dark"] .bg-\[\#fff7ed\],
-[data-theme="dark"] .bg-\[\#fed7aa\] {
+[data-theme="dark"] .bg-\[\#fed7aa\],
+[data-theme="dark"] .bg-amber-50 {
   background-color: #3b2e1a !important;
 }
 
@@ -531,8 +563,13 @@ select:focus-visible,
 }
 
 [data-theme="dark"] .text-\[\#b91c1c\],
-[data-theme="dark"] .text-\[\#991b1b\] {
+[data-theme="dark"] .text-\[\#991b1b\],
+[data-theme="dark"] .text-red-700 {
   color: #f87171 !important;
+}
+
+[data-theme="dark"] .text-amber-800 {
+  color: #fbbf24 !important;
 }
 
 [data-theme="dark"] .text-\[\#166534\],
@@ -577,7 +614,8 @@ select:focus-visible,
 }
 
 /* ── 状态色边框 ── */
-[data-theme="dark"] .border-\[\#fecaca\] {
+[data-theme="dark"] .border-\[\#fecaca\],
+[data-theme="dark"] .border-red-200 {
   border-color: #7f1d1d !important;
 }
 
@@ -592,7 +630,8 @@ select:focus-visible,
   border-color: #1e40af !important;
 }
 
-[data-theme="dark"] .border-\[\#fed7aa\] {
+[data-theme="dark"] .border-\[\#fed7aa\],
+[data-theme="dark"] .border-amber-200 {
   border-color: #9a3412 !important;
 }
 
