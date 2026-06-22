@@ -11,7 +11,7 @@ function KeyBadge({ keys }: { keys: string }): React.JSX.Element {
     <span className="inline-flex items-center gap-0.5 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 font-mono text-xs text-[var(--mm-text-primary)]">
       {keys.split("+").map((key, index) => (
         <React.Fragment key={key}>
-          {index > 0 && <span className="text-[#ccc]">+</span>}
+          {index > 0 && <span className="text-[var(--mm-text-tertiary)]">+</span>}
           <kbd className="rounded border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-1.5 py-0.5 text-[11px] shadow-sm">{key}</kbd>
         </React.Fragment>
       ))}
@@ -63,7 +63,7 @@ function ShortcutRecorder({
     <div
       ref={ref}
       tabIndex={0}
-      className="flex items-center gap-2 rounded-lg border-2 border-dashed border-[#1f1f1f] bg-[var(--mm-bg-panel)] px-3 py-2 text-xs"
+      className="flex items-center gap-2 rounded-lg border-2 border-dashed border-[var(--mm-accent-blue)] bg-[var(--mm-bg-panel)] px-3 py-2 text-xs"
     >
       <span className="text-[var(--mm-text-secondary)]">按下新的快捷键...</span>
       <button

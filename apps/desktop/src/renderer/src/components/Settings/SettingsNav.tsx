@@ -53,7 +53,7 @@ export function SettingsNav({
                             className={`settings-pressable mb-[4px] flex -ml-px h-[31px] w-full items-center gap-2 rounded-[4px] px-2 text-left transition-[transform,background-color,color,box-shadow] duration-150 ease-out ${
                                 isActive
                                     ? 'relative top-[4px] border-l-2 border-l-[var(--mm-accent-blue)] bg-[var(--mm-bg-selected)] text-[var(--mm-accent-blue)] shadow-none'
-                                    : 'text-[#777777] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]'
+                                    : 'text-[var(--settings-text-secondary)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]'
                             }`}
                         >
                             <SettingsNavIcon id={tab.id} />

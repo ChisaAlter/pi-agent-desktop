@@ -93,6 +93,9 @@
   --mm-bg-main: #f1f3f5;          /* 主区背景: 参考窗口浅灰白 */
   --mm-bg-sidebar: #eef1f4;       /* 左侧导航浅灰底 */
   --mm-bg-panel: #f6f7f9;         /* 右侧卡片/输入框面板 */
+  --mm-bg-composer: #f9f9fb;      /* 底部全局输入区 */
+  --mm-bg-control: #fbfbfb;       /* 输入区内嵌控制胶囊 */
+  --mm-bg-input: #ffffff;         /* 可编辑输入控件 */
   --mm-bg-hover: #e8f0fa;         /* 通用 hover 浅灰蓝 */
   --mm-bg-selected: #c1d2ec;      /* 左侧选中态: 参考图浅蓝 */
   --mm-bg-active: #1a1a1a;        /* 主操作激活态:黑底(配白字) */
@@ -106,6 +109,32 @@
 
   /* ===== 边框 ===== */
   --mm-border: #dde4eb;           /* 轻边框: 卡片/输入框使用 */
+  --mm-border-subtle: #edf0f3;    /* 弱分割线 */
+  --mm-border-strong: #c7d2df;    /* 聚焦/悬停强调边框 */
+
+  /* ===== Settings surfaces ===== */
+  --settings-bg-card: #eeeeee;
+  --settings-bg-card-muted: #e9e9e9;
+  --settings-bg-row: #f6f7f9;
+  --settings-bg-control: #f7f9fb;
+  --settings-bg-control-hover: #edf3fa;
+  --settings-bg-active: #e5e5e5;
+  --settings-text-primary: #111827;
+  --settings-text-secondary: #6b7280;
+  --settings-text-muted: #4b5563;
+  --settings-border: #d5d8dc;
+  --settings-border-soft: #dfe5eb;
+  --settings-gridline: #dedede;
+  --settings-heat-0: #e9eaec;
+  --settings-heat-1: #c9dff4;
+  --settings-heat-2: #8bbdec;
+  --settings-heat-3: #4d9cf0;
+  --settings-heat-4: #1683f7;
+  --settings-chart-1: #1683f7;
+  --settings-chart-2: #1f8f46;
+  --settings-chart-3: #70aee9;
+  --settings-chart-4: #9cc3eb;
+  --settings-chart-5: #c9dff4;
 
   /* ===== 圆角 ===== */
   --mm-radius-sm: 6px;            /* 小元素:徽标/tag/小按钮 */
@@ -278,6 +307,9 @@ select:focus-visible,
   --mm-bg-main: #1a1a1a;
   --mm-bg-sidebar: #242424;
   --mm-bg-panel: #242424;
+  --mm-bg-composer: #20242a;
+  --mm-bg-control: #171b20;
+  --mm-bg-input: #171b20;
   --mm-bg-hover: #2a2a2a;
   --mm-bg-selected: #303030;
   --mm-bg-active: #ffffff;
@@ -287,6 +319,31 @@ select:focus-visible,
   --mm-text-tertiary: #666666;
   --mm-text-on-active: #1a1a1a;
   --mm-border: #333333;
+  --mm-border-subtle: #2b3036;
+  --mm-border-strong: #4a5360;
+
+  --settings-bg-card: #20242a;
+  --settings-bg-card-muted: #171b20;
+  --settings-bg-row: #20242a;
+  --settings-bg-control: #252b33;
+  --settings-bg-control-hover: #2b3138;
+  --settings-bg-active: #28384c;
+  --settings-text-primary: #edf1f5;
+  --settings-text-secondary: #a7b1be;
+  --settings-text-muted: #8c97a5;
+  --settings-border: #343b45;
+  --settings-border-soft: #3a424d;
+  --settings-gridline: #303741;
+  --settings-heat-0: #303741;
+  --settings-heat-1: #1e3a5f;
+  --settings-heat-2: #245e93;
+  --settings-heat-3: #2f83ce;
+  --settings-heat-4: #5aa7ff;
+  --settings-chart-1: #5aa7ff;
+  --settings-chart-2: #49c073;
+  --settings-chart-3: #76b8ff;
+  --settings-chart-4: #9cc3eb;
+  --settings-chart-5: #c9dff4;
 
   /* 阴影 */
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
@@ -941,6 +998,9 @@ code {
   --mm-bg-main: #17191c;
   --mm-bg-sidebar: #1e2227;
   --mm-bg-panel: #22262c;
+  --mm-bg-composer: #20242a;
+  --mm-bg-control: #171b20;
+  --mm-bg-input: #171b20;
   --mm-bg-hover: #2b3138;
   --mm-bg-selected: #28384c;
   --mm-bg-active: #8ab4ff;
@@ -949,6 +1009,30 @@ code {
   --mm-text-tertiary: #7f8996;
   --mm-text-on-active: #101418;
   --mm-border: #343b45;
+  --mm-border-subtle: #2a3038;
+  --mm-border-strong: #4c5664;
+  --settings-bg-card: #20242a;
+  --settings-bg-card-muted: #171b20;
+  --settings-bg-row: #20242a;
+  --settings-bg-control: #252b33;
+  --settings-bg-control-hover: #2b3138;
+  --settings-bg-active: #28384c;
+  --settings-text-primary: #edf1f5;
+  --settings-text-secondary: #a7b1be;
+  --settings-text-muted: #8c97a5;
+  --settings-border: #343b45;
+  --settings-border-soft: #3a424d;
+  --settings-gridline: #303741;
+  --settings-heat-0: #303741;
+  --settings-heat-1: #1e3a5f;
+  --settings-heat-2: #245e93;
+  --settings-heat-3: #2f83ce;
+  --settings-heat-4: #5aa7ff;
+  --settings-chart-1: #5aa7ff;
+  --settings-chart-2: #49c073;
+  --settings-chart-3: #76b8ff;
+  --settings-chart-4: #9cc3eb;
+  --settings-chart-5: #c9dff4;
   background: var(--mm-bg-main) !important;
   border-color: var(--mm-border) !important;
 }

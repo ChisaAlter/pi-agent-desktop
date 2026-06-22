@@ -193,7 +193,7 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                     type="button"
                     aria-label="新增模型"
                     onClick={() => setForm(emptyModelForm)}
-                    className="settings-pressable shrink-0 rounded-[3px] border border-[#dfe5eb] bg-[#f7f9fb] px-2 py-1 text-[10px] font-medium text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[#edf3fa]"
+                    className="settings-pressable shrink-0 rounded-[3px] border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-2 py-1 text-[10px] font-medium text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)]"
                 >
                     + 添加 Provider
                 </button>
@@ -205,13 +205,13 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                 </div>
             )}
 
-            <div className="overflow-hidden rounded-[6px] border border-[#e7edf3] bg-[#f5f6f8]">
+            <div className="overflow-hidden rounded-[6px] border border-[var(--settings-border-soft)] bg-[var(--settings-bg-card)]">
                 {!result ? (
                     <div className="p-3 text-[10px] text-[var(--mm-text-tertiary)]">加载模型配置中...</div>
                 ) : modelRows.length === 0 ? (
                     <div className="p-3 text-[10px] text-[var(--mm-text-tertiary)]">暂未检测到模型配置。点击"新增模型"开始配置。</div>
                 ) : (
-                    <div className="divide-y divide-[#dfe5eb]">
+                    <div className="divide-y divide-[var(--settings-border-soft)]">
                         {modelRows.map((model) => {
                             const key = `${model.providerId}:${model.modelId}`;
                             const apiType = model.apiType ?? model.api ?? 'openai';
@@ -219,20 +219,20 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                             const keyLabel = model.hasApiKey ? (model.apiKeyPreview ? `Key ${model.apiKeyPreview}` : 'Key 已配置') : '缺少 Key';
                             const stateLabel = model.isDefault ? '默认' : model.hasApiKey ? '已配置' : '需配置';
                             return (
-                                <div key={key} className="grid min-h-[82px] grid-cols-[minmax(0,1fr)_auto] gap-2 bg-[#f6f7f9] px-3 py-[11px] transition-colors duration-150 ease-out hover:bg-[#eef3f8]">
+                                <div key={key} className="grid min-h-[82px] grid-cols-[minmax(0,1fr)_auto] gap-2 bg-[var(--settings-bg-row)] px-3 py-[11px] transition-colors duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)]">
                                     <div className="min-w-0 text-[10px] leading-[15px]">
                                         <div className="flex items-center gap-1.5">
                                             <div className="truncate text-[11px] font-normal text-[var(--mm-text-primary)]">{model.modelName}</div>
                                             <span className="truncate text-[9px] text-[var(--mm-text-tertiary)]">
                                                 {model.providerName}
                                             </span>
-                                            {model.isDefault && <span className="rounded-[3px] bg-[#e6f0fb] px-1 text-[9px] text-[#0b68c7]">默认</span>}
+                                            {model.isDefault && <span className="rounded-[3px] bg-[var(--settings-bg-active)] px-1 text-[9px] text-[var(--mm-accent-blue)]">默认</span>}
                                         </div>
-                                        <div className="mt-[4px] grid grid-cols-[48px_minmax(0,1fr)] gap-x-2 gap-y-0 text-[9px] leading-[15px] text-[#777777]">
+                                        <div className="mt-[4px] grid grid-cols-[48px_minmax(0,1fr)] gap-x-2 gap-y-0 text-[9px] leading-[15px] text-[var(--settings-text-secondary)]">
                                             <span>Provider:</span>
                                             <span className="truncate">{model.providerId}</span>
                                             <span>API Base:</span>
-                                            <span className="truncate text-[#777777]" title={model.baseUrl ?? ''}>{model.baseUrl ?? '未设置'}</span>
+                                            <span className="truncate text-[var(--settings-text-secondary)]" title={model.baseUrl ?? ''}>{model.baseUrl ?? '未设置'}</span>
                                             <span>能力:</span>
                                             <span className="truncate">{apiType} / {contextLabel} / {keyLabel}</span>
                                         </div>
@@ -245,13 +245,13 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                                             </span>
                                         </div>
                                         <div className="mt-[22px] flex items-center gap-[6px]">
-                                            <button type="button" onClick={() => void testModel(model)} disabled={testingKey === key} aria-label={`测试 ${model.modelName}`} className="settings-pressable rounded border border-[#dfe5eb] bg-[#f7f9fb] px-1.5 py-1 text-[9px] text-[var(--mm-text-secondary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[#edf3fa] disabled:opacity-50">
+                                            <button type="button" onClick={() => void testModel(model)} disabled={testingKey === key} aria-label={`测试 ${model.modelName}`} className="settings-pressable rounded border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-1.5 py-1 text-[9px] text-[var(--mm-text-secondary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50">
                                                 {testingKey === key ? '测试中' : '测试'}
                                             </button>
-                                            <button type="button" onClick={() => setForm(modelToForm(model))} aria-label={`编辑 ${model.modelName}`} className="settings-pressable rounded border border-[#dfe5eb] bg-[#f7f9fb] px-1.5 py-1 text-[9px] text-[var(--mm-text-secondary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[#edf3fa] disabled:opacity-50">
+                                            <button type="button" onClick={() => setForm(modelToForm(model))} aria-label={`编辑 ${model.modelName}`} className="settings-pressable rounded border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-1.5 py-1 text-[9px] text-[var(--mm-text-secondary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50">
                                                 编辑
                                             </button>
-                                            <button type="button" onClick={() => setPendingDeleteModel(model)} aria-label={`删除 ${model.modelName}`} className="settings-pressable rounded border border-transparent px-1 py-1 text-[9px] leading-none text-[var(--mm-text-tertiary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[#edf3fa] disabled:opacity-50">
+                                            <button type="button" onClick={() => setPendingDeleteModel(model)} aria-label={`删除 ${model.modelName}`} className="settings-pressable rounded border border-transparent px-1 py-1 text-[9px] leading-none text-[var(--mm-text-tertiary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50">
                                                 删除
                                             </button>
                                         </div>
@@ -301,7 +301,7 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                         </div>
                         <div className="flex justify-end gap-2 border-t border-[var(--mm-border)] px-5 py-4">
                             <button type="button" onClick={() => setForm(null)} className="settings-pressable rounded-lg px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)]">取消</button>
-                            <button type="button" onClick={() => void saveModel()} className="settings-pressable rounded-lg bg-[#1f1f1f] px-3 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:bg-[#333]">保存模型</button>
+                            <button type="button" onClick={() => void saveModel()} className="settings-pressable rounded-lg bg-[var(--mm-accent-blue)] px-3 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:opacity-90">保存模型</button>
                         </div>
                     </div>
                 </div>
@@ -378,7 +378,7 @@ function FormInput({
                 value={value}
                 placeholder={placeholder}
                 onChange={(event) => onChange(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-primary)] outline-none focus:border-[#1f1f1f]"
+                className="mt-1 w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-accent-blue)]"
             />
         </label>
     );

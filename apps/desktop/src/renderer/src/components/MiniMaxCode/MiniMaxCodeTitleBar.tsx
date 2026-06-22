@@ -87,7 +87,7 @@ export function MiniMaxCodeTitleBar({
     return (
         <div
             style={{ WebkitAppRegion: "drag", height: "var(--mm-height-titlebar)" } as React.CSSProperties}
-            className={`flex w-full shrink-0 items-center border-b border-[#e5e5e5] bg-[var(--mm-bg-sidebar)] select-none ${className}`}
+            className={`flex w-full shrink-0 items-center border-b border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] select-none ${className}`}
             data-mmcode-region="titlebar"
             role="banner"
             aria-label="window title bar"

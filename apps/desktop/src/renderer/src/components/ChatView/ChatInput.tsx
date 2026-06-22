@@ -709,7 +709,7 @@ export function ChatInput({
       <PermissionRequestStack workspaceId={workspaceId} agentId={agentId} />
       <div
         data-testid="chat-input-shell"
-        className={`${referenceFrame ? "mx-0 w-full max-w-none" : "mx-auto max-w-[770px]"} relative overflow-visible rounded-[7px] border border-[#e7e7e9] bg-[#f9f9fb] shadow-none transition-all focus-within:border-[#e7e7e9]`}
+        className={`${referenceFrame ? "mx-0 w-full max-w-none" : "mx-auto max-w-[770px]"} relative overflow-visible rounded-[7px] border border-[var(--mm-border)] bg-[var(--mm-bg-composer)] shadow-none transition-all focus-within:border-[var(--mm-border-strong)]`}
         style={referenceFrame ? { height: `${composerHeight}px` } : undefined}
       >
         {referenceFrame ? (
@@ -721,7 +721,7 @@ export function ChatInput({
             onPointerDown={handleResizePointerDown}
             className="absolute left-2 right-2 top-0 z-10 flex h-2 cursor-ns-resize items-start justify-center"
           >
-            <span className="mt-[2px] h-[2px] w-9 rounded-full bg-[#d8dce2]" aria-hidden />
+            <span className="mt-[2px] h-[2px] w-9 rounded-full bg-[var(--mm-border-strong)]" aria-hidden />
           </div>
         ) : null}
         {isProcessing && (
@@ -951,7 +951,7 @@ export function ChatInput({
               </button>
               <Popover
                 align="start"
-                contentClassName="w-[246px] rounded-[10px] border border-[var(--mm-border)] bg-white p-1.5 shadow-[0_16px_38px_rgba(20,31,50,0.14)]"
+                contentClassName="w-[246px] rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-1.5 shadow-[0_16px_38px_rgba(20,31,50,0.14)]"
                 trigger={
                   <button type="button" className="flex h-6 items-center gap-1 rounded-[4px] px-1.5 text-[11px] hover:bg-[var(--mm-bg-hover)]" aria-label="选择 Agent 模式">
                     <span className="font-medium text-[var(--mm-text-primary)]">
@@ -976,10 +976,10 @@ export function ChatInput({
                           close();
                         }}
                         className={`flex w-full items-start gap-2 rounded-[7px] px-2 py-2 text-left hover:bg-[var(--mm-bg-hover)] ${
-                          currentAgentMode === mode.value ? "bg-[#eef5ff]" : ""
+                          currentAgentMode === mode.value ? "bg-[var(--mm-bg-selected)]" : ""
                         }`}
                       >
-                        <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${currentAgentMode === mode.value ? "bg-[#126dd8]" : "bg-[#c7cbd1]"}`} aria-hidden />
+                        <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${currentAgentMode === mode.value ? "bg-[var(--mm-accent-blue)]" : "bg-[var(--mm-text-tertiary)]"}`} aria-hidden />
                         <span className="min-w-0">
                           <span className="block text-[12px] font-medium text-[var(--mm-text-primary)]">{mode.label}</span>
                           <span className="block text-[10px] leading-4 text-[var(--mm-text-secondary)]">{mode.desc}</span>
@@ -991,7 +991,7 @@ export function ChatInput({
               </Popover>
             </div>
             <div className="flex items-start gap-2">
-              <div className="flex h-7 overflow-hidden rounded-[5px] border border-[var(--mm-border)] bg-[#fbfbfb]">
+              <div className="flex h-7 overflow-hidden rounded-[5px] border border-[var(--mm-border)] bg-[var(--mm-bg-control)]">
               <Popover
                 align="end"
                 contentClassName="min-w-[240px]"
@@ -1001,7 +1001,7 @@ export function ChatInput({
                     className="flex h-7 w-[150px] items-center gap-1.5 px-2 text-left text-[10px] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
                     aria-label={`当前模型: ${currentModelLabel}`}
                   >
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#126dd8]" aria-hidden />
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--mm-accent-blue)]" aria-hidden />
                     <span className="truncate">{currentModelLabel}</span>
                   </button>
                 }
@@ -1048,7 +1048,7 @@ export function ChatInput({
               </Popover>
               <Popover
                 align="end"
-                contentClassName="w-[180px] rounded-[10px] border border-[var(--mm-border)] bg-white p-1.5 shadow-[0_16px_38px_rgba(20,31,50,0.14)]"
+                contentClassName="w-[180px] rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-1.5 shadow-[0_16px_38px_rgba(20,31,50,0.14)]"
                 trigger={
                   <button
                     type="button"
@@ -1076,12 +1076,12 @@ export function ChatInput({
                           close();
                         }}
                         className={`flex h-8 w-full items-center justify-between rounded-[7px] px-2 text-left text-[12px] hover:bg-[var(--mm-bg-hover)] ${
-                          currentThinking === option.value ? "bg-[#eef5ff] text-[var(--mm-text-primary)]" : "text-[var(--mm-text-secondary)]"
+                          currentThinking === option.value ? "bg-[var(--mm-bg-selected)] text-[var(--mm-text-primary)]" : "text-[var(--mm-text-secondary)]"
                         }`}
                       >
                         <span>{option.label}</span>
                         {currentThinking === option.value && (
-                          <svg className="h-3.5 w-3.5 text-[#126dd8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                          <svg className="h-3.5 w-3.5 text-[var(--mm-accent-blue)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M5 13l4 4L19 7" />
                           </svg>
                         )}
@@ -1095,7 +1095,7 @@ export function ChatInput({
                 type="button"
                 onClick={() => void handleSend()}
                 disabled={!canSend}
-                className="mt-[-6px] flex h-[32px] w-[51px] translate-x-[2px] items-center justify-center rounded-[5px] bg-[#126dd8] text-white shadow-[0_1px_2px_rgba(10,35,80,0.14)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35"
+                className="mt-[-6px] flex h-[32px] w-[51px] translate-x-[2px] items-center justify-center rounded-[5px] bg-[var(--mm-accent-blue)] text-white shadow-[0_1px_2px_rgba(10,35,80,0.14)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35"
                 aria-label={t("chatInput.send")}
               >
                 <svg className="h-5 w-5 -rotate-12" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">

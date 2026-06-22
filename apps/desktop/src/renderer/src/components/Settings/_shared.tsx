@@ -55,7 +55,7 @@ export function SwitchControl({
             aria-checked={checked}
             aria-label={label}
             onClick={onChange}
-            className={`settings-pressable relative h-6 w-11 shrink-0 overflow-hidden rounded-full transition-[transform,background-color] duration-150 ease-out ${checked ? 'bg-[#1f1f1f]' : 'bg-[#d9d9d4]'}`}
+            className={`settings-pressable relative h-6 w-11 shrink-0 overflow-hidden rounded-full transition-[transform,background-color] duration-150 ease-out ${checked ? 'bg-[var(--mm-accent-blue)]' : 'bg-[var(--settings-border)]'}`}
         >
             <span
                 aria-hidden="true"

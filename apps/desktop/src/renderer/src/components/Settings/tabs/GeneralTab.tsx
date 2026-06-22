@@ -23,7 +23,7 @@ export function GeneralTab(): React.JSX.Element {
                         id="settings-language"
                         value={locale}
                         onChange={(e) => setLocale(e.target.value as Locale)}
-                        className="w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2.5 text-sm text-[var(--mm-text-primary)] focus:border-[#1f1f1f] focus:outline-none"
+                        className="w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2.5 text-sm text-[var(--mm-text-primary)] focus:border-[var(--mm-accent-blue)] focus:outline-none"
                     >
                         {SUPPORTED_LOCALES.map((l) => (
                             <option key={l} value={l}>

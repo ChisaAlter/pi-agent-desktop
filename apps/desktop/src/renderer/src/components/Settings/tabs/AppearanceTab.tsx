@@ -28,12 +28,15 @@ export function AppearanceTab(): React.JSX.Element {
                             type="button"
                             onClick={() => useSettingsStore.getState().setTheme(theme)}
                             className={`settings-pressable rounded-xl border p-3 text-left transition-[transform,background-color,border-color,box-shadow] duration-150 ease-out ${
-                                active ? 'border-[#1f1f1f] bg-[var(--mm-bg-panel)]' : 'border-[var(--mm-border)] bg-[var(--mm-bg-panel)] hover:border-[#cfcfca]'
+                                active ? 'border-[var(--mm-accent-blue)] bg-[var(--mm-bg-panel)]' : 'border-[var(--mm-border)] bg-[var(--mm-bg-panel)] hover:border-[var(--mm-border-strong)]'
                             }`}
                         >
                             <span className="block text-sm font-medium text-[var(--mm-text-primary)]">{t(`settings.theme.${theme}`)}</span>
                             <span className="mt-3 block h-24 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] p-2">
-                                <span className={`block h-full rounded-md ${theme === 'dark' ? 'bg-[#1f1f1f]' : theme === 'system' ? 'bg-gradient-to-r from-white to-[#1f1f1f]' : 'bg-[var(--mm-bg-panel)]'} border border-[var(--mm-border)]`} />
+                                <span
+                                    data-allow-light-surface="theme-preview"
+                                    className={`block h-full rounded-md ${theme === 'dark' ? 'bg-[#1f1f1f]' : theme === 'system' ? 'bg-gradient-to-r from-white to-[#1f1f1f]' : 'bg-[var(--mm-bg-panel)]'} border border-[var(--mm-border)]`}
+                                />
                             </span>
                         </button>
                     );

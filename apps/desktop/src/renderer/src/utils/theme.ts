@@ -2,6 +2,7 @@ export type Theme = "light" | "dark" | "system";
 
 function getSystemTheme(): "light" | "dark" {
   if (typeof window === "undefined") return "light";
+  if (typeof window.matchMedia !== "function") return "light";
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
@@ -23,6 +24,7 @@ export function getInitialTheme(): Theme {
 
 export function watchSystemTheme(callback: (theme: "light" | "dark") => void): () => void {
   if (typeof window === "undefined") return () => {};
+  if (typeof window.matchMedia !== "function") return () => {};
   const mq = window.matchMedia("(prefers-color-scheme: dark)");
   const handler = (e: MediaQueryListEvent) => callback(e.matches ? "dark" : "light");
   mq.addEventListener("change", handler);

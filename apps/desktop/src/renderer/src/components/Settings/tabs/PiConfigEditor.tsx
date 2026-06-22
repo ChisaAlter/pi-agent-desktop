@@ -107,7 +107,7 @@ export function PiConfigEditor(): React.JSX.Element {
                         type="button"
                         onClick={() => setFileName(name)}
                         className={`settings-pressable rounded-md px-3 py-1.5 text-sm transition-[transform,background-color,color] duration-150 ease-out ${
-                            fileName === name ? 'bg-[#1f1f1f] text-white' : 'bg-[#ececea] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]'
+                            fileName === name ? 'bg-[var(--mm-accent-blue)] text-white' : 'bg-[var(--settings-bg-control)] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]'
                         }`}
                     >
                         {name}
@@ -118,7 +118,7 @@ export function PiConfigEditor(): React.JSX.Element {
                 value={raw}
                 onChange={(event) => setRaw(event.target.value)}
                 spellCheck={false}
-                className="min-h-[300px] w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3 font-mono text-xs text-[var(--mm-text-primary)] outline-none focus:border-[#1f1f1f]"
+                className="min-h-[300px] w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3 font-mono text-xs text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-accent-blue)]"
                 aria-label="Pi 配置 JSON"
             />
             {[message, fetchStatus, testStatus].filter(Boolean).map((status) => (
@@ -127,9 +127,9 @@ export function PiConfigEditor(): React.JSX.Element {
                 </div>
             ))}
             <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={save} className="settings-pressable rounded-md bg-[#1f1f1f] px-3 py-2 text-sm text-white transition-[transform,background-color] duration-150 ease-out hover:bg-[#333]">保存当前文件</button>
-                <button type="button" onClick={exportConfig} className="settings-pressable rounded-md bg-[#ececea] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">导出配置包</button>
-                <button type="button" onClick={importConfig} className="settings-pressable rounded-md bg-[#ececea] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">从编辑区导入配置包</button>
+                <button type="button" onClick={save} className="settings-pressable rounded-md bg-[var(--mm-accent-blue)] px-3 py-2 text-sm text-white transition-[transform,background-color] duration-150 ease-out hover:opacity-90">保存当前文件</button>
+                <button type="button" onClick={exportConfig} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">导出配置包</button>
+                <button type="button" onClick={importConfig} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">从编辑区导入配置包</button>
                 <button type="button" onClick={async () => {
                     setFetchStatus("拉取中...");
                     try {
@@ -144,7 +144,7 @@ export function PiConfigEditor(): React.JSX.Element {
                     } catch (e) {
                         setFetchStatus(`拉取失败: ${e instanceof Error ? e.message : String(e)}`);
                     }
-                }} className="settings-pressable rounded-md bg-[#ececea] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">拉取模型列表</button>
+                }} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">拉取模型列表</button>
                 <button type="button" onClick={async () => {
                     setTestStatus("测试中...");
                     try {
@@ -159,7 +159,7 @@ export function PiConfigEditor(): React.JSX.Element {
                     } catch (e) {
                         setTestStatus(`测试失败: ${e instanceof Error ? e.message : String(e)}`);
                     }
-                }} className="settings-pressable rounded-md bg-[#ececea] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">测试 Provider</button>
+                }} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">测试 Provider</button>
             </div>
         </div>
     );

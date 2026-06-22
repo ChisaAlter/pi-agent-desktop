@@ -133,7 +133,7 @@ export function SettingsContent({ onClose }: SettingsContentProps = {}): React.J
                         <button
                             type="button"
                             onClick={onClose}
-                            className="settings-pressable rounded-lg bg-[#1f1f1f] px-4 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:bg-[#333]"
+                            className="settings-pressable rounded-lg bg-[var(--mm-accent-blue)] px-4 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:opacity-90"
                             aria-label={t('settings.closeAria')}
                         >
                             {t('common.done')}

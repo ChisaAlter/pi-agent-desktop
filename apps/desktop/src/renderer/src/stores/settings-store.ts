@@ -9,7 +9,7 @@ import { create } from 'zustand';
 import { DEFAULT_LONG_HORIZON_SETTINGS, isIpcError, type AppSettings, type IpcError, type ToolPermissions } from '@shared';
 import { logger } from '../utils/logger';
 import { addToast } from './toast-store';
-import { applyTheme, type Theme } from '../utils/theme';
+import { applyTheme, getInitialTheme, resolveTheme, type Theme } from '../utils/theme';
 
 export type { AppSettings };
 
@@ -54,7 +54,7 @@ interface SettingsState {
 }
 
 const defaultSettings: AppSettings = {
-  theme: 'light',
+  theme: resolveTheme(getInitialTheme()),
   fontSize: 14,
   model: '',
   provider: '',

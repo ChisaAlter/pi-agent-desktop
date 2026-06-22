@@ -13,17 +13,17 @@ export function ModelSelector(): React.JSX.Element {
   
   return (
     <div className="space-y-4">
-      <h3 className="text-md font-medium text-white">Pi 模型配置</h3>
+      <h3 className="text-md font-medium text-[var(--mm-text-primary)]">Pi 模型配置</h3>
 
       {models.length === 0 ? (
-        <div className="text-sm text-gray-400 py-4 text-center">
+        <div className="py-4 text-center text-sm text-[var(--mm-text-secondary)]">
           未检测到 Pi 配置。请确保 <code className="text-yellow-400">~/.pi/agent/models.json</code> 存在。
         </div>
       ) : (
         <>
           {/* 模型选择 */}
           <div>
-            <label className="block text-sm text-gray-300 mb-2">选择模型</label>
+            <label className="mb-2 block text-sm text-[var(--mm-text-secondary)]">选择模型</label>
             <div className="space-y-2">
               {models.map((model) => (
                 <div
@@ -31,16 +31,16 @@ export function ModelSelector(): React.JSX.Element {
                   onClick={() => updateSettings({ model: model.id, provider: model.provider })}
                   className={`p-3 rounded-lg cursor-pointer transition-colors ${
                     settings.model === model.id
-                      ? 'bg-blue-600 border border-blue-500'
-                      : 'bg-gray-700 border border-gray-600 hover:border-gray-500'
+                      ? 'border border-[var(--mm-accent-blue)] bg-[var(--settings-bg-active)]'
+                      : 'border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] hover:border-[var(--mm-border-strong)]'
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-white truncate">{model.name}</div>
-                      <div className="text-xs text-gray-300 mt-0.5">{model.description}</div>
+                      <div className="truncate font-medium text-[var(--mm-text-primary)]">{model.name}</div>
+                      <div className="mt-0.5 text-xs text-[var(--mm-text-secondary)]">{model.description}</div>
                     </div>
-                    <div className="text-xs text-gray-400 ml-2 shrink-0">{model.providerName || model.provider}</div>
+                    <div className="ml-2 shrink-0 text-xs text-[var(--mm-text-tertiary)]">{model.providerName || model.provider}</div>
                   </div>
                 </div>
               ))}
@@ -51,7 +51,7 @@ export function ModelSelector(): React.JSX.Element {
       
       {/* Temperature */}
       <div>
-        <label className="block text-sm text-gray-300 mb-2">
+        <label className="mb-2 block text-sm text-[var(--mm-text-secondary)]">
           温度参数：{settings.temperature}
         </label>
         <input
@@ -63,7 +63,7 @@ export function ModelSelector(): React.JSX.Element {
           onChange={(e) => updateSettings({ temperature: parseFloat(e.target.value) })}
           className="w-full"
         />
-        <div className="flex justify-between text-xs text-gray-400 mt-1">
+        <div className="mt-1 flex justify-between text-xs text-[var(--mm-text-tertiary)]">
           <span>精确</span>
           <span>创意</span>
         </div>
@@ -71,11 +71,11 @@ export function ModelSelector(): React.JSX.Element {
       
       {/* Max Tokens */}
       <div>
-        <label className="block text-sm text-gray-300 mb-2">最大 Token 数</label>
+        <label className="mb-2 block text-sm text-[var(--mm-text-secondary)]">最大 Token 数</label>
         <select
           value={settings.maxTokens}
           onChange={(e) => updateSettings({ maxTokens: parseInt(e.target.value) })}
-          className="w-full bg-gray-700 text-white rounded-lg px-3 py-2"
+          className="w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-[var(--mm-text-primary)]"
         >
           <option value="1024">1,024</option>
           <option value="2048">2,048</option>
@@ -87,9 +87,9 @@ export function ModelSelector(): React.JSX.Element {
       
       {/* 当前模型信息 */}
       {selectedModel && (
-        <div className="bg-gray-700 rounded-lg p-3">
-          <div className="text-sm text-gray-300">
-            <div className="font-medium text-white mb-1">当前模型：{selectedModel.name}</div>
+        <div className="rounded-lg bg-[var(--mm-bg-panel)] p-3">
+          <div className="text-sm text-[var(--mm-text-secondary)]">
+            <div className="mb-1 font-medium text-[var(--mm-text-primary)]">当前模型：{selectedModel.name}</div>
             <div>服务商：{selectedModel.providerName || selectedModel.provider}</div>
             {selectedModel.maxTokens && <div>最大 Token：{selectedModel.maxTokens.toLocaleString()}</div>}
             <div>温度参数：{settings.temperature}</div>

@@ -136,7 +136,7 @@ export function MiniMaxCodeLayout({
 
                     {/* 左侧栏 */}
                     <aside
-                        className="flex shrink-0 flex-col border-r border-[#ededef] bg-[var(--mm-bg-sidebar)] animate-layout overflow-hidden"
+                        className="flex shrink-0 flex-col border-r border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] animate-layout overflow-hidden"
                         style={{ width: leftCollapsed ? 0 : "var(--mm-width-sidebar-left)", opacity: leftCollapsed ? 0 : 1 }}
                         data-mmcode-region="left"
                         aria-label="primary navigation"
