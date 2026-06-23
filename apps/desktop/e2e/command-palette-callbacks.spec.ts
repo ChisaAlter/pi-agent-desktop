@@ -179,7 +179,7 @@ test.describe('CommandPalette 3 callback (v1.0.16 fix)', () => {
         await palette.getByRole('option', { name: /切换 workspace/ }).click();
 
         await expect(palette.getByRole('status').filter({ hasText: '已切换到 palette-switch-target' })).toBeVisible({ timeout: 5000 });
-        await expect(page.getByText('工作区: palette-switch-target')).toBeVisible({ timeout: 5000 });
+        await expect(page.getByRole('button', { name: '切换工作区：palette-switch-target' }).first()).toBeVisible({ timeout: 5000 });
 
         const events = await app.evaluate(() => {
             const target = globalThis as typeof globalThis & {

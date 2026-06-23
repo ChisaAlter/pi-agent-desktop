@@ -168,26 +168,90 @@ export type LongHorizonToggle = { enabled: boolean };
 export interface LongHorizonSettings {
     enabled: boolean;
     defaultMode: AgentMode;
+    planMode: LongHorizonToggle;
+    composeMode: LongHorizonToggle;
     maxMode: LongHorizonToggle & {
         candidates?: number;
     };
-    memory: LongHorizonToggle;
+    memory: LongHorizonToggle & {
+        ccIndex?: boolean;
+        reconcileOnSearch?: boolean;
+        searchScoreFloor?: number;
+    };
+    history: LongHorizonToggle;
     checkpoint: LongHorizonToggle;
     goal: LongHorizonToggle;
     subagents: LongHorizonToggle;
+    task: LongHorizonToggle;
+    actor: LongHorizonToggle;
+    workflow: LongHorizonToggle & {
+        maxConcurrentAgents?: number;
+        maxLifecycleAgents?: number;
+        maxDepth?: number;
+    };
+    dream: LongHorizonToggle;
+    distill: LongHorizonToggle;
     composeWorkflow: LongHorizonToggle;
 }
 
 export const DEFAULT_LONG_HORIZON_SETTINGS: LongHorizonSettings = {
     enabled: true,
     defaultMode: "build",
+    planMode: { enabled: true },
+    composeMode: { enabled: true },
     maxMode: { enabled: true, candidates: 5 },
-    memory: { enabled: true },
+    memory: { enabled: true, ccIndex: false, reconcileOnSearch: true, searchScoreFloor: 0.15 },
+    history: { enabled: true },
     checkpoint: { enabled: true },
     goal: { enabled: true },
     subagents: { enabled: true },
+    task: { enabled: true },
+    actor: { enabled: true },
+    workflow: { enabled: false, maxConcurrentAgents: 4, maxLifecycleAgents: 100, maxDepth: 4 },
+    dream: { enabled: false },
+    distill: { enabled: false },
     composeWorkflow: { enabled: true },
 };
+
+export interface MiMoCodeRuntimeFeatureState {
+    primaryAgents: Array<{
+        id: string;
+        mode: "primary" | "subagent";
+        native: boolean;
+        description: string;
+        permissionProfile: string;
+    }>;
+    systemAgents: Array<{
+        id: string;
+        mode: "primary" | "subagent";
+        native: boolean;
+        description: string;
+        permissionProfile: string;
+    }>;
+    enabledToolIds: string[];
+    features: {
+        planMode: LongHorizonToggle;
+        composeMode: LongHorizonToggle;
+        maxMode: { enabled: boolean; candidates: number };
+        memory: { enabled: boolean; ccIndex: boolean; reconcileOnSearch: boolean; searchScoreFloor: number };
+        history: LongHorizonToggle;
+        checkpoint: LongHorizonToggle;
+        goal: LongHorizonToggle;
+        task: LongHorizonToggle;
+        actor: LongHorizonToggle;
+        subagents: LongHorizonToggle;
+        workflow: { enabled: boolean; maxConcurrentAgents: number; maxLifecycleAgents: number; maxDepth: number };
+        dream: LongHorizonToggle;
+        distill: LongHorizonToggle;
+    };
+}
+
+export interface LongHorizonMemorySearchInput {
+    workspaceId?: string;
+    sessionId?: string;
+    query: string;
+    limit?: number;
+}
 
 export type GoalStatus = "running" | "checking" | "satisfied" | "impossible" | "cleared";
 
@@ -838,6 +902,8 @@ export interface PiAPI {
 
     listSlashCommands(workspaceId: string, agentId?: string, mode?: AgentMode): Promise<PiSlashCommand[] | IpcError>;
     runBuiltinSlashCommand(input: RunBuiltinSlashCommandInput): Promise<SlashCommandRunResult | IpcError>;
+    runtimeFeatureState(): Promise<MiMoCodeRuntimeFeatureState | IpcError>;
+    memorySearch(input: LongHorizonMemorySearchInput): Promise<Array<Record<string, unknown>> | IpcError>;
 
     // Extension UI bridge
     permissionSetMode(mode: PermissionMode): Promise<void>;

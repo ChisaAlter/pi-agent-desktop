@@ -370,6 +370,29 @@ describe("ChatInput", () => {
     expect(screen.getByTestId("chat-input-reference-controls").className).toContain("shrink-0");
   });
 
+  it("floats the running status above the reference composer without taking input layout space", () => {
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    const runningStatus = screen.getByText(/任务运行中/).parentElement?.parentElement;
+
+    expect(runningStatus?.className).toContain("absolute");
+    expect(runningStatus?.className).toContain("bottom-full");
+    expect(screen.getByTestId("chat-input-reference-body").className).toContain("flex-1");
+    expect(screen.getByTestId("chat-input-reference-controls").className).toContain("shrink-0");
+  });
+
   it("focuses the composer when the app requests a new chat focus", async () => {
     render(
       <I18nProvider>

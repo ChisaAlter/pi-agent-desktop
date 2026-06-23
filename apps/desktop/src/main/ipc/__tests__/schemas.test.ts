@@ -64,14 +64,48 @@ describe("settingsSetSchema", () => {
             longHorizon: {
                 enabled: true,
                 defaultMode: "build",
+                planMode: { enabled: true },
+                composeMode: { enabled: true },
                 maxMode: { enabled: true, candidates: 5 },
+                memory: { enabled: true, ccIndex: false, reconcileOnSearch: true, searchScoreFloor: 0.15 },
+                history: { enabled: true },
+                checkpoint: { enabled: true },
+                goal: { enabled: true },
+                subagents: { enabled: true },
+                task: { enabled: true },
+                actor: { enabled: true },
+                workflow: { enabled: false, maxConcurrentAgents: 4, maxLifecycleAgents: 100, maxDepth: 4 },
+                dream: { enabled: false },
+                distill: { enabled: false },
+            },
+        }])).not.toThrow();
+    });
+
+    it("rejects invalid long-horizon budgets and unknown feature fields", () => {
+        expect(() => settingsSetSchema.parse([{
+            longHorizon: {
+                enabled: true,
+                defaultMode: "build",
+                maxMode: { enabled: true, candidates: 0 },
                 memory: { enabled: true },
                 checkpoint: { enabled: true },
                 goal: { enabled: true },
                 subagents: { enabled: true },
                 composeWorkflow: { enabled: true },
             },
-        }])).not.toThrow();
+        }])).toThrow(ZodError);
+        expect(() => settingsSetSchema.parse([{
+            longHorizon: {
+                enabled: true,
+                defaultMode: "build",
+                maxMode: { enabled: true, candidates: 5 },
+                memory: { enabled: true, secretBackdoor: true },
+                checkpoint: { enabled: true },
+                goal: { enabled: true },
+                subagents: { enabled: true },
+                composeWorkflow: { enabled: true },
+            },
+        }])).toThrow(ZodError);
     });
 
     it("rejects an empty object", () => {

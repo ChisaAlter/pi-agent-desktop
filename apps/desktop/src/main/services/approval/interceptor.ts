@@ -23,6 +23,11 @@ export interface ApprovalInterceptor {
     handleEvent: (event: PiEvent) => Promise<void>;
 }
 
+interface ToolCallArgs {
+    toolCallId: string;
+    args: Record<string, unknown>;
+}
+
 function asToolStart(e: PiEvent): PiToolExecutionStart | null {
     return e.type === "tool_execution_start" ? e : null;
 }
@@ -31,16 +36,23 @@ function asToolEnd(e: PiEvent): PiToolExecutionEnd | null {
 }
 
 export function createApprovalInterceptor(workspaceId: string, deps: InterceptorDeps): ApprovalInterceptor {
+    const announcedToolArgs = new Map<string, Record<string, unknown>>();
+
     return {
         async handleEvent(event: PiEvent) {
             if (!event || typeof event !== "object") return;
 
+            const announced = asToolCallArgs(event);
+            if (announced) announcedToolArgs.set(announced.toolCallId, announced.args);
+
             const start = asToolStart(event);
             if (start) {
-                const { toolName, args, toolCallId } = start;
+                const { toolName, toolCallId } = start;
                 if (!toolName) return;
+                const eventArgs = extractToolStartArgs(start);
+                const cachedArgs = announcedToolArgs.get(toolCallId);
                 const safeArgs: Record<string, unknown> =
-                    (args as Record<string, unknown> | undefined) ?? {};
+                    hasMeaningfulArgs(eventArgs) ? eventArgs : cachedArgs ?? eventArgs ?? {};
                 if (deps.getMode?.() === "plan" && !isPlanModeToolAllowed({
                     toolName,
                     args: safeArgs,
@@ -126,6 +138,82 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
             }
         },
     };
+}
+
+function asToolCallArgs(event: PiEvent): ToolCallArgs | null {
+    if (event.type !== "message_update") return null;
+    const eventRecord = event as unknown as Record<string, unknown>;
+    const payload = isRecord(eventRecord.assistantMessageEvent)
+        ? eventRecord.assistantMessageEvent
+        : eventRecord.subtype === "toolcall_start"
+            ? eventRecord
+            : null;
+    if (!payload) return null;
+    const payloadType = payload.type ?? payload.subtype;
+    if (payloadType !== "toolcall_start") return null;
+    if (typeof payload.toolCallId !== "string") return null;
+    const args = extractToolArgs(payload) ?? {};
+    return { toolCallId: payload.toolCallId, args };
+}
+
+function extractToolStartArgs(start: PiToolExecutionStart): Record<string, unknown> | undefined {
+    const startRecord = start as unknown as Record<string, unknown>;
+    for (const key of ["args", "input", "arguments", "parameters", "params", "toolInput", "tool_input"]) {
+        const args = extractToolArgs(startRecord[key]);
+        if (args) return args;
+    }
+    return undefined;
+}
+
+function extractToolArgs(value: unknown, depth = 0): Record<string, unknown> | undefined {
+    if (depth > 3) return undefined;
+    if (!value) return undefined;
+    if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return undefined;
+        try {
+            return extractToolArgs(JSON.parse(trimmed), depth + 1);
+        } catch {
+            return undefined;
+        }
+    }
+    if (!isRecord(value)) return undefined;
+
+    const record = value;
+    if (hasToolArgFields(record)) return record;
+
+    for (const key of ["args", "input", "arguments", "parameters", "params", "toolInput", "tool_input"]) {
+        const nested = extractToolArgs(record[key], depth + 1);
+        if (nested && (hasToolArgFields(nested) || Object.keys(nested).length > 0)) return nested;
+    }
+
+    return record;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasMeaningfulArgs(value: Record<string, unknown> | undefined): value is Record<string, unknown> {
+    return !!value && Object.keys(value).length > 0;
+}
+
+function hasToolArgFields(value: Record<string, unknown>): boolean {
+    return [
+        "command",
+        "cmd",
+        "script",
+        "file_path",
+        "path",
+        "filePath",
+        "relative_path",
+        "relativePath",
+        "content",
+        "old_string",
+        "oldString",
+        "new_string",
+        "newString",
+    ].some((key) => key in value);
 }
 
 /** 简单行 diff (M1 简版) */

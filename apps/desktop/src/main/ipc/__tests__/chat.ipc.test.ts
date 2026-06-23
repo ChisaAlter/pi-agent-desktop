@@ -398,4 +398,95 @@ describe("setupChatIpc", () => {
             keepInput: true,
         });
     });
+
+    it("returns MiMoCode runtime feature state from settings", async () => {
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+            getSettings: () => ({
+                longHorizon: {
+                    enabled: true,
+                    defaultMode: "build",
+                    planMode: { enabled: true },
+                    composeMode: { enabled: false },
+                    maxMode: { enabled: true, candidates: 2 },
+                    memory: { enabled: true, ccIndex: true, reconcileOnSearch: true, searchScoreFloor: 0.2 },
+                    history: { enabled: false },
+                    checkpoint: { enabled: true },
+                    goal: { enabled: true },
+                    subagents: { enabled: true },
+                    task: { enabled: true },
+                    actor: { enabled: true },
+                    workflow: { enabled: false, maxConcurrentAgents: 2, maxLifecycleAgents: 8, maxDepth: 3 },
+                    dream: { enabled: false },
+                    distill: { enabled: true },
+                    composeWorkflow: { enabled: false },
+                },
+            }) as any,
+        });
+
+        const handler = handlers.get("pi:runtime-feature-state");
+        const result = await handler?.({});
+
+        expect(result).toMatchObject({
+            primaryAgents: [
+                expect.objectContaining({ id: "build" }),
+                expect.objectContaining({ id: "plan" }),
+                expect.objectContaining({ id: "max" }),
+            ],
+            systemAgents: [
+                expect.objectContaining({ id: "checkpoint-writer" }),
+                expect.objectContaining({ id: "distill" }),
+            ],
+            enabledToolIds: expect.not.arrayContaining(["history", "workflow"]),
+            features: {
+                maxMode: { enabled: true, candidates: 2 },
+                memory: { enabled: true, ccIndex: true, searchScoreFloor: 0.2 },
+            },
+        });
+    });
+
+    it("searches long-horizon memory through typed IPC", async () => {
+        const search = vi.fn(() => [{ id: "m1", kind: "note", text: "goal judge memory", score: 1 }]);
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+            memoryService: { search } as any,
+            getSettings: () => ({
+                longHorizon: {
+                    enabled: true,
+                    defaultMode: "build",
+                    planMode: { enabled: true },
+                    composeMode: { enabled: true },
+                    maxMode: { enabled: true, candidates: 5 },
+                    memory: { enabled: true, ccIndex: false, reconcileOnSearch: true, searchScoreFloor: 0.15 },
+                    history: { enabled: true },
+                    checkpoint: { enabled: true },
+                    goal: { enabled: true },
+                    subagents: { enabled: true },
+                    task: { enabled: true },
+                    actor: { enabled: true },
+                    workflow: { enabled: false, maxConcurrentAgents: 4, maxLifecycleAgents: 100, maxDepth: 4 },
+                    dream: { enabled: false },
+                    distill: { enabled: false },
+                    composeWorkflow: { enabled: false },
+                },
+            }) as any,
+        });
+
+        const handler = handlers.get("pi:memory-search");
+        const result = await handler?.({}, { workspaceId: "ws_1", query: "goal judge", limit: 3 });
+
+        expect(search).toHaveBeenCalledWith("goal judge", {
+            workspaceId: "ws_1",
+            limit: 3,
+            includeHistoryFallback: true,
+            searchScoreFloor: 0.15,
+        });
+        expect(result).toEqual([expect.objectContaining({ id: "m1" })]);
+    });
 });

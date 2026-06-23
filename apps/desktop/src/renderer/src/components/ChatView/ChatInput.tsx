@@ -725,7 +725,7 @@ export function ChatInput({
           </div>
         ) : null}
         {isProcessing && (
-          <div className="flex items-center justify-between gap-2 rounded-t-[7px] bg-[var(--mm-bg-sidebar)] px-3 py-1.5 text-[11px]">
+          <div className="absolute bottom-full left-0 right-0 z-20 mb-1 flex items-center justify-between gap-2 rounded-[7px] border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-3 py-1.5 text-[11px] shadow-[0_8px_24px_rgba(15,23,42,0.12)]">
             <div className="flex min-w-0 items-center gap-2 text-[var(--mm-text-secondary)]">
               <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--mm-bg-active)]" aria-hidden />
               <span className="truncate">{runningLabel}</span>

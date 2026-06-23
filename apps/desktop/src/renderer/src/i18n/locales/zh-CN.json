@@ -357,7 +357,19 @@
       "maxMode": {
         "label": "Max Mode",
         "description": "实验增强模式：生成多个候选并由 judge 选优，不作为默认第四主模式。",
-        "candidates": "候选数"
+        "candidates": "Max 候选数"
+      },
+      "modes": {
+        "heading": "模式",
+        "description": "按 MiMoCode agent 配置拆分 Build、Plan、Compose 和 Max。"
+      },
+      "planMode": {
+        "label": "Plan Mode",
+        "description": "启用计划生成、计划执行切换和 planenter/planexit 对齐能力。"
+      },
+      "composeMode": {
+        "label": "Compose Mode",
+        "description": "启用多任务编排模式，并允许与 workflow/task registry 联动。"
       },
       "systems": {
         "heading": "子系统",
@@ -371,13 +383,46 @@
         "label": "持久记忆",
         "description": "保存项目、会话、任务进度和用户笔记，恢复上下文时检索注入。"
       },
+      "history": {
+        "label": "History 原始轨迹",
+        "description": "保留原始轨迹索引，记忆检索不足时作为 fallback。"
+      },
       "checkpoint": {
         "label": "Checkpoint",
         "description": "生成结构化 checkpoint，用于长上下文恢复和接近阈值时重建。"
       },
+      "task": {
+        "label": "Task Registry",
+        "description": "启用任务状态注册表，让长程任务可以恢复、查询和推进。"
+      },
+      "actor": {
+        "label": "Actor / Subagent",
+        "description": "启用 actor/subagent 注册表，用于长期任务分工和子代理状态跟踪。"
+      },
       "subagents": {
         "label": "系统 Subagents",
         "description": "启用 checkpoint-writer、dream、distill 等系统 agent 适配能力。"
+      },
+      "ccIndex": {
+        "label": "Claude Code 记忆索引",
+        "description": "索引 Claude/Codex 历史记忆以参与 BM25 检索；涉及隐私，默认关闭。"
+      },
+      "workflow": {
+        "label": "Dynamic Workflow",
+        "description": "启用 MiMoCode workflow sandbox/runtime；高并发和高成本，默认关闭。",
+        "maxConcurrentAgents": "Workflow 并发上限"
+      },
+      "background": {
+        "heading": "后台整理",
+        "description": "这些功能会在后台总结、沉淀和整理长期上下文。"
+      },
+      "dream": {
+        "label": "Dream 后台整理",
+        "description": "启用 dream 系统 agent，对项目和对话做后台整理。"
+      },
+      "distill": {
+        "label": "Distill 技能沉淀",
+        "description": "启用 distill 系统 agent，将重复经验沉淀为可复用技能。"
       },
       "composeWorkflow": {
         "label": "Compose Workflow",

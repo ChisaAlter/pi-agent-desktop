@@ -1,18 +1,15 @@
-// src/types.ts
-
 export interface Todo {
-  id: string;
+  id: number;
   title: string;
   completed: boolean;
   createdAt: Date;
-  updatedAt: Date;
 }
 
-export interface CreateTodoDTO {
+export interface CreateTodoDto {
   title: string;
 }
 
-export interface UpdateTodoDTO {
+export interface UpdateTodoDto {
   title?: string;
   completed?: boolean;
 }

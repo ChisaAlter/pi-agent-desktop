@@ -359,7 +359,19 @@
       "maxMode": {
         "label": "Max Mode",
         "description": "Experimental mode: generate multiple candidates and let a judge pick the best path. It is not a default fourth primary mode.",
-        "candidates": "Candidates"
+        "candidates": "Max candidates"
+      },
+      "modes": {
+        "heading": "Modes",
+        "description": "Expose Build, Plan, Compose, and Max as separate MiMoCode agent capabilities."
+      },
+      "planMode": {
+        "label": "Plan Mode",
+        "description": "Enable plan generation, plan execution switching, and planenter/planexit alignment."
+      },
+      "composeMode": {
+        "label": "Compose Mode",
+        "description": "Enable multi-task composition and workflow/task registry linkage."
       },
       "systems": {
         "heading": "Subsystems",
@@ -373,13 +385,46 @@
         "label": "Persistent memory",
         "description": "Store project, session, task progress, and notes for retrieval during context rebuild."
       },
+      "history": {
+        "label": "History raw trajectory",
+        "description": "Keep raw trajectory indexing as a fallback when memory search is insufficient."
+      },
       "checkpoint": {
         "label": "Checkpoint",
         "description": "Write structured checkpoints for long-context recovery and threshold rebuilds."
       },
+      "task": {
+        "label": "Task Registry",
+        "description": "Enable a recoverable task-state registry for long-horizon work."
+      },
+      "actor": {
+        "label": "Actor / Subagent",
+        "description": "Enable actor/subagent registry state for delegated long-running work."
+      },
       "subagents": {
         "label": "System subagents",
         "description": "Enable adapted checkpoint-writer, dream, and distill system agents."
+      },
+      "ccIndex": {
+        "label": "Claude Code memory index",
+        "description": "Index Claude/Codex memory for BM25 retrieval. Privacy-sensitive, disabled by default."
+      },
+      "workflow": {
+        "label": "Dynamic Workflow",
+        "description": "Enable the MiMoCode workflow sandbox/runtime. High concurrency and cost, disabled by default.",
+        "maxConcurrentAgents": "Workflow concurrency"
+      },
+      "background": {
+        "heading": "Background organization",
+        "description": "These features summarize and distill long-running context in the background."
+      },
+      "dream": {
+        "label": "Dream background organization",
+        "description": "Enable the dream system agent for background project and conversation organization."
+      },
+      "distill": {
+        "label": "Distill skill synthesis",
+        "description": "Enable the distill system agent to convert repeated patterns into reusable skills."
       },
       "composeWorkflow": {
         "label": "Compose workflow",

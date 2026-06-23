@@ -1165,8 +1165,12 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             }
             promptInFlightRef.current = false;
         } catch (err) {
-            setError(String(err));
-            addToast(String(err), "error");
+            const message = String(err);
+            const displayMessage = /Request was aborted/i.test(message) && lastProviderErrorRef.current
+                ? lastProviderErrorRef.current
+                : message;
+            setError(displayMessage);
+            addToast(displayMessage, "error");
             setIsStreaming(false);
             isStreamingRef.current = false;
             promptInFlightRef.current = false;

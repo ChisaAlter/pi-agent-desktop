@@ -36,6 +36,28 @@ function resultMessage(value: unknown): string | null {
 }
 
 let searchSeq = 0;
+const PACKAGE_QUERY_TIMEOUT_MS = 25_000;
+
+class PiPackageTimeoutError extends Error {
+  constructor(label: string) {
+    super(`${label} timed out`);
+    this.name = "PiPackageTimeoutError";
+  }
+}
+
+function withTimeout<T>(promise: Promise<T> | undefined, label: string): Promise<T | undefined> {
+  if (!promise) return Promise.resolve(undefined);
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) => {
+      globalThis.setTimeout(() => reject(new PiPackageTimeoutError(label)), PACKAGE_QUERY_TIMEOUT_MS);
+    }),
+  ]);
+}
+
+function isPackageTimeout(error: unknown): boolean {
+  return error instanceof PiPackageTimeoutError;
+}
 
 export const usePiPackagesStore = create<PiPackagesState>((set, get) => ({
   query: "",
@@ -56,7 +78,7 @@ export const usePiPackagesStore = create<PiPackagesState>((set, get) => ({
     const query = get().query;
     set({ loading: true, error: null, retryAction: null, lastFailedAction: null });
     try {
-      const response = await window.piAPI?.packagesSearch(query);
+      const response = await withTimeout(window.piAPI?.packagesSearch(query), "packages:search");
       if (requestId !== searchSeq) return;
       const message = resultMessage(response);
       if (message) {
@@ -66,6 +88,10 @@ export const usePiPackagesStore = create<PiPackagesState>((set, get) => ({
       set({ results: Array.isArray(response) ? response : [], loading: false });
     } catch (err) {
       if (requestId !== searchSeq) return;
+      if (isPackageTimeout(err)) {
+        set({ results: [], loading: false });
+        return;
+      }
       set({ error: err instanceof Error ? err.message : String(err), loading: false, retryAction: get().search, lastFailedAction: { kind: "search", label: "搜索" } });
     }
   },
@@ -73,7 +99,7 @@ export const usePiPackagesStore = create<PiPackagesState>((set, get) => ({
   refreshCatalog: async () => {
     set({ loading: true, error: null, retryAction: null, lastFailedAction: null });
     try {
-      const response = await window.piAPI?.packagesRefreshCatalog();
+      const response = await withTimeout(window.piAPI?.packagesRefreshCatalog(), "packages:refresh-catalog");
       const message = resultMessage(response);
       if (message) {
         set({ error: message, loading: false, retryAction: get().refreshCatalog, lastFailedAction: { kind: "refresh", label: "刷新目录" } });
@@ -81,6 +107,10 @@ export const usePiPackagesStore = create<PiPackagesState>((set, get) => ({
       }
       set({ results: Array.isArray(response) ? response : [], loading: false });
     } catch (err) {
+      if (isPackageTimeout(err)) {
+        set({ results: [], loading: false });
+        return;
+      }
       set({ error: err instanceof Error ? err.message : String(err), loading: false, retryAction: get().refreshCatalog, lastFailedAction: { kind: "refresh", label: "刷新目录" } });
     }
   },
@@ -88,7 +118,7 @@ export const usePiPackagesStore = create<PiPackagesState>((set, get) => ({
   refreshInstalled: async () => {
     set({ installedLoading: true, error: null, retryAction: null, lastFailedAction: null });
     try {
-      const response = await window.piAPI?.packagesListInstalled();
+      const response = await withTimeout(window.piAPI?.packagesListInstalled(), "packages:list-installed");
       const message = resultMessage(response);
       if (message) {
         set({ error: message, installedLoading: false, retryAction: get().refreshInstalled, lastFailedAction: { kind: "refresh-installed", label: "刷新已安装列表" } });
@@ -97,6 +127,10 @@ export const usePiPackagesStore = create<PiPackagesState>((set, get) => ({
       }
       set({ installed: Array.isArray(response) ? response : [], installedLoading: false });
     } catch (err) {
+      if (isPackageTimeout(err)) {
+        set({ installed: [], installedLoading: false });
+        return;
+      }
       set({ error: err instanceof Error ? err.message : String(err), installedLoading: false, retryAction: get().refreshInstalled, lastFailedAction: { kind: "refresh-installed", label: "刷新已安装列表" } });
     }
   },

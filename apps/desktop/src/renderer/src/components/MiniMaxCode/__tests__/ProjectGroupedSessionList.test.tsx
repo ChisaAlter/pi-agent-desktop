@@ -33,7 +33,7 @@ beforeEach(() => {
 });
 
 describe("ProjectGroupedSessionList", () => {
-  it("keeps project session actions floating over the title layer", () => {
+  it("keeps project session actions floating over the row without reserving text space", () => {
     const longTitle = "了解一下这个项目并检查所有关键入口";
     useSessionStore.setState({
       sessions: [makeSession({ id: "s_long", title: longTitle, workspaceId: "w1" })],
@@ -52,8 +52,36 @@ describe("ProjectGroupedSessionList", () => {
 
     const titleButton = screen.getByRole("button", { name: longTitle });
     const actions = container.querySelector('[data-session-actions="s_long"]');
-    expect(titleButton.className).toContain("pr-16");
+    expect(titleButton.className).toContain("pr-0");
     expect(actions?.className ?? "").toContain("absolute");
+    expect(actions?.className ?? "").toContain("right-1");
+    expect(actions?.querySelector("button")?.className ?? "").toContain("pointer-events-none");
+    expect(actions?.querySelector("button")?.className ?? "").toContain("group-hover:pointer-events-auto");
+  });
+
+  it("marks the selected project session with shadow instead of reordering by lastOpenedAt", () => {
+    useSessionStore.setState({
+      sessions: [
+        makeSession({ id: "older", title: "较早项目", workspaceId: "w1", updatedAt: new Date("2026-06-01T00:00:00.000Z"), lastOpenedAt: new Date("2026-06-23T00:00:00.000Z") }),
+        makeSession({ id: "newer", title: "较新项目", workspaceId: "w1", updatedAt: new Date("2026-06-22T00:00:00.000Z") }),
+      ],
+    });
+
+    renderWithI18n(
+      <ProjectGroupedSessionList
+        currentWorkspaceId="w1"
+        currentSessionId="older"
+        onSelectSession={() => undefined}
+        onArchiveSession={() => undefined}
+        onDeleteSession={() => undefined}
+        onSwitchWorkspace={() => undefined}
+      />,
+    );
+
+    const sessionButtons = screen.getAllByRole("button")
+      .filter((button) => ["较新项目", "较早项目"].includes(button.getAttribute("aria-label") ?? ""));
+    expect(sessionButtons.map((button) => button.textContent)).toEqual(["较新项目", "较早项目"]);
+    expect(screen.getByRole("button", { name: "较早项目" }).className).toContain("shadow-");
   });
 
   it("does not render relative time in project session rows", () => {

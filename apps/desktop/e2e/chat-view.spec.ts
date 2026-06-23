@@ -22,6 +22,8 @@ async function stubPromptIpc(app: ElectronApplication): Promise<void> {
     await app.evaluate(({ ipcMain }) => {
         ipcMain.removeHandler('pi:send');
         ipcMain.handle('pi:send', async () => undefined);
+        ipcMain.removeHandler('agents:prompt');
+        ipcMain.handle('agents:prompt', async () => undefined);
     });
 }
 
@@ -37,9 +39,13 @@ async function emitPiEvents(app: ElectronApplication, events: Array<Record<strin
 }
 
 async function emitCurrentAgentEvents(page: Page, app: ElectronApplication, events: Array<Record<string, unknown>>): Promise<void> {
+    await page.waitForFunction(
+        async () => (await window.piAPI.agentsList()).some((agent) => agent.sessionId),
+        { timeout: 10_000 },
+    );
     const agent = await page.evaluate(async () => {
         const agents = await window.piAPI.agentsList();
-        return agents[0] ?? null;
+        return agents.find((item) => item.sessionId) ?? agents[0] ?? null;
     });
     if (!agent) throw new Error('No agent available for agents:event injection');
     await app.evaluate(({ BrowserWindow }, payload) => {
@@ -54,6 +60,14 @@ async function emitCurrentAgentEvents(page: Page, app: ElectronApplication, even
             });
         }
     }, { agent, events });
+}
+
+async function expectProgressRailAvailable(page: Page): Promise<void> {
+    const progressHeading = page.getByRole('heading', { name: '进度' });
+    if (await progressHeading.isVisible().catch(() => false)) return;
+
+    await page.getByRole('button', { name: '展开右侧栏' }).click();
+    await expect(progressHeading).toBeVisible({ timeout: 5_000 });
 }
 
 async function enablePlanMode(page: Page): Promise<void> {
@@ -176,7 +190,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
 
         // 运行中允许继续输入追加指令；发布级 smoke 只验证消息入栈和进度区出现。
         await expect(textarea).toBeEnabled({ timeout: 5_000 });
-        await expect(page.getByRole('heading', { name: '进度' })).toBeVisible();
+        await expectProgressRailAvailable(page);
     });
 
     test('provider message_end errors stay visible in the chat instead of generic empty-output errors', async () => {

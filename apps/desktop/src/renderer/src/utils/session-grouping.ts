@@ -26,7 +26,7 @@ export function sessionDepth(session: Session, byId: Map<string, Session>): numb
 }
 
 export function sessionActivityTime(session: Session): Date {
-  return session.lastOpenedAt ?? session.updatedAt ?? session.createdAt;
+  return session.updatedAt ?? session.createdAt;
 }
 
 export function sortSessionsByActivity(sessions: Session[], byId: Map<string, Session>): Session[] {

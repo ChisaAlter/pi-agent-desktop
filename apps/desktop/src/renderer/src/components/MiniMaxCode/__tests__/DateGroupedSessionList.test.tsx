@@ -186,7 +186,7 @@ describe("DateGroupedSessionList", () => {
         expect(onSelect).toHaveBeenCalledWith("s1");
     });
 
-    it("会话操作按钮浮在标题层上方且不挤占标题宽度", () => {
+    it("会话操作按钮悬浮覆盖且标题不为按钮预留右侧空隙", () => {
         const longTitle = "了解一下这个项目并检查所有关键入口";
         useSessionStore.setState({
             sessions: [makeSession({ id: "s_long", title: longTitle, updatedAt: new Date() })],
@@ -203,9 +203,11 @@ describe("DateGroupedSessionList", () => {
 
         const titleButton = screen.getByRole("button", { name: longTitle });
         const actions = container.querySelector('[data-session-actions="s_long"]');
-        expect(titleButton.className).toContain("pr-16");
+        expect(titleButton.className).toContain("pr-0");
         expect(actions?.className ?? "").toContain("absolute");
         expect(actions?.className ?? "").toContain("right-1");
+        expect(actions?.querySelector("button")?.className ?? "").toContain("pointer-events-none");
+        expect(actions?.querySelector("button")?.className ?? "").toContain("group-hover:pointer-events-auto");
     });
 
     it("会话行不显示相对时间", () => {
@@ -265,6 +267,29 @@ describe("DateGroupedSessionList", () => {
         );
 
         expect(screen.getByRole("button", { name: "s1" }).getAttribute("aria-current")).toBe("page");
+        expect(screen.getByRole("button", { name: "s1" }).className).toContain("shadow-");
+    });
+
+    it("选择会话不会因为 lastOpenedAt 更新而重排列表", () => {
+        useSessionStore.setState({
+            sessions: [
+                makeSession({ id: "older", title: "较早更新", updatedAt: new Date(Date.now() - 120_000), lastOpenedAt: new Date() }),
+                makeSession({ id: "newer", title: "较新更新", updatedAt: new Date(Date.now() - 60_000) }),
+            ],
+        });
+
+        renderWithI18n(
+            <DateGroupedSessionList
+                currentSessionId="older"
+                onSelectSession={() => undefined}
+                onArchiveSession={() => undefined}
+                onDeleteSession={() => undefined}
+            />,
+        );
+
+        const sessionButtons = screen.getAllByRole("button")
+            .filter((button) => ["较新更新", "较早更新"].includes(button.getAttribute("aria-label") ?? ""));
+        expect(sessionButtons.map((button) => button.textContent)).toEqual(["较新更新", "较早更新"]);
     });
 
     it("归档会话不显示在活跃列表中", () => {

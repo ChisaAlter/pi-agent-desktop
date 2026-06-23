@@ -133,6 +133,33 @@ describe("SettingsPanel 配置中心", () => {
         expect(screen.queryByRole("tab", { name: "Pi Agent" })).toBeNull();
     });
 
+    it("长程能力页展示 MiMoCode 源码迁移的完整开关矩阵", async () => {
+        renderSettings();
+
+        fireEvent.click(screen.getByRole("tab", { name: "长程能力" }));
+
+        expect(await screen.findByRole("tabpanel", { name: "长程能力" })).toBeTruthy();
+        for (const label of [
+            "Plan Mode",
+            "Compose Mode",
+            "Max Mode",
+            "Goal / 停止条件",
+            "持久记忆",
+            "History 原始轨迹",
+            "Checkpoint",
+            "Task Registry",
+            "Actor / Subagent",
+            "Dynamic Workflow",
+            "Dream 后台整理",
+            "Distill 技能沉淀",
+            "Claude Code 记忆索引",
+        ]) {
+            expect(screen.getByText(label)).toBeTruthy();
+        }
+        expect(screen.getByLabelText("Max 候选数")).toBeTruthy();
+        expect(screen.getByLabelText("Workflow 并发上限")).toBeTruthy();
+    });
+
     it("用量页展示 Token 统计、图表和悬浮详情", async () => {
         const baseSession = {
             workspaceId: "ws-main",

@@ -29,7 +29,13 @@ interface AgentRuntimeRegistryDeps {
     agentDir?: string;
     getSettings?: () => AppSettings;
     getPiAgentConfig?: () => PiAgentConfig | null;
-    getModeOptions?: () => { longHorizonEnabled: boolean; maxModeEnabled: boolean; maxCandidates?: number };
+    getModeOptions?: () => {
+        longHorizonEnabled: boolean;
+        planModeEnabled?: boolean;
+        composeModeEnabled?: boolean;
+        maxModeEnabled: boolean;
+        maxCandidates?: number;
+    };
     maxModeService?: Pick<MaxModeService, "run">;
 }
 
@@ -101,7 +107,7 @@ export class AgentRuntimeRegistry {
         const modeOptions = this.deps.getModeOptions?.();
         const mode = normalizeAgentMode(input.mode, modeOptions);
         runtime.mode = mode;
-        this.addMessage(runtime, "user", text, { mode });
+        this.addMessage(runtime, "user", visibleUserPromptContent(text), { mode });
         const outbound = buildAgentModePrompt(mode, text, modeOptions);
         if (mode === "max") {
             const maxModeService = this.deps.maxModeService ?? this.createDefaultMaxModeService(runtime, modeOptions?.maxCandidates);
@@ -288,7 +294,7 @@ export class AgentRuntimeRegistry {
         const interceptor = createApprovalInterceptor(runtime.workspace.id, {
             abort: () => runtime.session.session.abort(),
             pendingEdits: this.deps.pendingEdits,
-            send: (channel, _workspaceId, payload) => this.deps.send(channel, payload),
+            send: (channel, workspaceId, payload) => this.sendInterceptorPayload(runtime, channel, workspaceId, payload),
             workspacePath: runtime.workspace.path,
             getMode: () => runtime.mode,
         });
@@ -314,6 +320,10 @@ export class AgentRuntimeRegistry {
             runtime.tab.status = "running";
             runtime.isStreaming = true;
         }
+        if (event.type === "extension_error") {
+            runtime.tab.status = "error";
+            runtime.isStreaming = false;
+        }
         if (event.type === "agent_end" || event.type === "turn_end") {
             runtime.tab.status = "idle";
             runtime.isStreaming = false;
@@ -326,6 +336,23 @@ export class AgentRuntimeRegistry {
             });
         }
         this.emitState();
+    }
+
+    private sendInterceptorPayload(
+        runtime: AgentRuntime,
+        channel: string,
+        workspaceId: string,
+        payload: unknown,
+    ): void {
+        if (channel === "pi:event") {
+            this.deps.send("agents:event", {
+                agentId: runtime.tab.id,
+                workspaceId,
+                event: payload,
+            });
+            return;
+        }
+        this.deps.send(channel, payload);
     }
 
     private addMessage(
@@ -406,6 +433,22 @@ function collectDynamicSlashCommands(session: WorkspaceSession["session"]): PiSl
         });
     }
     return commands;
+}
+
+function visibleUserPromptContent(content: string): string {
+    const text = content.trim();
+    if (!text.startsWith("/plan")) return content;
+    const supplement = extractPlanSection(text, "补充目标");
+    if (supplement) return supplement;
+    const request = extractPlanSection(text, "用户请求");
+    if (request) return request;
+    const original = extractPlanSection(text, "原始请求");
+    return original || text.replace(/^\/plan(?:\r?\n|\s+)?/i, "").trim() || content;
+}
+
+function extractPlanSection(text: string, label: "用户请求" | "原始请求" | "补充目标"): string {
+    const pattern = new RegExp(`${label}:\\s*([\\s\\S]*?)(?:\\n\\s*(?:用户请求|要求|原始请求|补充目标):|$)`);
+    return pattern.exec(text)?.[1]?.trim() ?? "";
 }
 
 function textDeltaFromEvent(rawEvent: unknown): string {

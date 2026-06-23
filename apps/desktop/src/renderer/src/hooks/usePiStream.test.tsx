@@ -39,6 +39,7 @@ function AgentHookStateHost() {
     const state = usePiStream("agent_1");
     return (
         <div>
+            <div data-testid="agent-stream-error">{state.error ?? ""}</div>
             <button type="button" onClick={() => void state.startStreaming("ws1", "agent follow up")}>
                 send-agent-follow-up
             </button>
@@ -85,7 +86,8 @@ function PlanHookStateHost() {
 beforeEach(() => {
     emitPiEvent = null;
     sendPrompt.mockClear();
-    agentsPrompt.mockClear();
+    agentsPrompt.mockReset();
+    agentsPrompt.mockResolvedValue(undefined);
     planSetEnabled.mockClear();
     stopPrompt.mockReset();
     stopPrompt.mockResolvedValue(undefined);
@@ -436,6 +438,23 @@ describe("usePiStream", () => {
 
         expect(screen.getByTestId("stream-error").textContent).toContain("Plan 模式禁止执行 write");
         expect(screen.getByTestId("stream-error").textContent).not.toContain("Request was aborted");
+    });
+
+    it("keeps a specific agent extension error when agentsPrompt rejects with abort", async () => {
+        agentsPrompt.mockImplementationOnce(async () => {
+            emitPiEvent?.({ type: "extension_error", message: "Plan 模式禁止执行 bash" } as PiEvent);
+            throw new Error("Request was aborted.");
+        });
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            screen.getByText("send-agent-follow-up").click();
+        });
+
+        expect(screen.getByTestId("agent-stream-error").textContent).toContain("Plan 模式禁止执行 bash");
+        expect(screen.getByTestId("agent-stream-error").textContent).not.toContain("Request was aborted");
     });
 
     it("shows stop IPC fallback instead of silently swallowing it", async () => {

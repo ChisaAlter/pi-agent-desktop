@@ -135,7 +135,7 @@ describe("SessionCenter", () => {
     expect(screen.getByText(/分支自 Fix source control/)).toBeTruthy();
   });
 
-  it("sorts sessions by last opened time before updated time", () => {
+  it("sorts sessions by updated time without promoting the selected last-opened session", () => {
     useSessionStore.setState({
       sessions: [
         {
@@ -165,7 +165,7 @@ describe("SessionCenter", () => {
     );
 
     const titles = screen.getAllByRole("textbox", { name: /重命名会话/ }).map((input) => (input as HTMLInputElement).value);
-    expect(titles).toEqual(["Recently opened task", "Recently edited task"]);
+    expect(titles).toEqual(["Recently edited task", "Recently opened task"]);
   });
 
   it("keeps sessions visible when their workspace is missing", () => {

@@ -28,14 +28,30 @@ const longHorizonSchema = z
     .object({
         enabled: z.boolean(),
         defaultMode: agentModeSchema,
+        planMode: longHorizonToggleSchema,
+        composeMode: longHorizonToggleSchema,
         maxMode: longHorizonToggleSchema.extend({
             candidates: z.number().int().min(1).max(20).optional(),
         }),
-        memory: longHorizonToggleSchema,
+        memory: longHorizonToggleSchema.extend({
+            ccIndex: z.boolean().optional(),
+            reconcileOnSearch: z.boolean().optional(),
+            searchScoreFloor: z.number().min(0).max(1).optional(),
+        }),
+        history: longHorizonToggleSchema,
         checkpoint: longHorizonToggleSchema,
         goal: longHorizonToggleSchema,
         subagents: longHorizonToggleSchema,
-        composeWorkflow: longHorizonToggleSchema,
+        task: longHorizonToggleSchema,
+        actor: longHorizonToggleSchema,
+        workflow: longHorizonToggleSchema.extend({
+            maxConcurrentAgents: z.number().int().min(1).max(64).optional(),
+            maxLifecycleAgents: z.number().int().min(1).max(1000).optional(),
+            maxDepth: z.number().int().min(1).max(16).optional(),
+        }),
+        dream: longHorizonToggleSchema,
+        distill: longHorizonToggleSchema,
+        composeWorkflow: longHorizonToggleSchema.optional(),
     })
     .strict();
 

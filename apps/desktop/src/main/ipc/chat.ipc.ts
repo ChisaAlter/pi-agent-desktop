@@ -7,7 +7,7 @@ import { execFileSync } from "child_process";
 import { rmSync } from "fs";
 import { isAbsolute, join, relative, resolve } from "path";
 import log from "electron-log/main";
-import { ipcError } from "@shared";
+import { DEFAULT_LONG_HORIZON_SETTINGS, ipcError } from "@shared";
 import { WorkspaceRegistry } from "../services/pi-session/registry";
 import type { IpcSender } from "../services/pi-session/event-bridge";
 import { PendingEdits } from "../services/approval/pending-edits";
@@ -35,6 +35,7 @@ import type { MemoryService } from "../services/long-horizon/memory-service";
 import { getProtectedPathReason } from "../services/protected-paths";
 import { gitUndoSchema } from "./schemas";
 import { buildAgentModePrompt, composeSlashCommands, goalSlashCommands, normalizeAgentMode } from "../services/agent-modes";
+import { buildMiMoCodeRuntimePort } from "../services/mimocode-runtime-port";
 
 interface WorkspaceLite {
     id: string;
@@ -229,25 +230,39 @@ function slashInfo(command: string, message: string, extra: Partial<SlashCommand
 }
 
 function longHorizonSettings(settings?: AppSettings): NonNullable<AppSettings["longHorizon"]> {
+    const current = settings?.longHorizon;
+    const workflow = current?.workflow ?? current?.composeWorkflow;
     return {
-        enabled: settings?.longHorizon?.enabled ?? true,
-        defaultMode: settings?.longHorizon?.defaultMode ?? "build",
-        maxMode: {
-            enabled: settings?.longHorizon?.maxMode?.enabled ?? true,
-            candidates: settings?.longHorizon?.maxMode?.candidates ?? 5,
-        },
-        memory: { enabled: settings?.longHorizon?.memory?.enabled ?? true },
-        checkpoint: { enabled: settings?.longHorizon?.checkpoint?.enabled ?? true },
-        goal: { enabled: settings?.longHorizon?.goal?.enabled ?? true },
-        subagents: { enabled: settings?.longHorizon?.subagents?.enabled ?? true },
-        composeWorkflow: { enabled: settings?.longHorizon?.composeWorkflow?.enabled ?? true },
+        ...DEFAULT_LONG_HORIZON_SETTINGS,
+        ...current,
+        planMode: { ...DEFAULT_LONG_HORIZON_SETTINGS.planMode, ...current?.planMode },
+        composeMode: { ...DEFAULT_LONG_HORIZON_SETTINGS.composeMode, ...current?.composeMode },
+        maxMode: { ...DEFAULT_LONG_HORIZON_SETTINGS.maxMode, ...current?.maxMode },
+        memory: { ...DEFAULT_LONG_HORIZON_SETTINGS.memory, ...current?.memory },
+        history: { ...DEFAULT_LONG_HORIZON_SETTINGS.history, ...current?.history },
+        checkpoint: { ...DEFAULT_LONG_HORIZON_SETTINGS.checkpoint, ...current?.checkpoint },
+        goal: { ...DEFAULT_LONG_HORIZON_SETTINGS.goal, ...current?.goal },
+        subagents: { ...DEFAULT_LONG_HORIZON_SETTINGS.subagents, ...current?.subagents },
+        task: { ...DEFAULT_LONG_HORIZON_SETTINGS.task, ...current?.task },
+        actor: { ...DEFAULT_LONG_HORIZON_SETTINGS.actor, ...current?.actor },
+        workflow: { ...DEFAULT_LONG_HORIZON_SETTINGS.workflow, ...workflow },
+        dream: { ...DEFAULT_LONG_HORIZON_SETTINGS.dream, ...current?.dream },
+        distill: { ...DEFAULT_LONG_HORIZON_SETTINGS.distill, ...current?.distill },
+        composeWorkflow: { ...DEFAULT_LONG_HORIZON_SETTINGS.composeWorkflow, ...current?.composeWorkflow },
     };
 }
 
-function modeOptions(settings?: AppSettings): { longHorizonEnabled: boolean; maxModeEnabled: boolean } {
+function modeOptions(settings?: AppSettings): {
+    longHorizonEnabled: boolean;
+    planModeEnabled: boolean;
+    composeModeEnabled: boolean;
+    maxModeEnabled: boolean;
+} {
     const longHorizon = longHorizonSettings(settings);
     return {
         longHorizonEnabled: longHorizon.enabled,
+        planModeEnabled: longHorizon.planMode.enabled,
+        composeModeEnabled: longHorizon.composeMode.enabled,
         maxModeEnabled: longHorizon.maxMode.enabled,
     };
 }
@@ -339,6 +354,29 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             return ipcError("ipcErrors.chat.workspaceNotFound", `Workspace not found: ${workspaceId}`, { id: workspaceId });
         }
         return deps.goalService?.get(ws.id, agentId) ?? null;
+    });
+
+    ipcMain.handle("pi:runtime-feature-state", async () => (
+        buildMiMoCodeRuntimePort(longHorizonSettings(deps.getSettings?.()))
+    ));
+
+    ipcMain.handle("pi:memory-search", async (_event, input: {
+        workspaceId?: string;
+        sessionId?: string;
+        query?: string;
+        limit?: number;
+    }) => {
+        const longHorizon = longHorizonSettings(deps.getSettings?.());
+        if (!longHorizon.enabled || !longHorizon.memory.enabled || !deps.memoryService) return [];
+        const query = typeof input?.query === "string" ? input.query.trim() : "";
+        if (!query) return [];
+        return deps.memoryService.search(query, {
+            workspaceId: input.workspaceId,
+            sessionId: input.sessionId,
+            limit: input.limit,
+            includeHistoryFallback: longHorizon.history.enabled,
+            searchScoreFloor: longHorizon.memory.searchScoreFloor,
+        });
     });
 
     ipcMain.on("plan:respond", (_event, requestId: string, decision: string, text?: string) => {

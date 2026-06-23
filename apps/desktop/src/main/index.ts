@@ -106,6 +106,8 @@ const getLongHorizonModeOptions = () => {
   const longHorizon = store.get('settings').longHorizon ?? DEFAULT_LONG_HORIZON_SETTINGS;
   return {
     longHorizonEnabled: longHorizon.enabled,
+    planModeEnabled: longHorizon.planMode.enabled,
+    composeModeEnabled: longHorizon.composeMode.enabled,
     maxModeEnabled: longHorizon.maxMode.enabled,
     maxCandidates: longHorizon.maxMode.candidates,
   };

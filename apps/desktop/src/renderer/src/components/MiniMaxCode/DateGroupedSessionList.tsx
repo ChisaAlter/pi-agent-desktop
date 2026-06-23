@@ -36,7 +36,7 @@ function SmallActionButton({
         event.stopPropagation();
         onClick();
       }}
-      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--mm-text-tertiary)] opacity-0 transition hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:opacity-100 group-hover:opacity-100"
+      className="pointer-events-none flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[var(--mm-text-tertiary)] opacity-0 transition hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:pointer-events-auto focus:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
     >
       {children}
     </button>
@@ -91,10 +91,10 @@ function SessionRow({
   const [confirming, setConfirming] = useState(false);
   const title = session.title || t("sidebar.sessions.unnamed");
   const baseClasses =
-    "flex w-full items-center gap-2 rounded-[var(--mm-radius-sm)] py-0 pr-16 text-[13px] leading-relaxed transition-colors focus:outline-none";
+    "flex w-full items-center gap-2 rounded-[var(--mm-radius-sm)] py-0 pr-0 text-[13px] leading-relaxed transition-[background-color,color,box-shadow] focus:outline-none";
   const stateClasses = active
-    ? "border-l-2 border-l-[var(--mm-bg-active)] bg-[var(--mm-bg-selected)] font-medium text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-selected)]"
-    : "border-l-2 border-l-transparent bg-transparent font-normal text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]";
+    ? "bg-[var(--mm-bg-selected)] font-medium text-[var(--mm-text-primary)] shadow-[0_4px_14px_rgba(37,99,235,0.16)] hover:bg-[var(--mm-bg-selected)]"
+    : "bg-transparent font-normal text-[var(--mm-text-primary)] shadow-none hover:bg-[var(--mm-bg-hover)]";
 
   if (confirming) {
     return (
@@ -139,7 +139,7 @@ function SessionRow({
         <span className="min-w-0 flex-1 truncate text-left">{title}</span>
       </button>
       <div
-        className="absolute inset-y-0 right-1 flex items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+        className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
         data-session-actions={session.id}
       >
         {archived ? (

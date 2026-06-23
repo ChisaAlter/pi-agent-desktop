@@ -171,6 +171,31 @@ describe("AgentRuntimeRegistry", () => {
         });
     });
 
+    it("keeps internal plan wrapper text out of visible agent user messages", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+        const wrapped = [
+            "/plan",
+            "",
+            "用户请求:",
+            "制定计划，了解一下这个项目",
+            "",
+            "要求:",
+            "- 先只读探索当前项目的真实文件、入口、配置和测试结构。",
+            "- 基于探索结果再提出计划，不要在缺少证据时直接泛泛提问。",
+        ].join("\n");
+
+        await registry.prompt({ agentId: agent.id, message: wrapped, mode: "plan" });
+
+        expect(sessions[0].prompt).toHaveBeenCalledWith(expect.stringContaining("Plan mode is active"), undefined);
+        expect(sessions[0].prompt).toHaveBeenCalledWith(expect.stringContaining("用户请求:"), undefined);
+        expect(registry.getMessages(agent.id)[0]).toMatchObject({
+            role: "user",
+            content: "制定计划，了解一下这个项目",
+        });
+        expect(registry.getMessages(agent.id)[0]?.content).not.toContain("要求:");
+        expect(registry.getMessages(agent.id)[0]?.content).not.toContain("先只读探索");
+    });
+
     it("forwards streaming behavior for queued prompts", async () => {
         const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
 
@@ -298,6 +323,30 @@ describe("AgentRuntimeRegistry", () => {
         expect(emitted).toContainEqual({
             channel: "agents:event",
             payload: { agentId: agent.id, workspaceId: "ws_1", event: { type: "agent_start" } },
+        });
+        expect(emitted.find((item) => item.channel === "pi:event")).toBeUndefined();
+    });
+
+    it("routes interceptor pi events through the agent-scoped event channel", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+        const send = vi.mocked(createApprovalInterceptor).mock.calls.at(-1)?.[1].send;
+
+        expect(send).toBeDefined();
+        send("pi:event", "ws_1", {
+            type: "extension_error",
+            message: "Plan 模式禁止执行 bash。",
+        });
+
+        expect(emitted).toContainEqual({
+            channel: "agents:event",
+            payload: {
+                agentId: agent.id,
+                workspaceId: "ws_1",
+                event: {
+                    type: "extension_error",
+                    message: "Plan 模式禁止执行 bash。",
+                },
+            },
         });
         expect(emitted.find((item) => item.channel === "pi:event")).toBeUndefined();
     });

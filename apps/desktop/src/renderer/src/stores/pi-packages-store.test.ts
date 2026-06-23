@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { usePiPackagesStore } from "./pi-packages-store";
 
 function resetStore(): void {
@@ -19,6 +19,10 @@ function resetStore(): void {
 describe("pi-packages-store", () => {
   beforeEach(() => {
     resetStore();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("keeps the latest package search results when older network responses finish later", async () => {
@@ -99,5 +103,25 @@ describe("pi-packages-store", () => {
     expect(usePiPackagesStore.getState().error).toBeNull();
     expect(usePiPackagesStore.getState().lastFailedAction).toBeNull();
     expect(usePiPackagesStore.getState().results).toHaveLength(1);
+  });
+
+  it("leaves marketplace loading state when package search never resolves", async () => {
+    vi.useFakeTimers();
+    (globalThis as { window: unknown }).window = {
+      piAPI: {
+        packagesSearch: vi.fn(() => new Promise(() => undefined)),
+      },
+      setTimeout,
+    };
+
+    const search = usePiPackagesStore.getState().search();
+    expect(usePiPackagesStore.getState().loading).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(25_000);
+    await search;
+
+    expect(usePiPackagesStore.getState().loading).toBe(false);
+    expect(usePiPackagesStore.getState().results).toEqual([]);
+    expect(usePiPackagesStore.getState().error).toBeNull();
   });
 });

@@ -145,6 +145,10 @@ const piAPI: PiAPI = {
         ipcRenderer.invoke("pi:list-slash-commands", workspaceId, agentId, mode),
     runBuiltinSlashCommand: (input) =>
         ipcRenderer.invoke("pi:run-builtin-slash-command", input),
+    runtimeFeatureState: () =>
+        ipcRenderer.invoke("pi:runtime-feature-state"),
+    memorySearch: (input) =>
+        ipcRenderer.invoke("pi:memory-search", input),
 
     permissionSetMode: (mode: PermissionMode) => ipcRenderer.invoke("permission:set-mode", mode),
     permissionRespond: (
