@@ -333,7 +333,7 @@ describe("ChatView", () => {
       title: "未命名会话 Agent",
       sessionId: createdSessionId,
     });
-    expect(useSessionStore.getState().sessions[0]?.messages[0]?.content).toBe("draft hello");
+    expect(useSessionStore.getState().sessions[0]?.messages).toEqual([]);
     await waitFor(() => expect(startStreaming).toHaveBeenCalledWith("ws1", "draft hello", {
       agentId: `agent_${createdSessionId}`,
     }));
@@ -341,6 +341,7 @@ describe("ChatView", () => {
 
   it("uses the agent that belongs to the current workspace", async () => {
     mockedStreamError = null;
+    useSessionStore.setState({ sessions: [], currentSessionId: null });
     useWorkspaceStore.setState({
       workspaces: [
         {
@@ -398,6 +399,46 @@ describe("ChatView", () => {
     await waitFor(() => expect(startStreaming).toHaveBeenCalledWith("ws2", "draft hello", {
       agentId: expect.stringMatching(/^agent_/),
     }));
+  });
+
+  it("does not fall back to a workspace default agent while a session without a bound agent is open", () => {
+    mockedStreamError = null;
+    useAgentStore.setState({
+      agents: [
+        {
+          id: "agent_ws1_default",
+          workspaceId: "ws1",
+          title: "Repo one Agent",
+          status: "idle",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      currentAgentId: "agent_ws1_default",
+      messagesByAgent: {
+        agent_ws1_default: [
+          {
+            id: "am_wrong",
+            agentId: "agent_ws1_default",
+            role: "assistant",
+            content: "workspace default agent reply",
+            createdAt: 10,
+          },
+        ],
+      },
+      runtimeByAgent: {},
+      initialized: true,
+    });
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByTestId("chat-input-shell").getAttribute("data-agent-id")).toBe("");
+    expect(screen.getByText("hello")).toBeTruthy();
+    expect(screen.queryByText("workspace default agent reply")).toBeNull();
   });
 
   it("shows an inline error when continuing a read-only session fails", async () => {
