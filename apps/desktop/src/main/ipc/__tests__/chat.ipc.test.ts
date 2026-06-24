@@ -492,6 +492,70 @@ describe("setupChatIpc", () => {
         expect(reloadResult).toMatchObject({ handled: true, command: "reload", action: "reload" });
     });
 
+    it("keeps export input when the session does not support HTML export", async () => {
+        const session = {
+            extensionRunner: { getRegisteredCommands: vi.fn(() => []) },
+            promptTemplates: [],
+            resourceLoader: { getSkills: vi.fn(() => ({ skills: [] })) },
+        };
+        const registry = {
+            get: vi.fn(async () => ({ session })),
+            has: vi.fn(() => true),
+        };
+
+        setupChatIpc({
+            registry: registry as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+        });
+
+        const handler = handlers.get("pi:run-builtin-slash-command");
+        const result = await handler?.({}, { workspaceId: "ws_1", command: "export", args: "" });
+
+        expect(result).toMatchObject({
+            handled: true,
+            command: "export",
+            action: "unsupported",
+            tone: "error",
+            keepInput: true,
+            message: "当前会话不支持 HTML 导出",
+        });
+    });
+
+    it("treats export without an output path as an error", async () => {
+        const session = {
+            exportToHtml: vi.fn(async () => ""),
+            extensionRunner: { getRegisteredCommands: vi.fn(() => []) },
+            promptTemplates: [],
+            resourceLoader: { getSkills: vi.fn(() => ({ skills: [] })) },
+        };
+        const registry = {
+            get: vi.fn(async () => ({ session })),
+            has: vi.fn(() => true),
+        };
+
+        setupChatIpc({
+            registry: registry as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+        });
+
+        const handler = handlers.get("pi:run-builtin-slash-command");
+        const result = await handler?.({}, { workspaceId: "ws_1", command: "export", args: "demo.html" });
+
+        expect(session.exportToHtml).toHaveBeenCalledWith("demo.html");
+        expect(result).toMatchObject({
+            handled: true,
+            command: "export",
+            action: "export",
+            tone: "error",
+            keepInput: true,
+            message: "HTML 导出失败：未返回输出路径",
+        });
+    });
+
     it("returns an unsupported result for interactive CLI-only slash commands", async () => {
         setupChatIpc({
             registry: { get: vi.fn(), has: vi.fn() } as any,

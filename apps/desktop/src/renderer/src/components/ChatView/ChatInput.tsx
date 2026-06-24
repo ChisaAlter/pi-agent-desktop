@@ -12,6 +12,7 @@ import { useSlashCommands } from "../../hooks/useSlashCommands";
 import { useAgentModeStore } from "../../stores/agent-mode-store";
 import { usePermissionStore } from "../../stores/permission-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
+import { addToast } from "../../stores/toast-store";
 import { logger } from "../../utils/logger";
 import { PermissionRequestStack } from "./PermissionRequestStack";
 import { isIpcError, type AgentMode, type PermissionMode } from "@shared";
@@ -317,6 +318,8 @@ export function ChatInput({
           dispatchSlashDesktopAction(result.action);
           if (result.tone === "error" && result.message) {
             setSendError(result.message);
+          } else if (result.action === "export" && result.message) {
+            addToast(result.message, result.tone === "info" ? "info" : "success");
           }
           if (!result.keepInput) {
             setInputValue("");

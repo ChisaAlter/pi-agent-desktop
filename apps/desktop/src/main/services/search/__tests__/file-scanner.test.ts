@@ -44,6 +44,46 @@ describe("scanFiles (async)", () => {
         }
         const files = await scanFiles(dir, { recursive: false });
         expect(files.length).toBeLessThanOrEqual(500);
+    }, 15_000);
+
+    it("includes critical hidden files and directories by default without exposing protected env files", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "scan-"));
+        mkdirSync(join(dir, ".github", "workflows"), { recursive: true });
+        mkdirSync(join(dir, ".vscode"), { recursive: true });
+        writeFileSync(join(dir, ".github", "workflows", "ci.yml"), "");
+        writeFileSync(join(dir, ".vscode", "settings.json"), "");
+        writeFileSync(join(dir, ".gitignore"), "");
+        writeFileSync(join(dir, ".env"), "");
+
+        const files = await scanFiles(dir);
+
+        expect(files).toContain(".github/workflows/ci.yml");
+        expect(files).toContain(".vscode/settings.json");
+        expect(files).toContain(".gitignore");
+        expect(files).not.toContain(".env");
+    });
+
+    it("can still include protected env files when hiddenMode is all", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "scan-"));
+        writeFileSync(join(dir, ".env"), "");
+
+        const files = await scanFiles(dir, { hiddenMode: "all" });
+
+        expect(files).toContain(".env");
+    });
+
+    it("can still exclude hidden entries when hiddenMode is none", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "scan-"));
+        mkdirSync(join(dir, ".github", "workflows"), { recursive: true });
+        writeFileSync(join(dir, ".github", "workflows", "ci.yml"), "");
+        writeFileSync(join(dir, ".gitignore"), "");
+        writeFileSync(join(dir, "visible.ts"), "");
+
+        const files = await scanFiles(dir, { hiddenMode: "none" });
+
+        expect(files).toContain("visible.ts");
+        expect(files).not.toContain(".github/workflows/ci.yml");
+        expect(files).not.toContain(".gitignore");
     });
 });
 
@@ -55,5 +95,17 @@ describe("scanFilesSync", () => {
         const files = scanFilesSync(dir, { recursive: false });
         expect(files).toContain("a.ts");
         expect(files).toContain("b.ts");
+    });
+
+    it("includes critical hidden entries by default", () => {
+        const dir = mkdtempSync(join(tmpdir(), "scan-sync-"));
+        mkdirSync(join(dir, ".vscode"), { recursive: true });
+        writeFileSync(join(dir, ".vscode", "settings.json"), "");
+        writeFileSync(join(dir, ".gitignore"), "");
+
+        const files = scanFilesSync(dir);
+
+        expect(files).toContain(".vscode/settings.json");
+        expect(files).toContain(".gitignore");
     });
 });

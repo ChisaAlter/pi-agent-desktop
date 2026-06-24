@@ -9,7 +9,7 @@ import { gitAddSchema, gitCommitSchema, gitDiffSchema, gitDiffStagedSchema, gitC
 export function setupGitIpc(): void {
   ipcMain.handle('git:status', async (_, workspacePath: string) => {
     try {
-      return getGitStatus(workspacePath);
+      return await getGitStatus(workspacePath);
     } catch (err) {
       log.error("[git.ipc] git:status failed:", err);
       return ipcError(

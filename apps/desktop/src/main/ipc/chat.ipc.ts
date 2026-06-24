@@ -85,7 +85,7 @@ const BUILTIN_SLASH_COMMANDS: ReadonlyArray<Pick<PiSlashCommand, "name" | "descr
     { name: "settings", description: "Open settings menu" },
     { name: "model", description: "Select model" },
     { name: "scoped-models", description: "Enable/disable models for cycling" },
-    { name: "export", description: "Export session" },
+    { name: "export", description: "Export session as HTML" },
     { name: "import", description: "Import and resume a session" },
     { name: "share", description: "Share session as a secret GitHub gist" },
     { name: "copy", description: "Copy last agent message to clipboard" },
@@ -560,8 +560,19 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
                 }
                 case "export": {
                     const session = await getSlashSession(ws, input.agentId);
-                    const path = await session.exportToHtml?.(args || undefined);
-                    return slashResult(command, "export", path ? `已导出到 ${path}` : "已导出会话");
+                    if (!session.exportToHtml) {
+                        return slashResult(command, "unsupported", "当前会话不支持 HTML 导出", {
+                            keepInput: true,
+                        });
+                    }
+                    const path = await session.exportToHtml(args || undefined);
+                    if (!path) {
+                        return slashResult(command, "export", "HTML 导出失败：未返回输出路径", {
+                            tone: "error",
+                            keepInput: true,
+                        });
+                    }
+                    return slashResult(command, "export", `已导出 HTML 到 ${path}`);
                 }
                 default:
                     return slashResult(
