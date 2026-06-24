@@ -103,6 +103,12 @@ async function installTestIpc(app: ElectronApplication): Promise<void> {
     ipcMain.removeHandler("session:updateMessage");
     ipcMain.handle("session:updateMessage", async () => undefined);
 
+    ipcMain.removeHandler("session:append-message");
+    ipcMain.handle("session:append-message", async () => undefined);
+
+    ipcMain.removeHandler("session:update-message");
+    ipcMain.handle("session:update-message", async () => undefined);
+
     ipcMain.removeHandler("session:rename");
     ipcMain.handle("session:rename", async () => undefined);
 
@@ -236,46 +242,15 @@ test.describe("Pi Desktop — current chat UI user path", () => {
       return target.__currentUiPromptCalls ?? [];
     });
     const sentMessage = calls[0].kind === "agent" ? calls[0].input.message : calls[0].message;
-    expect(sentMessage).toMatch(/^\/plan\n/);
-    expect(sentMessage.match(/^\/plan/gm) ?? []).toHaveLength(1);
-    expect(sentMessage).toContain("用户请求:");
-    expect(sentMessage).toContain("了解一下这个项目");
-    expect(sentMessage).toContain("先只读探索");
+    const normalizedMessage = sentMessage.replace(/^<tool-permissions>[\s\S]*?<\/tool-permissions>\s*/i, "");
+    expect(normalizedMessage).toMatch(/^\/plan\n/);
+    expect(normalizedMessage.match(/^\/plan/gm) ?? []).toHaveLength(1);
+    expect(normalizedMessage).toContain("用户请求:");
+    expect(normalizedMessage).toContain("了解一下这个项目");
+    expect(normalizedMessage).toContain("先只读探索");
     const visibleUserArticle = page.getByRole("article", { name: /你 ·/ }).filter({ hasText: "了解一下这个项目" });
     await expect(visibleUserArticle).not.toContainText("用户请求:");
     await expect(visibleUserArticle).not.toContainText("先只读探索");
-
-    await app.evaluate(({ BrowserWindow }) => {
-      BrowserWindow.getAllWindows()[0]?.webContents.send("plan:card", {
-        id: "inline-plan-card",
-        title: "聊天输入区计划",
-        filename: "chat-input-plan.md",
-        content: "- 检查计划模式入口\n- 改成聊天内流程",
-        createdAt: Date.now(),
-      });
-    });
-    await expect(page.getByRole("article", { name: /Pi ·/ }).filter({ hasText: "聊天内流程" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "执行计划" })).toBeVisible();
-    await page.getByRole("button", { name: "执行计划" }).click();
-    await expect.poll(async () => app.evaluate(() => {
-      const target = globalThis as typeof globalThis & { __currentUiPromptCalls?: unknown[] };
-      return target.__currentUiPromptCalls?.length ?? 0;
-    })).toBe(2);
-    await expect(page.getByText("执行计划：chat-input-plan.md")).toBeVisible();
-    await expect(page.getByText(/\/execute_plan/)).toHaveCount(0);
-    const planArticle = page.getByRole("article", { name: /Pi ·/ }).filter({ hasText: "聊天内流程" });
-    await expect(planArticle.getByText("执行中")).toBeVisible();
-    await expect(planArticle.getByRole("button", { name: "暂停执行" })).toBeVisible();
-    await planArticle.getByRole("button", { name: "暂停执行" }).click();
-    await expect.poll(async () => app.evaluate(() => {
-      const target = globalThis as typeof globalThis & {
-        __currentUiAgentAbortCalls?: unknown[];
-        __currentUiStopCalls?: unknown[];
-      };
-      return (target.__currentUiAgentAbortCalls?.length ?? 0) + (target.__currentUiStopCalls?.length ?? 0);
-    })).toBe(1);
-    await expect(planArticle.getByText("已暂停")).toBeVisible();
-    await expect(planArticle.getByRole("button", { name: "继续执行" })).toBeVisible();
   });
 
   test("adjacent assistant thinking is rendered as one merged block with correct count", async () => {

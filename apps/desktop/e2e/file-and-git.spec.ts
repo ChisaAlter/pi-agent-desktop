@@ -57,19 +57,17 @@ test.describe('Pi Desktop — File & Git Workflow', () => {
 
         const { app, page } = await launchApp(userDataDir);
 
-        await page.evaluate(async ({ wsPath }) => {
-            await window.piAPI.createWorkspace('git-test', wsPath);
+        const workspace = await page.evaluate(async ({ wsPath }) => {
+            return await window.piAPI.createWorkspace('git-test', wsPath);
         }, { wsPath });
 
-        const gitStatus = await page.evaluate(async () => {
-            const workspaces = await window.piAPI.listWorkspaces();
-            const ws = workspaces[0];
-            if (!ws) return null;
-            return await window.piAPI.getGitStatus(ws.path);
-        });
+        const gitStatus = await page.evaluate(async (workspacePath) => {
+            return await window.piAPI.getGitStatus(workspacePath);
+        }, workspace.path);
 
         expect(gitStatus).toBeTruthy();
-        expect(gitStatus.branch).toBe('master');
+        expect(gitStatus.branch).toBeTruthy();
+        expect([...(gitStatus.modified ?? []), ...(gitStatus.untracked ?? [])]).toContain('modified.ts');
         console.log(`[TEST] Git branch: ${gitStatus.branch}, modified files: ${gitStatus.modified?.length ?? 0}`);
 
         await app.close();

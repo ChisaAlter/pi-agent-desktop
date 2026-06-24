@@ -435,7 +435,8 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         });
         const payload = calls[0]?.payload as { message?: string; input?: { message?: string } };
         const message = payload.message ?? payload.input?.message ?? '';
-        expect(message).toMatch(/^\/plan\n/);
-        expect(message.match(/^\/plan/gm) ?? []).toHaveLength(1);
+        const normalized = message.replace(/^<tool-permissions>[\s\S]*?<\/tool-permissions>\s*/i, "");
+        expect(normalized).toMatch(/^\/plan\n/);
+        expect(normalized.match(/^\/plan/gm) ?? []).toHaveLength(1);
     });
 });

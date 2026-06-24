@@ -14,6 +14,10 @@ const sendPrompt = vi.fn(async () => undefined);
 const stopPrompt = vi.fn<(_workspaceId: string) => Promise<unknown>>(async () => undefined);
 const agentsPrompt = vi.fn(async () => undefined);
 const planSetEnabled = vi.fn(async () => undefined);
+const appendMessageIpc = vi.fn(async () => undefined);
+const updateMessageIpc = vi.fn(async () => undefined);
+const updateToolCallIpc = vi.fn(async () => undefined);
+const updateSessionMetadataIpc = vi.fn(async () => undefined);
 
 function HookHost(): null {
     usePiStream();
@@ -91,6 +95,14 @@ beforeEach(() => {
     planSetEnabled.mockClear();
     stopPrompt.mockReset();
     stopPrompt.mockResolvedValue(undefined);
+    appendMessageIpc.mockReset();
+    appendMessageIpc.mockResolvedValue(undefined);
+    updateMessageIpc.mockReset();
+    updateMessageIpc.mockResolvedValue(undefined);
+    updateToolCallIpc.mockReset();
+    updateToolCallIpc.mockResolvedValue(undefined);
+    updateSessionMetadataIpc.mockReset();
+    updateSessionMetadataIpc.mockResolvedValue(undefined);
     (globalThis as { window: unknown }).window = {
         dispatchEvent: vi.fn(),
         // 2026-06-06 hotfix (T6): usePiStream 用 setTimeout/setInterval 防 debounce 卡住,
@@ -124,6 +136,10 @@ beforeEach(() => {
             planSetEnabled,
             stop: stopPrompt,
             renameSession: vi.fn(async () => undefined),
+            appendMessage: appendMessageIpc,
+            updateMessage: updateMessageIpc,
+            updateToolCall: updateToolCallIpc,
+            updateSessionMetadata: updateSessionMetadataIpc,
         },
     };
     useSessionStore.setState({
@@ -698,6 +714,13 @@ describe("usePiStream", () => {
             message: expect.stringContaining("agent follow up"),
             mode: "build",
         });
+        expect(appendMessageIpc).toHaveBeenCalledWith(
+            "s1",
+            expect.objectContaining({
+                role: "user",
+                content: "agent follow up",
+            }),
+        );
         expect(useSessionStore.getState().sessions[0]?.messages).toMatchObject([
             {
                 role: "user",
@@ -816,6 +839,31 @@ describe("usePiStream", () => {
                 status: "completed",
             },
         ]);
+        expect(appendMessageIpc).toHaveBeenCalledWith(
+            "s1",
+            expect.objectContaining({
+                role: "assistant",
+                content: "",
+            }),
+        );
+        expect(updateMessageIpc).toHaveBeenCalledTimes(1);
+        expect(updateMessageIpc).toHaveBeenCalledWith(
+            "s1",
+            expect.stringMatching(/^am_/),
+            expect.objectContaining({
+                content: "agent bound answer",
+                toolCalls: [
+                    expect.objectContaining({
+                        id: "tc_bound_1",
+                        name: "read",
+                        input: { path: "README.md" },
+                        output: "done",
+                        status: "completed",
+                    }),
+                ],
+            }),
+        );
+        expect(updateToolCallIpc).not.toHaveBeenCalled();
     });
 
     it("persists session-bound agent usage and custom cards into the linked chat session", async () => {
@@ -872,6 +920,27 @@ describe("usePiStream", () => {
                 },
             },
         ]);
+        expect(updateSessionMetadataIpc).toHaveBeenCalledWith(
+            "s1",
+            expect.objectContaining({
+                usage: expect.objectContaining({
+                    inputTokens: 10,
+                    outputTokens: 2,
+                    totalTokens: 12,
+                }),
+            }),
+        );
+        expect(appendMessageIpc).toHaveBeenCalledWith(
+            "s1",
+            expect.objectContaining({
+                role: "assistant",
+                customCard: expect.objectContaining({
+                    id: "session_bound_card",
+                    kind: "result-summary",
+                    title: "Bound card",
+                }),
+            }),
+        );
     });
 
     it("blocks vague agent plan-mode input locally and shows clarification prompt", async () => {

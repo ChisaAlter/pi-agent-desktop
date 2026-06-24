@@ -1,6 +1,6 @@
 // Approval Interceptor
-// Intercepts session events, decides whether to show approval, calls session.abort() on reject
-// Known limitation: abort kills entire turn (not single tool). Future: Pi extension for per-tool control
+// Intercepts session events for plan-mode write blocking and post-edit review telemetry.
+// High-risk runtime permissions are now owned by pi-permission-system, not this interceptor.
 // Event types use @shared/events PiEvent
 
 import { classifyToolCall } from "./classifier";
