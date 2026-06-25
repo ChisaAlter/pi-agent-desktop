@@ -3,11 +3,16 @@
 // Used by ApprovalPanel's EditReviewList
 // Supports autoApprove flag (interceptor skips approval dialog when set)
 
+import { unlink, writeFile } from "fs/promises";
+import { isAbsolute, resolve } from "path";
+import { getProtectedPathReason } from "../protected-paths";
+
 export interface TrackedEdit {
     id: string;
     toolCallId: string;
     toolName: "write" | "edit";
     filePath: string;
+    oldContent?: string;
     newContent?: string;
     oldString?: string;
     newString?: string;
@@ -34,7 +39,7 @@ export class PendingEdits {
         toolCallId: string,
         toolName: "write" | "edit",
         filePath: string,
-        args: { content?: string; old_string?: string; new_string?: string }
+        args: { content?: string; old_string?: string; new_string?: string; oldContent?: string }
     ): string {
         const id = `change_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         this.map.set(id, {
@@ -42,6 +47,7 @@ export class PendingEdits {
             toolCallId,
             toolName,
             filePath,
+            oldContent: args.oldContent,
             newContent: args.content,
             oldString: args.old_string,
             newString: args.new_string,
@@ -73,7 +79,26 @@ export class PendingEdits {
         this.map.delete(id);
     }
 
-    reject(id: string): void {
+    async reject(id: string, workspacePath: string): Promise<void> {
+        const change = this.map.get(id);
+        if (!change) return;
+
+        const targetPath = isAbsolute(change.filePath)
+            ? resolve(change.filePath)
+            : resolve(workspacePath, change.filePath);
+        const reason = getProtectedPathReason(targetPath, workspacePath);
+        if (reason) {
+            throw new Error(reason);
+        }
+
+        if (typeof change.oldContent === "string") {
+            await writeFile(targetPath, change.oldContent, "utf-8");
+        } else {
+            await unlink(targetPath).catch((error: NodeJS.ErrnoException) => {
+                if (error?.code === "ENOENT") return;
+                throw error;
+            });
+        }
         this.map.delete(id);
     }
 

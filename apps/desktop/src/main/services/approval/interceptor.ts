@@ -1,6 +1,6 @@
 // Approval Interceptor
-// Intercepts session events, decides whether to show approval, calls session.abort() on reject
-// Known limitation: abort kills entire turn (not single tool). Future: Pi extension for per-tool control
+// Intercepts session events for plan-mode write blocking and post-edit review telemetry.
+// High-risk runtime permissions are now owned by pi-permission-system, not this interceptor.
 // Event types use @shared/events PiEvent
 
 import { classifyToolCall } from "./classifier";
@@ -84,11 +84,19 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                     if (!filePath) return;
                     // autoApprove 时跳过 deferred 编辑追踪 (用户已选择自动批准)
                     if (deps.pendingEdits.autoApprove) return;
+                    let oldContent: string | undefined;
+                    try {
+                        const absPath = join(deps.workspacePath, filePath);
+                        oldContent = await readFile(absPath, "utf-8");
+                    } catch {
+                        // 目标文件可能尚不存在(新建文件)；review 时按空基线处理即可
+                    }
                     const changeId = deps.pendingEdits.track(
                         toolCallId,
                         toolName as "write" | "edit",
                         filePath,
                         {
+                            oldContent,
                             content: typeof safeArgs.content === "string" ? safeArgs.content
                                 : typeof safeArgs.file_text === "string" ? safeArgs.file_text
                                 : undefined,
@@ -128,7 +136,7 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                     // 文件可能不存在 (新建失败), 用空
                 }
 
-                const oldContent = change.newContent ?? "";
+                const oldContent = change.oldContent ?? "";
                 const diff = generateUnifiedDiff(oldContent, newContent, change.filePath);
                 deps.pendingEdits.review(change.id, diff, newContent);
                 deps.send("approval:review", workspaceId, {

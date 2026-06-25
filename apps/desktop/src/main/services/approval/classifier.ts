@@ -61,35 +61,50 @@ const READ_BASH_COMMANDS = new Set([
     "test", "true", "false",
 ]);
 
-// 对 git/npm/node 等多用途工具, 只读白名单子命令; 其余视为可变 (edit) 以防
-// `git push`(非 force)、`npm publish/install`、`node -e "..."` 等被误判为只读而绕过追踪.
-const READ_ONLY_SUBCOMMANDS: Record<string, Set<string>> = {
-    git: new Set([
-        "status", "log", "diff", "show", "branch", "remote", "config",
-        "ls-files", "ls-remote", "blame", "describe", "rev-parse",
-        "fetch", "pull", "stash", "tag", "shortlog", "name-rev",
-    ]),
-    npm: new Set([
-        "view", "show", "list", "ls", "outdated", "info", "search",
-        "ping", "config", "help", "version", "prefix", "root",
-    ]),
-    pnpm: new Set([
-        "list", "ls", "outdated", "info", "why", "config", "help",
-        "version", "root", "fetch",
-    ]),
-    yarn: new Set(["info", "list", "outdated", "config", "version", "why"]),
-    node: new Set(["--version", "-v", "--help", "-h", "version"]),
+// 对 git/npm/node 等多用途工具, 只能放过显式的只读命令形态; 其余一律降级为 edit.
+// 这样像 `git pull` / `git branch -D` / `git config user.name x` / `npm config set`
+// 这类会修改工作树或用户环境的命令不会被误判成只读.
+const READ_ONLY_COMMAND_PATTERNS: Record<string, RegExp[]> = {
+    git: [
+        /^git\s+status(?:\s|$)/i,
+        /^git\s+log(?:\s|$)/i,
+        /^git\s+diff(?:\s|$)/i,
+        /^git\s+show(?:\s|$)/i,
+        /^git\s+ls-files(?:\s|$)/i,
+        /^git\s+ls-remote(?:\s|$)/i,
+        /^git\s+blame(?:\s|$)/i,
+        /^git\s+describe(?:\s|$)/i,
+        /^git\s+rev-parse(?:\s|$)/i,
+        /^git\s+shortlog(?:\s|$)/i,
+        /^git\s+name-rev(?:\s|$)/i,
+        /^git\s+branch(?:\s+(?:--all|--list|--show-current|-a|-r)\b.*)?\s*$/i,
+        /^git\s+remote(?:\s+-v)?\s*$/i,
+        /^git\s+config\s+(?:--get(?:-all)?|--list)\b.*$/i,
+        /^git\s+tag(?:\s+(?:--list|-l)\b.*)?\s*$/i,
+        /^git\s+stash\s+list(?:\s|$)/i,
+    ],
+    npm: [
+        /^npm\s+(?:view|show|list|ls|outdated|info|search|ping|help|version|prefix|root)(?:\s|$)/i,
+        /^npm\s+config\s+(?:get|list)\b.*$/i,
+    ],
+    pnpm: [
+        /^pnpm\s+(?:list|ls|outdated|info|why|help|version|root)(?:\s|$)/i,
+        /^pnpm\s+config\s+(?:get|list)\b.*$/i,
+    ],
+    yarn: [
+        /^yarn\s+(?:info|list|outdated|why|version)(?:\s|$)/i,
+        /^yarn\s+config\s+(?:get|list)\b.*$/i,
+    ],
+    node: [
+        /^node\s+(?:--version|-v|--help|-h)\s*$/i,
+    ],
 };
 
 /** 对 READ_BASH_COMMANDS 中的多用途工具, 检查子命令是否在只读白名单内. */
 function isReadOnlyMultiTool(firstToken: string, cmd: string): boolean {
-    const allowed = READ_ONLY_SUBCOMMANDS[firstToken];
-    if (!allowed) return true; // 无白名单的工具保持原 read 行为
-    const tokens = cmd.split(/\s+/);
-    // 取第一个非 flag token 作为子命令 (跳过 --global 等开关)
-    const sub = tokens.find((t, i) => i > 0 && !t.startsWith("-"));
-    if (!sub) return false; // 有工具名但无明确只读子命令 → 视为可变
-    return allowed.has(sub.toLowerCase());
+    const patterns = READ_ONLY_COMMAND_PATTERNS[firstToken];
+    if (!patterns) return true; // 无细分规则的工具保持原 read 行为
+    return patterns.some((pattern) => pattern.test(cmd));
 }
 
 function isHighRiskPath(p: string): boolean {

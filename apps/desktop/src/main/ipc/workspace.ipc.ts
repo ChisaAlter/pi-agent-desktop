@@ -12,6 +12,10 @@ interface Workspace {
   lastActiveAt?: number;
 }
 
+function normalizeWorkspacePath(path: string): string {
+  return path.trim().replace(/[\\/]+/g, "\\").replace(/\\+$/, "").toLowerCase();
+}
+
 export function setupWorkspaceIpc(opts: {
   store: { get: (key: 'workspaces') => Workspace[]; set: (key: 'workspaces', value: Workspace[]) => void };
   getMainWindow: () => BrowserWindow | null;
@@ -70,7 +74,41 @@ export function setupWorkspaceIpc(opts: {
   });
 
   ipcMain.handle('workspace:select', async (_, path: string) => {
-    log.info('Workspace selected:', path);
+    const normalizedPath = path.trim();
+    if (!normalizedPath) {
+      return ipcError(
+        "ipcErrors.workspace.invalidArgs",
+        "工作区路径不能为空",
+        { path },
+      );
+    }
+    try {
+      const workspaces = store.get('workspaces');
+      const targetIndex = workspaces.findIndex((workspace) =>
+        normalizeWorkspacePath(workspace.path) === normalizeWorkspacePath(normalizedPath),
+      );
+      if (targetIndex < 0) {
+        log.warn("[workspace.ipc] workspace:select unknown path:", path);
+        return ipcError(
+          "ipcErrors.workspace.selectFailed",
+          `工作区未注册: ${path}`,
+          { path },
+        );
+      }
+      const now = Date.now();
+      store.set('workspaces', workspaces.map((workspace, index) =>
+        index === targetIndex ? { ...workspace, lastActiveAt: now } : workspace,
+      ));
+      log.info('Workspace selected:', path);
+      return undefined;
+    } catch (err) {
+      log.error("[workspace.ipc] workspace:select failed:", err);
+      return ipcError(
+        "ipcErrors.workspace.selectFailed",
+        `切换工作区失败: ${err instanceof Error ? err.message : String(err)}`,
+        { path },
+      );
+    }
   });
 
   ipcMain.handle('workspace:select-directory', async () => {

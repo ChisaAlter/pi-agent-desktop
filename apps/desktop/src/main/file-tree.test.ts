@@ -2,7 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildFileTree } from "./file-tree";
+import { buildFileTree, buildFileTreeAsync } from "./file-tree";
 
 let root: string | null = null;
 
@@ -73,5 +73,19 @@ describe("buildFileTree", () => {
         expect(names).not.toContain(".env.local");
         expect(names).not.toContain(".ssh");
         expect(names).not.toContain(".kube");
+    });
+
+    it("has an async builder with the same ignore behavior", async () => {
+        const dir = makeRoot();
+        mkdirSync(join(dir, "src"), { recursive: true });
+        mkdirSync(join(dir, ".git"), { recursive: true });
+        writeFileSync(join(dir, "src", "app.ts"), "export const app = true;");
+        writeFileSync(join(dir, ".git", "HEAD"), "ref: refs/heads/main");
+
+        const tree = await buildFileTreeAsync(dir, { maxDepth: 4 });
+
+        expect(tree.type).toBe("directory");
+        expect(tree.children?.some((child) => child.name === "src")).toBe(true);
+        expect(tree.children?.some((child) => child.name === ".git")).toBe(false);
     });
 });

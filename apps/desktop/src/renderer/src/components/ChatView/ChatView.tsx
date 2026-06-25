@@ -23,6 +23,7 @@ interface ChatViewProps {
     prefillText?: string | null;
     /** prefill 已被 ChatInput 消费后回调 */
     onPrefillConsumed?: () => void;
+    jumpTarget?: { messageId: string; nonce: number } | null;
 }
 
 function hasVisibleAssistantContent(message: Message): boolean {
@@ -167,9 +168,10 @@ function mergeAdjacentThinkingMessages(messages: Message[]): ChatMessage[] {
   return merged;
 }
 
-export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {}): React.JSX.Element {
+export function ChatView({ prefillText, onPrefillConsumed, jumpTarget }: ChatViewProps = {}): React.JSX.Element {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollRegionRef = useRef<HTMLDivElement>(null);
+  const processedJumpNonceRef = useRef<number | null>(null);
   const currentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace());
   const agents = useAgentStore((state) => state.agents);
   const currentAgentId = useAgentStore((state) => state.currentAgentId);
@@ -209,6 +211,7 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
   const [titleDraft, setTitleDraft] = useState("");
   const [composerFocusKey, setComposerFocusKey] = useState(0);
   const [globalComposerRoot, setGlobalComposerRoot] = useState<HTMLElement | null>(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const activePlanCard = usePlanStore((state) => state.activeCard);
   const renderedPlanCardIds = usePlanStore((state) => state.renderedPlanCardIds);
   const activePlanExecution = usePlanStore((state) => state.activeExecution);
@@ -511,6 +514,28 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
     }
   }, [prefillText, onPrefillConsumed]);
 
+  const effectiveJumpTarget = jumpTarget && processedJumpNonceRef.current !== jumpTarget.nonce ? jumpTarget : null;
+
+  useEffect(() => {
+    if (!effectiveJumpTarget) return;
+    const targetIndex = messages.findIndex((message) => message.id === effectiveJumpTarget.messageId);
+    if (targetIndex < 0) return;
+    processedJumpNonceRef.current = effectiveJumpTarget.nonce;
+    setHighlightedMessageId(effectiveJumpTarget.messageId);
+    const clearTimer = window.setTimeout(() => {
+      setHighlightedMessageId((current) => (current === effectiveJumpTarget.messageId ? null : current));
+    }, 1800);
+    if (messages.length <= 50) {
+      window.requestAnimationFrame(() => {
+        const element = scrollRegionRef.current?.querySelector<HTMLElement>(`[data-message-id="${effectiveJumpTarget.messageId}"]`);
+        element?.scrollIntoView({ block: 'center' });
+      });
+    }
+    return () => {
+      window.clearTimeout(clearTimer);
+    };
+  }, [effectiveJumpTarget, messages]);
+
   const composer = shouldUseGlobalComposer ? (
     <ChatInput
       isConnected={isConnected}
@@ -655,16 +680,23 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
                 messages={messages}
                 isStreaming={isStreaming}
                 streamingMessageId={streamingMessageId}
+                jumpTarget={effectiveJumpTarget}
+                highlightedMessageId={highlightedMessageId}
                 onPlanAction={handlePlanAction}
               />
             ) : (
             messages.map((message) => (
-              <MessageBubble
+              <div
                 key={message.id}
-                message={message}
-                isStreaming={isStreaming && message.id === streamingMessageId}
-                onPlanAction={handlePlanAction}
-              />
+                data-message-id={message.id}
+                className={highlightedMessageId === message.id ? "rounded-xl bg-[#fff7cc]" : undefined}
+              >
+                <MessageBubble
+                  message={message}
+                  isStreaming={isStreaming && message.id === streamingMessageId}
+                  onPlanAction={handlePlanAction}
+                />
+              </div>
             ))
             )}
 

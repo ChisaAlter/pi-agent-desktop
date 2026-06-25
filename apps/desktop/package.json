@@ -14,7 +14,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx",
     "test": "vitest --run",
+    "smoke:main-runtime": "node ../../scripts/smoke-main-runtime.cjs",
     "e2e": "playwright test",
+    "e2e:release-gate": "playwright test e2e/session-bound-agent-persistence.spec.ts e2e/command-palette-callbacks.spec.ts e2e/m6-final-electron-acceptance.spec.ts",
     "e2e:build": "electron-vite build && playwright test"
   },
   "dependencies": {

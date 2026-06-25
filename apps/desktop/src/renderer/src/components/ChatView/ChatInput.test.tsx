@@ -10,6 +10,10 @@ import { useSettingsStore } from "../../stores/settings-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { ChatInput } from "./ChatInput";
 
+const { addToastSpy } = vi.hoisted(() => ({
+  addToastSpy: vi.fn(),
+}));
+
 vi.mock("../../hooks/useMentions", () => ({
   useMentions: () => ({
     activeMention: null,
@@ -25,6 +29,10 @@ vi.mock("./PermissionRequestStack", () => ({
   PermissionRequestStack: () => null,
 }));
 
+vi.mock("../../stores/toast-store", () => ({
+  addToast: addToastSpy,
+}));
+
 function openComposerMenu(): void {
   fireEvent.click(screen.getByRole("button", { name: "添加附件和工具" }));
 }
@@ -36,6 +44,7 @@ function clickAddAttachment(): void {
 
 describe("ChatInput", () => {
   beforeEach(() => {
+    addToastSpy.mockReset();
     Object.defineProperty(window, "piAPI", {
       value: {
         setSettings: vi.fn(async () => undefined),
@@ -980,9 +989,9 @@ describe("ChatInput", () => {
     Object.defineProperty(window, "piAPI", {
       value: {
         listSlashCommands: vi.fn(async () => [
-          { name: "changelog", description: "Show changelog entries", source: "builtin", desktopAction: "unsupported" },
-          { name: "clone", description: "Duplicate the current session at the current position", source: "builtin", desktopAction: "unsupported" },
           { name: "compact", description: "Manually compact the session context", source: "builtin", desktopAction: "compact" },
+          { name: "settings", description: "Open settings", source: "builtin", desktopAction: "open-settings" },
+          { name: "clone", description: "Duplicate the current session at the current position", source: "builtin", desktopAction: "unsupported" },
         ]),
       },
       configurable: true,
@@ -1012,6 +1021,7 @@ describe("ChatInput", () => {
     fireEvent.keyDown(textbox, { key: "ArrowDown" });
 
     await waitFor(() => {
+      expect(options[1].textContent).toContain("settings");
       expect(options[1].getAttribute("aria-selected")).toBe("true");
       expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
     });
@@ -1063,6 +1073,52 @@ describe("ChatInput", () => {
     expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: "slash-command:open-settings-tab" }));
 
     dispatchSpy.mockRestore();
+  });
+
+  it("shows an export success toast for builtin slash exports", async () => {
+    const onSend = vi.fn(async () => undefined);
+    Object.defineProperty(window, "piAPI", {
+      value: {
+        listSlashCommands: vi.fn(async () => [
+          { name: "export", description: "Export session as HTML", source: "builtin", desktopAction: "export" },
+        ]),
+        runBuiltinSlashCommand: vi.fn(async () => ({
+          handled: true,
+          command: "export",
+          action: "export",
+          message: "已导出 HTML 到 C:/repo/exports/demo.html",
+          tone: "success",
+        })),
+      },
+      configurable: true,
+    });
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={onSend}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: "/export" } });
+    fireEvent.keyDown(textbox, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(window.piAPI.runBuiltinSlashCommand).toHaveBeenCalledWith({
+        workspaceId: "ws1",
+        command: "export",
+        args: "",
+      });
+    });
+    expect(onSend).not.toHaveBeenCalled();
+    expect(addToastSpy).toHaveBeenCalledWith("已导出 HTML 到 C:/repo/exports/demo.html", "success");
   });
 
   it("does not send slash commands with attachments", async () => {

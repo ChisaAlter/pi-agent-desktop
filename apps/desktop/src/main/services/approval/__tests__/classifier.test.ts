@@ -62,6 +62,18 @@ describe("classifyToolCall", () => {
         });
     });
 
+    describe("mutable subcommands must not be misclassified as read-only", () => {
+        it.each([
+            ["git pull origin main", "edit"],
+            ["git branch -D stale-feature", "edit"],
+            ["git config user.name codex", "edit"],
+            ["npm config set registry https://registry.npmjs.org/", "edit"],
+        ])("classifies %s as %s", (cmd, expected) => {
+            const result = classifyToolCall(t("bash", { command: cmd }));
+            expect(result.risk).toBe(expected);
+        });
+    });
+
     describe("existing patterns still work", () => {
         it.each([
             ["echo rm -rf /", "high"],

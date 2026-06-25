@@ -299,6 +299,102 @@ describe("ChatView", () => {
     expect(scrollTo).toHaveBeenCalled();
   });
 
+  it("scrolls to a targeted history message when App requests a message jump", async () => {
+    mockedStreamError = null;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
+      value: scrollIntoView,
+      configurable: true,
+    });
+
+    useSessionStore.setState({
+      sessions: [
+        {
+          id: "s1",
+          title: "Session 1",
+          workspaceId: "ws1",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          messages: [
+            { id: "m1", role: "user", content: "first", timestamp: new Date(1) },
+            { id: "m2", role: "assistant", content: "target message", timestamp: new Date(2) },
+          ],
+        },
+      ],
+      currentSessionId: "s1",
+    });
+
+    render(
+      <I18nProvider>
+        <ChatView jumpTarget={{ messageId: "m2", nonce: 1 }} />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalled();
+    });
+  });
+
+  it("does not re-scroll the same jump target after later messages update the session", async () => {
+    mockedStreamError = null;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
+      value: scrollIntoView,
+      configurable: true,
+    });
+    useSessionStore.setState({
+      sessions: [
+        {
+          id: "s1",
+          title: "Session 1",
+          workspaceId: "ws1",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          messages: [
+            { id: "m1", role: "user", content: "first", timestamp: new Date(1) },
+            { id: "m2", role: "assistant", content: "target message", timestamp: new Date(2) },
+          ],
+        },
+      ],
+      currentSessionId: "s1",
+    });
+
+    const jumpTarget = { messageId: "m2", nonce: 1 };
+    const { rerender } = render(
+      <I18nProvider>
+        <ChatView jumpTarget={jumpTarget} />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      useSessionStore.setState((state) => ({
+        sessions: state.sessions.map((session) => (
+          session.id === "s1"
+            ? {
+                ...session,
+                messages: [
+                  ...session.messages,
+                  { id: "m3", role: "assistant", content: "follow up", timestamp: new Date(3) },
+                ],
+              }
+            : session
+        )),
+      }));
+    });
+    rerender(
+      <I18nProvider>
+        <ChatView jumpTarget={jumpTarget} />
+      </I18nProvider>,
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
   it("does not create a session just by opening an empty draft", async () => {
     useSessionStore.setState({ sessions: [], currentSessionId: null });
 

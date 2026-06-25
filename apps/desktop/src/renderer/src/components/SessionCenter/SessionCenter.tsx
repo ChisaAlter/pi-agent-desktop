@@ -61,7 +61,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
   const [tagDraftById, setTagDraftById] = useState<Record<string, string>>({});
   const [titleDraftById, setTitleDraftById] = useState<Record<string, string>>({});
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  const [exportSessionId, setExportSessionId] = useState<string | null>(null);
+  const [exportTarget, setExportTarget] = useState<{ sessionId?: string } | null>(null);
   const [notice, setNotice] = useState<{ message: string; undo?: () => void; tone?: "success" | "error" } | null>(null);
   const [continuingKey, setContinuingKey] = useState<string | null>(null);
   const { t } = useI18n();
@@ -207,15 +207,25 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
             管理历史任务、标签、收藏和只读恢复，适合回到长任务上下文。
           </p>
         </div>
-        <div className="flex items-center gap-2 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3">
-          <span className="text-[12px] text-[var(--mm-text-tertiary)]" aria-hidden="true">⌕</span>
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="搜索标题、消息、标签"
-            className="h-9 w-[280px] border-0 bg-transparent text-sm outline-none"
-            aria-label="搜索会话"
-          />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setExportTarget({})}
+            disabled={sessions.length === 0}
+            className="h-9 shrink-0 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            批量导出
+          </button>
+          <div className="flex items-center gap-2 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3">
+            <span className="text-[12px] text-[var(--mm-text-tertiary)]" aria-hidden="true">⌕</span>
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="搜索标题、消息、标签"
+              className="h-9 w-[280px] border-0 bg-transparent text-sm outline-none"
+              aria-label="搜索会话"
+            />
+          </div>
         </div>
       </div>
       {notice && (
@@ -379,7 +389,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                             >
                               {continuingKey === `${session.id}:latest` ? "继续中" : "继续"}
                             </button>
-                            <button className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]" onClick={() => setExportSessionId(session.id)}>导出</button>
+                            <button className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]" onClick={() => setExportTarget({ sessionId: session.id })}>导出</button>
                             <button className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]" onClick={() => toggleArchive(session)}>
                               {session.archived ? "恢复" : "归档"}
                             </button>
@@ -403,9 +413,9 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
         )}
       </div>
       <SessionExportDialog
-        isOpen={exportSessionId !== null}
-        onClose={() => setExportSessionId(null)}
-        sessionId={exportSessionId ?? undefined}
+        isOpen={exportTarget !== null}
+        onClose={() => setExportTarget(null)}
+        sessionId={exportTarget?.sessionId}
       />
     </div>
   );

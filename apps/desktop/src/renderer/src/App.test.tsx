@@ -5,6 +5,11 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentTab, CreateAgentInput } from "@shared";
 
+const { chatViewSpy, searchHistorySpy } = vi.hoisted(() => ({
+    chatViewSpy: vi.fn(),
+    searchHistorySpy: vi.fn(),
+}));
+
 vi.mock("./components/MiniMaxCode", async () => {
     const actual = await vi.importActual<typeof import("./components/MiniMaxCode")>("./components/MiniMaxCode");
     return {
@@ -68,7 +73,35 @@ vi.mock("./components/Onboarding/Onboarding", () => ({
     Onboarding: () => null,
 }));
 vi.mock("./components/ChatView/ChatView", () => ({
-    ChatView: () => <div>ChatView</div>,
+    ChatView: (props: { jumpTarget?: { messageId: string } | null }) => {
+        chatViewSpy(props);
+        return <div data-testid="chat-view" data-jump-message-id={props.jumpTarget?.messageId ?? ""}>ChatView</div>;
+    },
+}));
+vi.mock("./components/SearchHistory/SearchHistory", () => ({
+    SearchHistory: ({
+        isOpen,
+        onNavigate,
+    }: {
+        isOpen: boolean;
+        onNavigate: (sessionId: string, messageId: string) => void;
+    }) => {
+        searchHistorySpy({ isOpen });
+        if (!isOpen) return null;
+        return (
+            <button type="button" onClick={() => onNavigate("s_1", "m_1")}>
+                跳转到消息
+            </button>
+        );
+    },
+}));
+vi.mock("./components/SessionCenter/SessionCenter", () => ({
+    SessionCenter: ({ onOpenChat }: { onOpenChat?: () => void }) => (
+        <div>
+            <span>SessionCenter</span>
+            <button type="button" onClick={onOpenChat}>打开聊天</button>
+        </div>
+    ),
 }));
 
 import App from "./App";
@@ -135,6 +168,7 @@ describe("App sidebar session navigation", () => {
                     createdAt: new Date(),
                     updatedAt: new Date(),
                     messages: [],
+                    readOnly: true,
                 },
             ],
             currentSessionId: null,
@@ -257,6 +291,38 @@ describe("App sidebar session navigation", () => {
         fireEvent.click(screen.getByRole("button", { name: "打开设置窗口" }));
 
         expect(window.piAPI.openSettingsWindow).toHaveBeenCalledTimes(1);
+    });
+
+    it("点击历史 tab 会在主内容区打开 SessionCenter，而不是弹出搜索浮层", async () => {
+        render(<App />);
+
+        fireEvent.click(screen.getByRole("tab", { name: "历史" }));
+
+        expect(await screen.findByText("SessionCenter")).toBeTruthy();
+        expect(screen.queryByRole("button", { name: "跳转到消息" })).toBeNull();
+    });
+
+    it("历史搜索结果会把 messageId 传给 ChatView，而不是只切 session", async () => {
+        render(<App />);
+
+        fireEvent.keyDown(window, { key: "F", ctrlKey: true, shiftKey: true });
+
+        expect(await screen.findByRole("button", { name: "跳转到消息" })).toBeTruthy();
+        fireEvent.click(screen.getByRole("button", { name: "跳转到消息" }));
+
+        await waitFor(() => {
+            expect(useSessionStore.getState().currentSessionId).toBe("s_1");
+            expect(screen.getByTestId("chat-view").getAttribute("data-jump-message-id")).toBe("m_1");
+            expect(useSessionStore.getState().sessions[0]?.readOnly).toBe(false);
+        });
+    });
+
+    it("slash-command:open-sessions 会打开 SessionCenter", async () => {
+        render(<App />);
+
+        window.dispatchEvent(new CustomEvent("slash-command:open-sessions"));
+
+        expect(await screen.findByText("SessionCenter")).toBeTruthy();
     });
 
     it("点击侧栏新对话加号会进入新对话并请求聚焦输入框", async () => {

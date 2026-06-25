@@ -85,7 +85,7 @@ const BUILTIN_SLASH_COMMANDS: ReadonlyArray<Pick<PiSlashCommand, "name" | "descr
     { name: "settings", description: "Open settings menu" },
     { name: "model", description: "Select model" },
     { name: "scoped-models", description: "Enable/disable models for cycling" },
-    { name: "export", description: "Export session" },
+    { name: "export", description: "Export session as HTML" },
     { name: "import", description: "Import and resume a session" },
     { name: "share", description: "Share session as a secret GitHub gist" },
     { name: "copy", description: "Copy last agent message to clipboard" },
@@ -272,6 +272,18 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
     const send: IpcSender = (channel, _workspaceId, payload) => {
         const win: BrowserWindowType | null = BrowserWindow.getAllWindows()[0] ?? null;
         if (win && !win.isDestroyed()) {
+            if (
+                (channel === "approval:deferred" || channel === "approval:review") &&
+                payload &&
+                typeof payload === "object" &&
+                !Array.isArray(payload)
+            ) {
+                win.webContents.send(channel, {
+                    ...(payload as Record<string, unknown>),
+                    workspaceId: _workspaceId,
+                });
+                return;
+            }
             win.webContents.send(channel, payload);
         }
     };
@@ -293,6 +305,58 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
     // 监听 renderer 响应审批
     ipcMain.on("approval:respond", (_event, requestId: string, approved: boolean) => {
         resolveApprovalRequest(requestId, approved);
+    });
+
+    ipcMain.handle("approval:approve", async (_event, workspaceId: string, changeId: string) => {
+        const ws = workspaceId ? deps.getWorkspace(workspaceId) : undefined;
+        if (!ws) {
+            return ipcError(
+                "ipcErrors.chat.workspaceNotFound",
+                `Workspace not found: ${workspaceId}`,
+                { id: workspaceId },
+            );
+        }
+        const change = deps.pendingEdits.get(changeId);
+        if (!change) return undefined;
+        deps.pendingEdits.approve(changeId);
+        return undefined;
+    });
+
+    ipcMain.handle("approval:reject", async (_event, workspaceId: string, changeId: string) => {
+        const ws = workspaceId ? deps.getWorkspace(workspaceId) : undefined;
+        if (!ws) {
+            return ipcError(
+                "ipcErrors.chat.workspaceNotFound",
+                `Workspace not found: ${workspaceId}`,
+                { id: workspaceId },
+            );
+        }
+        const change = deps.pendingEdits.get(changeId);
+        if (!change) return undefined;
+        try {
+            await deps.pendingEdits.reject(changeId, ws.path);
+            return undefined;
+        } catch (err) {
+            log.error("[chat.ipc] approval:reject failed:", err);
+            return ipcError(
+                "ipcErrors.chat.approvalRejectFailed",
+                `拒绝并回滚文件变更失败: ${err instanceof Error ? err.message : String(err)}`,
+                { path: change.filePath },
+            );
+        }
+    });
+
+    ipcMain.handle("approval:remove", async (_event, workspaceId: string, changeId: string) => {
+        const ws = workspaceId ? deps.getWorkspace(workspaceId) : undefined;
+        if (!ws) {
+            return ipcError(
+                "ipcErrors.chat.workspaceNotFound",
+                `Workspace not found: ${workspaceId}`,
+                { id: workspaceId },
+            );
+        }
+        deps.pendingEdits.remove(changeId);
+        return undefined;
     });
 
     ipcMain.handle("permission:set-mode", async (_event, mode: PermissionMode) => {
@@ -496,8 +560,19 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
                 }
                 case "export": {
                     const session = await getSlashSession(ws, input.agentId);
-                    const path = await session.exportToHtml?.(args || undefined);
-                    return slashResult(command, "export", path ? `已导出到 ${path}` : "已导出会话");
+                    if (!session.exportToHtml) {
+                        return slashResult(command, "unsupported", "当前会话不支持 HTML 导出", {
+                            keepInput: true,
+                        });
+                    }
+                    const path = await session.exportToHtml(args || undefined);
+                    if (!path) {
+                        return slashResult(command, "export", "HTML 导出失败：未返回输出路径", {
+                            tone: "error",
+                            keepInput: true,
+                        });
+                    }
+                    return slashResult(command, "export", `已导出 HTML 到 ${path}`);
                 }
                 default:
                     return slashResult(

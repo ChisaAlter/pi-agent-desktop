@@ -256,6 +256,22 @@ describe("FileWorkspace", () => {
     expect(await screen.findByTitle("Modified")).toBeTruthy();
   });
 
+  it("resolves relative file search results against the current workspace before reading them", async () => {
+    filesSearch.mockResolvedValueOnce([
+      { path: "src/app.ts", name: "app.ts", size: 24, isDirectory: false },
+    ]);
+
+    render(<FileWorkspace workspacePath="C:/repo" />);
+
+    fireEvent.change(screen.getByLabelText("搜索文件"), { target: { value: "app" } });
+    fireEvent.click(await screen.findByRole("button", { name: /app\.ts/ }));
+
+    await waitFor(() => {
+      expect(filesReadTextFile).toHaveBeenCalledWith("C:/repo/src/app.ts", "C:/repo");
+    });
+    expect(await screen.findByLabelText("文件只读预览")).toBeTruthy();
+  });
+
   it("selects directory search results without reading them as text files", async () => {
     filesSearch.mockResolvedValueOnce([
       { path: "C:/repo/src", name: "src", size: 0, isDirectory: true },

@@ -151,7 +151,7 @@ async function captureMainEntrypoints(page: Page, dir: string, prefix: string): 
     await expectHealthyLayout(page);
     await screenshot(page, dir, `${prefix}-01-new-task`);
 
-    await page.getByRole("button", { name: "主题巡检会话", exact: true }).click();
+    await page.getByRole("button", { name: "主题巡检会话", exact: true }).click({ position: { x: 24, y: 18 } });
     await expect(page.getByRole("article", { name: /Pi ·/ })).toContainText("主题巡检内容");
     await expectHealthyLayout(page);
     await screenshot(page, dir, `${prefix}-02-chat`);

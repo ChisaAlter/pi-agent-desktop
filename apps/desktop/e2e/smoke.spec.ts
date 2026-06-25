@@ -69,6 +69,7 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         await expect(page.getByRole('tab', { name: 'Git' })).toHaveAttribute('aria-selected', 'true');
 
         await page.getByRole('tab', { name: '历史' }).click();
+        await page.keyboard.press('Control+Shift+F');
         await expect(page.getByRole('textbox', { name: '搜索对话历史' })).toBeVisible({ timeout: 5000 });
         await page.getByRole('button', { name: '关闭搜索' }).click();
         await expect(page.getByRole('textbox', { name: '搜索对话历史' })).toBeHidden({ timeout: 3000 });

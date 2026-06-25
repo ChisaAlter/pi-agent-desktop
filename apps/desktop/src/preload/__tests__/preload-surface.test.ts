@@ -80,11 +80,14 @@ describe("preload surface audit", () => {
             "log:write",
             "workbench:set-active-file",
             "approval:respond",
+            "approval:approve",
+            "approval:reject",
+            "approval:remove",
             "approval:set-auto-approve",
             "plan:respond",
             "permission:respond",
         ];
-        expect(INVOKE_ONLY_CHANNELS.length).toBe(12);
+        expect(INVOKE_ONLY_CHANNELS.length).toBe(15);
         expect(INVOKE_ONLY_CHANNELS).not.toContain("pi:send");
         expect(INVOKE_ONLY_CHANNELS).not.toContain("session:list");
         expect(INVOKE_ONLY_CHANNELS).not.toContain("git:status");

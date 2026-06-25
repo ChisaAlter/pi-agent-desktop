@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { isIpcError } from "@shared";
 
-const { execFileSyncMock } = vi.hoisted(() => ({
+const { execFileSyncMock, execFileMock } = vi.hoisted(() => ({
     execFileSyncMock: vi.fn(),
+    execFileMock: vi.fn(),
 }));
 
 vi.mock("child_process", () => ({
     execFileSync: execFileSyncMock,
+    execFile: execFileMock,
 }));
 
 import { gitAdd, gitCommit, gitDiff, gitDiffStaged, getGitStatus, gitUnstage } from "./git-service";
@@ -14,6 +16,7 @@ import { gitAdd, gitCommit, gitDiff, gitDiffStaged, getGitStatus, gitUnstage } f
 describe("git-service protected path policy", () => {
     beforeEach(() => {
         execFileSyncMock.mockReset();
+        execFileMock.mockReset();
         execFileSyncMock.mockReturnValue("");
     });
 
@@ -68,16 +71,16 @@ describe("git-service protected path policy", () => {
         expect(execFileSyncMock).not.toHaveBeenCalled();
     });
 
-    it("uses parameterized git commands for status and staged diff", () => {
-        execFileSyncMock
-            .mockReturnValueOnce("C:/repo\n")
-            .mockReturnValueOnce("main\n")
-            .mockReturnValueOnce(" M src/app.ts\n?? src/new.ts\n")
-            .mockReturnValueOnce("origin/main\n")
-            .mockReturnValueOnce("2\t1\n")
-            .mockReturnValueOnce("diff --git a/src/app.ts b/src/app.ts\n");
+    it("uses parameterized git commands for status and staged diff", async () => {
+        execFileMock
+            .mockImplementationOnce((_file, _args, _options, callback) => callback(null, "C:/repo\n", ""))
+            .mockImplementationOnce((_file, _args, _options, callback) => callback(null, "main\n", ""))
+            .mockImplementationOnce((_file, _args, _options, callback) => callback(null, " M src/app.ts\n?? src/new.ts\n", ""))
+            .mockImplementationOnce((_file, _args, _options, callback) => callback(null, "origin/main\n", ""))
+            .mockImplementationOnce((_file, _args, _options, callback) => callback(null, "2\t1\n", ""));
+        execFileSyncMock.mockReturnValueOnce("diff --git a/src/app.ts b/src/app.ts\n");
 
-        const status = getGitStatus("C:/repo");
+        const status = await getGitStatus("C:/repo");
         const staged = gitDiffStaged("C:/repo");
 
         expect(status).toMatchObject({
@@ -88,20 +91,18 @@ describe("git-service protected path policy", () => {
             behind: 1,
         });
         expect(staged).toContain("diff --git");
-        expect(execFileSyncMock).toHaveBeenCalledWith("git", ["status", "--porcelain"], expect.objectContaining({ cwd: "C:/repo" }));
+        expect(execFileMock).toHaveBeenCalledWith("git", ["status", "--porcelain"], expect.objectContaining({ cwd: "C:/repo" }), expect.any(Function));
         expect(execFileSyncMock).toHaveBeenCalledWith("git", ["diff", "--staged"], expect.objectContaining({ cwd: "C:/repo" }));
     });
 
-    it("keeps staged-only changes out of unstaged status buckets", () => {
-        execFileSyncMock
-            .mockReturnValueOnce("C:/repo\n")
-            .mockReturnValueOnce("main\n")
-            .mockReturnValueOnce("M  src/staged-only.ts\nMM src/staged-and-unstaged.ts\nA  src/staged-new.ts\n D src/deleted-worktree.ts\n?? src/untracked.ts\n")
-            .mockImplementationOnce(() => {
-                throw new Error("no upstream");
-            });
+    it("keeps staged-only changes out of unstaged status buckets", async () => {
+        execFileMock
+            .mockImplementationOnce((_file, _args, _options, callback) => callback(null, "C:/repo\n", ""))
+            .mockImplementationOnce((_file, _args, _options, callback) => callback(null, "main\n", ""))
+            .mockImplementationOnce((_file, _args, _options, callback) => callback(null, "M  src/staged-only.ts\nMM src/staged-and-unstaged.ts\nA  src/staged-new.ts\n D src/deleted-worktree.ts\n?? src/untracked.ts\n", ""))
+            .mockImplementationOnce((_file, _args, _options, callback) => callback(new Error("no upstream"), "", ""));
 
-        const status = getGitStatus("C:/repo");
+        const status = await getGitStatus("C:/repo");
 
         expect(status).toMatchObject({
             branch: "main",

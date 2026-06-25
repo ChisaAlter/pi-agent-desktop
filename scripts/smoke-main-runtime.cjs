@@ -1,149 +1,282 @@
-// v1.0.10 (smoke): 真正 runtime 验证 C1 修复 — patch out/ 干掉 node:sqlite 阻塞,
-// stub electron + electron-log, 跑 setupIPC 看会不会抛 "second handler".
+// Smoke test: read-only verify the built Electron main bundle can register
+// IPC handlers and the localfile protocol under Electron stubs.
 //
-// 一次性脚本, 跑完即弃. 不入 git.
+// This script must NOT mutate out/ artifacts. It only loads the compiled
+// bundle with minimal runtime stubs and fails fast on duplicate channels or
+// missing protocol registration.
 
-const Module = require('module');
-const fs = require('fs');
-const path = require('path');
+const Module = require("module");
+const path = require("path");
 
-const OUT_DIR = path.resolve(__dirname, '..', 'apps', 'desktop', 'out', 'main');
-const MAIN = path.join(OUT_DIR, 'index.js');
+const OUT_DIR = path.resolve(__dirname, "..", "apps", "desktop", "out", "main");
+const MAIN = path.join(OUT_DIR, "index.js");
 
-// 1) Patch 所有 chunk 和 main: 把 `require("node:sqlite")` 换成字面量 `{}`
-//    (rollup 把 type-only import 编译成 runtime require, 实际没用到, stub 即可)
-//    保留 `const x = ` 前缀, 否则会成 `const x = ;` 语法错.
-let patchedCount = 0;
-const patchFile = (p) => {
-    const c = fs.readFileSync(p, 'utf-8');
-    const next = c.replace(/require\("node:sqlite"\)/g, '{}');
-    if (next !== c) {
-        fs.writeFileSync(p, next);
-        patchedCount++;
+const calls = {
+    handle: [],
+    on: [],
+    protocol: [],
+    fetches: [],
+};
+
+let readyPromise = Promise.resolve();
+
+function fail(stage, error, lines = 12) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[smoke] FAILED during ${stage}:`, message);
+    if (error && error.stack) {
+        console.error(String(error.stack).split("\n").slice(0, lines).join("\n"));
     }
-};
-patchFile(MAIN);
-for (const f of fs.readdirSync(path.join(OUT_DIR, 'chunks'))) {
-    patchFile(path.join(OUT_DIR, 'chunks', f));
+    process.exit(1);
 }
-console.log(`[smoke] patched node:sqlite in ${patchedCount} files`);
 
-// 2) Stub electron — 跟踪所有 ipcMain.handle / on 调用, 重复就抛
-const calls = { handle: [], on: [] };
-const stubElectron = {
-    ipcMain: {
-        handle: (ch, _fn) => {
-            if (calls.handle.includes(ch)) {
-                throw new Error(`Attempted to register a second handler for "${ch}"`);
-            }
-            calls.handle.push(ch);
-        },
-        on: (ch, _fn) => {
-            if (calls.on.includes(ch)) {
-                throw new Error(`Attempted to register a second handler for "${ch}" (on)`);
-            }
-            calls.on.push(ch);
-        },
-    },
-    app: {
-        whenReady: () => ({ then: () => { } }),
-        on: () => { },
-        quit: () => { },
-        getPath: () => '/tmp',
-    },
-    BrowserWindow: class {
-        constructor() { }
-        on() { return this; }
-        show() { }
-        loadURL() { }
-        loadFile() { }
-        webContents = { send: () => { } };
-        isDestroyed() { return false; }
-        static getAllWindows() { return []; }
-    },
-    dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
-};
+function trackUnique(list, value, label) {
+    if (list.includes(value)) {
+        throw new Error(`Attempted to register a second ${label} for "${value}"`);
+    }
+    list.push(value);
+}
 
-// 3) Stub electron-log main 入口 — 避免它跑去创建 log 文件 IO
-// 4) Stub electron-store — 避免真实写盘
-// 5) Stub node-pty — native 模块, Node 跑不动
 const noopStub = new Proxy(function () { }, {
     get: () => noopStub,
     apply: () => noopStub,
     construct: () => ({}),
 });
 
+const storeMemory = new Map();
+
+const stubElectron = {
+    ipcMain: {
+        handle(channel, _fn) {
+            trackUnique(calls.handle, channel, "handler");
+        },
+        on(channel, _fn) {
+            trackUnique(calls.on, channel, "listener");
+        },
+        removeHandler() { },
+        removeAllListeners() { },
+    },
+    protocol: {
+        handle(scheme, _handler) {
+            trackUnique(calls.protocol, scheme, "protocol handler");
+        },
+    },
+    net: {
+        fetch(url) {
+            calls.fetches.push(String(url));
+            return Promise.resolve(new Response("ok", { status: 200 }));
+        },
+    },
+    app: {
+        whenReady() {
+            return {
+                then(callback) {
+                    readyPromise = Promise.resolve().then(() => callback());
+                    return readyPromise;
+                },
+                catch() {
+                    return readyPromise;
+                },
+            };
+        },
+        on() { },
+        quit() { },
+        exit() { },
+        getPath(name) {
+            return path.join(process.cwd(), ".smoke-runtime", String(name ?? "unknown"));
+        },
+        setAppUserModelId() { },
+        requestSingleInstanceLock() {
+            return true;
+        },
+        releaseSingleInstanceLock() { },
+        disableHardwareAcceleration() { },
+        isPackaged: false,
+        commandLine: {
+            appendSwitch() { },
+        },
+    },
+    BrowserWindow: class {
+        constructor() {
+            this.webContents = {
+                send() { },
+                setZoomFactor() { },
+                getURL() {
+                    return "file:///index.html";
+                },
+            };
+        }
+
+        on() {
+            return this;
+        }
+
+        once() {
+            return this;
+        }
+
+        show() { }
+
+        loadURL() {
+            return Promise.resolve();
+        }
+
+        loadFile() {
+            return Promise.resolve();
+        }
+
+        isDestroyed() {
+            return false;
+        }
+
+        static getAllWindows() {
+            return [];
+        }
+    },
+    dialog: {
+        showOpenDialog: async () => ({ canceled: true, filePaths: [] }),
+        showSaveDialog: async () => ({ canceled: true, filePath: undefined }),
+    },
+    shell: {
+        openExternal: async () => undefined,
+        openPath: async () => "",
+    },
+    clipboard: {
+        writeText() { },
+        readText() {
+            return "";
+        },
+    },
+    nativeTheme: {
+        shouldUseDarkColors: false,
+        themeSource: "light",
+        on() { },
+        removeListener() { },
+    },
+    Menu: {
+        buildFromTemplate() {
+            return {};
+        },
+        setApplicationMenu() { },
+    },
+    nativeImage: {
+        createFromPath() {
+            return {};
+        },
+        createEmpty() {
+            return {};
+        },
+    },
+    screen: {
+        getPrimaryDisplay() {
+            return {
+                workAreaSize: { width: 1280, height: 800 },
+            };
+        },
+    },
+};
+
 const origLoad = Module._load;
 Module._load = function (request, parent, ...rest) {
-    if (request === 'electron') return stubElectron;
-    if (request === 'node:sqlite') return {};
-    if (request === 'electron-log/main' || request === 'electron-log') return { info: () => { }, warn: () => { }, error: () => { }, debug: () => { } };
-    if (request === 'electron-store') return class { constructor() { } get() { return {}; } set() { } };
-    if (request === 'node-pty') return { spawn: () => ({ onData: () => { }, onExit: () => { } }) };
+    if (request === "electron") return stubElectron;
+    if (request === "node:sqlite") return {};
+    if (request === "electron-log/main" || request === "electron-log") {
+        return {
+            initialize() { },
+            info() { },
+            warn() { },
+            error() { },
+            debug() { },
+            transports: {
+                file: {},
+            },
+        };
+    }
+    if (request === "electron-store") {
+        return class {
+            constructor(opts = {}) {
+                this.memory = { ...(opts.defaults ?? {}) };
+            }
+
+            get(key) {
+                if (typeof key === "undefined") return this.memory;
+                return this.memory[key];
+            }
+
+            set(key, value) {
+                if (typeof key === "string") {
+                    this.memory[key] = value;
+                    return;
+                }
+                Object.assign(this.memory, key);
+            }
+        };
+    }
+    if (request === "node-pty") {
+        return {
+            spawn: () => ({
+                onData() { },
+                onExit() { },
+                kill() { },
+                write() { },
+                resize() { },
+            }),
+        };
+    }
+    if (request === "better-sqlite3") {
+        return class {
+            prepare() {
+                return {
+                    run() { return {}; },
+                    get() { return undefined; },
+                    all() { return []; },
+                };
+            }
+            exec() { }
+            pragma() { }
+            close() { }
+        };
+    }
+    if (request === "sharp") return noopStub;
+    if (request === "keytar") return { getPassword: async () => null, setPassword: async () => undefined, deletePassword: async () => true };
+    if (request === "pi-openplan") return noopStub;
+    if (request === "pi-permission-system") return noopStub;
     return origLoad.call(this, request, parent, ...rest);
 };
 
-// 6) 跑 main bundle
-console.log('[smoke] requiring main bundle...');
-try {
-    require(MAIN);
-} catch (e) {
-    console.error('[smoke] FAILED during require:', e.message);
-    if (e.stack) console.error(e.stack.split('\n').slice(0, 8).join('\n'));
-    process.exit(1);
-}
-
-// 7) 但 setupIPC 是注册在 app.whenReady().then() 里的 — 我们 stub 的 whenReady
-//    不会自动调 then. 直接从 ipcMain.handle 列表来算.
-// 上面的 stub whenReady 没调 .then, 所以 setupIPC 没跑.
-// 用更直接的方式: 我们已经 require 完 main.js, 它顶层只是定义了函数.
-// setupIPC 是当 app.whenReady() 时跑的. 我们 stub 的 whenReady 啥也不做.
-//
-// 改: 替换 whenReady 让 .then 立即同步执行.
-console.log('[smoke] app.whenReady() chain did not run in stub. Re-requiring with sync chain...');
-
-// 改方案: 用一个能在 require 时同步触发 then 的 stub.
-// 重新做一遍: 删 require cache, 重做 stub 触发 then
-delete require.cache[MAIN];
-
-let syncTrigger = null;
-stubElectron.app.whenReady = () => {
-    const promise = {
-        then: (cb) => {
-            syncTrigger = cb;
-            return promise;
-        },
-    };
-    return promise;
-};
-
-console.log('[smoke] re-requiring main with sync whenReady...');
-require(MAIN);
-if (syncTrigger) {
-    console.log('[smoke] firing whenReady.then() to trigger setupIPC...');
+(async () => {
+    console.log("[smoke] requiring main bundle (read-only)...");
     try {
-        syncTrigger();
-    } catch (e) {
-        console.error('[smoke] setupIPC FAILED:', e.message);
-        if (e.stack) console.error(e.stack.split('\n').slice(0, 15).join('\n'));
+        require(MAIN);
+        await readyPromise;
+    } catch (error) {
+        fail("require/whenReady", error);
+    } finally {
+        Module._load = origLoad;
+    }
+
+    const handleDupes = calls.handle.filter((channel, index) => calls.handle.indexOf(channel) !== index);
+    const onDupes = calls.on.filter((channel, index) => calls.on.indexOf(channel) !== index);
+    const protocolDupes = calls.protocol.filter((scheme, index) => calls.protocol.indexOf(scheme) !== index);
+
+    console.log("\n[smoke] === result ===");
+    console.log(`  ipcMain.handle registrations: ${calls.handle.length}`);
+    console.log(`  ipcMain.on registrations:      ${calls.on.length}`);
+    console.log(`  protocol.handle registrations: ${calls.protocol.length}`);
+
+    if (handleDupes.length || onDupes.length || protocolDupes.length) {
+        console.error("[smoke] duplicate registrations detected");
+        if (handleDupes.length) console.error("  handle:", handleDupes);
+        if (onDupes.length) console.error("  on:", onDupes);
+        if (protocolDupes.length) console.error("  protocol:", protocolDupes);
         process.exit(1);
     }
-}
 
-// 8) 报告
-const handleDupes = calls.handle.filter((ch, i) => calls.handle.indexOf(ch) !== i);
-const onDupes = calls.on.filter((ch, i) => calls.on.indexOf(ch) !== i);
+    if (!calls.protocol.includes("localfile")) {
+        console.error("[smoke] localfile protocol was not registered");
+        process.exit(1);
+    }
 
-console.log('\n[smoke] === 结果 ===');
-console.log(`  ipcMain.handle 调用次数: ${calls.handle.length}, unique: ${new Set(calls.handle).size}`);
-console.log(`  ipcMain.on 调用次数:    ${calls.on.length}, unique: ${new Set(calls.on).size}`);
-
-if (handleDupes.length || onDupes.length) {
-    console.error('[smoke] ❌ 发现重复:');
-    if (handleDupes.length) console.error('  handle:', handleDupes);
-    if (onDupes.length) console.error('  on:', onDupes);
-    process.exit(1);
-}
-console.log('[smoke] ✅ C1 修复 runtime 验证通过 — 无重复 IPC 通道');
-console.log('[smoke]    (handle channels:', calls.handle.join(', '), ')');
-console.log('[smoke]    (on channels:', calls.on.join(', '), ')');
+    console.log("[smoke] OK main runtime registration verified");
+    console.log("[smoke] protocol:", calls.protocol.join(", "));
+    console.log("[smoke] handle channels:", calls.handle.join(", "));
+})();

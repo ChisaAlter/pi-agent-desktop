@@ -1,4 +1,4 @@
-import { execFileSync } from "child_process";
+import { execFile, execFileSync } from "child_process";
 import { isAbsolute, join, relative, resolve } from "path";
 import { ipcError, type GitStatus, type GitChangedFile, type IpcError } from "@shared";
 import { getProtectedPathReason } from "./protected-paths";
@@ -30,6 +30,18 @@ function normalizeGitPaths(workspacePath: string, files: string[]): string[] | I
     return normalized;
 }
 
+function execGitAsync(args: string[], cwd: string): Promise<string> {
+    return new Promise((resolvePromise, reject) => {
+        execFile("git", args, { cwd, encoding: "utf-8" }, (error, stdout) => {
+            if (error) {
+                reject(error);
+                return;
+            }
+            resolvePromise(stdout);
+        });
+    });
+}
+
 function findGitRoot(workspacePath: string): string | null {
     try {
         return execFileSync("git", ["rev-parse", "--show-toplevel"], {
@@ -41,27 +53,29 @@ function findGitRoot(workspacePath: string): string | null {
     }
 }
 
-export function getGitStatus(workspacePath: string): GitStatus | null | IpcError {
+async function findGitRootAsync(workspacePath: string): Promise<string | null> {
+    try {
+        return (await execGitAsync(["rev-parse", "--show-toplevel"], workspacePath)).trim();
+    } catch {
+        return null;
+    }
+}
+
+export async function getGitStatus(workspacePath: string): Promise<GitStatus | null | IpcError> {
     const workspaceError = assertWorkspaceAllowed(workspacePath);
     if (workspaceError) return workspaceError;
 
-    const gitRoot = findGitRoot(workspacePath);
+    const gitRoot = await findGitRootAsync(workspacePath);
     if (!gitRoot) return null;
 
     let branch = "main";
     try {
-        branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-            cwd: gitRoot,
-            encoding: "utf-8",
-        }).trim();
+        branch = (await execGitAsync(["rev-parse", "--abbrev-ref", "HEAD"], gitRoot)).trim();
     } catch {
         // Detached head or unusual repository state; keep the UI usable.
     }
 
-    const statusOutput = execFileSync("git", ["status", "--porcelain"], {
-        cwd: gitRoot,
-        encoding: "utf-8",
-    });
+    const statusOutput = await execGitAsync(["status", "--porcelain"], gitRoot);
     const modified: string[] = [];
     const added: string[] = [];
     const deleted: string[] = [];
@@ -83,14 +97,8 @@ export function getGitStatus(workspacePath: string): GitStatus | null | IpcError
     let ahead = 0;
     let behind = 0;
     try {
-        const upstream = execFileSync("git", ["rev-parse", "--abbrev-ref", "@{u}"], {
-            cwd: gitRoot,
-            encoding: "utf-8",
-        }).trim();
-        const countOutput = execFileSync("git", ["rev-list", "--left-right", "--count", `HEAD...${upstream}`], {
-            cwd: gitRoot,
-            encoding: "utf-8",
-        }).trim();
+        const upstream = (await execGitAsync(["rev-parse", "--abbrev-ref", "@{u}"], gitRoot)).trim();
+        const countOutput = (await execGitAsync(["rev-list", "--left-right", "--count", `HEAD...${upstream}`], gitRoot)).trim();
         const parts = countOutput.split("\t");
         if (parts.length === 2) {
             ahead = parseInt(parts[0], 10) || 0;

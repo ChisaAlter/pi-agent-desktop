@@ -40,6 +40,8 @@ test.describe('Pi Desktop — Session Center', () => {
         const { app, page } = await launchApp(userDataDir);
 
         await page.getByRole('tab', { name: '历史' }).click();
+        await expect(page.getByRole('heading', { name: '会话中心' })).toBeVisible({ timeout: 5000 });
+        await page.keyboard.press('Control+Shift+F');
         await expect(page.getByRole('textbox', { name: '搜索对话历史' })).toBeVisible({ timeout: 5000 });
         await expect(page.getByRole('button', { name: '关闭搜索' })).toBeVisible();
         await page.getByRole('button', { name: '关闭搜索' }).click();

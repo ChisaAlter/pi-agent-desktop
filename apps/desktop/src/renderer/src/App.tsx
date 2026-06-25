@@ -26,6 +26,7 @@ import { ApprovalPanel } from "./components/ApprovalPanel/ApprovalPanel";
 import { Onboarding } from "./components/Onboarding/Onboarding";
 import { ChatView } from "./components/ChatView/ChatView";
 import { SearchHistory } from "./components/SearchHistory/SearchHistory";
+import { SessionCenter } from "./components/SessionCenter/SessionCenter";
 import { TopTabBar } from "./components/TopTabBar/TopTabBar";
 import {
     MiniMaxCodeLayout,
@@ -35,7 +36,7 @@ import {
 import { useWorkspaceStore } from "./stores/workspace-store";
 import { useSettingsStore } from "./stores/settings-store";
 import { usePiStatusStore } from "./stores/pi-status-store";
-import { useApprovalStore } from "./stores/approval-store";
+import { bindApprovalEventSubscriptions, useApprovalStore } from "./stores/approval-store";
 import { useSessionStore } from "./stores/session-store";
 import { useAgentStore } from "./stores/agent-store";
 import { isFirstLaunch } from "./utils/first-launch";
@@ -50,10 +51,11 @@ import type { TerminalCommandMode } from "./utils/terminal-command";
 import { isIpcError } from "@shared";
 import { applyTheme, watchSystemTheme, type Theme } from "./utils/theme";
 
-type MainPanel = "chat" | "skills" | "git" | "files";
+type MainPanel = "chat" | "skills" | "git" | "files" | "history";
 type TerminalCommandTarget = { command: string; mode: TerminalCommandMode; nonce: number };
 type PaletteCommandStatus = { message: string; tone: "success" | "error" };
 type FileWorkspaceTarget = { path: string; mode?: "edit" | "diff"; nonce: number };
+type MessageJumpTarget = { messageId: string; nonce: number };
 
 const LEFT_SIDEBAR_WIDTH_KEY = "pi-desktop-left-sidebar-width";
 const DEFAULT_LEFT_SIDEBAR_WIDTH = 190;
@@ -76,6 +78,7 @@ function panelForSection(section: string): MainPanel {
     if (section === "files") return "files";
     if (section === "skills" || section === "tools") return "skills";
     if (section === "git") return "git";
+    if (section === "history") return "history";
     return "chat";
 }
 
@@ -129,6 +132,7 @@ function AppShell(): React.ReactElement {
     const [showCheatsheet, setShowCheatsheet] = useState(false);
     const [showOnboarding, setShowOnboarding] = useState(false);
     const [showSearchHistory, setShowSearchHistory] = useState(false);
+    const [chatJumpTarget, setChatJumpTarget] = useState<MessageJumpTarget | null>(null);
     const [leftCollapsed, setLeftCollapsed] = useState(false);
     const [leftSidebarWidth, setLeftSidebarWidthState] = useState(readStoredLeftSidebarWidth);
     const [workspaceHasRoomForRightRail, setWorkspaceHasRoomForRightRail] = useState(false);
@@ -221,6 +225,7 @@ function AppShell(): React.ReactElement {
         ensurePermissionSubscriptions();
         ensurePlanSubscriptions();
         ensureQueueSubscription();
+        return bindApprovalEventSubscriptions();
     }, []);
 
     useEffect(() => {
@@ -341,7 +346,7 @@ function AppShell(): React.ReactElement {
     }, [pendingApprovalCount]);
     const closeApproval = useCallback(() => {
         setApprovalVisible(false);
-        useApprovalStore.getState().clearChanges();
+        void useApprovalStore.getState().clearChanges();
     }, []);
     useEffect(() => {
         const onPrefill = (e: Event): void => {
@@ -422,8 +427,8 @@ function AppShell(): React.ReactElement {
             return;
         }
         if (section === "history" || section === "memory") {
+            setShowSearchHistory(false);
             setActiveSection("history");
-            setShowSearchHistory(true);
             return;
         }
         if (section === "new-task") {
@@ -539,7 +544,7 @@ function AppShell(): React.ReactElement {
             }, 0);
         };
         const onOpenHotkeys = (): void => setShowCheatsheet(true);
-        const onOpenSessions = (): void => setShowSearchHistory(true);
+        const onOpenSessions = (): void => routeSection("history");
         const onNewTask = (): void => routeSection("new-task");
 
         window.addEventListener("slash-command:open-settings-tab", onOpenSettingsTab);
@@ -645,7 +650,11 @@ function AppShell(): React.ReactElement {
                     <>
                         {activePanel === "chat" && (
                             <ErrorBoundary fallback={panelFallback("聊天")}>
-                                <ChatView prefillText={chatPrefill} onPrefillConsumed={() => setChatPrefill(null)} />
+                                <ChatView
+                                    prefillText={chatPrefill}
+                                    onPrefillConsumed={() => setChatPrefill(null)}
+                                    jumpTarget={chatJumpTarget}
+                                />
                             </ErrorBoundary>
                         )}
                         {activePanel === "skills" && (
@@ -669,6 +678,11 @@ function AppShell(): React.ReactElement {
                                         initialTarget={fileWorkspaceTarget}
                                     />
                                 </div>
+                            </ErrorBoundary>
+                        )}
+                        {activePanel === "history" && (
+                            <ErrorBoundary fallback={panelFallback("历史")}>
+                                <SessionCenter onOpenChat={() => setActiveSection("chat")} />
                             </ErrorBoundary>
                         )}
                     </>
@@ -705,8 +719,10 @@ function AppShell(): React.ReactElement {
                         <SearchHistory
                             isOpen={showSearchHistory}
                             onClose={() => setShowSearchHistory(false)}
-                            onNavigate={(sessionId) => {
-                                useSessionStore.setState({ currentSessionId: sessionId });
+                            onNavigate={(sessionId, messageId) => {
+                                useSessionStore.getState().setCurrentSession(sessionId);
+                                setActiveSection("chat");
+                                setChatJumpTarget({ messageId, nonce: Date.now() });
                                 setShowSearchHistory(false);
                             }}
                         />

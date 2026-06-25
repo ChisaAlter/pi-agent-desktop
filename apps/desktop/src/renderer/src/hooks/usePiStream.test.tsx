@@ -14,6 +14,10 @@ const sendPrompt = vi.fn(async () => undefined);
 const stopPrompt = vi.fn<(_workspaceId: string) => Promise<unknown>>(async () => undefined);
 const agentsPrompt = vi.fn(async () => undefined);
 const planSetEnabled = vi.fn(async () => undefined);
+const appendMessageIpc = vi.fn(async () => undefined);
+const updateMessageIpc = vi.fn(async () => undefined);
+const updateToolCallIpc = vi.fn(async () => undefined);
+const updateSessionMetadataIpc = vi.fn(async () => undefined);
 
 function HookHost(): null {
     usePiStream();
@@ -91,6 +95,14 @@ beforeEach(() => {
     planSetEnabled.mockClear();
     stopPrompt.mockReset();
     stopPrompt.mockResolvedValue(undefined);
+    appendMessageIpc.mockReset();
+    appendMessageIpc.mockResolvedValue(undefined);
+    updateMessageIpc.mockReset();
+    updateMessageIpc.mockResolvedValue(undefined);
+    updateToolCallIpc.mockReset();
+    updateToolCallIpc.mockResolvedValue(undefined);
+    updateSessionMetadataIpc.mockReset();
+    updateSessionMetadataIpc.mockResolvedValue(undefined);
     (globalThis as { window: unknown }).window = {
         dispatchEvent: vi.fn(),
         // 2026-06-06 hotfix (T6): usePiStream 用 setTimeout/setInterval 防 debounce 卡住,
@@ -124,6 +136,10 @@ beforeEach(() => {
             planSetEnabled,
             stop: stopPrompt,
             renameSession: vi.fn(async () => undefined),
+            appendMessage: appendMessageIpc,
+            updateMessage: updateMessageIpc,
+            updateToolCall: updateToolCallIpc,
+            updateSessionMetadata: updateSessionMetadataIpc,
         },
     };
     useSessionStore.setState({
@@ -192,6 +208,65 @@ describe("usePiStream", () => {
             message: expect.stringContaining("agent follow up"),
             mode: "compose",
         });
+    });
+
+    it("prepends session tool-permission guards for agent prompts", async () => {
+        useSessionStore.setState({
+            currentSessionId: "s1",
+            sessions: [
+                {
+                    id: "s1",
+                    title: "Session",
+                    workspaceId: "ws1",
+                    createdAt: new Date(0),
+                    updatedAt: new Date(0),
+                    messages: [],
+                    toolPermissions: {
+                        fileRead: true,
+                        fileWrite: true,
+                        shell: false,
+                        git: true,
+                        network: true,
+                        extensions: true,
+                    },
+                },
+            ],
+        });
+        useAgentStore.setState({
+            agents: [
+                {
+                    id: "agent_1",
+                    workspaceId: "ws1",
+                    title: "Session Agent",
+                    status: "idle",
+                    sessionId: "s1",
+                    createdAt: 1,
+                    updatedAt: 1,
+                },
+            ],
+            currentAgentId: "agent_1",
+            messagesByAgent: {},
+            runtimeByAgent: {},
+            initialized: true,
+        });
+
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+        await act(async () => {
+            screen.getByText("send-agent-follow-up").click();
+        });
+
+        const [payload] = agentsPrompt.mock.calls[0] as Array<{
+            agentId: string;
+            message: string;
+            mode: string;
+        }>;
+        expect(payload.agentId).toBe("agent_1");
+        expect(payload.mode).toBe("build");
+        expect(payload.message).toContain("<tool-permissions>");
+        expect(payload.message).toContain("The user disabled: bash, PowerShell, and shell commands.");
+        expect(payload.message).toContain("agent follow up");
     });
 
     it("treats selected Plan agent mode as plan clarification flow", async () => {
@@ -519,7 +594,11 @@ describe("usePiStream", () => {
         });
 
         const session = useSessionStore.getState().sessions[0];
-        expect(sendPrompt).toHaveBeenCalledWith("ws1", "follow up", { mode: "build" });
+        expect(sendPrompt).toHaveBeenCalledWith(
+            "ws1",
+            expect.stringContaining("follow up"),
+            { mode: "build" },
+        );
         expect(session.messages).toHaveLength(2);
         expect(session.messages[0]).toMatchObject({ role: "assistant", content: "partial answer" });
         expect(session.messages[1]).toMatchObject({ role: "user", content: "follow up" });
@@ -530,6 +609,45 @@ describe("usePiStream", () => {
     });
 
     it("queues agent follow-ups with explicit streaming behavior while streaming", async () => {
+        useSessionStore.setState({
+            currentSessionId: "s1",
+            sessions: [
+                {
+                    id: "s1",
+                    title: "Session",
+                    workspaceId: "ws1",
+                    createdAt: new Date(0),
+                    updatedAt: new Date(0),
+                    messages: [],
+                    toolPermissions: {
+                        fileRead: true,
+                        fileWrite: true,
+                        shell: false,
+                        git: true,
+                        network: true,
+                        extensions: true,
+                    },
+                },
+            ],
+        });
+        useAgentStore.setState({
+            agents: [
+                {
+                    id: "agent_1",
+                    workspaceId: "ws1",
+                    title: "Session Agent",
+                    status: "idle",
+                    sessionId: "s1",
+                    createdAt: 1,
+                    updatedAt: 1,
+                },
+            ],
+            currentAgentId: "agent_1",
+            messagesByAgent: {},
+            runtimeByAgent: {},
+            initialized: true,
+        });
+
         await act(async () => {
             render(<AgentHookStateHost />);
         });
@@ -544,10 +662,17 @@ describe("usePiStream", () => {
 
         expect(agentsPrompt).toHaveBeenCalledWith({
             agentId: "agent_1",
-            message: "agent follow up",
+            message: expect.stringContaining("agent follow up"),
             mode: "build",
             streamingBehavior: "followUp",
         });
+        const [payload] = agentsPrompt.mock.calls[0] as Array<{
+            agentId: string;
+            message: string;
+            streamingBehavior: string;
+        }>;
+        expect(payload.message).toContain("<tool-permissions>");
+        expect(payload.message).toContain("The user disabled: bash, PowerShell, and shell commands.");
     });
 
     it("adds an optimistic agent user message before the main-process echo arrives", async () => {
@@ -586,9 +711,16 @@ describe("usePiStream", () => {
         ]);
         expect(agentsPrompt).toHaveBeenCalledWith({
             agentId: "agent_1",
-            message: "agent follow up",
+            message: expect.stringContaining("agent follow up"),
             mode: "build",
         });
+        expect(appendMessageIpc).toHaveBeenCalledWith(
+            "s1",
+            expect.objectContaining({
+                role: "user",
+                content: "agent follow up",
+            }),
+        );
         expect(useSessionStore.getState().sessions[0]?.messages).toMatchObject([
             {
                 role: "user",
@@ -707,6 +839,31 @@ describe("usePiStream", () => {
                 status: "completed",
             },
         ]);
+        expect(appendMessageIpc).toHaveBeenCalledWith(
+            "s1",
+            expect.objectContaining({
+                role: "assistant",
+                content: "",
+            }),
+        );
+        expect(updateMessageIpc).toHaveBeenCalledTimes(1);
+        expect(updateMessageIpc).toHaveBeenCalledWith(
+            "s1",
+            expect.stringMatching(/^am_/),
+            expect.objectContaining({
+                content: "agent bound answer",
+                toolCalls: [
+                    expect.objectContaining({
+                        id: "tc_bound_1",
+                        name: "read",
+                        input: { path: "README.md" },
+                        output: "done",
+                        status: "completed",
+                    }),
+                ],
+            }),
+        );
+        expect(updateToolCallIpc).not.toHaveBeenCalled();
     });
 
     it("persists session-bound agent usage and custom cards into the linked chat session", async () => {
@@ -763,6 +920,27 @@ describe("usePiStream", () => {
                 },
             },
         ]);
+        expect(updateSessionMetadataIpc).toHaveBeenCalledWith(
+            "s1",
+            expect.objectContaining({
+                usage: expect.objectContaining({
+                    inputTokens: 10,
+                    outputTokens: 2,
+                    totalTokens: 12,
+                }),
+            }),
+        );
+        expect(appendMessageIpc).toHaveBeenCalledWith(
+            "s1",
+            expect.objectContaining({
+                role: "assistant",
+                customCard: expect.objectContaining({
+                    id: "session_bound_card",
+                    kind: "result-summary",
+                    title: "Bound card",
+                }),
+            }),
+        );
     });
 
     it("blocks vague agent plan-mode input locally and shows clarification prompt", async () => {
@@ -814,7 +992,11 @@ describe("usePiStream", () => {
             screen.getByText("send-follow-up").click();
         });
 
-        expect(sendPrompt).toHaveBeenCalledWith("ws1", "follow up", { mode: "build" });
+        expect(sendPrompt).toHaveBeenCalledWith(
+            "ws1",
+            expect.stringContaining("follow up"),
+            { mode: "build" },
+        );
     });
 
     it("stops showing the current turn as thinking once a plan card is waiting for a decision", async () => {

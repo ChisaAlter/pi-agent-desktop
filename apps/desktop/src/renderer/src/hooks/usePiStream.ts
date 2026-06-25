@@ -317,6 +317,16 @@ function describePermissionsForPrompt(sessionId: string | null, workspaceId: str
     ].join("\n");
 }
 
+function guardPromptWithPermissions(
+    content: string,
+    sessionId: string | null,
+    workspaceId: string,
+    isSlashCommand: boolean,
+): string {
+    if (isSlashCommand) return content;
+    return `${describePermissionsForPrompt(sessionId, workspaceId)}${content}`;
+}
+
 function createPlanAction(card: PlanCard): PlanMessageAction {
     return {
         id: `plan_action_${card.id}`,
@@ -1055,6 +1065,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         const isSlashCommand = content.trimStart().startsWith("/");
         const shouldUsePlanMode = planEnabled && !isSlashCommand && !isFollowUpWhileStreaming;
         const visibleContent = options.visibleContent ?? visibleContentFromPrompt(content);
+        const permissionSessionId = boundSessionId ?? session?.id ?? sessionIdRef.current;
         if (isFollowUpWhileStreaming) {
             if (planEnabled && isSlashCommand) {
                 pauseVisibleStreamingForPlanDecision();
@@ -1070,10 +1081,25 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     });
                 }
                 try {
+                    const guardedFollowUpContent = guardPromptWithPermissions(
+                        content,
+                        permissionSessionId,
+                        workspaceId,
+                        isSlashCommand,
+                    );
                     if (aid) {
-                        await window.piAPI.agentsPrompt({ agentId: aid, message: content, streamingBehavior: "followUp", mode: selectedMode });
+                        await window.piAPI.agentsPrompt({
+                            agentId: aid,
+                            message: guardedFollowUpContent,
+                            streamingBehavior: "followUp",
+                            mode: selectedMode,
+                        });
                     } else {
-                        const result = await window.piAPI.sendPrompt(workspaceId, content, { mode: selectedMode });
+                        const result = await window.piAPI.sendPrompt(
+                            workspaceId,
+                            guardedFollowUpContent,
+                            { mode: selectedMode },
+                        );
                         if (isIpcError(result)) {
                             setError(result.fallback);
                         }
@@ -1168,8 +1194,12 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             if (clarifiedPlanContent) {
                 usePlanStore.getState().setPendingPlanClarification(null);
             }
-            const permissionPrefix = aid || isSlashCommand ? "" : describePermissionsForPrompt(sessionIdRef.current, workspaceId);
-            const guardedContent = `${permissionPrefix}${clarifiedPlanContent ?? directExplorationPlanContent ?? content}`;
+            const guardedContent = guardPromptWithPermissions(
+                clarifiedPlanContent ?? directExplorationPlanContent ?? content,
+                permissionSessionId,
+                workspaceId,
+                isSlashCommand,
+            );
             const outbound = guardedContent;
             if (aid) {
                 await window.piAPI.agentsPrompt({ agentId: aid, message: outbound, mode: selectedMode });
