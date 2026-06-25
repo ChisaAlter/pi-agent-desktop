@@ -69,11 +69,7 @@ export function useSlashCommands(
         window.piAPI.listSlashCommands(workspaceId, agentId ?? undefined, mode)
             .then((result) => {
                 if (cancelled) return;
-                setCommands(
-                    isIpcError(result)
-                        ? []
-                        : result.filter((command) => command.desktopAction !== "unsupported"),
-                );
+                setCommands(isIpcError(result) ? [] : result);
             })
             .catch(() => {
                 if (!cancelled) setCommands([]);

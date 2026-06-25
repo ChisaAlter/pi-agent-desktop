@@ -345,23 +345,18 @@
     },
     "longHorizon": {
       "heading": "长程能力",
-      "description": "控制 MiMoCode 风格的模式、Goal、计划联动、记忆、checkpoint 和 Max Mode 适配层。",
+      "description": "控制 MiMoCode 风格的模式、Goal、计划联动、记忆和 checkpoint 适配层。",
       "enabled": {
         "label": "启用增强能力",
         "description": "关闭后不注入模式 prompt、不处理 Goal judge、不写记忆或 checkpoint，并隐藏增强命令。"
       },
       "defaultMode": {
         "label": "默认会话模式",
-        "description": "默认保持 Build；Max 只有在实验开关开启后才可选。"
-      },
-      "maxMode": {
-        "label": "Max Mode",
-        "description": "实验增强模式：生成多个候选并由 judge 选优，不作为默认第四主模式。",
-        "candidates": "Max 候选数"
+        "description": "默认保持 Build；只在已启用的模式中选择 Build、Plan 或 Compose。"
       },
       "modes": {
         "heading": "模式",
-        "description": "按 MiMoCode agent 配置拆分 Build、Plan、Compose 和 Max。"
+        "description": "按 MiMoCode agent 配置拆分 Build、Plan 和 Compose。"
       },
       "planMode": {
         "label": "Plan Mode",
@@ -538,13 +533,14 @@
       "scanFailed": "{{path}} 文件扫描失败: {{message}}"
     }
   },
-  "topbar": {
-    "chat": "对话",
-    "skills": "技能",
-    "git": "Git",
-    "history": "历史",
-    "ariaLabel": "顶部标签栏"
-  },
+    "topbar": {
+      "chat": "对话",
+      "tasks": "任务",
+      "memory": "记忆",
+      "tools": "工具",
+      "settings": "设置",
+      "ariaLabel": "顶部标签栏"
+    },
   "app": {
     "shellAria": "Pi 桌面应用",
     "headerAria": "顶部操作栏",

@@ -23,6 +23,31 @@ interface MessageBubbleProps {
   onPlanAction?: (message: ChatMessage, action: "execute" | "refine" | "cancel" | "pause" | "resume", text?: string) => Promise<void>;
 }
 
+function inferInlinePlanAction(message: ChatMessage, visibleContent: string): Message["planAction"] | undefined {
+  if (message.role !== "assistant" || message.planAction || !visibleContent.trim()) return undefined;
+  const normalized = visibleContent.trim();
+  const titleMatch = normalized.match(/^\s*#{1,6}\s+(.+?)\s*$/m);
+  const title = titleMatch?.[1]?.trim() ?? "计划";
+  const listStepCount = normalized
+    .split(/\r?\n/)
+    .filter((line) => /^\s*(?:[-*]|\d+[.)])\s+\S+/.test(line.trim()))
+    .length;
+  const tableStepCount = normalized
+    .split(/\r?\n/)
+    .filter((line) => /^\s*\|\s*\d+\s*\|/.test(line))
+    .length;
+  const hasPlanSignal =
+    /(?:^|\n)\s*#{1,6}\s*(?:执行计划|计划|plan)(?:\s|$)/i.test(normalized) ||
+    /请执行上述步骤|等待执行|等待您的指令后开始执行|use\s*\/execute_plan|执行上述计划/i.test(normalized);
+  const stepCount = listStepCount + tableStepCount;
+  if (!hasPlanSignal || stepCount < 2) return undefined;
+  return {
+    id: `inline_plan_${message.id}`,
+    title,
+    status: "pending",
+  };
+}
+
 function describeToolCall(name: unknown): "view" | "modify" | "command" | "tool" {
   if (typeof name !== "string") return "tool";
   const lower = name.toLowerCase();
@@ -161,10 +186,13 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
   const visibleContent = inlineThinking.content;
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
-  const planAction = !isUser ? message.planAction : undefined;
+  const planAction = !isUser ? (message.planAction ?? inferInlinePlanAction(message, visibleContent)) : undefined;
   const planStatus = planAction?.status ?? "pending";
   const showPlanPanel = Boolean(planAction);
   const planSteps = usePlanStore((state) => state.steps);
+  const effectiveMessage = planAction && !message.planAction
+    ? { ...message, planAction }
+    : message;
 
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -259,11 +287,11 @@ export const MessageBubble = React.memo(function MessageBubble({ message, isStre
                     filename={planAction?.filename}
                     status={planStatus}
                     steps={planSteps}
-                    onExecute={() => void onPlanAction?.(message, "execute")}
-                    onRefine={() => void onPlanAction?.(message, "refine")}
-                    onCancel={() => void onPlanAction?.(message, "cancel")}
-                    onPause={() => void onPlanAction?.(message, "pause")}
-                    onResume={() => void onPlanAction?.(message, "resume")}
+                    onExecute={() => void onPlanAction?.(effectiveMessage, "execute")}
+                    onRefine={() => void onPlanAction?.(effectiveMessage, "refine")}
+                    onCancel={() => void onPlanAction?.(effectiveMessage, "cancel")}
+                    onPause={() => void onPlanAction?.(effectiveMessage, "pause")}
+                    onResume={() => void onPlanAction?.(effectiveMessage, "resume")}
                   />
                 )}
 

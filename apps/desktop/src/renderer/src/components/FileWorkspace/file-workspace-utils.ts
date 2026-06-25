@@ -93,13 +93,6 @@ export function normalizePath(path: string): string {
   return path.replace(/\\/g, "/").replace(/\/+/g, "/");
 }
 
-export function resolveWorkspacePath(path: string, workspacePath: string): string {
-  const normalized = normalizePath(path);
-  if (/^[A-Za-z]:\//.test(normalized) || normalized.startsWith("//")) return normalized;
-  const base = normalizePath(workspacePath).replace(/\/+$/, "");
-  return `${base}/${normalized.replace(/^\/+/, "")}`;
-}
-
 export function relativeToWorkspace(path: string, workspacePath: string): string {
   const normalizedPath = normalizePath(path);
   const normalizedWorkspace = normalizePath(workspacePath).replace(/\/+$/, "");

@@ -12,18 +12,18 @@ import { VirtualizedMessageList } from './VirtualizedMessageList';
 import { ChatInput } from './ChatInput';
 import { useI18n } from '../../i18n';
 import { usePlanStore } from '../../stores/plan-store';
+import { useAgentModeStore } from '../../stores/agent-mode-store';
 import { useSettingsStore } from '../../stores/settings-store';
 import { WorkspaceSwitcher } from '../TopTabBar/WorkspaceSwitcher';
 import { formatUsageCost, formatUsageNumber } from '../UsageStats/usage-aggregation';
 import type { Message } from '../../stores/session-store';
-import type { AgentMessage } from '@shared';
+import { isIpcError, type AgentMessage } from '@shared';
 
 interface ChatViewProps {
     /** v1.0.14: 外部注入的预填文本(由 App.tsx 监听 'chatpanel:prefill' 事件传来,用于跨组件切到 chat 时把 prompt 灌进 ChatInput) */
     prefillText?: string | null;
     /** prefill 已被 ChatInput 消费后回调 */
     onPrefillConsumed?: () => void;
-    jumpTarget?: { messageId: string; nonce: number } | null;
 }
 
 function hasVisibleAssistantContent(message: Message): boolean {
@@ -168,10 +168,9 @@ function mergeAdjacentThinkingMessages(messages: Message[]): ChatMessage[] {
   return merged;
 }
 
-export function ChatView({ prefillText, onPrefillConsumed, jumpTarget }: ChatViewProps = {}): React.JSX.Element {
+export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {}): React.JSX.Element {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollRegionRef = useRef<HTMLDivElement>(null);
-  const processedJumpNonceRef = useRef<number | null>(null);
   const currentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace());
   const agents = useAgentStore((state) => state.agents);
   const currentAgentId = useAgentStore((state) => state.currentAgentId);
@@ -181,8 +180,9 @@ export function ChatView({ prefillText, onPrefillConsumed, jumpTarget }: ChatVie
     if (!currentWorkspace) return null;
     if (currentSessionId) {
       const sessionAgent = agents.find((agent) => agent.workspaceId === currentWorkspace.id && agent.sessionId === currentSessionId);
-      return sessionAgent ?? null;
+      if (sessionAgent) return sessionAgent;
     }
+    if (!currentSessionId) return null;
     const selectedAgent = currentAgentId
       ? agents.find((agent) => agent.id === currentAgentId && agent.workspaceId === currentWorkspace.id && !agent.sessionId)
       : undefined;
@@ -211,7 +211,6 @@ export function ChatView({ prefillText, onPrefillConsumed, jumpTarget }: ChatVie
   const [titleDraft, setTitleDraft] = useState("");
   const [composerFocusKey, setComposerFocusKey] = useState(0);
   const [globalComposerRoot, setGlobalComposerRoot] = useState<HTMLElement | null>(null);
-  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const activePlanCard = usePlanStore((state) => state.activeCard);
   const renderedPlanCardIds = usePlanStore((state) => state.renderedPlanCardIds);
   const activePlanExecution = usePlanStore((state) => state.activeExecution);
@@ -305,6 +304,14 @@ export function ChatView({ prefillText, onPrefillConsumed, jumpTarget }: ChatVie
         const agent = await createAgent(currentWorkspace.id, `${sessionForSend.title || "未命名会话"} Agent`, undefined, sessionForSend.id);
         agentIdForSend = agent.id;
       }
+      if (agentIdForSend && sessionForSend.messages.length === 0) {
+        useSessionStore.getState().addMessage(sessionForSend.id, {
+          id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          role: "user",
+          content: options?.visibleContent ?? message,
+          timestamp: new Date(),
+        });
+      }
       if (options) {
         await startStreaming(currentWorkspace.id, message, agentIdForSend ? { ...options, agentId: agentIdForSend } : options);
       } else {
@@ -340,24 +347,18 @@ export function ChatView({ prefillText, onPrefillConsumed, jumpTarget }: ChatVie
       setSessionActionError(`继续会话失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
-  const rawMessages = useMemo(() => {
-    if (currentSession) {
-      return currentSession.messages;
-    }
-    if (!hasAgent || agentMessages.length === 0) {
-      return [];
-    }
-    return agentMessages.map((message) => ({
-      id: message.id,
-      role: message.role === "assistant" || message.role === "system" || message.role === "user"
-        ? message.role
-        : "system",
-      content: message.content,
-      timestamp: new Date(message.createdAt),
-      thinking: message.thinking,
-      planAction: message.planAction,
-    }));
-  }, [agentMessages, currentSession, hasAgent]);
+  const rawMessages = useMemo(() => hasAgent && agentMessages.length > 0
+    ? agentMessages.map((message) => ({
+        id: message.id,
+        role: message.role === "assistant" || message.role === "system" || message.role === "user"
+          ? message.role
+          : "system",
+        content: message.content,
+        timestamp: new Date(message.createdAt),
+        thinking: message.thinking,
+        planAction: message.planAction,
+      }))
+    : currentSession?.messages || [], [agentMessages, currentSession?.messages, hasAgent]);
   const messages = useMemo(() => {
     const merged = mergeAdjacentThinkingMessages(rawMessages);
     // v1.0.14-fix: 过滤后端偶发的完全空白 assistant 消息(有 content/thinking/card/tools/plan 至少一个才保留)
@@ -458,18 +459,46 @@ export function ChatView({ prefillText, onPrefillConsumed, jumpTarget }: ChatVie
 
   const executePlanMessage = async (message: Message): Promise<void> => {
     if (!message.planAction) return;
-    const name = message.planAction.filename ?? message.planAction.title;
-    const visibleContent = `执行计划：${name}`;
+    if (!currentWorkspace) return;
+    let filename = message.planAction.filename;
+    if (window.piAPI?.planMaterialize && message.content.trim()) {
+      const result = await window.piAPI.planMaterialize({
+        workspaceId: currentWorkspace.id,
+        title: message.planAction.title,
+        content: message.content,
+        preferredFilename: message.planAction.filename,
+      });
+      if (isIpcError(result)) {
+        setSendError(result.fallback);
+        updatePlanActionStatus(message, "failed");
+        return;
+      }
+      filename = result.filename;
+    }
+    const name = filename ?? message.planAction.title;
+    const command = filename ? `/execute_plan ${filename}` : "/execute_plan";
+    const visibleContent = name ? `执行计划：${name}` : "执行计划";
+    const nextMessage = filename && filename !== message.planAction.filename
+      ? {
+          ...message,
+          planAction: {
+            ...message.planAction,
+            filename,
+          },
+        }
+      : message;
     usePlanStore.getState().startExecution({
       activePlanId: message.planAction.id,
       title: message.planAction.title,
-      filename: message.planAction.filename,
+      filename,
       sourceMessageId: message.id,
     });
-    updatePlanActionStatus(message, "executing");
+    updatePlanActionStatus(nextMessage, "executing");
     usePlanStore.getState().setDecisionRequest(null);
-    usePlanStore.getState().setEnabled(currentWorkspace?.id, false);
-    await handleSend(`/execute_plan ${name}`, { visibleContent });
+    if (currentWorkspace?.id) {
+      useAgentModeStore.getState().setMode(currentWorkspace.id, "build");
+    }
+    await handleSend(command, { visibleContent });
   };
 
   const handlePlanAction = async (message: Message, action: "execute" | "refine" | "cancel" | "pause" | "resume", text?: string): Promise<void> => {
@@ -513,28 +542,6 @@ export function ChatView({ prefillText, onPrefillConsumed, jumpTarget }: ChatVie
       onPrefillConsumed?.();
     }
   }, [prefillText, onPrefillConsumed]);
-
-  const effectiveJumpTarget = jumpTarget && processedJumpNonceRef.current !== jumpTarget.nonce ? jumpTarget : null;
-
-  useEffect(() => {
-    if (!effectiveJumpTarget) return;
-    const targetIndex = messages.findIndex((message) => message.id === effectiveJumpTarget.messageId);
-    if (targetIndex < 0) return;
-    processedJumpNonceRef.current = effectiveJumpTarget.nonce;
-    setHighlightedMessageId(effectiveJumpTarget.messageId);
-    const clearTimer = window.setTimeout(() => {
-      setHighlightedMessageId((current) => (current === effectiveJumpTarget.messageId ? null : current));
-    }, 1800);
-    if (messages.length <= 50) {
-      window.requestAnimationFrame(() => {
-        const element = scrollRegionRef.current?.querySelector<HTMLElement>(`[data-message-id="${effectiveJumpTarget.messageId}"]`);
-        element?.scrollIntoView({ block: 'center' });
-      });
-    }
-    return () => {
-      window.clearTimeout(clearTimer);
-    };
-  }, [effectiveJumpTarget, messages]);
 
   const composer = shouldUseGlobalComposer ? (
     <ChatInput
@@ -680,23 +687,16 @@ export function ChatView({ prefillText, onPrefillConsumed, jumpTarget }: ChatVie
                 messages={messages}
                 isStreaming={isStreaming}
                 streamingMessageId={streamingMessageId}
-                jumpTarget={effectiveJumpTarget}
-                highlightedMessageId={highlightedMessageId}
                 onPlanAction={handlePlanAction}
               />
             ) : (
             messages.map((message) => (
-              <div
+              <MessageBubble
                 key={message.id}
-                data-message-id={message.id}
-                className={highlightedMessageId === message.id ? "rounded-xl bg-[#fff7cc]" : undefined}
-              >
-                <MessageBubble
-                  message={message}
-                  isStreaming={isStreaming && message.id === streamingMessageId}
-                  onPlanAction={handlePlanAction}
-                />
-              </div>
+                message={message}
+                isStreaming={isStreaming && message.id === streamingMessageId}
+                onPlanAction={handlePlanAction}
+              />
             ))
             )}
 

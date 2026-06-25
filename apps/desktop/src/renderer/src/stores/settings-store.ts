@@ -6,7 +6,7 @@
 //          启动时由 loadPiConfig 真从 Pi CLI 配置读;读不到时 Pi ChatInput / SettingsPanel 走空态
 
 import { create } from 'zustand';
-import { DEFAULT_APP_SETTINGS, isIpcError, resolveAppSettings, type AppSettings, type IpcError, type ToolPermissions } from '@shared';
+import { DEFAULT_LONG_HORIZON_SETTINGS, isIpcError, type AppSettings, type IpcError, type ToolPermissions } from '@shared';
 import { logger } from '../utils/logger';
 import { addToast } from './toast-store';
 import { applyFontSize, applyTheme, getInitialFontSize, getInitialTheme, normalizeFontSize, type Theme } from '../utils/theme';
@@ -48,17 +48,29 @@ interface SettingsState {
   clearWriteError: () => void;
   getWorkspaceToolDefaults: (workspaceId?: string | null) => ToolPermissions;
   updateWorkspaceToolDefaults: (workspaceId: string, permissions: ToolPermissions) => void;
-  flushSettingsWrites: () => Promise<void>;
   setTheme: (theme: Theme) => void;
   toggleRightRail: () => void;
   setSidebarGroupMode: (mode: 'date' | 'workspace') => void;
 }
 
-const defaultSettings: AppSettings = resolveAppSettings({
-  ...DEFAULT_APP_SETTINGS,
+const defaultSettings: AppSettings = {
   theme: getInitialTheme(),
   fontSize: getInitialFontSize(),
-});
+  model: '',
+  provider: '',
+  temperature: 0.7,
+  maxTokens: 4096,
+  autoSave: true,
+  showLineNumbers: true,
+  wordWrap: true,
+  permissionLevel: 'smart',
+  runtimeChannel: 'stable',
+  autoCompactionEnabled: false,
+  workspaceToolDefaults: {},
+  showThinking: true,
+  thinkingLevel: 'medium',
+  longHorizon: DEFAULT_LONG_HORIZON_SETTINGS,
+};
 
 function cacheTheme(theme: Theme): void {
   try {
@@ -162,77 +174,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
     pendingSyncModelDefault = false;
   };
 
-  const persistSettingsWrite = async (
-    piAPI: Window["piAPI"],
-    revision: number,
-    updatesToSave: Partial<AppSettings>,
-    previousSettings: AppSettings,
-    mergedSettings: AppSettings,
-    syncModelDefault: boolean,
-  ): Promise<void> => {
-    try {
-      const result = await piAPI.setSettings(updatesToSave);
-      if (isIpcError(result)) {
-        if (revision === settingsWriteRevision) {
-          if (updatesToSave.theme !== undefined) {
-            applyAndCacheTheme(previousSettings.theme as Theme);
-          }
-          if (updatesToSave.fontSize !== undefined) {
-            applyAndCacheFontSize(previousSettings.fontSize);
-          }
-          set({ settings: previousSettings, lastWriteError: result });
-        } else {
-          set({ lastWriteError: result });
-        }
-        return;
-      }
-      if (syncModelDefault) {
-        await syncPiDefaultModel(piAPI, mergedSettings);
-      }
-      set({ lastWriteError: null });
-    } catch (e) {
-      logger.error('[settings-store] setSettings failed:', e);
-      if (revision === settingsWriteRevision) {
-        if (updatesToSave.theme !== undefined) {
-          applyAndCacheTheme(previousSettings.theme as Theme);
-        }
-        if (updatesToSave.fontSize !== undefined) {
-          applyAndCacheFontSize(previousSettings.fontSize);
-        }
-        set({ settings: previousSettings, lastWriteError: reportWriteError(e) });
-      } else {
-        set({ lastWriteError: reportWriteError(e) });
-      }
-      if (syncModelDefault && revision === settingsWriteRevision) {
-        void piAPI.setSettings({ model: previousSettings.model, provider: previousSettings.provider })
-          .catch((restoreError) => {
-            logger.error('[settings-store] restore model settings failed:', restoreError);
-          });
-      }
-      addToast(e instanceof Error ? e.message : "保存设置失败", "error");
-    }
-  };
-
-  const flushPendingSettingsWrite = async (piAPI: Window["piAPI"]): Promise<void> => {
-    const updatesToSave = pendingSettingsUpdates;
-    const previousSettings = pendingPreviousSettings;
-    const mergedSettings = pendingMergedSettings;
-    const syncModelDefault = pendingSyncModelDefault && Boolean(mergedSettings?.model && mergedSettings.provider);
-    const revision = settingsWriteRevision;
-    clearPendingSettingsWrite();
-
-    if (!updatesToSave || !previousSettings || !mergedSettings) return;
-
-    await persistSettingsWrite(
-      piAPI,
-      revision,
-      updatesToSave,
-      previousSettings,
-      mergedSettings,
-      syncModelDefault,
-    );
-  };
-
   const scheduleSettingsWrite = (
     piAPI: Window["piAPI"],
     updates: Partial<AppSettings>,
@@ -240,6 +181,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
     merged: AppSettings,
   ): void => {
     settingsWriteRevision += 1;
+    const revision = settingsWriteRevision;
     pendingSettingsUpdates = { ...(pendingSettingsUpdates ?? {}), ...updates };
     pendingPreviousSettings ??= previous;
     pendingMergedSettings = merged;
@@ -247,7 +189,57 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 
     if (pendingSettingsWriteTimer) clearTimeout(pendingSettingsWriteTimer);
     pendingSettingsWriteTimer = setTimeout(() => {
-      void flushPendingSettingsWrite(piAPI);
+      const updatesToSave = pendingSettingsUpdates;
+      const previousSettings = pendingPreviousSettings;
+      const mergedSettings = pendingMergedSettings;
+      const syncModelDefault = pendingSyncModelDefault && Boolean(mergedSettings?.model && mergedSettings.provider);
+      clearPendingSettingsWrite();
+
+      if (!updatesToSave || !previousSettings || !mergedSettings) return;
+
+      void (async () => {
+        try {
+          const result = await piAPI.setSettings(updatesToSave);
+          if (isIpcError(result)) {
+            if (revision === settingsWriteRevision) {
+              if (updatesToSave.theme !== undefined) {
+                applyAndCacheTheme(previousSettings.theme as Theme);
+              }
+              if (updatesToSave.fontSize !== undefined) {
+                applyAndCacheFontSize(previousSettings.fontSize);
+              }
+              set({ settings: previousSettings, lastWriteError: result });
+            } else {
+              set({ lastWriteError: result });
+            }
+            return;
+          }
+          if (syncModelDefault) {
+            await syncPiDefaultModel(piAPI, mergedSettings);
+          }
+          set({ lastWriteError: null });
+        } catch (e) {
+          logger.error('[settings-store] setSettings failed:', e);
+          if (revision === settingsWriteRevision) {
+            if (updatesToSave.theme !== undefined) {
+              applyAndCacheTheme(previousSettings.theme as Theme);
+            }
+            if (updatesToSave.fontSize !== undefined) {
+              applyAndCacheFontSize(previousSettings.fontSize);
+            }
+            set({ settings: previousSettings, lastWriteError: reportWriteError(e) });
+          } else {
+            set({ lastWriteError: reportWriteError(e) });
+          }
+          if (syncModelDefault && revision === settingsWriteRevision) {
+            void piAPI.setSettings({ model: previousSettings.model, provider: previousSettings.provider })
+              .catch((restoreError) => {
+                logger.error('[settings-store] restore model settings failed:', restoreError);
+              });
+          }
+          addToast(e instanceof Error ? e.message : "保存设置失败", "error");
+        }
+      })();
     }, SETTINGS_WRITE_DEBOUNCE_MS);
   };
 
@@ -257,7 +249,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
       const piAPI = getPiAPI();
       if (piAPI) {
         const persisted = await piAPI.getSettings();
-        const next = resolveAppSettings({ ...defaultSettings, ...persisted });
+        const next = { ...defaultSettings, ...persisted };
         applyAndCacheTheme(next.theme as Theme);
         applyAndCacheFontSize(next.fontSize);
         set({ settings: next });
@@ -269,11 +261,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
   loadSettings();
 
   getPiAPI()?.onSettingsChanged?.((settings) => {
-    const next = resolveAppSettings({ ...defaultSettings, ...settings });
+    const next = { ...defaultSettings, ...settings };
     // 多窗口写竞态保护: 若本地有尚未落盘的乐观更新 (pendingSettingsUpdates),
     // 把这些 key 重新叠加到广播值上, 避免慢窗口的编辑被另一窗口的广播静默回退.
     const pending = pendingSettingsUpdates;
-    const reconciled = pending ? resolveAppSettings({ ...next, ...pending }) : next;
+    const reconciled = pending ? { ...next, ...pending } : next;
     applyAndCacheTheme(reconciled.theme as Theme);
     applyAndCacheFontSize(reconciled.fontSize);
     set({ settings: reconciled, lastWriteError: null });
@@ -303,10 +295,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
               provider: config.currentModel.provider,
             };
             set((state) => ({
-              settings: resolveAppSettings({
+              settings: {
                 ...state.settings,
                 ...next,
-              }),
+              },
             }));
             void piAPI.setSettings(next)
               .then((result) => {
@@ -327,7 +319,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 
     updateSettings: (updates: Partial<AppSettings>) => {
       const previous = get().settings;
-      const merged = resolveAppSettings({ ...previous, ...updates });
+      const merged = { ...previous, ...updates };
       if (updates.theme !== undefined) {
         applyAndCacheTheme(updates.theme as Theme);
       }
@@ -343,15 +335,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
 
     resetSettings: () => {
       const previous = get().settings;
-      const resetTo = resolveAppSettings(defaultSettings);
       settingsWriteRevision += 1;
       clearPendingSettingsWrite();
-      applyAndCacheTheme(resetTo.theme as Theme);
-      applyAndCacheFontSize(resetTo.fontSize);
-      set({ settings: resetTo });
+      applyAndCacheTheme(defaultSettings.theme as Theme);
+      applyAndCacheFontSize(defaultSettings.fontSize);
+      set({ settings: defaultSettings });
       const piAPI = getPiAPI();
       if (!piAPI) return;
-      piAPI.setSettings(resetTo)
+      piAPI.setSettings(defaultSettings)
         .then((result) => {
           if (isIpcError(result)) {
             applyAndCacheTheme(previous.theme as Theme);
@@ -400,12 +391,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
           [workspaceId]: permissions,
         },
       });
-    },
-
-    flushSettingsWrites: async () => {
-      const piAPI = getPiAPI();
-      if (!piAPI) return;
-      await flushPendingSettingsWrite(piAPI);
     },
 
     setTheme: (theme: Theme) => {

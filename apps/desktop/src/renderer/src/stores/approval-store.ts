@@ -2,12 +2,9 @@
 // 管理 AI 写入/编辑文件时的变更预览和审批流程
 
 import { create } from 'zustand';
-import type { DeferredEdit, FileReview, PiAPI } from '@shared';
-import { isIpcError } from '@shared';
 
 export interface PendingChange {
   id: string;
-  workspaceId?: string;
   toolCallId: string;
   toolName: 'write' | 'edit';
   filePath: string;
@@ -32,54 +29,15 @@ interface ApprovalState {
   _pendingResolves: Map<string, (approved: boolean) => void>;
   // Actions
   addChange: (change: Omit<PendingChange, 'id' | 'status' | 'timestamp'>) => string;
-  upsertDeferredChange: (deferred: DeferredEdit) => void;
-  applyReview: (review: FileReview) => void;
-  approveChange: (id: string) => Promise<void>;
-  rejectChange: (id: string) => Promise<void>;
-  approveAll: () => Promise<void>;
-  rejectAll: () => Promise<void>;
-  clearChanges: () => Promise<void>;
+  approveChange: (id: string) => void;
+  rejectChange: (id: string) => void;
+  approveAll: () => void;
+  rejectAll: () => void;
+  clearChanges: () => void;
   toggleAutoApprove: () => void;
   setAutoApprove: (value: boolean) => void;
   /** 注册一个等待审批的 Promise */
   waitForApproval: (changeId: string) => Promise<boolean>;
-}
-
-function getPiApi(api?: Pick<PiAPI, 'invoke'>): Pick<PiAPI, 'invoke'> | undefined {
-  if (api) return api;
-  if (typeof window === 'undefined') return undefined;
-  return window.piAPI;
-}
-
-async function invokeApprovalChannel(
-  change: PendingChange | undefined,
-  channel: 'approval:approve' | 'approval:reject' | 'approval:remove',
-  api?: Pick<PiAPI, 'invoke'>,
-): Promise<boolean> {
-  if (!change?.workspaceId) return true;
-  const piAPI = getPiApi(api);
-  if (!piAPI?.invoke) return true;
-  const result = await piAPI.invoke(channel, change.workspaceId, change.id);
-  return !isIpcError(result);
-}
-
-function resolvePendingChange(
-  get: () => ApprovalState,
-  set: (
-    partial:
-      | Partial<ApprovalState>
-      | ((state: ApprovalState) => Partial<ApprovalState>)
-  ) => void,
-  id: string,
-  approved: boolean,
-): void {
-  const resolve = get()._pendingResolves.get(id);
-  if (resolve) {
-    resolve(approved);
-    const newResolves = new Map(get()._pendingResolves);
-    newResolves.delete(id);
-    set({ _pendingResolves: newResolves });
-  }
 }
 
 export const useApprovalStore = create<ApprovalState>((set, get) => ({
@@ -99,113 +57,94 @@ export const useApprovalStore = create<ApprovalState>((set, get) => ({
     return id;
   },
 
-  upsertDeferredChange: (deferred) => {
-    set((state) => {
-      const existing = state.changes.find((change) => change.id === deferred.changeId);
-      const timestamp = new Date(deferred.timestamp);
-      if (existing) {
-        return {
-          changes: state.changes.map((change) =>
-            change.id === deferred.changeId
-              ? {
-                  ...change,
-                  workspaceId: deferred.workspaceId,
-                  toolCallId: deferred.toolCallId,
-                  toolName: deferred.op,
-                  filePath: deferred.filePath,
-                  timestamp,
-                }
-              : change,
-          ),
-        };
-      }
-      return {
-        changes: [
-          ...state.changes,
-          {
-            id: deferred.changeId,
-            workspaceId: deferred.workspaceId,
-            toolCallId: deferred.toolCallId,
-            toolName: deferred.op,
-            filePath: deferred.filePath,
-            status: 'pending',
-            timestamp,
-          },
-        ],
-      };
-    });
-  },
-
-  applyReview: (review) => {
-    set((state) => ({
-      changes: state.changes.map((change) =>
-        change.id === review.changeId
-          ? {
-              ...change,
-              workspaceId: review.workspaceId,
-              toolCallId: review.toolCallId,
-              filePath: review.filePath,
-              diff: review.diff,
-              newContent: review.newContent,
-              timestamp: new Date(review.timestamp),
-            }
-          : change,
-      ),
-    }));
-  },
-
-  approveChange: async (id) => {
-    const change = get().changes.find((c) => c.id === id);
-    const ok = await invokeApprovalChannel(change, 'approval:approve');
-    if (!ok) return;
+  approveChange: (id) => {
     set((state) => ({
       changes: state.changes.map((c) =>
         c.id === id ? { ...c, status: 'approved' as const } : c
       ),
     }));
-    resolvePendingChange(get, set, id, true);
+    // resolve pending promise
+    const resolve = get()._pendingResolves.get(id);
+    if (resolve) {
+      resolve(true);
+      const newResolves = new Map(get()._pendingResolves);
+      newResolves.delete(id);
+      set({ _pendingResolves: newResolves });
+    }
   },
 
-  rejectChange: async (id) => {
-    const change = get().changes.find((c) => c.id === id);
-    const ok = await invokeApprovalChannel(change, 'approval:reject');
-    if (!ok) return;
+  rejectChange: (id) => {
     set((state) => ({
       changes: state.changes.map((c) =>
         c.id === id ? { ...c, status: 'rejected' as const } : c
       ),
     }));
-    resolvePendingChange(get, set, id, false);
+    // resolve pending promise
+    const resolve = get()._pendingResolves.get(id);
+    if (resolve) {
+      resolve(false);
+      const newResolves = new Map(get()._pendingResolves);
+      newResolves.delete(id);
+      set({ _pendingResolves: newResolves });
+    }
   },
 
-  approveAll: async () => {
-    const pendingIds = get().changes
+  approveAll: () => {
+    const state = get();
+    const pendingIds = state.changes
       .filter((c) => c.status === 'pending')
       .map((c) => c.id);
-    for (const id of pendingIds) {
-      await get().approveChange(id);
-    }
-  },
 
-  rejectAll: async () => {
-    const pendingIds = get().changes
-      .filter((c) => c.status === 'pending')
-      .map((c) => c.id);
-    for (const id of pendingIds) {
-      await get().rejectChange(id);
-    }
-  },
-
-  clearChanges: async () => {
-    const handled = get().changes.filter((change) => change.status !== 'pending');
-    for (const change of handled) {
-      const ok = await invokeApprovalChannel(change, 'approval:remove');
-      if (!ok) return;
-    }
-    const handledIds = new Set(handled.map((change) => change.id));
     set((state) => ({
-      changes: state.changes.filter((change) => !handledIds.has(change.id)),
+      changes: state.changes.map((c) =>
+        c.status === 'pending' ? { ...c, status: 'approved' as const } : c
+      ),
     }));
+
+    // resolve all pending promises
+    const newResolves = new Map(state._pendingResolves);
+    for (const id of pendingIds) {
+      const resolve = newResolves.get(id);
+      if (resolve) {
+        resolve(true);
+        newResolves.delete(id);
+      }
+    }
+    set({ _pendingResolves: newResolves });
+  },
+
+  rejectAll: () => {
+    const state = get();
+    const pendingIds = state.changes
+      .filter((c) => c.status === 'pending')
+      .map((c) => c.id);
+
+    set((state) => ({
+      changes: state.changes.map((c) =>
+        c.status === 'pending' ? { ...c, status: 'rejected' as const } : c
+      ),
+    }));
+
+    // resolve all pending promises
+    const newResolves = new Map(state._pendingResolves);
+    for (const id of pendingIds) {
+      const resolve = newResolves.get(id);
+      if (resolve) {
+        resolve(false);
+        newResolves.delete(id);
+      }
+    }
+    set({ _pendingResolves: newResolves });
+  },
+
+  clearChanges: () => {
+    // reject any remaining pending
+    const state = get();
+    const newResolves = new Map(state._pendingResolves);
+    for (const [, resolve] of newResolves) {
+      resolve(false);
+    }
+    set({ changes: [], _pendingResolves: new Map() });
   },
 
   toggleAutoApprove: () => {
@@ -251,29 +190,6 @@ export const useApprovalStore = create<ApprovalState>((set, get) => ({
     });
   },
 }));
-
-export function bindApprovalEventSubscriptions(
-  api: Pick<PiAPI, 'onApprovalDeferred' | 'onApprovalReview'> | undefined =
-    typeof window !== 'undefined' ? window.piAPI : undefined,
-): () => void {
-  if (!api) return () => undefined;
-  const unsubscribers: Array<() => void> = [];
-  if (typeof api.onApprovalDeferred === 'function') {
-    unsubscribers.push(api.onApprovalDeferred((deferred) => {
-      useApprovalStore.getState().upsertDeferredChange(deferred);
-    }));
-  }
-  if (typeof api.onApprovalReview === 'function') {
-    unsubscribers.push(api.onApprovalReview((review) => {
-      useApprovalStore.getState().applyReview(review);
-    }));
-  }
-  return () => {
-    for (const unsubscribe of unsubscribers) {
-      unsubscribe();
-    }
-  };
-}
 
 /**
  * 为 write 操作生成 unified diff

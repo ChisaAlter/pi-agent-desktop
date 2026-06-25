@@ -23,7 +23,7 @@
 
 - ✅ **Cwd 修复**: `usePiStream` 发 `workspaceId` 走 `WorkspaceRegistry` → `createAgentSession({ cwd })` → Pi 跑在用户工作区
 - ✅ **长连接 Pi**: `AgentSession` in-process per workspace, 订阅事件推 renderer
-- ✅ **审批闭环基座**: `ApprovalInterceptor` 负责 Plan 模式写入拦截与文件改动 review telemetry；高危 runtime 权限决策由 `pi-permission-system` 接管
+- ✅ **审批真拦**: `ApprovalInterceptor` 监听 `tool_execution_start` → 分类 → 高危弹模态 + 拒绝时 `session.abort()`
 
 后端模块:
 - `services/pi-session/factory.ts` (createAgentSession 包装)
@@ -32,7 +32,7 @@
 - `services/approval/classifier.ts` (16 risk patterns, TDD 16 tests)
 - `services/approval/pending-edits.ts` (file edit tracking, TDD 9 tests)
 - `services/approval/approval-bridge.ts` (IPC emitter)
-- `services/approval/interceptor.ts` (plan-mode block + deferred edit review telemetry, TDD 8 tests)
+- `services/approval/interceptor.ts` (subscribe + classify + send + abort, TDD 8 tests)
 - `ipc/chat.ipc.ts` (新 chat IPC 替代老 `pi:prompt`)
 
 ## M2 — Context (UX 支柱)

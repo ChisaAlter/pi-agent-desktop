@@ -5,11 +5,6 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentTab, CreateAgentInput } from "@shared";
 
-const { chatViewSpy, searchHistorySpy } = vi.hoisted(() => ({
-    chatViewSpy: vi.fn(),
-    searchHistorySpy: vi.fn(),
-}));
-
 vi.mock("./components/MiniMaxCode", async () => {
     const actual = await vi.importActual<typeof import("./components/MiniMaxCode")>("./components/MiniMaxCode");
     return {
@@ -73,40 +68,13 @@ vi.mock("./components/Onboarding/Onboarding", () => ({
     Onboarding: () => null,
 }));
 vi.mock("./components/ChatView/ChatView", () => ({
-    ChatView: (props: { jumpTarget?: { messageId: string } | null }) => {
-        chatViewSpy(props);
-        return <div data-testid="chat-view" data-jump-message-id={props.jumpTarget?.messageId ?? ""}>ChatView</div>;
-    },
-}));
-vi.mock("./components/SearchHistory/SearchHistory", () => ({
-    SearchHistory: ({
-        isOpen,
-        onNavigate,
-    }: {
-        isOpen: boolean;
-        onNavigate: (sessionId: string, messageId: string) => void;
-    }) => {
-        searchHistorySpy({ isOpen });
-        if (!isOpen) return null;
-        return (
-            <button type="button" onClick={() => onNavigate("s_1", "m_1")}>
-                跳转到消息
-            </button>
-        );
-    },
-}));
-vi.mock("./components/SessionCenter/SessionCenter", () => ({
-    SessionCenter: ({ onOpenChat }: { onOpenChat?: () => void }) => (
-        <div>
-            <span>SessionCenter</span>
-            <button type="button" onClick={onOpenChat}>打开聊天</button>
-        </div>
-    ),
+    ChatView: () => <div>ChatView</div>,
 }));
 
 import App from "./App";
 import { useAgentStore } from "./stores/agent-store";
 import { usePermissionStore } from "./stores/permission-store";
+import { useRuntimeFeatureStore } from "./stores/runtime-feature-store";
 import { useSessionStore } from "./stores/session-store";
 import { useSettingsStore } from "./stores/settings-store";
 import { useWorkspaceStore } from "./stores/workspace-store";
@@ -168,7 +136,6 @@ describe("App sidebar session navigation", () => {
                     createdAt: new Date(),
                     updatedAt: new Date(),
                     messages: [],
-                    readOnly: true,
                 },
             ],
             currentSessionId: null,
@@ -195,6 +162,45 @@ describe("App sidebar session navigation", () => {
         });
         useSettingsStore.setState({
             rightRailCollapsed: true,
+        });
+        useRuntimeFeatureStore.setState({
+            featureState: {
+                primaryAgents: [],
+                systemAgents: [],
+                enabledToolIds: ["task", "memory"],
+                features: {
+                    planMode: { enabled: true, supported: true, loadedFrom: "pi-openplan" },
+                    composeMode: { enabled: true, supported: true, loadedFrom: "desktop" },
+                    maxMode: { enabled: true, supported: true, loadedFrom: "desktop", candidates: 3 },
+                    memory: {
+                        enabled: true,
+                        supported: true,
+                        loadedFrom: "desktop",
+                        ccIndex: false,
+                        reconcileOnSearch: true,
+                        searchScoreFloor: 0.15,
+                    },
+                    history: { enabled: true, supported: true, loadedFrom: "desktop" },
+                    checkpoint: { enabled: true, supported: true, loadedFrom: "desktop" },
+                    goal: { enabled: true, supported: true, loadedFrom: "desktop" },
+                    task: { enabled: true, supported: true, loadedFrom: "desktop" },
+                    actor: { enabled: true, supported: true, loadedFrom: "desktop" },
+                    subagents: { enabled: true, supported: true, loadedFrom: "desktop" },
+                    workflow: {
+                        enabled: false,
+                        supported: false,
+                        loadedFrom: "unsupported",
+                        maxConcurrentAgents: 4,
+                        maxLifecycleAgents: 100,
+                        maxDepth: 4,
+                    },
+                    dream: { enabled: false, supported: false, loadedFrom: "unsupported" },
+                    distill: { enabled: false, supported: false, loadedFrom: "unsupported" },
+                },
+            },
+            loading: false,
+            lastError: null,
+            lastLoadedAt: Date.now(),
         });
     });
 
@@ -276,53 +282,33 @@ describe("App sidebar session navigation", () => {
         vi.useRealTimers();
     });
 
-    it("主导航只展示 Pi Agent 当前真实一级入口，设置通过按钮打开独立窗口", () => {
+    it("主导航切换为对话任务记忆工具设置五个真实一级入口", () => {
         render(<App />);
 
         expect(screen.getByRole("tab", { name: "对话" })).toBeTruthy();
-        expect(screen.getByRole("tab", { name: "技能" })).toBeTruthy();
-        expect(screen.getByRole("tab", { name: "Git" })).toBeTruthy();
-        expect(screen.getByRole("tab", { name: "历史" })).toBeTruthy();
-        expect(screen.queryByRole("tab", { name: "任务" })).toBeNull();
-        expect(screen.queryByRole("tab", { name: "记忆" })).toBeNull();
-        expect(screen.queryByRole("tab", { name: "工具" })).toBeNull();
-        expect(screen.queryByRole("tab", { name: "设置" })).toBeNull();
+        expect(screen.getByRole("tab", { name: "任务" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "记忆" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "工具" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "设置" })).toBeTruthy();
+        expect(screen.queryByRole("tab", { name: "技能" })).toBeNull();
+        expect(screen.queryByRole("tab", { name: "Git" })).toBeNull();
+        expect(screen.queryByRole("tab", { name: "历史" })).toBeNull();
 
-        fireEvent.click(screen.getByRole("button", { name: "打开设置窗口" }));
+        fireEvent.click(screen.getByRole("tab", { name: "设置" }));
 
         expect(window.piAPI.openSettingsWindow).toHaveBeenCalledTimes(1);
     });
 
-    it("点击历史 tab 会在主内容区打开 SessionCenter，而不是弹出搜索浮层", async () => {
+    it("点击任务和记忆标签时进入对应主区而不是历史搜索回退", async () => {
         render(<App />);
 
-        fireEvent.click(screen.getByRole("tab", { name: "历史" }));
+        fireEvent.click(screen.getByRole("tab", { name: "任务" }));
+        expect(await screen.findByText("任务总览")).toBeTruthy();
+        expect(screen.queryByText("ChatView")).toBeNull();
 
-        expect(await screen.findByText("SessionCenter")).toBeTruthy();
-        expect(screen.queryByRole("button", { name: "跳转到消息" })).toBeNull();
-    });
-
-    it("历史搜索结果会把 messageId 传给 ChatView，而不是只切 session", async () => {
-        render(<App />);
-
-        fireEvent.keyDown(window, { key: "F", ctrlKey: true, shiftKey: true });
-
-        expect(await screen.findByRole("button", { name: "跳转到消息" })).toBeTruthy();
-        fireEvent.click(screen.getByRole("button", { name: "跳转到消息" }));
-
-        await waitFor(() => {
-            expect(useSessionStore.getState().currentSessionId).toBe("s_1");
-            expect(screen.getByTestId("chat-view").getAttribute("data-jump-message-id")).toBe("m_1");
-            expect(useSessionStore.getState().sessions[0]?.readOnly).toBe(false);
-        });
-    });
-
-    it("slash-command:open-sessions 会打开 SessionCenter", async () => {
-        render(<App />);
-
-        window.dispatchEvent(new CustomEvent("slash-command:open-sessions"));
-
-        expect(await screen.findByText("SessionCenter")).toBeTruthy();
+        fireEvent.click(screen.getByRole("tab", { name: "记忆" }));
+        expect(await screen.findByRole("heading", { name: "记忆" })).toBeTruthy();
+        expect(screen.queryByText("输入关键词搜索所有对话")).toBeNull();
     });
 
     it("点击侧栏新对话加号会进入新对话并请求聚焦输入框", async () => {
@@ -378,7 +364,7 @@ describe("App sidebar session navigation", () => {
             expect(screen.getByTestId("layout-shell").getAttribute("data-right-collapsed")).toBe("false");
         });
 
-        fireEvent.click(screen.getByRole("tab", { name: "技能" }));
+        fireEvent.click(screen.getByRole("tab", { name: "工具" }));
 
         expect(screen.getByTestId("layout-shell").getAttribute("data-right-collapsed")).toBe("true");
         expect(screen.getByText("SkillsPanel")).toBeTruthy();

@@ -347,23 +347,18 @@
     },
     "longHorizon": {
       "heading": "Long-horizon capabilities",
-      "description": "Control the MiMoCode-style modes, Goal, plan linkage, memory, checkpoints, and Max Mode adaptation.",
+      "description": "Control the MiMoCode-style modes, Goal, plan linkage, memory, and checkpoint adaptation.",
       "enabled": {
         "label": "Enable enhancements",
         "description": "When disabled, Pi Desktop sends raw prompts, skips Goal judge, avoids memory/checkpoint writes, and hides enhanced commands."
       },
       "defaultMode": {
         "label": "Default session mode",
-        "description": "Build remains the default. Max is selectable only when the experimental switch is enabled."
-      },
-      "maxMode": {
-        "label": "Max Mode",
-        "description": "Experimental mode: generate multiple candidates and let a judge pick the best path. It is not a default fourth primary mode.",
-        "candidates": "Max candidates"
+        "description": "Build stays the default. Only enabled Build, Plan, or Compose modes can be selected."
       },
       "modes": {
         "heading": "Modes",
-        "description": "Expose Build, Plan, Compose, and Max as separate MiMoCode agent capabilities."
+        "description": "Expose Build, Plan, and Compose as separate MiMoCode agent capabilities."
       },
       "planMode": {
         "label": "Plan Mode",
@@ -540,13 +535,14 @@
       "scanFailed": "File scan failed at {{path}}: {{message}}"
     }
   },
-  "topbar": {
-    "chat": "Chat",
-    "skills": "Skills",
-    "git": "Git",
-    "history": "History",
-    "ariaLabel": "Top tab bar"
-  },
+    "topbar": {
+      "chat": "Chat",
+      "tasks": "Tasks",
+      "memory": "Memory",
+      "tools": "Tools",
+      "settings": "Settings",
+      "ariaLabel": "Top tab bar"
+    },
   "app": {
     "shellAria": "Pi Desktop application",
     "headerAria": "Top action bar",

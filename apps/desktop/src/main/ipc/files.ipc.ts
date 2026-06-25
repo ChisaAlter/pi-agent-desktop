@@ -6,9 +6,9 @@ import { ipcMain } from "electron";
 import log from "electron-log/main";
 import { ipcError } from "@shared";
 import { basename } from "path";
-import { readFile, stat, writeFile } from "fs/promises";
+import { readFileSync, statSync, writeFileSync } from "fs";
 import { scanFiles } from "../services/search/file-scanner";
-import { buildFileTreeAsync } from "../file-tree";
+import { buildFileTree } from "../file-tree";
 import { getProtectedPathReason } from "../services/protected-paths";
 import { getFileTreeSchema, listFilesSchema, readTextFileSchema, searchFilesSchema, writeTextFileSchema } from "./schemas";
 
@@ -39,7 +39,7 @@ export function setupFilesIpc(): void {
             if (reason) {
                 return ipcError("ipcErrors.files.protectedPath", reason, { path: workspacePath });
             }
-            return await buildFileTreeAsync(workspacePath, options ?? { maxDepth: 4 });
+            return buildFileTree(workspacePath, options ?? { maxDepth: 4 });
         } catch (err) {
             log.error("[files.ipc] tree error:", err);
             return ipcError(
@@ -66,9 +66,9 @@ export function setupFilesIpc(): void {
             if (reason) {
                 return ipcError("ipcErrors.files.protectedPath", reason, { path: targetPath });
             }
-            const stats = await stat(targetPath);
+            const stats = statSync(targetPath);
             const maxBytes = 512 * 1024;
-            const buffer = await readFile(targetPath);
+            const buffer = readFileSync(targetPath);
             const head = buffer.subarray(0, Math.min(buffer.length, maxBytes));
             const binary = head.includes(0);
             return {
@@ -109,7 +109,7 @@ export function setupFilesIpc(): void {
                 return ipcError("ipcErrors.files.protectedPath", reason, { path: targetPath });
             }
             if (options?.expectedMtimeMs !== undefined) {
-                const beforeStats = await stat(targetPath);
+                const beforeStats = statSync(targetPath);
                 if (Math.abs(beforeStats.mtimeMs - options.expectedMtimeMs) > 1) {
                     return ipcError(
                         "ipcErrors.files.writeConflict",
@@ -118,8 +118,8 @@ export function setupFilesIpc(): void {
                     );
                 }
             }
-            await writeFile(targetPath, content, "utf-8");
-            const stats = await stat(targetPath);
+            writeFileSync(targetPath, content, "utf-8");
+            const stats = statSync(targetPath);
             return {
                 path: targetPath,
                 size: stats.size,
@@ -154,7 +154,7 @@ export function setupFilesIpc(): void {
             }
             const q = query.toLowerCase();
             const limit = Math.max(1, Math.min(options?.limit ?? 80, 200));
-            const files = await scanFiles(workspacePath, { hiddenMode: "critical" });
+            const files = await scanFiles(workspacePath);
             return files
                 .filter((f) => f.toLowerCase().includes(q))
                 .slice(0, limit)
@@ -185,7 +185,7 @@ export function setupFilesIpc(): void {
             if (reason) {
                 return ipcError("ipcErrors.files.protectedPath", reason, { path: workspacePath });
             }
-            const files = await scanFiles(workspacePath, { hiddenMode: "critical" });
+            const files = await scanFiles(workspacePath);
             if (!query) return files.slice(0, 100).map(toFileEntry);
             const q = query.toLowerCase();
             return files.filter((f) => f.toLowerCase().includes(q)).slice(0, 50).map(toFileEntry);

@@ -351,6 +351,72 @@ describe("MessageBubble", () => {
     await waitFor(() => expect(onPlanAction).toHaveBeenCalledWith(message, "execute"));
   });
 
+  it("infers an executable inline plan action from plan-like assistant markdown", async () => {
+    const onPlanAction = vi.fn(async () => undefined);
+    const message: Message = {
+      id: "m-inline-plan",
+      role: "assistant",
+      content: "## 计划\n- 创建 `plan_probe.txt`\n- 验证文件存在\n\n请执行上述步骤。",
+      timestamp: new Date(0),
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} onPlanAction={onPlanAction} />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "执行计划" }));
+    await waitFor(() => expect(onPlanAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "m-inline-plan",
+        planAction: expect.objectContaining({
+          id: "inline_plan_m-inline-plan",
+          title: "计划",
+          status: "pending",
+        }),
+      }),
+      "execute",
+    ));
+  });
+
+  it("infers an executable inline plan action from table-style execution plans", async () => {
+    const onPlanAction = vi.fn(async () => undefined);
+    const message: Message = {
+      id: "m-inline-table-plan",
+      role: "assistant",
+      content: [
+        "## 执行计划",
+        "| 步骤 | 操作 | 说明 |",
+        "| --- | --- | --- |",
+        "| 1 | 创建 `plan_probe.txt` | 内容为 `PLAN_OK` |",
+        "| 2 | 验证文件存在 | 读取文件确认 `PLAN_OK` |",
+        "",
+        "等待您的指令后开始执行。",
+      ].join("\n"),
+      timestamp: new Date(0),
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} onPlanAction={onPlanAction} />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "执行计划" }));
+    await waitFor(() => expect(onPlanAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "m-inline-table-plan",
+        planAction: expect.objectContaining({
+          id: "inline_plan_m-inline-table-plan",
+          title: "执行计划",
+          status: "pending",
+        }),
+      }),
+      "execute",
+    ));
+  });
+
   it("renders pause action while a plan is executing", async () => {
     const onPlanAction = vi.fn(async () => undefined);
     const message: Message = {

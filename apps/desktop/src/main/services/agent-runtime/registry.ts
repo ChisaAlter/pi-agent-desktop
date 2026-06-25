@@ -1,21 +1,27 @@
 import { randomUUID } from "crypto";
-import type {
-    AgentMessage,
-    AgentRuntimeState,
-    AgentTab,
-    AppSettings,
-    CreateAgentInput,
-    PiSlashCommand,
-    SendAgentPromptInput,
-    Workspace,
-    AgentMode,
+import {
+    normalizeLongHorizonSettings,
+    type AgentMessage,
+    type AgentRuntimeState,
+    type AgentTab,
+    type AppSettings,
+    type CreateAgentInput,
+    type PiSlashCommand,
+    type SendAgentPromptInput,
+    type Workspace,
+    type AgentMode,
 } from "@shared";
 import type { PiEvent } from "@shared/events";
-import { createWorkspaceSession, type WorkspaceSession } from "../pi-session/factory";
+import {
+    createWorkspaceSession,
+    resolveBundledDesktopExtensionPaths,
+    type WorkspaceSession,
+} from "../pi-session/factory";
 import { createApprovalInterceptor } from "../approval/interceptor";
 import { createExtensionUiBridge } from "../extensions/extension-ui-bridge";
 import { buildAgentModePrompt, normalizeAgentMode } from "../agent-modes";
-import { MaxModeService } from "../long-horizon/max-mode-service";
+import type { TaskService } from "../long-horizon/task-service";
+import type { MemoryService } from "../long-horizon/memory-service";
 import type { PendingEdits } from "../approval/pending-edits";
 import type { PiAgentConfig } from "../../types";
 import log from "electron-log/main";
@@ -33,10 +39,9 @@ interface AgentRuntimeRegistryDeps {
         longHorizonEnabled: boolean;
         planModeEnabled?: boolean;
         composeModeEnabled?: boolean;
-        maxModeEnabled: boolean;
-        maxCandidates?: number;
     };
-    maxModeService?: Pick<MaxModeService, "run">;
+    getTaskService?: () => Pick<TaskService, "setSourceTasks"> | null | undefined;
+    getMemoryService?: () => Pick<MemoryService, "put"> | null | undefined;
 }
 
 interface AgentRuntime {
@@ -46,6 +51,7 @@ interface AgentRuntime {
     messages: AgentMessage[];
     isStreaming: boolean;
     mode: AgentMode;
+    sessionMode: AgentMode;
     thinkingLevel?: "none" | "low" | "medium" | "high";
     /** 卡死看门狗: running 期间计时, 超时未结束则合成 extension_error 翻转状态 */
     watchdog?: NodeJS.Timeout;
@@ -80,13 +86,7 @@ export class AgentRuntimeRegistry {
             updatedAt: now,
         };
 
-        const session = await createWorkspaceSession({
-            workspaceId: workspace.id,
-            workspacePath: workspace.path,
-            ...this.currentModelSelection(),
-            sessionPath: input.sessionPath,
-            uiContext: createExtensionUiBridge(workspace.id, { agentId: id }),
-        });
+        const session = await this.createPrimarySession(workspace, id, input.sessionPath);
 
         const runtime: AgentRuntime = {
             tab,
@@ -95,6 +95,7 @@ export class AgentRuntimeRegistry {
             messages: [],
             isStreaming: false,
             mode: "build",
+            sessionMode: "build",
         };
         this.runtimes.set(id, runtime);
         this.subscribe(runtime);
@@ -110,83 +111,13 @@ export class AgentRuntimeRegistry {
         if (!text) return;
         const modeOptions = this.deps.getModeOptions?.();
         const mode = normalizeAgentMode(input.mode, modeOptions);
+        await this.syncRuntimeMode(runtime, mode);
         runtime.mode = mode;
-        this.addMessage(runtime, "user", visibleUserPromptContent(text), { mode });
+        const visibleContent = visibleUserPromptContent(text);
+        this.addMessage(runtime, "user", visibleContent, { mode });
+        this.rememberRecentUserIntent(runtime, visibleContent, mode);
         const outbound = buildAgentModePrompt(mode, text, modeOptions);
-        if (mode === "max") {
-            const maxModeService = this.deps.maxModeService ?? this.createDefaultMaxModeService(runtime, modeOptions?.maxCandidates);
-            await maxModeService.run({
-                prompt: outbound,
-                replayWinner: (content) => this.promptRuntime(runtime, content, input.streamingBehavior),
-            });
-            return;
-        }
         await this.promptRuntime(runtime, outbound, input.streamingBehavior);
-    }
-
-    private createDefaultMaxModeService(runtime: AgentRuntime, candidates?: number): MaxModeService {
-        return new MaxModeService({
-            candidates: candidates ?? 5,
-            createCandidate: async (index) => {
-                const candidate = await createWorkspaceSession({
-                    workspaceId: runtime.workspace.id,
-                    workspacePath: runtime.workspace.path,
-                    ...this.currentModelSelection(),
-                    uiContext: createExtensionUiBridge(runtime.workspace.id, { agentId: `${runtime.tab.id}:max:${index}` }),
-                });
-                const interceptor = createApprovalInterceptor(runtime.workspace.id, {
-                    abort: () => candidate.session.abort(),
-                    pendingEdits: this.deps.pendingEdits,
-                    send: (channel, _workspaceId, payload) => this.deps.send(channel, payload),
-                    workspacePath: runtime.workspace.path,
-                    getMode: () => "plan",
-                });
-                let content = "";
-                candidate.session.subscribe(async (rawEvent: unknown) => {
-                    await interceptor.handleEvent(rawEvent as PiEvent);
-                    const delta = textDeltaFromEvent(rawEvent);
-                    if (delta) content += delta;
-                });
-                return {
-                    id: `candidate-${index}`,
-                    prompt: (prompt) => candidate.session.prompt(buildMaxCandidatePrompt(prompt, index)),
-                    readResult: () => content.trim(),
-                    dispose: candidate.dispose,
-                };
-            },
-            judge: async (results) => {
-                const fallback = pickLongestCandidate(results);
-                if (!fallback) throw new Error("Max mode produced no candidates");
-                const judge = await createWorkspaceSession({
-                    workspaceId: runtime.workspace.id,
-                    workspacePath: runtime.workspace.path,
-                    ...this.currentModelSelection(),
-                    uiContext: createExtensionUiBridge(runtime.workspace.id, { agentId: `${runtime.tab.id}:max:judge` }),
-                });
-                const judgeInterceptor = createApprovalInterceptor(runtime.workspace.id, {
-                    abort: () => judge.session.abort(),
-                    pendingEdits: this.deps.pendingEdits,
-                    send: (channel, _workspaceId, payload) => this.deps.send(channel, payload),
-                    workspacePath: runtime.workspace.path,
-                    getMode: () => "plan",
-                });
-                let judgeOutput = "";
-                try {
-                    judge.session.subscribe(async (rawEvent: unknown) => {
-                        await judgeInterceptor.handleEvent(rawEvent as PiEvent);
-                        const delta = textDeltaFromEvent(rawEvent);
-                        if (delta) judgeOutput += delta;
-                    });
-                    await judge.session.prompt(buildMaxJudgePrompt(results));
-                    return parseMaxJudgeOutput(judgeOutput, results) ?? {
-                        winnerId: fallback.id,
-                        reason: "Judge output was not parseable; selected the richest generated result.",
-                    };
-                } finally {
-                    judge.dispose();
-                }
-            },
-        });
     }
 
     async promptInternal(agentId: string, message: string): Promise<void> {
@@ -257,6 +188,12 @@ export class AgentRuntimeRegistry {
         };
         this.stop(agentId);
         return this.create(input);
+    }
+
+    async refreshWorkspace(workspaceId: string): Promise<void> {
+        const targets = [...this.runtimes.values()].filter((runtime) => runtime.workspace.id === workspaceId);
+        await Promise.all(targets.map((runtime) => this.refreshRuntimeSession(runtime)));
+        this.emitState();
     }
 
     getMessages(agentId: string): AgentMessage[] {
@@ -450,10 +387,97 @@ export class AgentRuntimeRegistry {
         };
     }
 
+    private buildDesktopExtensions(): string[] {
+        const options = this.deps.getModeOptions?.();
+        if (!options?.longHorizonEnabled) return [];
+        return resolveBundledDesktopExtensionPaths({
+            planModeEnabled: options.planModeEnabled,
+            composeModeEnabled: options.composeModeEnabled,
+        });
+    }
+
+    private async createPrimarySession(
+        workspace: Workspace,
+        agentId: string,
+        sessionPath?: string,
+    ): Promise<WorkspaceSession> {
+        return createWorkspaceSession({
+            workspaceId: workspace.id,
+            workspacePath: workspace.path,
+            ...this.currentModelSelection(),
+            sessionPath,
+            desktopExtensions: this.buildDesktopExtensions(),
+            uiContext: createExtensionUiBridge(
+                workspace.id,
+                { agentId },
+                {
+                    onPlanProgress: ({ workspaceId, agentId, items }) => {
+                        this.deps.getTaskService?.()?.setSourceTasks(workspaceId, agentId, "plan", items);
+                    },
+                },
+            ),
+        });
+    }
+
+    private async refreshRuntimeSession(runtime: AgentRuntime): Promise<void> {
+        const previous = runtime.session;
+        runtime.session = await this.createPrimarySession(
+            runtime.workspace,
+            runtime.tab.id,
+            runtime.tab.sessionPath,
+        );
+        this.subscribe(runtime);
+        runtime.tab.updatedAt = Date.now();
+        try {
+            previous.dispose();
+        } catch (error) {
+            log.warn("[agent-runtime] refresh dispose error:", error);
+        }
+    }
+
+    private async syncRuntimeMode(runtime: AgentRuntime, targetMode: AgentMode): Promise<void> {
+        const nextMode = targetMode;
+        if (runtime.sessionMode === nextMode) return;
+
+        this.suppressEventForwarding = true;
+        try {
+            if (runtime.sessionMode === "plan") {
+                await runtime.session.session.prompt("/plan");
+            }
+            if (runtime.sessionMode === "compose") {
+                await runtime.session.session.prompt("/compose off");
+            }
+            if (nextMode === "plan") {
+                await runtime.session.session.prompt("/plan");
+            }
+            if (nextMode === "compose") {
+                await runtime.session.session.prompt("/compose on");
+            }
+            runtime.sessionMode = nextMode;
+        } finally {
+            this.suppressEventForwarding = false;
+        }
+    }
+
     private requireRuntime(agentId: string): AgentRuntime {
         const runtime = this.runtimes.get(agentId);
         if (!runtime) throw new Error(`Agent not found: ${agentId}`);
         return runtime;
+    }
+
+    private rememberRecentUserIntent(runtime: AgentRuntime, content: string, mode: AgentMode): void {
+        const memoryService = this.deps.getMemoryService?.();
+        if (!memoryService || !content.trim()) return;
+        const longHorizon = normalizeLongHorizonSettings(this.deps.getSettings?.().longHorizon);
+        if (!longHorizon.enabled || !longHorizon.memory.enabled) return;
+        memoryService.put({
+            scope: runtime.tab.sessionId ? "session" : "project",
+            workspaceId: runtime.workspace.id,
+            sessionId: runtime.tab.sessionId,
+            kind: "note",
+            text: content.slice(0, 2000),
+            tags: ["recent-user-intent", `mode:${mode}`],
+        });
     }
 }
 
@@ -504,68 +528,4 @@ function visibleUserPromptContent(content: string): string {
 function extractPlanSection(text: string, label: "用户请求" | "原始请求" | "补充目标"): string {
     const pattern = new RegExp(`${label}:\\s*([\\s\\S]*?)(?:\\n\\s*(?:用户请求|要求|原始请求|补充目标):|$)`);
     return pattern.exec(text)?.[1]?.trim() ?? "";
-}
-
-function textDeltaFromEvent(rawEvent: unknown): string {
-    if (!rawEvent || typeof rawEvent !== "object") return "";
-    const event = rawEvent as Record<string, unknown>;
-    if (event.type === "text_delta" && typeof event.delta === "string") return event.delta;
-    if (event.type === "message_update") {
-        const assistantEvent = event.assistantMessageEvent;
-        if (assistantEvent && typeof assistantEvent === "object") {
-            const nested = assistantEvent as Record<string, unknown>;
-            if ((nested.type === "text_delta" || nested.subtype === "text_delta") && typeof nested.delta === "string") {
-                return nested.delta;
-            }
-        }
-        if (event.subtype === "text_delta" && typeof event.delta === "string") return event.delta;
-    }
-    return "";
-}
-
-function pickLongestCandidate<T extends { content: string }>(results: T[]): T | undefined {
-    return [...results].sort((a, b) => b.content.length - a.content.length)[0] ?? results[0];
-}
-
-function buildMaxCandidatePrompt(prompt: string, index: number): string {
-    return [
-        "<system-reminder>",
-        `Max candidate ${index} is a temporary planning session.`,
-        "Do not edit files, run mutating commands, commit, install packages, or change system state.",
-        "Use read-only exploration only when necessary, then produce the best implementation plan or answer candidate.",
-        "</system-reminder>",
-        "",
-        prompt,
-    ].join("\n");
-}
-
-function buildMaxJudgePrompt(results: Array<{ id: string; content: string }>): string {
-    return [
-        "You are the Max Mode judge. Choose the candidate that best satisfies the user request.",
-        'Return only compact JSON in this shape: {"winnerId":"candidate-1","reason":"..."}',
-        "",
-        ...results.map((candidate) => [
-            `Candidate ${candidate.id}:`,
-            candidate.content || "(empty)",
-        ].join("\n")),
-    ].join("\n\n");
-}
-
-function parseMaxJudgeOutput(
-    output: string,
-    results: Array<{ id: string; content: string }>,
-): { winnerId: string; reason: string } | null {
-    const jsonMatch = output.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    try {
-        const parsed = JSON.parse(jsonMatch[0]) as { winnerId?: unknown; reason?: unknown };
-        if (typeof parsed.winnerId !== "string") return null;
-        if (!results.some((candidate) => candidate.id === parsed.winnerId)) return null;
-        return {
-            winnerId: parsed.winnerId,
-            reason: typeof parsed.reason === "string" && parsed.reason.trim() ? parsed.reason : "Selected by Max Mode judge.",
-        };
-    } catch {
-        return null;
-    }
 }

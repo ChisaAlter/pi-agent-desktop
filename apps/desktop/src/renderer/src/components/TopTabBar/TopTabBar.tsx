@@ -14,9 +14,10 @@ interface TabDef {
 
 const TAB_DEFS: TabDef[] = [
     { id: "chat", labelKey: "topbar.chat" },
-    { id: "skills", labelKey: "topbar.skills" },
-    { id: "git", labelKey: "topbar.git" },
-    { id: "history", labelKey: "topbar.history" },
+    { id: "tasks", labelKey: "topbar.tasks" },
+    { id: "memory", labelKey: "topbar.memory" },
+    { id: "tools", labelKey: "topbar.tools" },
+    { id: "settings", labelKey: "topbar.settings" },
 ];
 
 export function TopTabBar({ activeTab, onTabChange, rightSlot }: TopTabBarProps): React.JSX.Element {
@@ -57,14 +58,6 @@ export function TopTabBar({ activeTab, onTabChange, rightSlot }: TopTabBarProps)
                         </button>
                     );
                 })}
-                <button
-                    type="button"
-                    onClick={() => void window.piAPI?.openSettingsWindow?.()}
-                    className="relative flex h-full items-center rounded-none px-0 text-[14px] font-normal text-[var(--mm-text-tertiary)] transition-colors hover:text-[var(--mm-text-primary)] focus:outline-none"
-                    aria-label="打开设置窗口"
-                >
-                    <span className="whitespace-nowrap">设置</span>
-                </button>
             </div>
             {rightSlot && <div className="sr-only">{rightSlot}</div>}
         </div>

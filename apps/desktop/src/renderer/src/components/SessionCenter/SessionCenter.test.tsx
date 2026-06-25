@@ -349,40 +349,4 @@ describe("SessionCenter", () => {
     expect(useSessionStore.getState().sessions.find((session) => session.id === "s1")?.archived).toBe(false);
     expect(screen.queryByRole("status")).toBeNull();
   });
-
-  it("exposes the batch export entry so multi-session export is reachable", () => {
-    render(
-      <I18nProvider>
-        <SessionCenter />
-      </I18nProvider>,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "批量导出" }));
-
-    expect(screen.getByText("批量选择多个会话后，可按格式分别导出。")).toBeTruthy();
-    expect(screen.getByText(/选择会话 \(0 已选择\)/)).toBeTruthy();
-    const exportButtons = screen.getAllByRole("button", { name: "导出" });
-    expect((exportButtons.at(-1) as HTMLButtonElement | undefined)?.disabled).toBe(true);
-  });
-
-  it("resets batch export selections when the dialog is reopened", () => {
-    render(
-      <I18nProvider>
-        <SessionCenter />
-      </I18nProvider>,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "批量导出" }));
-    fireEvent.click(screen.getByText("Fix source control").closest("label") as HTMLLabelElement);
-    fireEvent.click(screen.getByRole("button", { name: "JSON (.json)" }));
-
-    expect(screen.getByText(/选择会话 \(1 已选择\)/)).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "取消" }));
-    fireEvent.click(screen.getByRole("button", { name: "批量导出" }));
-
-    expect(screen.getByText(/选择会话 \(0 已选择\)/)).toBeTruthy();
-    const exportButtons = screen.getAllByRole("button", { name: "导出" });
-    expect((exportButtons.at(-1) as HTMLButtonElement | undefined)?.disabled).toBe(true);
-  });
 });

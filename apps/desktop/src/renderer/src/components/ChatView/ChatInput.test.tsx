@@ -6,13 +6,10 @@ import { I18nProvider } from "../../i18n";
 import { useAttachmentsStore } from "../../stores/attachments-store";
 import { useAgentModeStore } from "../../stores/agent-mode-store";
 import { usePlanStore } from "../../stores/plan-store";
+import { useRuntimeFeatureStore } from "../../stores/runtime-feature-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { ChatInput } from "./ChatInput";
-
-const { addToastSpy } = vi.hoisted(() => ({
-  addToastSpy: vi.fn(),
-}));
 
 vi.mock("../../hooks/useMentions", () => ({
   useMentions: () => ({
@@ -29,10 +26,6 @@ vi.mock("./PermissionRequestStack", () => ({
   PermissionRequestStack: () => null,
 }));
 
-vi.mock("../../stores/toast-store", () => ({
-  addToast: addToastSpy,
-}));
-
 function openComposerMenu(): void {
   fireEvent.click(screen.getByRole("button", { name: "添加附件和工具" }));
 }
@@ -44,7 +37,6 @@ function clickAddAttachment(): void {
 
 describe("ChatInput", () => {
   beforeEach(() => {
-    addToastSpy.mockReset();
     Object.defineProperty(window, "piAPI", {
       value: {
         setSettings: vi.fn(async () => undefined),
@@ -83,6 +75,45 @@ describe("ChatInput", () => {
         thinkingLevel: "medium",
       },
       piModels: null,
+    });
+    useRuntimeFeatureStore.setState({
+      featureState: {
+        primaryAgents: [],
+        systemAgents: [],
+        enabledToolIds: ["task", "memory"],
+        features: {
+          planMode: { enabled: true, supported: true, loadedFrom: "pi-openplan" },
+          composeMode: { enabled: true, supported: true, loadedFrom: "desktop" },
+          maxMode: { enabled: true, supported: true, loadedFrom: "desktop", candidates: 5 },
+          memory: {
+            enabled: true,
+            supported: true,
+            loadedFrom: "desktop",
+            ccIndex: false,
+            reconcileOnSearch: true,
+            searchScoreFloor: 0.15,
+          },
+          history: { enabled: true, supported: true, loadedFrom: "desktop" },
+          checkpoint: { enabled: true, supported: true, loadedFrom: "desktop" },
+          goal: { enabled: true, supported: true, loadedFrom: "desktop" },
+          task: { enabled: true, supported: true, loadedFrom: "desktop" },
+          actor: { enabled: true, supported: true, loadedFrom: "desktop" },
+          subagents: { enabled: true, supported: true, loadedFrom: "desktop" },
+          workflow: {
+            enabled: false,
+            supported: false,
+            loadedFrom: "unsupported",
+            maxConcurrentAgents: 4,
+            maxLifecycleAgents: 100,
+            maxDepth: 4,
+          },
+          dream: { enabled: false, supported: false, loadedFrom: "unsupported" },
+          distill: { enabled: false, supported: false, loadedFrom: "unsupported" },
+        },
+      },
+      loading: false,
+      lastError: null,
+      lastLoadedAt: Date.now(),
     });
     vi.spyOn(window, "alert").mockImplementation(() => undefined);
   });
@@ -190,7 +221,7 @@ describe("ChatInput", () => {
   });
 
   it("does not render the non-build mode status chip inside the reference composer body", () => {
-    useAgentModeStore.setState({ byWorkspace: { ws1: "max" } });
+    useAgentModeStore.setState({ byWorkspace: { ws1: "compose" } });
 
     render(
       <I18nProvider>
@@ -206,8 +237,72 @@ describe("ChatInput", () => {
       </I18nProvider>,
     );
 
-    expect(screen.getByRole("button", { name: "选择 Agent 模式" }).textContent).toContain("Max");
-    expect(screen.queryByLabelText("max 模式已启用")).toBeNull();
+    expect(screen.getByRole("button", { name: "选择 Agent 模式" }).textContent).toContain("Compose");
+    expect(screen.queryByLabelText("compose 模式已启用")).toBeNull();
+  });
+
+  it("clamps persisted unsupported modes back to build and hides unavailable runtime modes", () => {
+    useAgentModeStore.setState({ byWorkspace: { ws1: "plan" } });
+    useRuntimeFeatureStore.setState({
+      featureState: {
+        primaryAgents: [],
+        systemAgents: [],
+        enabledToolIds: [],
+        features: {
+          planMode: { enabled: false, supported: true, loadedFrom: "disabled" },
+          composeMode: { enabled: true, supported: true, loadedFrom: "desktop" },
+          maxMode: { enabled: false, supported: true, loadedFrom: "disabled", candidates: 5 },
+          memory: {
+            enabled: true,
+            supported: true,
+            loadedFrom: "desktop",
+            ccIndex: false,
+            reconcileOnSearch: true,
+            searchScoreFloor: 0.15,
+          },
+          history: { enabled: true, supported: true, loadedFrom: "desktop" },
+          checkpoint: { enabled: true, supported: true, loadedFrom: "desktop" },
+          goal: { enabled: true, supported: true, loadedFrom: "desktop" },
+          task: { enabled: true, supported: true, loadedFrom: "desktop" },
+          actor: { enabled: true, supported: true, loadedFrom: "desktop" },
+          subagents: { enabled: true, supported: true, loadedFrom: "desktop" },
+          workflow: {
+            enabled: false,
+            supported: false,
+            loadedFrom: "unsupported",
+            maxConcurrentAgents: 4,
+            maxLifecycleAgents: 100,
+            maxDepth: 4,
+          },
+          dream: { enabled: false, supported: false, loadedFrom: "unsupported" },
+          distill: { enabled: false, supported: false, loadedFrom: "unsupported" },
+        },
+      },
+      loading: false,
+      lastError: null,
+      lastLoadedAt: Date.now(),
+    });
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByRole("button", { name: "选择 Agent 模式" }).textContent).toContain("Build");
+
+    fireEvent.click(screen.getByRole("button", { name: "选择 Agent 模式" }));
+    expect(screen.queryByRole("menuitemradio", { name: /Plan/ })).toBeNull();
+    expect(screen.getByRole("menuitemradio", { name: /Compose/ })).toBeTruthy();
+    expect(screen.queryByRole("menuitemradio", { name: /Max/ })).toBeNull();
   });
 
   it("selects a model from the reference composer model menu", async () => {
@@ -989,9 +1084,9 @@ describe("ChatInput", () => {
     Object.defineProperty(window, "piAPI", {
       value: {
         listSlashCommands: vi.fn(async () => [
-          { name: "compact", description: "Manually compact the session context", source: "builtin", desktopAction: "compact" },
-          { name: "settings", description: "Open settings", source: "builtin", desktopAction: "open-settings" },
+          { name: "changelog", description: "Show changelog entries", source: "builtin", desktopAction: "unsupported" },
           { name: "clone", description: "Duplicate the current session at the current position", source: "builtin", desktopAction: "unsupported" },
+          { name: "compact", description: "Manually compact the session context", source: "builtin", desktopAction: "compact" },
         ]),
       },
       configurable: true,
@@ -1021,7 +1116,6 @@ describe("ChatInput", () => {
     fireEvent.keyDown(textbox, { key: "ArrowDown" });
 
     await waitFor(() => {
-      expect(options[1].textContent).toContain("settings");
       expect(options[1].getAttribute("aria-selected")).toBe("true");
       expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
     });
@@ -1073,52 +1167,6 @@ describe("ChatInput", () => {
     expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: "slash-command:open-settings-tab" }));
 
     dispatchSpy.mockRestore();
-  });
-
-  it("shows an export success toast for builtin slash exports", async () => {
-    const onSend = vi.fn(async () => undefined);
-    Object.defineProperty(window, "piAPI", {
-      value: {
-        listSlashCommands: vi.fn(async () => [
-          { name: "export", description: "Export session as HTML", source: "builtin", desktopAction: "export" },
-        ]),
-        runBuiltinSlashCommand: vi.fn(async () => ({
-          handled: true,
-          command: "export",
-          action: "export",
-          message: "已导出 HTML 到 C:/repo/exports/demo.html",
-          tone: "success",
-        })),
-      },
-      configurable: true,
-    });
-
-    render(
-      <I18nProvider>
-        <ChatInput
-          isConnected
-          isProcessing={false}
-          workspaceId="ws1"
-          workspacePath="C:/repo"
-          onSend={onSend}
-          onStop={vi.fn()}
-        />
-      </I18nProvider>,
-    );
-
-    const textbox = screen.getByRole("textbox");
-    fireEvent.change(textbox, { target: { value: "/export" } });
-    fireEvent.keyDown(textbox, { key: "Enter" });
-
-    await waitFor(() => {
-      expect(window.piAPI.runBuiltinSlashCommand).toHaveBeenCalledWith({
-        workspaceId: "ws1",
-        command: "export",
-        args: "",
-      });
-    });
-    expect(onSend).not.toHaveBeenCalled();
-    expect(addToastSpy).toHaveBeenCalledWith("已导出 HTML 到 C:/repo/exports/demo.html", "success");
   });
 
   it("does not send slash commands with attachments", async () => {

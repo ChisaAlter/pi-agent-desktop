@@ -4,10 +4,10 @@
 
 import { clipboard, ipcMain, BrowserWindow, type BrowserWindow as BrowserWindowType } from "electron";
 import { execFileSync } from "child_process";
-import { rmSync } from "fs";
+import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { isAbsolute, join, relative, resolve } from "path";
 import log from "electron-log/main";
-import { DEFAULT_LONG_HORIZON_SETTINGS, ipcError } from "@shared";
+import { ipcError, normalizeLongHorizonSettings } from "@shared";
 import { WorkspaceRegistry } from "../services/pi-session/registry";
 import type { IpcSender } from "../services/pi-session/event-bridge";
 import { PendingEdits } from "../services/approval/pending-edits";
@@ -32,10 +32,12 @@ import type { AgentRuntimeRegistry } from "../services/agent-runtime/registry";
 import type { GoalService } from "../services/long-horizon/goal-service";
 import type { CheckpointService } from "../services/long-horizon/checkpoint-service";
 import type { MemoryService } from "../services/long-horizon/memory-service";
+import type { TaskService } from "../services/long-horizon/task-service";
 import { getProtectedPathReason } from "../services/protected-paths";
 import { gitUndoSchema } from "./schemas";
-import { buildAgentModePrompt, composeSlashCommands, goalSlashCommands, normalizeAgentMode } from "../services/agent-modes";
+import { buildAgentModePrompt, goalSlashCommands, normalizeAgentMode } from "../services/agent-modes";
 import { buildMiMoCodeRuntimePort } from "../services/mimocode-runtime-port";
+import { resolveBundledDesktopExtensionPaths } from "../services/pi-session/factory";
 
 interface WorkspaceLite {
     id: string;
@@ -57,6 +59,7 @@ interface ChatIpcDeps {
     goalService?: GoalService;
     memoryService?: MemoryService;
     checkpointService?: CheckpointService;
+    taskService?: TaskService;
 }
 
 type SlashSession = {
@@ -81,11 +84,57 @@ type SlashSession = {
     exportToHtml?: (outputPath?: string) => Promise<string>;
 };
 
+function sanitizePlanFilename(name: string): string {
+    return name
+        .replace(/\.md$/i, "")
+        .replace(/[^a-zA-Z0-9_-]/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "")
+        .toLowerCase()
+        .slice(0, 80);
+}
+
+function escapeYamlDoubleQuoted(value: string): string {
+    return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function materializeInlinePlan(
+    workspacePath: string,
+    title: string,
+    content: string,
+    preferredFilename?: string,
+): { filename: string; path: string } {
+    const safeTitle = title.trim() || "plan";
+    const plansDir = join(workspacePath, ".pi", "plans");
+    mkdirSync(plansDir, { recursive: true });
+    const preferredBaseName = sanitizePlanFilename(preferredFilename ?? "");
+    const baseName = preferredBaseName || sanitizePlanFilename(safeTitle) || "plan";
+    const filename = preferredBaseName ? `${baseName}.md` : `${baseName}-${Date.now()}.md`;
+    const planPath = join(plansDir, filename);
+    const now = new Date().toISOString();
+    const body = /^#\s+/m.test(content.trimStart())
+        ? content.trim()
+        : `# ${safeTitle}\n\n${content.trim()}`;
+    const fileContent = [
+        "---",
+        `title: "${escapeYamlDoubleQuoted(safeTitle)}"`,
+        "status: draft",
+        `created: "${now}"`,
+        "type: feature",
+        "---",
+        "",
+        body,
+        "",
+    ].join("\n");
+    writeFileSync(planPath, fileContent, "utf8");
+    return { filename, path: planPath };
+}
+
 const BUILTIN_SLASH_COMMANDS: ReadonlyArray<Pick<PiSlashCommand, "name" | "description">> = Object.freeze([
     { name: "settings", description: "Open settings menu" },
     { name: "model", description: "Select model" },
     { name: "scoped-models", description: "Enable/disable models for cycling" },
-    { name: "export", description: "Export session as HTML" },
+    { name: "export", description: "Export session" },
     { name: "import", description: "Import and resume a session" },
     { name: "share", description: "Share session as a secret GitHub gist" },
     { name: "copy", description: "Copy last agent message to clipboard" },
@@ -230,40 +279,19 @@ function slashInfo(command: string, message: string, extra: Partial<SlashCommand
 }
 
 function longHorizonSettings(settings?: AppSettings): NonNullable<AppSettings["longHorizon"]> {
-    const current = settings?.longHorizon;
-    const workflow = current?.workflow ?? current?.composeWorkflow;
-    return {
-        ...DEFAULT_LONG_HORIZON_SETTINGS,
-        ...current,
-        planMode: { ...DEFAULT_LONG_HORIZON_SETTINGS.planMode, ...current?.planMode },
-        composeMode: { ...DEFAULT_LONG_HORIZON_SETTINGS.composeMode, ...current?.composeMode },
-        maxMode: { ...DEFAULT_LONG_HORIZON_SETTINGS.maxMode, ...current?.maxMode },
-        memory: { ...DEFAULT_LONG_HORIZON_SETTINGS.memory, ...current?.memory },
-        history: { ...DEFAULT_LONG_HORIZON_SETTINGS.history, ...current?.history },
-        checkpoint: { ...DEFAULT_LONG_HORIZON_SETTINGS.checkpoint, ...current?.checkpoint },
-        goal: { ...DEFAULT_LONG_HORIZON_SETTINGS.goal, ...current?.goal },
-        subagents: { ...DEFAULT_LONG_HORIZON_SETTINGS.subagents, ...current?.subagents },
-        task: { ...DEFAULT_LONG_HORIZON_SETTINGS.task, ...current?.task },
-        actor: { ...DEFAULT_LONG_HORIZON_SETTINGS.actor, ...current?.actor },
-        workflow: { ...DEFAULT_LONG_HORIZON_SETTINGS.workflow, ...workflow },
-        dream: { ...DEFAULT_LONG_HORIZON_SETTINGS.dream, ...current?.dream },
-        distill: { ...DEFAULT_LONG_HORIZON_SETTINGS.distill, ...current?.distill },
-        composeWorkflow: { ...DEFAULT_LONG_HORIZON_SETTINGS.composeWorkflow, ...current?.composeWorkflow },
-    };
+    return normalizeLongHorizonSettings(settings?.longHorizon);
 }
 
 function modeOptions(settings?: AppSettings): {
     longHorizonEnabled: boolean;
     planModeEnabled: boolean;
     composeModeEnabled: boolean;
-    maxModeEnabled: boolean;
 } {
     const longHorizon = longHorizonSettings(settings);
     return {
         longHorizonEnabled: longHorizon.enabled,
         planModeEnabled: longHorizon.planMode.enabled,
         composeModeEnabled: longHorizon.composeMode.enabled,
-        maxModeEnabled: longHorizon.maxMode.enabled,
     };
 }
 
@@ -272,18 +300,6 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
     const send: IpcSender = (channel, _workspaceId, payload) => {
         const win: BrowserWindowType | null = BrowserWindow.getAllWindows()[0] ?? null;
         if (win && !win.isDestroyed()) {
-            if (
-                (channel === "approval:deferred" || channel === "approval:review") &&
-                payload &&
-                typeof payload === "object" &&
-                !Array.isArray(payload)
-            ) {
-                win.webContents.send(channel, {
-                    ...(payload as Record<string, unknown>),
-                    workspaceId: _workspaceId,
-                });
-                return;
-            }
             win.webContents.send(channel, payload);
         }
     };
@@ -307,58 +323,6 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         resolveApprovalRequest(requestId, approved);
     });
 
-    ipcMain.handle("approval:approve", async (_event, workspaceId: string, changeId: string) => {
-        const ws = workspaceId ? deps.getWorkspace(workspaceId) : undefined;
-        if (!ws) {
-            return ipcError(
-                "ipcErrors.chat.workspaceNotFound",
-                `Workspace not found: ${workspaceId}`,
-                { id: workspaceId },
-            );
-        }
-        const change = deps.pendingEdits.get(changeId);
-        if (!change) return undefined;
-        deps.pendingEdits.approve(changeId);
-        return undefined;
-    });
-
-    ipcMain.handle("approval:reject", async (_event, workspaceId: string, changeId: string) => {
-        const ws = workspaceId ? deps.getWorkspace(workspaceId) : undefined;
-        if (!ws) {
-            return ipcError(
-                "ipcErrors.chat.workspaceNotFound",
-                `Workspace not found: ${workspaceId}`,
-                { id: workspaceId },
-            );
-        }
-        const change = deps.pendingEdits.get(changeId);
-        if (!change) return undefined;
-        try {
-            await deps.pendingEdits.reject(changeId, ws.path);
-            return undefined;
-        } catch (err) {
-            log.error("[chat.ipc] approval:reject failed:", err);
-            return ipcError(
-                "ipcErrors.chat.approvalRejectFailed",
-                `拒绝并回滚文件变更失败: ${err instanceof Error ? err.message : String(err)}`,
-                { path: change.filePath },
-            );
-        }
-    });
-
-    ipcMain.handle("approval:remove", async (_event, workspaceId: string, changeId: string) => {
-        const ws = workspaceId ? deps.getWorkspace(workspaceId) : undefined;
-        if (!ws) {
-            return ipcError(
-                "ipcErrors.chat.workspaceNotFound",
-                `Workspace not found: ${workspaceId}`,
-                { id: workspaceId },
-            );
-        }
-        deps.pendingEdits.remove(changeId);
-        return undefined;
-    });
-
     ipcMain.handle("permission:set-mode", async (_event, mode: PermissionMode) => {
         setDesktopPermissionMode(mode);
     });
@@ -380,7 +344,51 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             );
         }
         void enabled;
+        if (deps.agentRegistry && typeof deps.agentRegistry.refreshWorkspace === "function") {
+            await deps.agentRegistry.refreshWorkspace(ws.id);
+        } else if (typeof deps.registry.dispose === "function") {
+            deps.registry.dispose(ws.id);
+        }
         return undefined;
+    });
+
+    ipcMain.handle("plan:materialize-inline", async (_event, input: {
+        workspaceId?: unknown;
+        title?: unknown;
+        content?: unknown;
+        preferredFilename?: unknown;
+    }) => {
+        const workspaceId = typeof input?.workspaceId === "string" ? input.workspaceId : "";
+        const ws = workspaceId ? deps.getWorkspace(workspaceId) : undefined;
+        if (!ws) {
+            return ipcError(
+                "ipcErrors.chat.workspaceNotFound",
+                `Workspace not found: ${workspaceId}`,
+                { id: workspaceId },
+            );
+        }
+        const title = typeof input?.title === "string" ? input.title.trim() : "";
+        const content = typeof input?.content === "string" ? input.content.trim() : "";
+        const preferredFilename = typeof input?.preferredFilename === "string"
+            ? input.preferredFilename.trim()
+            : "";
+        if (!content) {
+            return ipcError(
+                "ipcErrors.chat.promptFailed",
+                "计划内容为空，无法生成计划文件。",
+                { workspace: ws.name },
+            );
+        }
+        try {
+            return materializeInlinePlan(ws.path, title, content, preferredFilename);
+        } catch (err) {
+            log.error("[chat.ipc] materialize inline plan failed:", err);
+            return ipcError(
+                "ipcErrors.chat.promptFailed",
+                `生成计划文件失败: ${err instanceof Error ? err.message : String(err)}`,
+                { workspace: ws.name },
+            );
+        }
     });
 
     ipcMain.handle("goal:set", async (_event, input: { workspaceId?: unknown; agentId?: unknown; condition?: unknown }) => {
@@ -421,7 +429,10 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
     });
 
     ipcMain.handle("pi:runtime-feature-state", async () => (
-        buildMiMoCodeRuntimePort(longHorizonSettings(deps.getSettings?.()))
+        buildMiMoCodeRuntimePort(longHorizonSettings(deps.getSettings?.()), {
+            planModeSupported: resolveBundledDesktopExtensionPaths({ planModeEnabled: true }).length > 0,
+            composeModeSupported: resolveBundledDesktopExtensionPaths({ composeModeEnabled: true }).length > 0,
+        })
     ));
 
     ipcMain.handle("pi:memory-search", async (_event, input: {
@@ -443,6 +454,48 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         });
     });
 
+    ipcMain.handle("pi:memory-list-recent", async (_event, input: {
+        workspaceId?: string;
+        sessionId?: string;
+        limit?: number;
+    }) => {
+        const longHorizon = longHorizonSettings(deps.getSettings?.());
+        if (!longHorizon.enabled || !longHorizon.memory.enabled || !deps.memoryService) return [];
+        return deps.memoryService.listRecent({
+            workspaceId: input?.workspaceId,
+            sessionId: input?.sessionId,
+            limit: input?.limit,
+        });
+    });
+
+    ipcMain.handle("pi:task-list", async (_event, input: {
+        workspaceId?: string;
+        agentId?: string;
+    }) => {
+        const longHorizon = longHorizonSettings(deps.getSettings?.());
+        if (!longHorizon.enabled || !longHorizon.task.enabled || !deps.taskService) return [];
+        const workspaceId = typeof input?.workspaceId === "string" ? input.workspaceId : "";
+        if (!workspaceId) return [];
+        return deps.taskService.list({
+            workspaceId,
+            agentId: typeof input?.agentId === "string" ? input.agentId : undefined,
+        });
+    });
+
+    ipcMain.handle("pi:task-get-active", async (_event, input: {
+        workspaceId?: string;
+        agentId?: string;
+    }) => {
+        const longHorizon = longHorizonSettings(deps.getSettings?.());
+        if (!longHorizon.enabled || !longHorizon.task.enabled || !deps.taskService) return null;
+        const workspaceId = typeof input?.workspaceId === "string" ? input.workspaceId : "";
+        if (!workspaceId) return null;
+        return deps.taskService.getActive({
+            workspaceId,
+            agentId: typeof input?.agentId === "string" ? input.agentId : undefined,
+        });
+    });
+
     ipcMain.on("plan:respond", (_event, requestId: string, decision: string, text?: string) => {
         resolveExtensionUiRequest(requestId, { requestId, value: decision === "execute" ? true : text ?? "" });
     });
@@ -460,13 +513,11 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             const session = await getSlashSession(ws, agentId);
             const longHorizon = longHorizonSettings(deps.getSettings?.());
             const mode = normalizeAgentMode(rawMode, modeOptions(deps.getSettings?.()));
-            const modeCommands = longHorizon.enabled && longHorizon.composeWorkflow.enabled && mode === "compose"
-                ? composeSlashCommands()
-                : [];
             const goalCommands = longHorizon.enabled && longHorizon.goal.enabled && deps.goalService
                 ? goalSlashCommands()
                 : [];
-            return uniqueSlashCommands([...builtinSlashCommands(), ...goalCommands, ...collectDynamicSlashCommands(session), ...modeCommands]);
+            void mode;
+            return uniqueSlashCommands([...builtinSlashCommands(), ...goalCommands, ...collectDynamicSlashCommands(session)]);
         } catch (err) {
             log.error("[chat.ipc] list slash commands failed:", err);
             return ipcError(
@@ -560,19 +611,8 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
                 }
                 case "export": {
                     const session = await getSlashSession(ws, input.agentId);
-                    if (!session.exportToHtml) {
-                        return slashResult(command, "unsupported", "当前会话不支持 HTML 导出", {
-                            keepInput: true,
-                        });
-                    }
-                    const path = await session.exportToHtml(args || undefined);
-                    if (!path) {
-                        return slashResult(command, "export", "HTML 导出失败：未返回输出路径", {
-                            tone: "error",
-                            keepInput: true,
-                        });
-                    }
-                    return slashResult(command, "export", `已导出 HTML 到 ${path}`);
+                    const path = await session.exportToHtml?.(args || undefined);
+                    return slashResult(command, "export", path ? `已导出到 ${path}` : "已导出会话");
                 }
                 default:
                     return slashResult(

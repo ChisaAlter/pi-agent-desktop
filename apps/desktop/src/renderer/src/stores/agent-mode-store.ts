@@ -1,5 +1,7 @@
 import { create } from "zustand";
-import type { AgentMode } from "@shared";
+import { normalizeLongHorizonSettings, type AgentMode } from "@shared";
+import { useRuntimeFeatureStore, clampAgentModeByRuntime } from "./runtime-feature-store";
+import { useSettingsStore } from "./settings-store";
 
 interface AgentModeState {
   byWorkspace: Record<string, AgentMode>;
@@ -8,7 +10,13 @@ interface AgentModeState {
 }
 
 function normalizeAgentMode(value: unknown): AgentMode {
-  return value === "plan" || value === "compose" || value === "max" ? value : "build";
+  return value === "plan" || value === "compose" ? value : "build";
+}
+
+function clampMode(mode: unknown, fallback: AgentMode = "build"): AgentMode {
+  const longHorizon = normalizeLongHorizonSettings(useSettingsStore.getState().settings.longHorizon);
+  const featureState = useRuntimeFeatureStore.getState().featureState;
+  return clampAgentModeByRuntime(mode, featureState, longHorizon, fallback);
 }
 
 function loadModes(): Record<string, AgentMode> {
@@ -31,13 +39,15 @@ function persistModes(modes: Record<string, AgentMode>): void {
 export const useAgentModeStore = create<AgentModeState>((set, get) => ({
   byWorkspace: loadModes(),
   getMode: (workspaceId, fallback = "build") => {
-    if (!workspaceId) return normalizeAgentMode(fallback);
-    return get().byWorkspace[workspaceId] ?? normalizeAgentMode(fallback);
+    const clampedFallback = clampMode(fallback);
+    if (!workspaceId) return clampedFallback;
+    return clampMode(get().byWorkspace[workspaceId] ?? clampedFallback, clampedFallback);
   },
   setMode: (workspaceId, mode) => {
+    const nextMode = clampMode(mode);
     const next = {
       ...get().byWorkspace,
-      [workspaceId]: normalizeAgentMode(mode),
+      [workspaceId]: nextMode,
     };
     set({ byWorkspace: next });
     persistModes(next);

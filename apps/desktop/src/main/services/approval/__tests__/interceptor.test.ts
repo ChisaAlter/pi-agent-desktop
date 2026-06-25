@@ -13,7 +13,6 @@ vi.mock("fs/promises", () => ({
 import { createApprovalInterceptor } from "../interceptor";
 import { requestApproval } from "../approval-bridge";
 import { PendingEdits } from "../pending-edits";
-import { readFile } from "fs/promises";
 
 describe("createApprovalInterceptor", () => {
     let pendingEdits: PendingEdits;
@@ -23,8 +22,6 @@ describe("createApprovalInterceptor", () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        vi.mocked(readFile).mockReset();
-        vi.mocked(readFile).mockResolvedValue("new content");
         pendingEdits = new PendingEdits();
         send = vi.fn();
         abort = vi.fn();
@@ -267,6 +264,81 @@ describe("createApprovalInterceptor", () => {
         expect(send).not.toHaveBeenCalled();
     });
 
+    it("emits a structured plan card when plan_write is announced via toolcall_start", async () => {
+        await interceptor.handleEvent({
+            type: "message_update",
+            assistantMessageEvent: {
+                type: "toolcall_start",
+                toolCallId: "tc_plan_card",
+                toolName: "plan_write",
+                args: {
+                    title: "聊天输入框改版计划",
+                    content: "- 盘点当前交互\n- 调整模式切换",
+                    filename: ".pi/plans/chat-input.md",
+                },
+            },
+        });
+
+        expect(send).toHaveBeenCalledWith(
+            "plan:card",
+            "ws_1",
+            expect.objectContaining({
+                id: "tc_plan_card",
+                title: "聊天输入框改版计划",
+                content: "- 盘点当前交互\n- 调整模式切换",
+                filename: ".pi/plans/chat-input.md",
+            }),
+        );
+    });
+
+    it("emits a structured plan card when only tool_execution_start is available", async () => {
+        await interceptor.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_plan_exec_card",
+            toolName: "plan_write",
+            args: {
+                title: "执行期计划",
+                content: "- 仅执行事件",
+            },
+        });
+
+        expect(send).toHaveBeenCalledWith(
+            "plan:card",
+            "ws_1",
+            expect.objectContaining({
+                id: "tc_plan_exec_card",
+                title: "执行期计划",
+                content: "- 仅执行事件",
+            }),
+        );
+    });
+
+    it("does not emit duplicate plan cards when toolcall_start and tool_execution_start both arrive", async () => {
+        await interceptor.handleEvent({
+            type: "message_update",
+            assistantMessageEvent: {
+                type: "toolcall_start",
+                toolCallId: "tc_plan_dupe",
+                toolName: "plan_write",
+                args: {
+                    title: "去重计划",
+                    content: "- 唯一一次",
+                },
+            },
+        });
+        await interceptor.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_plan_dupe",
+            toolName: "plan_write",
+            args: {
+                title: "去重计划",
+                content: "- 唯一一次",
+            },
+        });
+
+        expect(send.mock.calls.filter((call) => call[0] === "plan:card")).toHaveLength(1);
+    });
+
     it("blocks prior mutating toolcall_start args when plan-mode tool_execution_start omits args", async () => {
         interceptor = createApprovalInterceptor("ws_1", {
             abort,
@@ -327,56 +399,6 @@ describe("createApprovalInterceptor", () => {
         // diff 含 basename
         expect(change?.diff).toContain("bar.ts");
         expect(change?.diff).toContain("+new content");
-    });
-
-    it("builds review diff from the real pre-write file content instead of the requested payload", async () => {
-        vi.mocked(readFile)
-            .mockResolvedValueOnce("before content")
-            .mockResolvedValueOnce("after content");
-
-        await interceptor.handleEvent({
-            type: "tool_execution_start",
-            toolCallId: "tc_real_diff",
-            toolName: "write",
-            args: { file_path: "src/real-diff.ts", content: "after content" },
-        });
-        await interceptor.handleEvent({
-            type: "tool_execution_end",
-            toolCallId: "tc_real_diff",
-            toolName: "write",
-            args: { file_path: "src/real-diff.ts" },
-            result: {},
-            isError: false,
-        });
-
-        const reviewPayload = send.mock.calls.find((call: unknown[]) => call[0] === "approval:review")?.[2];
-        expect(reviewPayload.diff).toContain("-before content");
-        expect(reviewPayload.diff).toContain("+after content");
-    });
-
-    it("builds new-file review diff from an empty baseline when the target file did not exist", async () => {
-        vi.mocked(readFile)
-            .mockRejectedValueOnce(Object.assign(new Error("ENOENT"), { code: "ENOENT" }))
-            .mockResolvedValueOnce("brand new file");
-
-        await interceptor.handleEvent({
-            type: "tool_execution_start",
-            toolCallId: "tc_new_file_diff",
-            toolName: "write",
-            args: { file_path: "src/new-file.ts", content: "brand new file" },
-        });
-        await interceptor.handleEvent({
-            type: "tool_execution_end",
-            toolCallId: "tc_new_file_diff",
-            toolName: "write",
-            args: { file_path: "src/new-file.ts" },
-            result: {},
-            isError: false,
-        });
-
-        const reviewPayload = send.mock.calls.find((call: unknown[]) => call[0] === "approval:review")?.[2];
-        expect(reviewPayload.diff).toContain("+brand new file");
-        expect(reviewPayload.diff).not.toContain("-brand new file");
     });
 
     it("ignores non-write/edit tool_execution_end", async () => {

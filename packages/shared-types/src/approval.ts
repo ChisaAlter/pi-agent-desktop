@@ -21,7 +21,6 @@ export interface ApprovalResponse {
 
 /** file_edit 类工具的延迟审批 (工具已执行, 事后给用户看 diff) */
 export interface DeferredEdit {
-    workspaceId: string;
     changeId: string;
     toolCallId: string;
     filePath: string;
@@ -31,7 +30,6 @@ export interface DeferredEdit {
 
 /** 工具执行完后的 review 事件 (含 diff) */
 export interface FileReview {
-    workspaceId: string;
     changeId: string;
     toolCallId: string;
     filePath: string;

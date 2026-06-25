@@ -7,8 +7,12 @@ import { MemoryService } from "../memory-service";
 
 describe("CheckpointService", () => {
     const dirs: string[] = [];
+    const memories: MemoryService[] = [];
 
     afterEach(() => {
+        for (const memory of memories.splice(0)) {
+            memory.close();
+        }
         for (const dir of dirs.splice(0)) {
             rmSync(dir, { recursive: true, force: true });
         }
@@ -18,6 +22,7 @@ describe("CheckpointService", () => {
         const dir = mkdtempSync(join(tmpdir(), "pi-checkpoint-"));
         dirs.push(dir);
         const memory = new MemoryService({ rootDir: dir });
+        memories.push(memory);
         const service = new CheckpointService(memory);
 
         service.writeCheckpoint({

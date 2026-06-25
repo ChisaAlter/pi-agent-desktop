@@ -8,7 +8,6 @@ import { useSlashCommands } from "./useSlashCommands";
 const COMMANDS: PiSlashCommand[] = [
   { name: "model", description: "Select model", source: "builtin", desktopAction: "open-models" },
   { name: "settings", description: "Open settings", source: "builtin", desktopAction: "open-settings" },
-  { name: "clone", description: "CLI only", source: "builtin", desktopAction: "unsupported" },
   { name: "plan", description: "Plan work", source: "extension" },
   { name: "skill:tdd", description: "Use TDD", source: "skill" },
 ];
@@ -99,17 +98,5 @@ describe("useSlashCommands", () => {
     });
 
     expect(result.current.selectCandidate(result.current.candidates[0])).toBe("/compact ");
-  });
-
-  it("filters out builtin commands that are marked unsupported on desktop", async () => {
-    const { result } = renderHook(
-      () => useSlashCommands("/", 1, "ws1"),
-    );
-
-    await waitFor(() => {
-      const names = result.current.candidates.map((candidate) => candidate.command.name);
-      expect(names).toContain("model");
-      expect(names).not.toContain("clone");
-    });
   });
 });

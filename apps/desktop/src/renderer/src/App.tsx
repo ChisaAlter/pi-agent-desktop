@@ -25,8 +25,9 @@ import { TerminalPanel } from "./components/Terminal/TerminalPanel";
 import { ApprovalPanel } from "./components/ApprovalPanel/ApprovalPanel";
 import { Onboarding } from "./components/Onboarding/Onboarding";
 import { ChatView } from "./components/ChatView/ChatView";
+import { MemoryPanel } from "./components/LongHorizon/MemoryPanel";
+import { TaskOverviewPanel } from "./components/LongHorizon/TaskOverviewPanel";
 import { SearchHistory } from "./components/SearchHistory/SearchHistory";
-import { SessionCenter } from "./components/SessionCenter/SessionCenter";
 import { TopTabBar } from "./components/TopTabBar/TopTabBar";
 import {
     MiniMaxCodeLayout,
@@ -36,7 +37,7 @@ import {
 import { useWorkspaceStore } from "./stores/workspace-store";
 import { useSettingsStore } from "./stores/settings-store";
 import { usePiStatusStore } from "./stores/pi-status-store";
-import { bindApprovalEventSubscriptions, useApprovalStore } from "./stores/approval-store";
+import { useApprovalStore } from "./stores/approval-store";
 import { useSessionStore } from "./stores/session-store";
 import { useAgentStore } from "./stores/agent-store";
 import { isFirstLaunch } from "./utils/first-launch";
@@ -47,15 +48,47 @@ import { useTaskProgress } from "./hooks/useTaskProgress";
 import { ensurePermissionSubscriptions } from "./stores/permission-store";
 import { ensurePlanSubscriptions } from "./stores/plan-store";
 import { ensureQueueSubscription } from "./stores/queue-store";
+import { useRuntimeFeatureStore } from "./stores/runtime-feature-store";
 import type { TerminalCommandMode } from "./utils/terminal-command";
 import { isIpcError } from "@shared";
 import { applyTheme, watchSystemTheme, type Theme } from "./utils/theme";
 
-type MainPanel = "chat" | "skills" | "git" | "files" | "history";
+type MainPanel = "chat" | "skills" | "git" | "files" | "tasks" | "memory";
+
+/**
+ * Canonical section identifiers for the center panel router.
+ *
+ * - "chat" / "tools" / "git" / "files" / "tasks" / "memory" map to center panels
+ * - "new-task" renders ChatView in blank-slate mode (no current session)
+ * - "history" shows the SearchHistory overlay (center stays on previous panel)
+ * - `session:<id>` is a transient navigation action — resolved to "chat" after
+ *   switching the current session; never stored as activeSection.
+ *
+ * "settings" and "search" are intercepted by routeSection() and do not become
+ * persistent center-panel sections.
+ */
+type SectionId = "chat" | "tasks" | "memory" | "tools" | "git" | "files" | "new-task" | "history";
+
+/**
+ * Input type for routeSection() — covers all values that can arrive from
+ * TopTabBar, MiniMaxCodeSidebar, CommandPalette, slash commands, and
+ * window events. Values NOT in SectionId are intercepted and handled
+ * (open settings window, open palette, etc.) before reaching setActiveSection.
+ */
 type TerminalCommandTarget = { command: string; mode: TerminalCommandMode; nonce: number };
 type PaletteCommandStatus = { message: string; tone: "success" | "error" };
 type FileWorkspaceTarget = { path: string; mode?: "edit" | "diff"; nonce: number };
-type MessageJumpTarget = { messageId: string; nonce: number };
+
+/** Validate that an unknown section string from a DOM event is a valid SectionId. */
+function isValidSectionId(value: string): value is SectionId {
+    switch (value) {
+        case "chat": case "git": case "files":
+            case "tasks": case "memory": case "tools": case "new-task": case "history":
+            return true;
+        default:
+            return false;
+    }
+}
 
 const LEFT_SIDEBAR_WIDTH_KEY = "pi-desktop-left-sidebar-width";
 const DEFAULT_LEFT_SIDEBAR_WIDTH = 190;
@@ -74,12 +107,17 @@ function readStoredLeftSidebarWidth(): number {
     return Number.isFinite(parsed) ? clampLeftSidebarWidth(parsed) : DEFAULT_LEFT_SIDEBAR_WIDTH;
 }
 
-function panelForSection(section: string): MainPanel {
-    if (section === "files") return "files";
-    if (section === "skills" || section === "tools") return "skills";
-    if (section === "git") return "git";
-    if (section === "history") return "history";
-    return "chat";
+function panelForSection(section: SectionId): MainPanel {
+    switch (section) {
+        case "files": return "files";
+        case "tools": return "skills";
+        case "git": return "git";
+        case "tasks": return "tasks";
+        case "memory": return "memory";
+        case "chat": return "chat";
+        case "new-task": return "chat";
+        case "history": return "chat";
+    }
 }
 
 function normalizeWorkspaceTarget(path: string, workspacePath?: string): string {
@@ -126,13 +164,12 @@ function App(): React.ReactElement {
 }
 
 function AppShell(): React.ReactElement {
-    const [activeSection, setActiveSection] = useState<string>("chat");
+    const [activeSection, setActiveSection] = useState<SectionId>("chat");
     const [showTerminal, setShowTerminal] = useState(false);
     const [paletteOpen, setPaletteOpen] = useState(false);
     const [showCheatsheet, setShowCheatsheet] = useState(false);
     const [showOnboarding, setShowOnboarding] = useState(false);
     const [showSearchHistory, setShowSearchHistory] = useState(false);
-    const [chatJumpTarget, setChatJumpTarget] = useState<MessageJumpTarget | null>(null);
     const [leftCollapsed, setLeftCollapsed] = useState(false);
     const [leftSidebarWidth, setLeftSidebarWidthState] = useState(readStoredLeftSidebarWidth);
     const [workspaceHasRoomForRightRail, setWorkspaceHasRoomForRightRail] = useState(false);
@@ -152,6 +189,7 @@ function AppShell(): React.ReactElement {
     const { loadPiConfig, settings, rightRailCollapsed, sidebarGroupMode } = useSettingsStore();
     const { setSidebarGroupMode } = useSettingsStore();
     const { status, loading: piStatusLoading, refreshStatus } = usePiStatusStore();
+    const refreshRuntimeFeatureState = useRuntimeFeatureStore((state) => state.refresh);
     const pendingApprovalCount = useApprovalStore(
         (s) => s.changes.filter((c) => c.status === "pending").length,
     );
@@ -225,8 +263,11 @@ function AppShell(): React.ReactElement {
         ensurePermissionSubscriptions();
         ensurePlanSubscriptions();
         ensureQueueSubscription();
-        return bindApprovalEventSubscriptions();
     }, []);
+
+    useEffect(() => {
+        void refreshRuntimeFeatureState();
+    }, [refreshRuntimeFeatureState, settings.longHorizon]);
 
     useEffect(() => {
         const measure = (): void => {
@@ -346,7 +387,7 @@ function AppShell(): React.ReactElement {
     }, [pendingApprovalCount]);
     const closeApproval = useCallback(() => {
         setApprovalVisible(false);
-        void useApprovalStore.getState().clearChanges();
+        useApprovalStore.getState().clearChanges();
     }, []);
     useEffect(() => {
         const onPrefill = (e: Event): void => {
@@ -356,7 +397,9 @@ function AppShell(): React.ReactElement {
         };
         const onSwitchSection = (e: Event): void => {
             const detail = (e as CustomEvent<{ section: string }>).detail;
-            if (detail?.section) setActiveSection(detail.section);
+            if (detail?.section) {
+                routeSection(detail.section);
+            }
         };
         const onRunTerminalCommand = (e: Event): void => {
             const detail = (e as CustomEvent<{ command?: string; mode?: TerminalCommandMode }>).detail;
@@ -422,13 +465,16 @@ function AppShell(): React.ReactElement {
             window.piAPI?.openSettingsWindow();
             return;
         }
+        if (section === "skills") {
+            setActiveSection("tools");
+            return;
+        }
         if (section === "search") {
             setPaletteOpen(true);
             return;
         }
-        if (section === "history" || section === "memory") {
-            setShowSearchHistory(false);
-            setActiveSection("history");
+        if (section === "history") {
+            setShowSearchHistory(true);
             return;
         }
         if (section === "new-task") {
@@ -454,7 +500,12 @@ function AppShell(): React.ReactElement {
             setActiveSection("chat");
             return;
         }
-        setActiveSection(section);
+        if (isValidSectionId(section)) {
+            setActiveSection(section);
+        } else {
+            logger.warn("[App] routeSection: unknown section, defaulting to chat:", section);
+            setActiveSection("chat");
+        }
     }, [currentWorkspace]);
     const handleRunCommand = useCallback((cmdId: string): boolean | void => {
         switch (cmdId) {
@@ -462,7 +513,7 @@ function AppShell(): React.ReactElement {
                 routeSection("new-task");
                 return;
             case "open_skills":
-                routeSection("skills");
+                routeSection("tools");
                 return;
             case "open_files":
                 if (!currentWorkspace) {
@@ -544,7 +595,7 @@ function AppShell(): React.ReactElement {
             }, 0);
         };
         const onOpenHotkeys = (): void => setShowCheatsheet(true);
-        const onOpenSessions = (): void => routeSection("history");
+        const onOpenSessions = (): void => setShowSearchHistory(true);
         const onNewTask = (): void => routeSection("new-task");
 
         window.addEventListener("slash-command:open-settings-tab", onOpenSettingsTab);
@@ -621,9 +672,7 @@ function AppShell(): React.ReactElement {
                         activeTab={
                             activeSection === "new-task"
                                 ? "chat"
-                                : activeSection === "tools"
-                                  ? "skills"
-                                  : activeSection
+                                : activeSection
                         }
                         onTabChange={routeSection}
                         rightSlot={null}
@@ -650,11 +699,7 @@ function AppShell(): React.ReactElement {
                     <>
                         {activePanel === "chat" && (
                             <ErrorBoundary fallback={panelFallback("聊天")}>
-                                <ChatView
-                                    prefillText={chatPrefill}
-                                    onPrefillConsumed={() => setChatPrefill(null)}
-                                    jumpTarget={chatJumpTarget}
-                                />
+                                <ChatView prefillText={chatPrefill} onPrefillConsumed={() => setChatPrefill(null)} />
                             </ErrorBoundary>
                         )}
                         {activePanel === "skills" && (
@@ -662,6 +707,16 @@ function AppShell(): React.ReactElement {
                                 <div className="flex-1 overflow-hidden">
                                     <SkillsPanel />
                                 </div>
+                            </ErrorBoundary>
+                        )}
+                        {activePanel === "tasks" && (
+                            <ErrorBoundary fallback={panelFallback("任务")}>
+                                <TaskOverviewPanel />
+                            </ErrorBoundary>
+                        )}
+                        {activePanel === "memory" && (
+                            <ErrorBoundary fallback={panelFallback("记忆")}>
+                                <MemoryPanel />
                             </ErrorBoundary>
                         )}
                         {activePanel === "git" && currentWorkspace && (
@@ -678,11 +733,6 @@ function AppShell(): React.ReactElement {
                                         initialTarget={fileWorkspaceTarget}
                                     />
                                 </div>
-                            </ErrorBoundary>
-                        )}
-                        {activePanel === "history" && (
-                            <ErrorBoundary fallback={panelFallback("历史")}>
-                                <SessionCenter onOpenChat={() => setActiveSection("chat")} />
                             </ErrorBoundary>
                         )}
                     </>
@@ -719,10 +769,8 @@ function AppShell(): React.ReactElement {
                         <SearchHistory
                             isOpen={showSearchHistory}
                             onClose={() => setShowSearchHistory(false)}
-                            onNavigate={(sessionId, messageId) => {
-                                useSessionStore.getState().setCurrentSession(sessionId);
-                                setActiveSection("chat");
-                                setChatJumpTarget({ messageId, nonce: Date.now() });
+                            onNavigate={(sessionId) => {
+                                useSessionStore.setState({ currentSessionId: sessionId });
                                 setShowSearchHistory(false);
                             }}
                         />

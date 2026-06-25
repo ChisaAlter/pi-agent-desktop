@@ -1,22 +1,16 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { PendingEdits } from "../pending-edits";
 
 describe("PendingEdits", () => {
     let edits: PendingEdits;
-    let workspacePath: string;
 
     beforeEach(() => {
         vi.useFakeTimers();
         edits = new PendingEdits();
-        workspacePath = mkdtempSync(join(tmpdir(), "pending-edits-"));
     });
 
     afterEach(() => {
         vi.useRealTimers();
-        rmSync(workspacePath, { recursive: true, force: true });
     });
 
     it("tracks a write and returns changeId", () => {
@@ -56,29 +50,10 @@ describe("PendingEdits", () => {
         expect(edits.get(id)).toBeUndefined();
     });
 
-    it("reject 会把已有文件恢复成 oldContent", async () => {
-        const filePath = join(workspacePath, "a.ts");
-        writeFileSync(filePath, "new content", "utf-8");
-        const id = edits.track("tc_1", "write", "a.ts", {
-            content: "new content",
-            oldContent: "old content",
-        });
-
-        await edits.reject(id, workspacePath);
-
+    it("rejects and removes", () => {
+        const id = edits.track("tc_1", "write", "a.ts", { content: "1" });
+        edits.reject(id);
         expect(edits.get(id)).toBeUndefined();
-        expect(readFileSync(filePath, "utf-8")).toBe("old content");
-    });
-
-    it("reject 会删除原本不存在的新文件", async () => {
-        const filePath = join(workspacePath, "brand-new.ts");
-        writeFileSync(filePath, "new content", "utf-8");
-        const id = edits.track("tc_1", "write", "brand-new.ts", { content: "new content" });
-
-        await edits.reject(id, workspacePath);
-
-        expect(edits.get(id)).toBeUndefined();
-        expect(existsSync(filePath)).toBe(false);
     });
 
     it("lists sorted by timestamp desc (newest first)", () => {

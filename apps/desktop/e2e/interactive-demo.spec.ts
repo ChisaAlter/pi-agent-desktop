@@ -61,7 +61,6 @@ test.describe('Pi Desktop — Interactive Automated Demo', () => {
         const historyTab = page.getByRole('tab', { name: '历史' });
         await expect(historyTab).toBeVisible({ timeout: 5000 });
         await historyTab.click();
-        await page.keyboard.press('Control+Shift+F');
         await expect(page.getByRole('textbox', { name: '搜索对话历史' })).toBeVisible({ timeout: 5000 });
         await page.waitForTimeout(500);
         await page.screenshot({ path: join(screenshotDir, '03-after-click-history.png') });

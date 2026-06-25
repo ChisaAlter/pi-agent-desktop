@@ -301,8 +301,8 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         await expect(agentModeTrigger).toContainText('Plan');
         await agentModeTrigger.click();
         await expect(agentModeMenu.getByRole('menuitemradio', { name: /Plan/ })).toHaveAttribute('aria-checked', 'true');
-        await agentModeMenu.getByRole('menuitemradio', { name: /Max/ }).click();
-        await expect(agentModeTrigger).toContainText('Max');
+        await agentModeMenu.getByRole('menuitemradio', { name: /Compose/ }).click();
+        await expect(agentModeTrigger).toContainText('Compose');
         await expect(agentModeMenu).toBeHidden();
 
         await attachBtn.click();
@@ -435,8 +435,7 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         });
         const payload = calls[0]?.payload as { message?: string; input?: { message?: string } };
         const message = payload.message ?? payload.input?.message ?? '';
-        const normalized = message.replace(/^<tool-permissions>[\s\S]*?<\/tool-permissions>\s*/i, "");
-        expect(normalized).toMatch(/^\/plan\n/);
-        expect(normalized.match(/^\/plan/gm) ?? []).toHaveLength(1);
+        expect(message).toMatch(/^\/plan\n/);
+        expect(message.match(/^\/plan/gm) ?? []).toHaveLength(1);
     });
 });

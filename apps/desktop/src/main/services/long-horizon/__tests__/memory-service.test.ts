@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { afterEach, describe, expect, it } from "vitest";
@@ -6,8 +6,12 @@ import { MemoryService } from "../memory-service";
 
 describe("MemoryService", () => {
     const dirs: string[] = [];
+    const services: MemoryService[] = [];
 
     afterEach(() => {
+        for (const service of services.splice(0)) {
+            service.close();
+        }
         for (const dir of dirs.splice(0)) {
             rmSync(dir, { recursive: true, force: true });
         }
@@ -16,7 +20,9 @@ describe("MemoryService", () => {
     function createService() {
         const dir = mkdtempSync(join(tmpdir(), "pi-memory-"));
         dirs.push(dir);
-        return new MemoryService({ rootDir: dir });
+        const service = new MemoryService({ rootDir: dir });
+        services.push(service);
+        return service;
     }
 
     it("persists memories and retrieves them by full-text terms", () => {
@@ -37,10 +43,10 @@ describe("MemoryService", () => {
         });
 
         expect(service.search("judge 右侧栏", { workspaceId: "ws1" })).toEqual([
-            expect.objectContaining({ kind: "task-progress", score: expect.any(Number) }),
+            expect.objectContaining({ kind: "task-progress", layer: "project_memory", score: expect.any(Number) }),
         ]);
         expect(service.search("默认 build")).toEqual([
-            expect.objectContaining({ scope: "global", kind: "note" }),
+            expect.objectContaining({ scope: "global", layer: "global_memory", kind: "note" }),
         ]);
     });
 
@@ -48,9 +54,11 @@ describe("MemoryService", () => {
         const dir = mkdtempSync(join(tmpdir(), "pi-memory-"));
         dirs.push(dir);
         const first = new MemoryService({ rootDir: dir });
+        services.push(first);
         first.put({ scope: "session", workspaceId: "ws1", sessionId: "s1", kind: "checkpoint", text: "checkpoint 保留 plan ledger" });
 
         const second = new MemoryService({ rootDir: dir });
+        services.push(second);
 
         expect(second.search("ledger", { workspaceId: "ws1", sessionId: "s1" })).toEqual([
             expect.objectContaining({ text: "checkpoint 保留 plan ledger" }),
@@ -108,8 +116,42 @@ describe("MemoryService", () => {
         })).toEqual([
             expect.objectContaining({
                 kind: "history",
+                layer: "history",
                 text: "raw trajectory contains goal judge retry evidence",
             }),
         ]);
+    });
+
+    it("lists recent memories for the workspace in descending time order", () => {
+        const service = createService();
+        service.put({ scope: "project", workspaceId: "ws1", kind: "note", text: "first memory" });
+        service.put({ scope: "project", workspaceId: "ws1", kind: "checkpoint", text: "second memory" });
+
+        const recent = service.listRecent({ workspaceId: "ws1", limit: 2 });
+
+        expect(recent).toHaveLength(2);
+        expect(recent[0]).toEqual(expect.objectContaining({ text: "second memory" }));
+        expect(recent[1]).toEqual(expect.objectContaining({ text: "first memory" }));
+    });
+
+    it("migrates legacy memory.jsonl into long-horizon.db on first load", () => {
+        const dir = mkdtempSync(join(tmpdir(), "pi-memory-"));
+        dirs.push(dir);
+        writeFileSync(join(dir, "memory.jsonl"), `${JSON.stringify({
+            id: "legacy-1",
+            scope: "project",
+            kind: "note",
+            text: "legacy checkpoint memory",
+            workspaceId: "ws1",
+            createdAt: 123,
+        })}\n`, "utf8");
+
+        const service = new MemoryService({ rootDir: dir });
+        services.push(service);
+
+        expect(service.search("legacy checkpoint", { workspaceId: "ws1" })).toEqual([
+            expect.objectContaining({ id: "legacy-1", layer: "project_memory", text: "legacy checkpoint memory" }),
+        ]);
+        expect(existsSync(join(dir, "memory.jsonl.migrated"))).toBe(true);
     });
 });

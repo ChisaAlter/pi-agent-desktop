@@ -1,35 +1,55 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname } from "path";
 import { randomUUID } from "crypto";
 import type { GoalJudgeResult, GoalSetInput, GoalState, PlanProgressUpdate } from "@shared";
+import { LongHorizonDatabase } from "./database";
+import type { TaskService } from "./task-service";
 
 type Send = (channel: string, workspaceId: string, payload: unknown) => void;
 
-interface GoalStoreFile {
-    goals: GoalState[];
-}
-
-function key(workspaceId: string, agentId?: string): string {
-    return `${workspaceId}:${agentId ?? "default"}`;
+interface GoalServiceOptions {
+    database?: LongHorizonDatabase;
+    rootDir?: string;
+    legacyStateFile?: string;
+    send: Send;
+    taskService?: Pick<TaskService, "setSourceTasks">;
 }
 
 export class GoalService {
-    private readonly goals = new Map<string, GoalState>();
+    private readonly database: LongHorizonDatabase;
+    private readonly ownsDatabase: boolean;
+    private readonly send: Send;
+    private readonly taskService?: Pick<TaskService, "setSourceTasks">;
 
-    constructor(
-        private readonly stateFile: string,
-        private readonly send: Send,
-    ) {
-        this.load();
+    constructor(stateFile: string, send: Send);
+    constructor(options: GoalServiceOptions);
+    constructor(stateFileOrOptions: string | GoalServiceOptions, maybeSend?: Send) {
+        if (typeof stateFileOrOptions === "string") {
+            if (!maybeSend) throw new Error("GoalService requires a send callback");
+            this.database = new LongHorizonDatabase(dirname(stateFileOrOptions));
+            this.ownsDatabase = true;
+            this.database.migrateLegacyGoalsFile(stateFileOrOptions);
+            this.send = maybeSend;
+            return;
+        }
+
+        const rootDir = stateFileOrOptions.rootDir
+            ?? (stateFileOrOptions.legacyStateFile ? dirname(stateFileOrOptions.legacyStateFile) : undefined);
+        this.database = stateFileOrOptions.database ?? new LongHorizonDatabase(rootDir ?? ".");
+        this.ownsDatabase = !stateFileOrOptions.database;
+        if (stateFileOrOptions.legacyStateFile) {
+            this.database.migrateLegacyGoalsFile(stateFileOrOptions.legacyStateFile);
+        }
+        this.send = stateFileOrOptions.send;
+        this.taskService = stateFileOrOptions.taskService;
     }
 
     get(workspaceId: string, agentId?: string): GoalState | null {
-        return this.findGoal(workspaceId, agentId)?.goal ?? null;
+        return this.database.getGoal(workspaceId, agentId);
     }
 
     set(input: GoalSetInput): GoalState {
         const now = Date.now();
-        const goal: GoalState = {
+        const goal = this.database.upsertGoal({
             id: randomUUID(),
             workspaceId: input.workspaceId,
             agentId: input.agentId,
@@ -37,32 +57,28 @@ export class GoalService {
             status: "running",
             createdAt: now,
             updatedAt: now,
-        };
-        this.goals.set(key(input.workspaceId, input.agentId), goal);
-        this.persist();
+        });
         this.emit(goal);
         this.emitTopLevelTask(goal);
         return goal;
     }
 
     clear(workspaceId: string, agentId?: string): GoalState {
-        const found = this.findGoal(workspaceId, agentId);
-        const previous = found?.goal ?? null;
+        const previous = this.database.clearGoal(workspaceId, agentId);
         const now = Date.now();
-        const goal: GoalState = {
+        const cleared: GoalState = {
             id: previous?.id ?? randomUUID(),
             workspaceId,
-            agentId,
+            agentId: previous?.agentId ?? agentId,
             condition: previous?.condition ?? "",
             status: "cleared",
             reason: "已清除",
             createdAt: previous?.createdAt ?? now,
             updatedAt: now,
         };
-        this.goals.delete(found?.key ?? key(workspaceId, agentId));
-        this.persist();
-        this.emit(goal);
-        return goal;
+        this.taskService?.setSourceTasks(workspaceId, previous?.agentId ?? agentId, "goal", []);
+        this.emit(cleared);
+        return cleared;
     }
 
     markChecking(workspaceId: string, agentId?: string, reason = "judge 检查中"): GoalState | null {
@@ -71,10 +87,7 @@ export class GoalService {
 
     applyJudgeResult(workspaceId: string, result: GoalJudgeResult, agentId?: string): GoalState | null {
         const status = result.ok ? "satisfied" : result.impossible ? "impossible" : "running";
-        return this.update(workspaceId, agentId, {
-            status,
-            reason: result.reason,
-        });
+        return this.update(workspaceId, agentId, { status, reason: result.reason });
     }
 
     private update(
@@ -82,23 +95,16 @@ export class GoalService {
         agentId: string | undefined,
         updates: Pick<Partial<GoalState>, "status" | "reason">,
     ): GoalState | null {
-        const current = this.get(workspaceId, agentId);
+        const current = this.database.getGoal(workspaceId, agentId);
         if (!current) return null;
-        const next: GoalState = { ...current, ...updates, updatedAt: Date.now() };
-        this.goals.set(this.findGoal(workspaceId, agentId)?.key ?? key(workspaceId, agentId), next);
-        this.persist();
+        const next = this.database.upsertGoal({
+            ...current,
+            ...updates,
+            updatedAt: Date.now(),
+        });
         this.emit(next);
         this.emitTopLevelTask(next);
         return next;
-    }
-
-    private findGoal(workspaceId: string, agentId?: string): { key: string; goal: GoalState } | null {
-        const directKey = key(workspaceId, agentId);
-        const direct = this.goals.get(directKey);
-        if (direct) return { key: directKey, goal: direct };
-        const fallbackKey = key(workspaceId);
-        const fallback = this.goals.get(fallbackKey);
-        return fallback ? { key: fallbackKey, goal: fallback } : null;
     }
 
     private emit(goal: GoalState): void {
@@ -106,12 +112,13 @@ export class GoalService {
     }
 
     private emitTopLevelTask(goal: GoalState): void {
-        if (goal.status === "cleared") return;
         const taskStatus: PlanProgressUpdate["items"][number]["status"] =
             goal.status === "satisfied" ? "completed"
                 : goal.status === "impossible" ? "blocked"
-                    : goal.status === "checking" ? "running"
-                        : "running";
+                    : "running";
+        this.taskService?.setSourceTasks(goal.workspaceId, goal.agentId, "goal", [
+            { id: "T1", text: goal.condition, status: taskStatus },
+        ]);
         this.send("plan:progress", goal.workspaceId, {
             workspaceId: goal.workspaceId,
             status: goal.status === "satisfied" ? "completed" : "executing",
@@ -125,25 +132,9 @@ export class GoalService {
         } satisfies PlanProgressUpdate);
     }
 
-    private load(): void {
-        if (!existsSync(this.stateFile)) return;
-        try {
-            const parsed = JSON.parse(readFileSync(this.stateFile, "utf8")) as GoalStoreFile;
-            for (const goal of parsed.goals ?? []) {
-                if (!goal?.workspaceId || goal.status === "cleared") continue;
-                this.goals.set(key(goal.workspaceId, goal.agentId), goal);
-            }
-        } catch {
-            this.goals.clear();
+    close(): void {
+        if (this.ownsDatabase) {
+            this.database.close();
         }
-    }
-
-    private persist(): void {
-        mkdirSync(dirname(this.stateFile), { recursive: true });
-        writeFileSync(
-            this.stateFile,
-            JSON.stringify({ goals: [...this.goals.values()] } satisfies GoalStoreFile, null, 2),
-            "utf8",
-        );
     }
 }

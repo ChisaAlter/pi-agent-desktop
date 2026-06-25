@@ -32,7 +32,7 @@ import { clearAllPendingApprovals } from './services/approval/approval-bridge';
 import { clearPendingExtensionUiRequests } from './services/extensions/extension-ui-bridge';
 import { setupAutoUpdater } from './services/updater';
 import { ptyManager } from './services/shell/pty-manager';
-import { DEFAULT_APP_SETTINGS, DEFAULT_LONG_HORIZON_SETTINGS, resolveAppSettings, type AppSettings, type Session } from '@shared';
+import { DEFAULT_LONG_HORIZON_SETTINGS, type AppSettings, type Session } from '@shared';
 import { AgentRuntimeRegistry } from './services/agent-runtime/registry';
 import { ConfigManager } from './services/config/config-manager';
 import { CodexSessionImporter } from './services/codex-session/importer';
@@ -40,6 +40,7 @@ import { ClaudeSessionImporter } from './services/claude-session/importer';
 import { GoalService } from './services/long-horizon/goal-service';
 import { MemoryService } from './services/long-horizon/memory-service';
 import { CheckpointService } from './services/long-horizon/checkpoint-service';
+import { TaskService } from './services/long-horizon/task-service';
 import type { PiAgentConfig } from './types';
 
 let mainWindow: BrowserWindow | null = null;
@@ -74,14 +75,30 @@ interface StoreSchema {
 }
 
 /** 当前持久化 schema 版本; 升级字段/重命名时递增并在 migrateStore 内补迁移步骤. */
-const CURRENT_SCHEMA_VERSION = 2;
+const CURRENT_SCHEMA_VERSION = 1;
 
 const store = new Store<StoreSchema>({
   defaults: {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     workspaces: [],
     sessions: [],
-    settings: DEFAULT_APP_SETTINGS
+    settings: {
+      theme: 'light',
+      fontSize: 14,
+      model: '',
+      provider: '',
+      apiKey: '',
+      temperature: 0.7,
+      maxTokens: 4096,
+      autoSave: true,
+      showLineNumbers: true,
+      wordWrap: true,
+      permissionLevel: 'smart',
+      runtimeChannel: 'stable',
+      autoCompactionEnabled: false,
+      workspaceToolDefaults: {},
+      longHorizon: DEFAULT_LONG_HORIZON_SETTINGS
+    }
   }
 });
 
@@ -103,10 +120,7 @@ function migrateStore(): void {
     }));
     store.set('sessions', migrated);
   }
-  if (version < 2) {
-    store.set('settings', resolveAppSettings(store.get('settings')));
-  }
-  // 未来迁移: if (version < 3) { ... }
+  // 未来迁移: if (version < 2) { ... }
   store.set('schemaVersion', CURRENT_SCHEMA_VERSION);
 }
 migrateStore();
@@ -117,14 +131,20 @@ const sendToRenderer = (channel: string, payload: unknown) => {
   }
 };
 
+function shouldRefreshSessionsForSettingsChange(previous: AppSettings, next: AppSettings): boolean {
+  const prevLongHorizon = previous.longHorizon ?? DEFAULT_LONG_HORIZON_SETTINGS;
+  const nextLongHorizon = next.longHorizon ?? DEFAULT_LONG_HORIZON_SETTINGS;
+  return previous.provider !== next.provider
+    || previous.model !== next.model
+    || JSON.stringify(prevLongHorizon) !== JSON.stringify(nextLongHorizon);
+}
+
 const getLongHorizonModeOptions = () => {
   const longHorizon = store.get('settings').longHorizon ?? DEFAULT_LONG_HORIZON_SETTINGS;
   return {
     longHorizonEnabled: longHorizon.enabled,
     planModeEnabled: longHorizon.planMode.enabled,
     composeModeEnabled: longHorizon.composeMode.enabled,
-    maxModeEnabled: longHorizon.maxMode.enabled,
-    maxCandidates: longHorizon.maxMode.candidates,
   };
 };
 
@@ -135,6 +155,8 @@ const agentRegistry = new AgentRuntimeRegistry({
   agentDir: PI_AGENT_DIR,
   getSettings: () => store.get('settings'),
   getPiAgentConfig: () => piAgentConfig,
+  getTaskService: () => taskService,
+  getMemoryService: () => memoryService,
   getModeOptions: getLongHorizonModeOptions,
 });
 const configManager = new ConfigManager(PI_AGENT_DIR);
@@ -143,6 +165,7 @@ const claudeSessionImporter = new ClaudeSessionImporter();
 let goalService: GoalService | null = null;
 let memoryService: MemoryService | null = null;
 let checkpointService: CheckpointService | null = null;
+let taskService: TaskService | null = null;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -203,11 +226,15 @@ function initializePiDriver(): void {
 // IPC Handlers
 function setupIPC(): void {
   // Pi session (long-lived AgentSession)
-  goalService ??= new GoalService(
-    join(app.getPath('userData'), 'long-horizon', 'goals.json'),
-    (channel, _workspaceId, payload) => sendToRenderer(channel, payload),
-  );
-  memoryService ??= new MemoryService({ rootDir: join(app.getPath('userData'), 'long-horizon', 'memory') });
+  const longHorizonRoot = join(app.getPath('userData'), 'long-horizon');
+  memoryService ??= new MemoryService({ rootDir: longHorizonRoot });
+  taskService ??= new TaskService(memoryService.getDatabase());
+  goalService ??= new GoalService({
+    database: memoryService.getDatabase(),
+    legacyStateFile: join(longHorizonRoot, 'goals.json'),
+    send: (channel, _workspaceId, payload) => sendToRenderer(channel, payload),
+    taskService,
+  });
   checkpointService ??= new CheckpointService(memoryService);
   setupChatIpc({
     registry: piRegistry,
@@ -216,6 +243,7 @@ function setupIPC(): void {
     goalService,
     memoryService,
     checkpointService,
+    taskService,
     getSettings: () => store.get('settings'),
     getWorkspace: (id: string) => store.get('workspaces').find((w) => w.id === id),
     getDefaultWorkspace: () => {
@@ -282,6 +310,18 @@ function setupIPC(): void {
     store,
     getPiAgentConfig: () => piAgentConfig,
     piAgentDir: PI_AGENT_DIR,
+    onSettingsChanged: (next, previous) => {
+      if (!shouldRefreshSessionsForSettingsChange(previous, next)) return;
+      const workspaceIds = [...new Set(agentRegistry.list().map((agent) => agent.workspaceId))];
+      for (const workspaceId of workspaceIds) {
+        void agentRegistry.refreshWorkspace(workspaceId).catch((error) => {
+          log.warn("[Main] failed to refresh workspace runtime after settings change:", workspaceId, error);
+        });
+      }
+      for (const workspace of store.get('workspaces')) {
+        piRegistry.dispose(workspace.id);
+      }
+    },
   });
 
   setupSettingsWindowIpc(() => mainWindow);

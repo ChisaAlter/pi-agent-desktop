@@ -120,7 +120,7 @@ export interface CreateAgentInput {
     sessionId?: string;
 }
 
-export type AgentMode = "build" | "plan" | "compose" | "max";
+export type AgentMode = "build" | "plan" | "compose";
 
 export interface SendPromptOptions {
     mode?: AgentMode;
@@ -164,6 +164,16 @@ export interface RunBuiltinSlashCommandInput {
 }
 
 export type LongHorizonToggle = { enabled: boolean };
+export type LongHorizonLoadedFrom = "desktop" | "pi-openplan" | "disabled" | "unsupported";
+
+export interface LongHorizonRuntimeMeta {
+    supported: boolean;
+    loadedFrom: LongHorizonLoadedFrom;
+    reason?: string;
+}
+
+export type LongHorizonRuntimeToggle = LongHorizonToggle & LongHorizonRuntimeMeta;
+export type LongHorizonMemoryLayer = "checkpoints" | "session_memory" | "project_memory" | "global_memory" | "history";
 
 export interface LongHorizonSettings {
     enabled: boolean;
@@ -213,6 +223,59 @@ export const DEFAULT_LONG_HORIZON_SETTINGS: LongHorizonSettings = {
     composeWorkflow: { enabled: true },
 };
 
+export function normalizeLongHorizonSettings(value?: Partial<LongHorizonSettings> | null): LongHorizonSettings {
+    const workflow = value?.workflow ?? value?.composeWorkflow;
+    const normalizedDefaultMode = value?.defaultMode === "plan" || value?.defaultMode === "compose"
+        ? value.defaultMode
+        : "build";
+    return {
+        ...DEFAULT_LONG_HORIZON_SETTINGS,
+        ...value,
+        defaultMode: normalizedDefaultMode,
+        planMode: { ...DEFAULT_LONG_HORIZON_SETTINGS.planMode, ...value?.planMode },
+        composeMode: { ...DEFAULT_LONG_HORIZON_SETTINGS.composeMode, ...value?.composeMode },
+        maxMode: { ...DEFAULT_LONG_HORIZON_SETTINGS.maxMode, ...value?.maxMode },
+        memory: { ...DEFAULT_LONG_HORIZON_SETTINGS.memory, ...value?.memory },
+        history: { ...DEFAULT_LONG_HORIZON_SETTINGS.history, ...value?.history },
+        checkpoint: { ...DEFAULT_LONG_HORIZON_SETTINGS.checkpoint, ...value?.checkpoint },
+        goal: { ...DEFAULT_LONG_HORIZON_SETTINGS.goal, ...value?.goal },
+        subagents: { ...DEFAULT_LONG_HORIZON_SETTINGS.subagents, ...value?.subagents },
+        task: { ...DEFAULT_LONG_HORIZON_SETTINGS.task, ...value?.task },
+        actor: { ...DEFAULT_LONG_HORIZON_SETTINGS.actor, ...value?.actor },
+        workflow: { ...DEFAULT_LONG_HORIZON_SETTINGS.workflow, ...workflow },
+        dream: { ...DEFAULT_LONG_HORIZON_SETTINGS.dream, ...value?.dream },
+        distill: { ...DEFAULT_LONG_HORIZON_SETTINGS.distill, ...value?.distill },
+        composeWorkflow: { ...DEFAULT_LONG_HORIZON_SETTINGS.composeWorkflow, ...value?.composeWorkflow },
+    };
+}
+
+export interface LongHorizonMemoryRecord {
+    id: string;
+    scope: "project" | "session" | "global";
+    layer: LongHorizonMemoryLayer;
+    kind: "note" | "checkpoint" | "task-progress" | "summary" | "history";
+    text: string;
+    parentId?: string;
+    workspaceId?: string;
+    sessionId?: string;
+    tags?: string[];
+    createdAt: number;
+    updatedAt?: number;
+    score?: number;
+}
+
+export interface LongHorizonTaskRecord {
+    id: string;
+    workspaceId: string;
+    agentId?: string;
+    source: "goal" | "plan";
+    text: string;
+    status: "pending" | "running" | "completed" | "failed" | "waiting" | "blocked";
+    ordinal: number;
+    createdAt: number;
+    updatedAt: number;
+}
+
 export interface MiMoCodeRuntimeFeatureState {
     primaryAgents: Array<{
         id: string;
@@ -230,19 +293,19 @@ export interface MiMoCodeRuntimeFeatureState {
     }>;
     enabledToolIds: string[];
     features: {
-        planMode: LongHorizonToggle;
-        composeMode: LongHorizonToggle;
-        maxMode: { enabled: boolean; candidates: number };
-        memory: { enabled: boolean; ccIndex: boolean; reconcileOnSearch: boolean; searchScoreFloor: number };
-        history: LongHorizonToggle;
-        checkpoint: LongHorizonToggle;
-        goal: LongHorizonToggle;
-        task: LongHorizonToggle;
-        actor: LongHorizonToggle;
-        subagents: LongHorizonToggle;
-        workflow: { enabled: boolean; maxConcurrentAgents: number; maxLifecycleAgents: number; maxDepth: number };
-        dream: LongHorizonToggle;
-        distill: LongHorizonToggle;
+        planMode: LongHorizonRuntimeToggle;
+        composeMode: LongHorizonRuntimeToggle;
+        maxMode: LongHorizonRuntimeMeta & { enabled: boolean; candidates: number };
+        memory: LongHorizonRuntimeMeta & { enabled: boolean; ccIndex: boolean; reconcileOnSearch: boolean; searchScoreFloor: number };
+        history: LongHorizonRuntimeToggle;
+        checkpoint: LongHorizonRuntimeToggle;
+        goal: LongHorizonRuntimeToggle;
+        task: LongHorizonRuntimeToggle;
+        actor: LongHorizonRuntimeToggle;
+        subagents: LongHorizonRuntimeToggle;
+        workflow: LongHorizonRuntimeMeta & { enabled: boolean; maxConcurrentAgents: number; maxLifecycleAgents: number; maxDepth: number };
+        dream: LongHorizonRuntimeToggle;
+        distill: LongHorizonRuntimeToggle;
     };
 }
 
@@ -251,6 +314,17 @@ export interface LongHorizonMemorySearchInput {
     sessionId?: string;
     query: string;
     limit?: number;
+}
+
+export interface LongHorizonMemoryRecentInput {
+    workspaceId?: string;
+    sessionId?: string;
+    limit?: number;
+}
+
+export interface LongHorizonTaskListInput {
+    workspaceId: string;
+    agentId?: string;
 }
 
 export type GoalStatus = "running" | "checking" | "satisfied" | "impossible" | "cleared";
@@ -495,12 +569,6 @@ export interface AppSettings {
     longHorizon?: LongHorizonSettings;
 }
 
-type DeepPartial<T> = T extends Array<infer U>
-    ? Array<DeepPartial<U>>
-    : T extends object
-        ? { [K in keyof T]?: DeepPartial<T[K]> }
-        : T;
-
 export type ToolPermissionKey =
     | "fileRead"
     | "fileWrite"
@@ -512,85 +580,6 @@ export type ToolPermissionKey =
 export type ToolPermissions = Record<ToolPermissionKey, boolean>;
 
 export type ToolPermissionPreset = "minimal" | "development" | "all";
-
-export function mergeLongHorizonSettings(value?: DeepPartial<LongHorizonSettings> | null): LongHorizonSettings {
-    const workflow = value?.workflow ?? value?.composeWorkflow;
-    return {
-        ...DEFAULT_LONG_HORIZON_SETTINGS,
-        ...value,
-        planMode: { ...DEFAULT_LONG_HORIZON_SETTINGS.planMode, ...value?.planMode },
-        composeMode: { ...DEFAULT_LONG_HORIZON_SETTINGS.composeMode, ...value?.composeMode },
-        maxMode: { ...DEFAULT_LONG_HORIZON_SETTINGS.maxMode, ...value?.maxMode },
-        memory: { ...DEFAULT_LONG_HORIZON_SETTINGS.memory, ...value?.memory },
-        history: { ...DEFAULT_LONG_HORIZON_SETTINGS.history, ...value?.history },
-        checkpoint: { ...DEFAULT_LONG_HORIZON_SETTINGS.checkpoint, ...value?.checkpoint },
-        goal: { ...DEFAULT_LONG_HORIZON_SETTINGS.goal, ...value?.goal },
-        subagents: { ...DEFAULT_LONG_HORIZON_SETTINGS.subagents, ...value?.subagents },
-        task: { ...DEFAULT_LONG_HORIZON_SETTINGS.task, ...value?.task },
-        actor: { ...DEFAULT_LONG_HORIZON_SETTINGS.actor, ...value?.actor },
-        workflow: { ...DEFAULT_LONG_HORIZON_SETTINGS.workflow, ...workflow },
-        dream: { ...DEFAULT_LONG_HORIZON_SETTINGS.dream, ...value?.dream },
-        distill: { ...DEFAULT_LONG_HORIZON_SETTINGS.distill, ...value?.distill },
-        composeWorkflow: { ...DEFAULT_LONG_HORIZON_SETTINGS.composeWorkflow, ...value?.composeWorkflow },
-    };
-}
-
-export const DEFAULT_APP_SETTINGS: AppSettings = {
-    theme: "light",
-    fontSize: 14,
-    model: "",
-    provider: "",
-    temperature: 0.7,
-    maxTokens: 4096,
-    autoSave: true,
-    showLineNumbers: true,
-    wordWrap: true,
-    permissionLevel: "smart",
-    runtimeChannel: "stable",
-    autoCompactionEnabled: false,
-    workspaceToolDefaults: {},
-    visionProvider: "",
-    visionModel: "",
-    showThinking: true,
-    thinkingLevel: "medium",
-    longHorizon: mergeLongHorizonSettings(),
-};
-
-export function resolveAppSettings(value?: DeepPartial<AppSettings> | null): AppSettings {
-    const piConfig = value?.piConfig
-        ? {
-            provider: value.piConfig.provider ?? "",
-            model: value.piConfig.model ?? "",
-            apiKey: value.piConfig.apiKey,
-            baseUrl: value.piConfig.baseUrl,
-        }
-        : undefined;
-
-    return {
-        theme: value?.theme ?? DEFAULT_APP_SETTINGS.theme,
-        fontSize: value?.fontSize ?? DEFAULT_APP_SETTINGS.fontSize,
-        model: value?.model ?? DEFAULT_APP_SETTINGS.model,
-        provider: value?.provider ?? DEFAULT_APP_SETTINGS.provider,
-        apiKey: value?.apiKey,
-        temperature: value?.temperature ?? DEFAULT_APP_SETTINGS.temperature,
-        maxTokens: value?.maxTokens ?? DEFAULT_APP_SETTINGS.maxTokens,
-        autoSave: value?.autoSave ?? DEFAULT_APP_SETTINGS.autoSave,
-        showLineNumbers: value?.showLineNumbers ?? DEFAULT_APP_SETTINGS.showLineNumbers,
-        wordWrap: value?.wordWrap ?? DEFAULT_APP_SETTINGS.wordWrap,
-        language: value?.language,
-        piConfig,
-        permissionLevel: value?.permissionLevel ?? DEFAULT_APP_SETTINGS.permissionLevel,
-        managedRuntimePath: value?.managedRuntimePath,
-        runtimeChannel: value?.runtimeChannel ?? DEFAULT_APP_SETTINGS.runtimeChannel,
-        autoCompactionEnabled: value?.autoCompactionEnabled ?? DEFAULT_APP_SETTINGS.autoCompactionEnabled,
-        workspaceToolDefaults: (value?.workspaceToolDefaults as Record<string, ToolPermissions> | undefined) ?? DEFAULT_APP_SETTINGS.workspaceToolDefaults,
-        visionProvider: value?.visionProvider ?? DEFAULT_APP_SETTINGS.visionProvider,
-        visionModel: value?.visionModel ?? DEFAULT_APP_SETTINGS.visionModel,
-        showThinking: value?.showThinking ?? DEFAULT_APP_SETTINGS.showThinking,
-        thinkingLevel: value?.thinkingLevel ?? DEFAULT_APP_SETTINGS.thinkingLevel,
-        longHorizon: mergeLongHorizonSettings(value?.longHorizon),
-    };
-}
 
 export interface SessionUsageSnapshot {
     provider?: string;
@@ -886,6 +875,18 @@ export interface PiAgentFullConfig {
     }>;
 }
 
+export interface InlinePlanMaterializeInput {
+    workspaceId: string;
+    title: string;
+    content: string;
+    preferredFilename?: string;
+}
+
+export interface InlinePlanMaterializeResult {
+    filename: string;
+    path: string;
+}
+
 // ── Window.piAPI / nodeAPI 全局类型 ───────────────────────────────
 
 export type Unsubscribe = () => void;
@@ -988,7 +989,10 @@ export interface PiAPI {
     listSlashCommands(workspaceId: string, agentId?: string, mode?: AgentMode): Promise<PiSlashCommand[] | IpcError>;
     runBuiltinSlashCommand(input: RunBuiltinSlashCommandInput): Promise<SlashCommandRunResult | IpcError>;
     runtimeFeatureState(): Promise<MiMoCodeRuntimeFeatureState | IpcError>;
-    memorySearch(input: LongHorizonMemorySearchInput): Promise<Array<Record<string, unknown>> | IpcError>;
+    memorySearch(input: LongHorizonMemorySearchInput): Promise<LongHorizonMemoryRecord[] | IpcError>;
+    memoryListRecent(input: LongHorizonMemoryRecentInput): Promise<LongHorizonMemoryRecord[] | IpcError>;
+    taskList(input: LongHorizonTaskListInput): Promise<LongHorizonTaskRecord[] | IpcError>;
+    taskGetActive(input: LongHorizonTaskListInput): Promise<LongHorizonTaskRecord | null | IpcError>;
 
     // Extension UI bridge
     permissionSetMode(mode: PermissionMode): Promise<void>;
@@ -997,6 +1001,7 @@ export interface PiAPI {
     onPermissionUpdate(cb: (payload: unknown) => void): Unsubscribe;
 
     planSetEnabled(workspaceId: string, enabled: boolean): Promise<void>;
+    planMaterialize(input: InlinePlanMaterializeInput): Promise<InlinePlanMaterializeResult | IpcError>;
     planRespond(requestId: string, decision: "execute" | "refine" | "cancel", text?: string): void;
     onPlanCard(cb: (card: PlanCard) => void): Unsubscribe;
     onPlanDecisionRequest(cb: (req: PlanDecisionRequest) => void): Unsubscribe;

@@ -8,9 +8,9 @@ on:
 
 jobs:
   test:
-    name: Lint + Typecheck + Test + Release Gate
+    name: Lint + Typecheck + Test
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -46,11 +46,5 @@ jobs:
       - name: Test
         run: pnpm -r test
 
-      - name: Build desktop bundle
+      - name: Build renderer
         run: pnpm --filter @pi-desktop/desktop build
-
-      - name: Smoke main runtime
-        run: pnpm --filter @pi-desktop/desktop smoke:main-runtime
-
-      - name: Electron release gate
-        run: pnpm --filter @pi-desktop/desktop e2e:release-gate

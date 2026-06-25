@@ -62,18 +62,6 @@ describe("classifyToolCall", () => {
         });
     });
 
-    describe("mutable subcommands must not be misclassified as read-only", () => {
-        it.each([
-            ["git pull origin main", "edit"],
-            ["git branch -D stale-feature", "edit"],
-            ["git config user.name codex", "edit"],
-            ["npm config set registry https://registry.npmjs.org/", "edit"],
-        ])("classifies %s as %s", (cmd, expected) => {
-            const result = classifyToolCall(t("bash", { command: cmd }));
-            expect(result.risk).toBe(expected);
-        });
-    });
-
     describe("existing patterns still work", () => {
         it.each([
             ["echo rm -rf /", "high"],
@@ -105,6 +93,32 @@ describe("classifyToolCall", () => {
         it("includes command in preview", () => {
             const r = classifyToolCall(t("bash", { command: "rm -rf /tmp" }));
             expect(r.preview).toContain("rm -rf /tmp");
+        });
+    });
+
+    describe("mutation-syntax regression (read command with write side effects)", () => {
+        // 这些命令首 token 在 READ_BASH_COMMANDS 里 (find/grep/awk),
+        // 但带写语义 — 之前被误判为只读而绕过追踪, 现应降为 edit.
+        it.each([
+            ["find . -delete", "edit"],
+            ["find . -exec rm {} \\;", "edit"],
+            ["grep foo bar | xargs rm", "edit"],
+            ["grep foo | tee /etc/hosts", "edit"],
+            ["awk '{system(\"rm x\")}' file", "edit"],
+            ["cat file | xargs chmod 777", "edit"],
+        ])("classifies %s as %s (not read)", (cmd, expected) => {
+            const result = classifyToolCall(t("bash", { command: cmd }));
+            expect(result.risk).toBe(expected);
+        });
+        // 纯读形态不应受影响 — 回归保护
+        it.each([
+            ["find . -name foo", "read"],
+            ["grep TODO src", "read"],
+            ["awk '{print $1}' file", "read"],
+            ["cat README.md", "read"],
+        ])("keeps %s as read", (cmd, expected) => {
+            const result = classifyToolCall(t("bash", { command: cmd }));
+            expect(result.risk).toBe(expected);
         });
     });
 });

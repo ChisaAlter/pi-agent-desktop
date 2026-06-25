@@ -11,7 +11,7 @@ export const workspaceCreateSchema = z.tuple([
 ]);
 
 const permissionModeSchema = z.enum(["ask", "smart", "always", "read", "partial", "full"]);
-const agentModeSchema = z.enum(["build", "plan", "compose", "max"]);
+const agentModeSchema = z.enum(["build", "plan", "compose"]);
 
 const piConfigSchema = z
     .object({
@@ -81,10 +81,6 @@ const appSettingsSchema = z
             "network",
             "extensions",
         ]), z.boolean())).optional(),
-        visionProvider: z.string().optional(),
-        visionModel: z.string().optional(),
-        showThinking: z.boolean().optional(),
-        thinkingLevel: z.enum(["none", "low", "medium", "high"]).optional(),
         longHorizon: longHorizonSchema.optional(),
     })
     .strict();

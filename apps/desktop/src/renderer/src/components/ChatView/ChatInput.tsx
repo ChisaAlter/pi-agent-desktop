@@ -11,8 +11,8 @@ import { useMentions } from "../../hooks/useMentions";
 import { useSlashCommands } from "../../hooks/useSlashCommands";
 import { useAgentModeStore } from "../../stores/agent-mode-store";
 import { usePermissionStore } from "../../stores/permission-store";
+import { useRuntimeFeatureStore, clampAgentModeByRuntime, supportedAgentModes } from "../../stores/runtime-feature-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
-import { addToast } from "../../stores/toast-store";
 import { logger } from "../../utils/logger";
 import { PermissionRequestStack } from "./PermissionRequestStack";
 import { isIpcError, type AgentMode, type PermissionMode } from "@shared";
@@ -43,7 +43,6 @@ const AGENT_MODE_OPTIONS: Array<{ value: AgentMode; label: string; desc: string 
   { value: "build", label: "Build", desc: "正常实现模式，可按权限读写和执行工具" },
   { value: "plan", label: "Plan", desc: "只制定计划，仅允许写入 .pi/plans/*.md" },
   { value: "compose", label: "Compose", desc: "按 MiMo 风格编排工作流和技能" },
-  { value: "max", label: "Max", desc: "实验增强：多候选生成并由 judge 选优" },
 ];
 
 const THINKING_OPTIONS = [
@@ -174,13 +173,17 @@ export function ChatInput({
   }, []);
   const { settings, updateSettings, piModels } = useSettingsStore();
   const permissionStore = usePermissionStore();
+  const runtimeFeatureState = useRuntimeFeatureStore((state) => state.featureState);
+  const refreshRuntimeFeatureState = useRuntimeFeatureStore((state) => state.refresh);
   const longHorizon = settings.longHorizon;
   const longHorizonEnabled = longHorizon?.enabled ?? true;
-  const defaultAgentMode = longHorizonEnabled ? (longHorizon?.defaultMode ?? "build") : "build";
-  const maxModeVisible = longHorizonEnabled && (longHorizon?.maxMode.enabled ?? true);
-  const agentModeOptions = longHorizonEnabled
-    ? AGENT_MODE_OPTIONS.filter((mode) => mode.value !== "max" || maxModeVisible)
-    : AGENT_MODE_OPTIONS.filter((mode) => mode.value === "build");
+  const allowedModes = supportedAgentModes(runtimeFeatureState, longHorizon);
+  const defaultAgentMode = clampAgentModeByRuntime(
+    longHorizonEnabled ? (longHorizon?.defaultMode ?? "build") : "build",
+    runtimeFeatureState,
+    longHorizon,
+  );
+  const agentModeOptions = AGENT_MODE_OPTIONS.filter((mode) => allowedModes.includes(mode.value));
   const currentAgentMode = useAgentModeStore((state) => {
     const mode = state.getMode(workspaceId, defaultAgentMode);
     return agentModeOptions.some((option) => option.value === mode) ? mode : "build";
@@ -209,6 +212,12 @@ export function ChatInput({
   } = useSlashCommands(inputValue, cursorPos, workspaceId, agentId, currentAgentMode);
 
   const attachments = workspaceId ? listAttachments(workspaceId) : [];
+
+  useEffect(() => {
+    if (!runtimeFeatureState) {
+      void refreshRuntimeFeatureState();
+    }
+  }, [refreshRuntimeFeatureState, runtimeFeatureState]);
 
   useEffect(() => {
     if (!activeCommand || slashCandidates.length === 0) return;
@@ -318,8 +327,6 @@ export function ChatInput({
           dispatchSlashDesktopAction(result.action);
           if (result.tone === "error" && result.message) {
             setSendError(result.message);
-          } else if (result.action === "export" && result.message) {
-            addToast(result.message, result.tone === "info" ? "info" : "success");
           }
           if (!result.keepInput) {
             setInputValue("");
@@ -1152,16 +1159,16 @@ export function ChatInput({
                     role="menuitem"
                     onClick={() => {
                       close();
-                      window.dispatchEvent(new CustomEvent("app:switch-section", { detail: { section: "skills" } }));
+                      window.dispatchEvent(new CustomEvent("app:switch-section", { detail: { section: "tools" } }));
                     }}
                     className="flex min-h-8 w-full items-center justify-between gap-3 rounded-[9px] px-2 text-left text-sm text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
-                    aria-label="打开技能面板"
+                    aria-label="打开工具面板"
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <svg className="h-3.5 w-3.5 shrink-0 text-[var(--mm-text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M6 3h9l3 3v15H6zM14 3v5h5M9 13h6M9 17h4" />
                       </svg>
-                      技能
+                      工具
                     </span>
                     <span className="text-[var(--mm-text-tertiary)]" aria-hidden>打开</span>
                   </button>

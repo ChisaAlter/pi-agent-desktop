@@ -1,5 +1,9 @@
 import { beforeEach, describe, it, expect, vi } from "vitest";
-import { createWorkspaceSession } from "../factory";
+import {
+    createWorkspaceSession,
+    resolveBundledComposeExtensionPath,
+    resolveBundledDesktopExtensionPaths,
+} from "../factory";
 
 const {
     authStorageCreate,
@@ -8,6 +12,7 @@ const {
     findModel,
     authStorageGetApiKey,
     settingsManagerCreate,
+    defaultResourceLoaderCreate,
 } = vi.hoisted(() => ({
     authStorageCreate: vi.fn(() => ({ getApiKey: vi.fn() })),
     modelRegistryCreate: vi.fn(() => ({
@@ -18,6 +23,7 @@ const {
     findModel: vi.fn(),
     authStorageGetApiKey: vi.fn(),
     settingsManagerCreate: vi.fn(() => ({ kind: "settings-manager" })),
+    defaultResourceLoaderCreate: vi.fn(),
 }));
 
 vi.mock("@earendil-works/pi-coding-agent", () => ({
@@ -29,7 +35,8 @@ vi.mock("@earendil-works/pi-coding-agent", () => ({
     },
     createEventBus: vi.fn(() => ({})),
     getAgentDir: vi.fn(() => "C:/tmp/pi-agent"),
-    DefaultResourceLoader: vi.fn(function DefaultResourceLoader() {
+    DefaultResourceLoader: vi.fn(function DefaultResourceLoader(options?: unknown) {
+        defaultResourceLoaderCreate(options);
         return {
             reload: vi.fn().mockResolvedValue(undefined),
         };
@@ -62,6 +69,7 @@ describe("createWorkspaceSession", () => {
         authStorageGetApiKey.mockResolvedValue("sk-test");
         authStorageCreate.mockClear();
         settingsManagerCreate.mockClear();
+        defaultResourceLoaderCreate.mockReset();
         modelRegistryCreate.mockReset();
         modelRegistryCreate.mockReturnValue({
             registerProvider,
@@ -216,5 +224,53 @@ describe("createWorkspaceSession", () => {
                 apiKey: "sk-provider-env",
             }),
         );
+    });
+
+    it("forwards noTools/tools to the SDK and merges explicit desktop extension bundles", async () => {
+        const { createAgentSession } = await import("@earendil-works/pi-coding-agent");
+
+        await createWorkspaceSession({
+            workspaceId: "ws_5",
+            workspacePath: "C:/repo",
+            noTools: "builtin",
+            tools: ["read", "grep"],
+            desktopExtensions: ["C:/desktop/compose-extension.ts"],
+        });
+
+        expect(defaultResourceLoaderCreate).toHaveBeenCalledWith(expect.objectContaining({
+            additionalExtensionPaths: expect.arrayContaining(["C:/desktop/compose-extension.ts"]),
+        }));
+        expect(createAgentSession).toHaveBeenCalledWith(expect.objectContaining({
+            noTools: "builtin",
+            tools: ["read", "grep"],
+        }));
+    });
+
+    it("does not implicitly load plan-mode extension bundles when none are requested", async () => {
+        await createWorkspaceSession({
+            workspaceId: "ws_6",
+            workspacePath: "C:/repo",
+        });
+
+        const loaderOptions = defaultResourceLoaderCreate.mock.calls.at(-1)?.[0] as {
+            additionalExtensionPaths?: string[];
+        } | undefined;
+        expect(loaderOptions?.additionalExtensionPaths ?? []).not.toEqual(
+            expect.arrayContaining([expect.stringContaining("pi-openplan")]),
+        );
+    });
+
+    it("resolves the bundled desktop compose extension when compose mode is enabled", () => {
+        const paths = resolveBundledDesktopExtensionPaths({ composeModeEnabled: true });
+
+        expect(paths).toEqual(expect.arrayContaining([expect.stringContaining("extensions\\compose-mode")]));
+    });
+
+    it("resolves the bundled compose extension from both source and built main directories", () => {
+        const sourcePath = resolveBundledComposeExtensionPath("C:/Ai/pi-desktop/apps/desktop/src/main/services/pi-session");
+        const builtPath = resolveBundledComposeExtensionPath("C:/Ai/pi-desktop/apps/desktop/out/main");
+
+        expect(sourcePath).toContain("extensions\\compose-mode");
+        expect(builtPath).toContain("extensions\\compose-mode");
     });
 });

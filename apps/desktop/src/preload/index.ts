@@ -149,6 +149,12 @@ const piAPI: PiAPI = {
         ipcRenderer.invoke("pi:runtime-feature-state"),
     memorySearch: (input) =>
         ipcRenderer.invoke("pi:memory-search", input),
+    memoryListRecent: (input) =>
+        ipcRenderer.invoke("pi:memory-list-recent", input),
+    taskList: (input) =>
+        ipcRenderer.invoke("pi:task-list", input),
+    taskGetActive: (input) =>
+        ipcRenderer.invoke("pi:task-get-active", input),
 
     permissionSetMode: (mode: PermissionMode) => ipcRenderer.invoke("permission:set-mode", mode),
     permissionRespond: (
@@ -161,6 +167,7 @@ const piAPI: PiAPI = {
     onPermissionUpdate: (cb) => subscribe<unknown>("permission:update", cb),
 
     planSetEnabled: (workspaceId, enabled) => ipcRenderer.invoke("plan:set-enabled", workspaceId, enabled),
+    planMaterialize: (input) => ipcRenderer.invoke("plan:materialize-inline", input),
     planRespond: (requestId, decision, text) => {
         ipcRenderer.send("plan:respond", requestId, decision, text);
     },
@@ -326,9 +333,6 @@ const piAPI: PiAPI = {
             "log:write",
             "workbench:set-active-file",
             "approval:respond",
-            "approval:approve",
-            "approval:reject",
-            "approval:remove",
             "approval:set-auto-approve",
             "plan:respond",
             "goal:set",

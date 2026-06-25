@@ -2,7 +2,7 @@ import { BrowserWindow, ipcMain } from 'electron';
 import { join } from 'path';
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import log from 'electron-log/main';
-import { ipcError, resolveAppSettings } from '@shared';
+import { ipcError } from '@shared';
 import type { AppSettings } from '@shared';
 import type { PiAgentConfig } from '../types';
 import { settingsSetSchema } from './schemas';
@@ -11,8 +11,9 @@ export function setupSettingsIpc(opts: {
   store: { get: (key: 'settings') => AppSettings; set: (key: 'settings', value: AppSettings) => void };
   getPiAgentConfig: () => PiAgentConfig | null;
   piAgentDir: string;
+  onSettingsChanged?: (next: AppSettings, previous: AppSettings) => void;
 }): void {
-  const { store, getPiAgentConfig, piAgentDir } = opts;
+  const { store, getPiAgentConfig, piAgentDir, onSettingsChanged } = opts;
 
   const broadcastSettingsChanged = (settings: AppSettings): void => {
     for (const win of BrowserWindow.getAllWindows()) {
@@ -23,7 +24,7 @@ export function setupSettingsIpc(opts: {
   };
 
   ipcMain.handle('settings:get', async () => {
-    return resolveAppSettings(store.get('settings'));
+    return store.get('settings');
   });
 
   ipcMain.handle('settings:set', async (_, settings: Partial<AppSettings>) => {
@@ -36,9 +37,13 @@ export function setupSettingsIpc(opts: {
         `设置参数无效: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    const current = resolveAppSettings(store.get('settings'));
-    const updated = resolveAppSettings({ ...current, ...settings });
+    const current = store.get('settings');
+    const previous = typeof structuredClone === "function"
+      ? structuredClone(current)
+      : JSON.parse(JSON.stringify(current)) as AppSettings;
+    const updated = { ...current, ...settings };
     store.set('settings', updated);
+    onSettingsChanged?.(updated, previous);
     broadcastSettingsChanged(updated);
     return updated;
   });
@@ -64,13 +69,13 @@ export function setupSettingsIpc(opts: {
     } : null;
 
     if (currentModel) {
-      const currentSettings = resolveAppSettings(store.get('settings'));
+      const currentSettings = store.get('settings');
       if (!currentSettings.model && !currentSettings.provider) {
-        store.set('settings', resolveAppSettings({
+        store.set('settings', {
           ...currentSettings,
           model: currentModel.model,
           provider: currentModel.provider,
-        }));
+        });
         broadcastSettingsChanged(store.get('settings'));
       }
     }

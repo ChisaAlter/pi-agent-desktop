@@ -48,7 +48,6 @@ interface PlanState {
   clearPlanFlow: () => void;
   setProgress: (update: PlanProgressUpdate) => void;
   setGoal: (goal: GoalState | null) => void;
-  applyDoneMarkers: (content: string) => void;
   reset: () => void;
 }
 
@@ -73,27 +72,6 @@ function stripInlineThinking(content: string): string {
     .replace(/<think[\s\S]*?<\/think>/gi, "")
     .replace(/<think[\s\S]*$/gi, "")
     .trim();
-}
-
-export function isGenericPlanGuidance(content: string): boolean {
-  const hasConcretePlanTitle = /(^|\n)\s*#{1,6}\s*(实施计划|执行计划|实现计划|测试计划|迁移计划|修复计划|计划[：:]|Implementation Plan|Execution Plan|Action Plan)/i.test(content);
-  if (hasConcretePlanTitle) return false;
-
-  const hasExecutionSteps = /(^|\n)\s*(?:[-*]|\d+\.)\s+(?:修改|实现|新增|删除|运行|验证|测试|构建|修复|重构|更新|提交|检查|Add|Create|Modify|Delete|Update|Fix|Refactor|Implement|Test|Build|Run|Check|Move|Rename)/i.test(content);
-  if (hasExecutionSteps) return false;
-
-  const hasCodeBlocks = /```/.test(content);
-  if (hasCodeBlocks) return false;
-
-  const filePathMatches = content.match(/[\w/.-]+\.\w{1,4}/g);
-  if (filePathMatches && filePathMatches.length >= 2) return false;
-
-  // Now check if it's guidance
-  const asksForGoal = /目标|范围|约束|验收标准|要解决什么问题|实现什么功能|直接描述项目背景|请告诉我你的目标/.test(content);
-  const describesCapabilities = /你可以让我|阅读、编辑|重构|调试代码|分解需求|制定执行计划|调用 pi 技能/i.test(content);
-  const clarificationPrompt = /你想要规划什么|你想规划什么|你想让我规划什么|请告诉(?:我|我们).*?(?:规划|想法|目标|内容)|有其他想要添加的功能|I see you(?:'|')ve typed\s+`?\/plan`?|what would you like (?:me )?(?:to help you )?to? ?plan|what topic\/component you want to plan/i.test(content);
-
-  return asksForGoal || describesCapabilities || clarificationPrompt;
 }
 
 export const usePlanStore = create<PlanState>((set, get) => ({
@@ -131,10 +109,6 @@ export const usePlanStore = create<PlanState>((set, get) => ({
       ...card,
       content: stripInlineThinking(card.content),
     };
-    if (isGenericPlanGuidance(cleanCard.content)) {
-      set({ activeCard: null, decisionRequest: null, steps: [], status: "idle" });
-      return;
-    }
     set((state) => ({
       activeCard: cleanCard,
       steps: stepsFromMarkdown(cleanCard.content),
@@ -246,16 +220,6 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   },
 
   setGoal: (goal) => set({ goal: goal?.status === "cleared" ? null : goal }),
-
-  applyDoneMarkers: (content) => {
-    const done = [...content.matchAll(/\[DONE:(\d+)\]/g)].map((match) => Number(match[1]));
-    if (done.length === 0) return;
-    set((state) => ({
-      steps: state.steps.map((step, index) =>
-        done.includes(index + 1) ? { ...step, status: "completed" } : step,
-      ),
-    }));
-  },
 
   reset: () => set({ activeCard: null, decisionRequest: null, pendingPlanClarification: null, renderedPlanCardIds: [], activeExecution: null, goal: null, steps: [], status: "idle" }),
 }));

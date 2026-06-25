@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback } from "react";
 import { useSessionStore, type Session } from "../../stores/session-store";
 import {
   exportSessionAsMarkdown,
@@ -28,26 +28,6 @@ export function SessionExportDialog({ isOpen, onClose, sessionId }: SessionExpor
 
   const session = sessionId ? sessions.find((s) => s.id === sessionId) : null;
   const availableSessions = sessions.filter((s) => !s.archived);
-  const availableSessionIds = useMemo(() => new Set(availableSessions.map((s) => s.id)), [availableSessions]);
-  const canExport = sessionId ? Boolean(session) : selectedSessionIds.some((id) => availableSessionIds.has(id));
-
-  useEffect(() => {
-    if (!isOpen) {
-      setSelectedFormat("markdown");
-      setSelectedSessionIds([]);
-      return;
-    }
-    setSelectedFormat("markdown");
-    setSelectedSessionIds([]);
-  }, [isOpen, sessionId]);
-
-  useEffect(() => {
-    if (!isOpen || sessionId) return;
-    setSelectedSessionIds((prev) => {
-      const next = prev.filter((id) => availableSessionIds.has(id));
-      return next.length === prev.length && next.every((id, index) => id === prev[index]) ? prev : next;
-    });
-  }, [availableSessionIds, isOpen, sessionId]);
 
   const handleExport = useCallback(() => {
     const format = formats.find((f) => f.value === selectedFormat);
@@ -106,9 +86,6 @@ export function SessionExportDialog({ isOpen, onClose, sessionId }: SessionExpor
         </div>
 
         <div className="p-4">
-          <p className="mb-4 text-xs leading-5 text-[var(--mm-text-secondary)]">
-            {sessionId ? "导出当前会话为 Markdown、JSON 或 HTML。" : "批量选择多个会话后，可按格式分别导出。"}
-          </p>
           <div className="mb-4">
             <label className="mb-2 block text-xs font-medium text-[var(--mm-text-secondary)]">导出格式</label>
             <div className="flex gap-2">
@@ -168,7 +145,7 @@ export function SessionExportDialog({ isOpen, onClose, sessionId }: SessionExpor
           <button
             type="button"
             onClick={handleExport}
-            disabled={!canExport}
+            disabled={!sessionId && selectedSessionIds.length === 0}
             className="rounded-lg bg-[var(--mm-bg-active)] px-4 py-2 text-xs text-[var(--mm-text-on-active)] hover:opacity-90 disabled:opacity-50"
           >
             导出

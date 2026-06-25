@@ -13,8 +13,10 @@ import {
     getAgentDir,
     type AgentSession,
     type ExtensionUIContext,
+    type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { createRequire } from "module";
+import { existsSync } from "fs";
 import { dirname, join } from "path";
 import log from "electron-log/main";
 import type { PiAgentConfig } from "../../types";
@@ -29,6 +31,11 @@ export interface WorkspaceSession {
     dispose: () => void;
 }
 
+export interface DesktopExtensionCapabilityOptions {
+    planModeEnabled?: boolean;
+    composeModeEnabled?: boolean;
+}
+
 export interface CreateSessionOpts {
     workspaceId: string;
     workspacePath: string;
@@ -38,6 +45,10 @@ export interface CreateSessionOpts {
     piAgentConfig?: PiAgentConfig | null;
     sessionPath?: string;
     uiContext?: ExtensionUIContext;
+    tools?: string[];
+    noTools?: "all" | "builtin";
+    customTools?: ToolDefinition[];
+    desktopExtensions?: string[];
 }
 
 export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<WorkspaceSession> {
@@ -49,10 +60,7 @@ export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<W
         ? modelRegistry.find(opts.provider, opts.modelId)
         : undefined;
     const settingsManager = SettingsManager.create(opts.workspacePath, agentDir);
-    const additionalExtensionPaths = [
-        safeResolve("pi-permission-system"),
-        safeResolve("pi-openplan/package.json", (packageJson) => join(dirname(packageJson), "extensions")),
-    ].filter((path): path is string => Boolean(path));
+    const additionalExtensionPaths = resolveDesktopExtensionPaths(opts.desktopExtensions);
     const eventBus = createEventBus();
     const resourceLoader = new DefaultResourceLoader({
         cwd: opts.workspacePath,
@@ -70,6 +78,9 @@ export async function createWorkspaceSession(opts: CreateSessionOpts): Promise<W
         modelRegistry,
         settingsManager,
         model: selectedModel,
+        tools: opts.tools,
+        noTools: opts.noTools,
+        customTools: opts.customTools,
         resourceLoader,
         sessionManager: opts.sessionPath ? SessionManager.open(opts.sessionPath) : undefined,
     });
@@ -96,6 +107,36 @@ function safeResolve(packageName: string, map: (resolved: string) => string = (r
     } catch {
         return undefined;
     }
+}
+
+export function resolveBundledDesktopExtensionPaths(
+    options: DesktopExtensionCapabilityOptions = {},
+): string[] {
+    const paths: Array<string | undefined> = [];
+    if (options.planModeEnabled) {
+        paths.push(safeResolve("pi-openplan/package.json", (packageJson) => join(dirname(packageJson), "extensions")));
+    }
+    if (options.composeModeEnabled) {
+        paths.push(resolveBundledComposeExtensionPath());
+    }
+    return [...new Set(paths.filter((path): path is string => Boolean(path)))];
+}
+
+export function resolveBundledComposeExtensionPath(baseDir = __dirname): string | undefined {
+    const candidates = [
+        join(baseDir, "../../../../extensions/compose-mode"),
+        join(baseDir, "../../../extensions/compose-mode"),
+        join(baseDir, "../../extensions/compose-mode"),
+    ];
+    return candidates.find((candidate) => existsSync(candidate));
+}
+
+function resolveDesktopExtensionPaths(explicitDesktopExtensions?: string[]): string[] {
+    const paths = [
+        safeResolve("pi-permission-system"),
+        ...(explicitDesktopExtensions ?? []),
+    ].filter((path): path is string => Boolean(path));
+    return [...new Set(paths)];
 }
 
 async function registerConfiguredProviders(

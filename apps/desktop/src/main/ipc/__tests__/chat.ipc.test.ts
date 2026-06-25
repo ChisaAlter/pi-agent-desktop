@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 const listeners = new Map<string, (...args: unknown[]) => unknown>();
@@ -87,56 +90,7 @@ describe("setupChatIpc", () => {
         expect(webContentsSend).toHaveBeenCalledWith("pi:event", event);
     });
 
-    it("adds workspaceId onto approval deferred payloads before sending to renderer", async () => {
-        const event = {
-            type: "tool_execution_start",
-            toolCallId: "tc_approval",
-            toolName: "write",
-            args: { file_path: "src/foo.ts", content: "hello" },
-        };
-        const registry = {
-            get: vi.fn(async (_id, _path, pendingEdits, send) => ({
-                session: {
-                    prompt: vi.fn(async () => {
-                        pendingEdits.track("tc_approval", "write", "src/foo.ts", { content: "hello" });
-                        send("approval:deferred", "ws_1", {
-                            changeId: "change_1",
-                            toolCallId: "tc_approval",
-                            filePath: "src/foo.ts",
-                            op: "write",
-                            timestamp: 1,
-                        });
-                    }),
-                    abort: vi.fn(),
-                },
-            })),
-            has: vi.fn(() => true),
-        };
-
-        setupChatIpc({
-            registry: registry as any,
-            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
-            getDefaultWorkspace: () => undefined,
-            pendingEdits: new (class {
-                autoApprove = false;
-                track = vi.fn(() => "change_1");
-            })() as any,
-        });
-
-        const handler = handlers.get("pi:send");
-        await handler?.({}, "ws_1", "hello");
-
-        expect(event).toBeTruthy();
-        expect(webContentsSend).toHaveBeenCalledWith(
-            "approval:deferred",
-            expect.objectContaining({
-                workspaceId: "ws_1",
-                changeId: "change_1",
-            }),
-        );
-    });
-
-    it("wraps plan mode prompts before sending them to Pi", async () => {
+    it("forwards raw plan-mode prompts because the runtime extension now owns plan behavior", async () => {
         const prompt = vi.fn(async () => undefined);
         const registry = {
             get: vi.fn(async () => ({
@@ -157,8 +111,7 @@ describe("setupChatIpc", () => {
 
         expect(prompt).toHaveBeenCalledTimes(1);
         const outbound = prompt.mock.calls[0]?.[0] as string;
-        expect(outbound).toContain("Plan mode is active");
-        expect(outbound).toContain("改输入区");
+        expect(outbound).toBe("改输入区");
     });
 
     it("rebuilds long-horizon context before storing the current prompt in memory", async () => {
@@ -209,7 +162,7 @@ describe("setupChatIpc", () => {
         expect(prompt.mock.calls[0]?.[0]).toContain("<long_horizon_context>history</long_horizon_context>");
     });
 
-    it("adds compose slash commands only for compose mode", async () => {
+    it("does not inject compose slash commands when the session did not register them", async () => {
         const session = {
             extensionRunner: { getRegisteredCommands: vi.fn(() => []) },
             promptTemplates: [],
@@ -232,7 +185,41 @@ describe("setupChatIpc", () => {
         const composeResult = await handler?.({}, "ws_1", undefined, "compose") as Array<{ name: string }>;
 
         expect(buildResult.some((command) => command.name === "compose:plan")).toBe(false);
-        expect(composeResult.some((command) => command.name === "compose:plan")).toBe(true);
+        expect(composeResult.some((command) => command.name === "compose:plan")).toBe(false);
+    });
+
+    it("surfaces compose slash commands only from the loaded session extension bundle", async () => {
+        const session = {
+            extensionRunner: {
+                getRegisteredCommands: vi.fn(() => [
+                    { invocationName: "compose:plan", description: "plan via compose bundle" },
+                ]),
+            },
+            promptTemplates: [],
+            resourceLoader: { getSkills: vi.fn(() => ({ skills: [] })) },
+        };
+        const registry = {
+            get: vi.fn(async () => ({ session })),
+            has: vi.fn(() => true),
+        };
+
+        setupChatIpc({
+            registry: registry as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+        });
+
+        const handler = handlers.get("pi:list-slash-commands");
+        const buildResult = await handler?.({}, "ws_1", undefined, "build") as Array<{ name: string; source: string }>;
+        const composeResult = await handler?.({}, "ws_1", undefined, "compose") as Array<{ name: string; source: string }>;
+
+        expect(buildResult.filter((command) => command.name === "compose:plan")).toEqual([
+            expect.objectContaining({ name: "compose:plan", source: "extension" }),
+        ]);
+        expect(composeResult.filter((command) => command.name === "compose:plan")).toEqual([
+            expect.objectContaining({ name: "compose:plan", source: "extension" }),
+        ]);
     });
 
     it("does not fall back to the default workspace when a provided workspace id is unknown", async () => {
@@ -356,69 +343,6 @@ describe("setupChatIpc", () => {
         expect(rmSyncMock).toHaveBeenCalledWith(expect.stringMatching(/[\\/]repo[\\/]src[\\/]new\.ts$/), { force: true });
     });
 
-    it("approval:approve 会调用 PendingEdits.approve 并清掉对应 change", async () => {
-        const approve = vi.fn();
-        const get = vi.fn(() => ({ id: "change_1" }));
-        setupChatIpc({
-            registry: { get: vi.fn(), has: vi.fn() } as any,
-            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/repo" }),
-            getDefaultWorkspace: () => undefined,
-            pendingEdits: {
-                autoApprove: false,
-                get,
-                approve,
-            } as any,
-        });
-
-        const handler = handlers.get("approval:approve");
-        const result = await handler?.({}, "ws_1", "change_1");
-
-        expect(result).toBeUndefined();
-        expect(get).toHaveBeenCalledWith("change_1");
-        expect(approve).toHaveBeenCalledWith("change_1");
-    });
-
-    it("approval:reject 会把 workspacePath 传给 PendingEdits.reject", async () => {
-        const reject = vi.fn(async () => undefined);
-        const get = vi.fn(() => ({ id: "change_1" }));
-        setupChatIpc({
-            registry: { get: vi.fn(), has: vi.fn() } as any,
-            getWorkspace: (id: string) => ({ id, name: "demo", path: "C:/repo" }),
-            getDefaultWorkspace: () => undefined,
-            pendingEdits: {
-                autoApprove: false,
-                get,
-                reject,
-            } as any,
-        });
-
-        const handler = handlers.get("approval:reject");
-        const result = await handler?.({}, "ws_1", "change_1");
-
-        expect(result).toBeUndefined();
-        expect(get).toHaveBeenCalledWith("change_1");
-        expect(reject).toHaveBeenCalledWith("change_1", "C:/repo");
-    });
-
-    it("approval:remove 会调用 PendingEdits.remove", async () => {
-        const remove = vi.fn();
-        setupChatIpc({
-            registry: { get: vi.fn(), has: vi.fn() } as any,
-            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/repo" }),
-            getDefaultWorkspace: () => undefined,
-            pendingEdits: {
-                autoApprove: false,
-                remove,
-            } as any,
-        });
-
-        const handler = handlers.get("approval:remove");
-        const result = await handler?.({}, "ws_1", "change_1");
-
-        expect(result).toBeUndefined();
-        expect(remove).toHaveBeenCalledWith("change_1");
-    });
-
     it("lists builtin and dynamic Pi slash commands for the workspace session", async () => {
         const session = {
             extensionRunner: {
@@ -492,70 +416,6 @@ describe("setupChatIpc", () => {
         expect(reloadResult).toMatchObject({ handled: true, command: "reload", action: "reload" });
     });
 
-    it("keeps export input when the session does not support HTML export", async () => {
-        const session = {
-            extensionRunner: { getRegisteredCommands: vi.fn(() => []) },
-            promptTemplates: [],
-            resourceLoader: { getSkills: vi.fn(() => ({ skills: [] })) },
-        };
-        const registry = {
-            get: vi.fn(async () => ({ session })),
-            has: vi.fn(() => true),
-        };
-
-        setupChatIpc({
-            registry: registry as any,
-            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
-            getDefaultWorkspace: () => undefined,
-            pendingEdits: { autoApprove: false } as any,
-        });
-
-        const handler = handlers.get("pi:run-builtin-slash-command");
-        const result = await handler?.({}, { workspaceId: "ws_1", command: "export", args: "" });
-
-        expect(result).toMatchObject({
-            handled: true,
-            command: "export",
-            action: "unsupported",
-            tone: "error",
-            keepInput: true,
-            message: "当前会话不支持 HTML 导出",
-        });
-    });
-
-    it("treats export without an output path as an error", async () => {
-        const session = {
-            exportToHtml: vi.fn(async () => ""),
-            extensionRunner: { getRegisteredCommands: vi.fn(() => []) },
-            promptTemplates: [],
-            resourceLoader: { getSkills: vi.fn(() => ({ skills: [] })) },
-        };
-        const registry = {
-            get: vi.fn(async () => ({ session })),
-            has: vi.fn(() => true),
-        };
-
-        setupChatIpc({
-            registry: registry as any,
-            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
-            getDefaultWorkspace: () => undefined,
-            pendingEdits: { autoApprove: false } as any,
-        });
-
-        const handler = handlers.get("pi:run-builtin-slash-command");
-        const result = await handler?.({}, { workspaceId: "ws_1", command: "export", args: "demo.html" });
-
-        expect(session.exportToHtml).toHaveBeenCalledWith("demo.html");
-        expect(result).toMatchObject({
-            handled: true,
-            command: "export",
-            action: "export",
-            tone: "error",
-            keepInput: true,
-            message: "HTML 导出失败：未返回输出路径",
-        });
-    });
-
     it("returns an unsupported result for interactive CLI-only slash commands", async () => {
         setupChatIpc({
             registry: { get: vi.fn(), has: vi.fn() } as any,
@@ -610,16 +470,17 @@ describe("setupChatIpc", () => {
             primaryAgents: [
                 expect.objectContaining({ id: "build" }),
                 expect.objectContaining({ id: "plan" }),
-                expect.objectContaining({ id: "max" }),
             ],
             systemAgents: [
                 expect.objectContaining({ id: "checkpoint-writer" }),
-                expect.objectContaining({ id: "distill" }),
             ],
             enabledToolIds: expect.not.arrayContaining(["history", "workflow"]),
             features: {
-                maxMode: { enabled: true, candidates: 2 },
-                memory: { enabled: true, ccIndex: true, searchScoreFloor: 0.2 },
+                planMode: { enabled: true, supported: true, loadedFrom: "pi-openplan" },
+                composeMode: { enabled: false, supported: true, loadedFrom: "disabled" },
+                maxMode: { enabled: false, supported: false, loadedFrom: "unsupported", candidates: 2 },
+                memory: { enabled: true, supported: true, loadedFrom: "desktop", ccIndex: true, searchScoreFloor: 0.2 },
+                workflow: { enabled: false, supported: false, loadedFrom: "unsupported" },
             },
         });
     });
@@ -664,5 +525,132 @@ describe("setupChatIpc", () => {
             searchScoreFloor: 0.15,
         });
         expect(result).toEqual([expect.objectContaining({ id: "m1" })]);
+    });
+
+    it("lists recent long-horizon memory through typed IPC", async () => {
+        const listRecent = vi.fn(() => [{ id: "m2", kind: "checkpoint", layer: "checkpoints", text: "recent checkpoint" }]);
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+            memoryService: { listRecent } as any,
+            getSettings: () => ({
+                longHorizon: {
+                    enabled: true,
+                    defaultMode: "build",
+                    planMode: { enabled: true },
+                    composeMode: { enabled: true },
+                    maxMode: { enabled: true, candidates: 5 },
+                    memory: { enabled: true, ccIndex: false, reconcileOnSearch: true, searchScoreFloor: 0.15 },
+                    history: { enabled: true },
+                    checkpoint: { enabled: true },
+                    goal: { enabled: true },
+                    subagents: { enabled: true },
+                    task: { enabled: true },
+                    actor: { enabled: true },
+                    workflow: { enabled: false, maxConcurrentAgents: 4, maxLifecycleAgents: 100, maxDepth: 4 },
+                    dream: { enabled: false },
+                    distill: { enabled: false },
+                    composeWorkflow: { enabled: false },
+                },
+            }) as any,
+        });
+
+        const handler = handlers.get("pi:memory-list-recent");
+        const result = await handler?.({}, { workspaceId: "ws_1", limit: 2 });
+
+        expect(listRecent).toHaveBeenCalledWith({ workspaceId: "ws_1", sessionId: undefined, limit: 2 });
+        expect(result).toEqual([expect.objectContaining({ id: "m2" })]);
+    });
+
+    it("lists task registry rows and the active task through typed IPC", async () => {
+        const list = vi.fn(() => [{ id: "T1", source: "goal", text: "finish migration", status: "running" }]);
+        const getActive = vi.fn(() => ({ id: "T1", source: "goal", text: "finish migration", status: "running" }));
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+            taskService: { list, getActive } as any,
+            getSettings: () => ({
+                longHorizon: {
+                    enabled: true,
+                    defaultMode: "build",
+                    planMode: { enabled: true },
+                    composeMode: { enabled: true },
+                    maxMode: { enabled: true, candidates: 5 },
+                    memory: { enabled: true, ccIndex: false, reconcileOnSearch: true, searchScoreFloor: 0.15 },
+                    history: { enabled: true },
+                    checkpoint: { enabled: true },
+                    goal: { enabled: true },
+                    subagents: { enabled: true },
+                    task: { enabled: true },
+                    actor: { enabled: true },
+                    workflow: { enabled: false, maxConcurrentAgents: 4, maxLifecycleAgents: 100, maxDepth: 4 },
+                    dream: { enabled: false },
+                    distill: { enabled: false },
+                    composeWorkflow: { enabled: false },
+                },
+            }) as any,
+        });
+
+        const listHandler = handlers.get("pi:task-list");
+        const activeHandler = handlers.get("pi:task-get-active");
+        const listResult = await listHandler?.({}, { workspaceId: "ws_1", agentId: "agent-1" });
+        const activeResult = await activeHandler?.({}, { workspaceId: "ws_1", agentId: "agent-1" });
+
+        expect(list).toHaveBeenCalledWith({ workspaceId: "ws_1", agentId: "agent-1" });
+        expect(getActive).toHaveBeenCalledWith({ workspaceId: "ws_1", agentId: "agent-1" });
+        expect(listResult).toEqual([expect.objectContaining({ id: "T1" })]);
+        expect(activeResult).toEqual(expect.objectContaining({ id: "T1" }));
+    });
+
+    it("refreshes the current workspace session when plan mode enablement changes", async () => {
+        const refreshWorkspace = vi.fn(async () => undefined);
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            agentRegistry: {
+                refreshWorkspace,
+            } as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+        });
+
+        const handler = handlers.get("plan:set-enabled");
+        const result = await handler?.({}, "ws_1", true);
+
+        expect(result).toBeUndefined();
+        expect(refreshWorkspace).toHaveBeenCalledWith("ws_1");
+    });
+
+    it("materializes inline plans using a preferred filename when provided", async () => {
+        const workspacePath = mkdtempSync(join(tmpdir(), "pi-desktop-plan-"));
+        try {
+            setupChatIpc({
+                registry: { get: vi.fn(), has: vi.fn() } as any,
+                getWorkspace: () => ({ id: "ws_1", name: "demo", path: workspacePath }),
+                getDefaultWorkspace: () => undefined,
+                pendingEdits: { autoApprove: false } as any,
+            });
+
+            const handler = handlers.get("plan:materialize-inline");
+            const result = await handler?.({}, {
+                workspaceId: "ws_1",
+                title: "计划",
+                content: "- 创建文件\n- 验证结果",
+                preferredFilename: "plan-123.md",
+            }) as { filename: string; path: string };
+
+            expect(result).toMatchObject({
+                filename: "plan-123.md",
+                path: join(workspacePath, ".pi", "plans", "plan-123.md"),
+            });
+            expect(existsSync(result.path)).toBe(true);
+            expect(readFileSync(result.path, "utf8")).toContain("- 创建文件");
+        } finally {
+            rmSync(workspacePath, { force: true, recursive: true });
+        }
     });
 });

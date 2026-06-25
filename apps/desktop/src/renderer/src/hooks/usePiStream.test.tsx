@@ -14,10 +14,6 @@ const sendPrompt = vi.fn(async () => undefined);
 const stopPrompt = vi.fn<(_workspaceId: string) => Promise<unknown>>(async () => undefined);
 const agentsPrompt = vi.fn(async () => undefined);
 const planSetEnabled = vi.fn(async () => undefined);
-const appendMessageIpc = vi.fn(async () => undefined);
-const updateMessageIpc = vi.fn(async () => undefined);
-const updateToolCallIpc = vi.fn(async () => undefined);
-const updateSessionMetadataIpc = vi.fn(async () => undefined);
 
 function HookHost(): null {
     usePiStream();
@@ -95,14 +91,6 @@ beforeEach(() => {
     planSetEnabled.mockClear();
     stopPrompt.mockReset();
     stopPrompt.mockResolvedValue(undefined);
-    appendMessageIpc.mockReset();
-    appendMessageIpc.mockResolvedValue(undefined);
-    updateMessageIpc.mockReset();
-    updateMessageIpc.mockResolvedValue(undefined);
-    updateToolCallIpc.mockReset();
-    updateToolCallIpc.mockResolvedValue(undefined);
-    updateSessionMetadataIpc.mockReset();
-    updateSessionMetadataIpc.mockResolvedValue(undefined);
     (globalThis as { window: unknown }).window = {
         dispatchEvent: vi.fn(),
         // 2026-06-06 hotfix (T6): usePiStream 用 setTimeout/setInterval 防 debounce 卡住,
@@ -136,10 +124,6 @@ beforeEach(() => {
             planSetEnabled,
             stop: stopPrompt,
             renameSession: vi.fn(async () => undefined),
-            appendMessage: appendMessageIpc,
-            updateMessage: updateMessageIpc,
-            updateToolCall: updateToolCallIpc,
-            updateSessionMetadata: updateSessionMetadataIpc,
         },
     };
     useSessionStore.setState({
@@ -210,66 +194,7 @@ describe("usePiStream", () => {
         });
     });
 
-    it("prepends session tool-permission guards for agent prompts", async () => {
-        useSessionStore.setState({
-            currentSessionId: "s1",
-            sessions: [
-                {
-                    id: "s1",
-                    title: "Session",
-                    workspaceId: "ws1",
-                    createdAt: new Date(0),
-                    updatedAt: new Date(0),
-                    messages: [],
-                    toolPermissions: {
-                        fileRead: true,
-                        fileWrite: true,
-                        shell: false,
-                        git: true,
-                        network: true,
-                        extensions: true,
-                    },
-                },
-            ],
-        });
-        useAgentStore.setState({
-            agents: [
-                {
-                    id: "agent_1",
-                    workspaceId: "ws1",
-                    title: "Session Agent",
-                    status: "idle",
-                    sessionId: "s1",
-                    createdAt: 1,
-                    updatedAt: 1,
-                },
-            ],
-            currentAgentId: "agent_1",
-            messagesByAgent: {},
-            runtimeByAgent: {},
-            initialized: true,
-        });
-
-        await act(async () => {
-            render(<AgentHookStateHost />);
-        });
-        await act(async () => {
-            screen.getByText("send-agent-follow-up").click();
-        });
-
-        const [payload] = agentsPrompt.mock.calls[0] as Array<{
-            agentId: string;
-            message: string;
-            mode: string;
-        }>;
-        expect(payload.agentId).toBe("agent_1");
-        expect(payload.mode).toBe("build");
-        expect(payload.message).toContain("<tool-permissions>");
-        expect(payload.message).toContain("The user disabled: bash, PowerShell, and shell commands.");
-        expect(payload.message).toContain("agent follow up");
-    });
-
-    it("treats selected Plan agent mode as plan clarification flow", async () => {
+    it("forwards selected Plan agent mode without local clarification", async () => {
         useAgentModeStore.getState().setMode("ws1", "plan");
 
         await act(async () => {
@@ -279,9 +204,8 @@ describe("usePiStream", () => {
             screen.getByText("send-plan-greeting").click();
         });
 
-        expect(sendPrompt).not.toHaveBeenCalled();
-        expect(usePlanStore.getState().pendingPlanClarification).not.toBeNull();
-        expect(usePlanStore.getState().pendingPlanClarification?.originalContent).toBe("你好");
+        expect(sendPrompt).toHaveBeenCalledWith("ws1", "你好", { mode: "plan" });
+        expect(usePlanStore.getState().pendingPlanClarification).toBeNull();
     });
 
     it("handles SDK message_update events emitted immediately after subscription", async () => {
@@ -594,11 +518,7 @@ describe("usePiStream", () => {
         });
 
         const session = useSessionStore.getState().sessions[0];
-        expect(sendPrompt).toHaveBeenCalledWith(
-            "ws1",
-            expect.stringContaining("follow up"),
-            { mode: "build" },
-        );
+        expect(sendPrompt).toHaveBeenCalledWith("ws1", "follow up", { mode: "build" });
         expect(session.messages).toHaveLength(2);
         expect(session.messages[0]).toMatchObject({ role: "assistant", content: "partial answer" });
         expect(session.messages[1]).toMatchObject({ role: "user", content: "follow up" });
@@ -609,45 +529,6 @@ describe("usePiStream", () => {
     });
 
     it("queues agent follow-ups with explicit streaming behavior while streaming", async () => {
-        useSessionStore.setState({
-            currentSessionId: "s1",
-            sessions: [
-                {
-                    id: "s1",
-                    title: "Session",
-                    workspaceId: "ws1",
-                    createdAt: new Date(0),
-                    updatedAt: new Date(0),
-                    messages: [],
-                    toolPermissions: {
-                        fileRead: true,
-                        fileWrite: true,
-                        shell: false,
-                        git: true,
-                        network: true,
-                        extensions: true,
-                    },
-                },
-            ],
-        });
-        useAgentStore.setState({
-            agents: [
-                {
-                    id: "agent_1",
-                    workspaceId: "ws1",
-                    title: "Session Agent",
-                    status: "idle",
-                    sessionId: "s1",
-                    createdAt: 1,
-                    updatedAt: 1,
-                },
-            ],
-            currentAgentId: "agent_1",
-            messagesByAgent: {},
-            runtimeByAgent: {},
-            initialized: true,
-        });
-
         await act(async () => {
             render(<AgentHookStateHost />);
         });
@@ -662,37 +543,13 @@ describe("usePiStream", () => {
 
         expect(agentsPrompt).toHaveBeenCalledWith({
             agentId: "agent_1",
-            message: expect.stringContaining("agent follow up"),
+            message: "agent follow up",
             mode: "build",
             streamingBehavior: "followUp",
         });
-        const [payload] = agentsPrompt.mock.calls[0] as Array<{
-            agentId: string;
-            message: string;
-            streamingBehavior: string;
-        }>;
-        expect(payload.message).toContain("<tool-permissions>");
-        expect(payload.message).toContain("The user disabled: bash, PowerShell, and shell commands.");
     });
 
     it("adds an optimistic agent user message before the main-process echo arrives", async () => {
-        useAgentStore.setState({
-            agents: [
-                {
-                    id: "agent_1",
-                    workspaceId: "ws1",
-                    title: "Session Agent",
-                    status: "idle",
-                    sessionId: "s1",
-                    createdAt: 1,
-                    updatedAt: 1,
-                },
-            ],
-            currentAgentId: "agent_1",
-            messagesByAgent: {},
-            runtimeByAgent: {},
-            initialized: true,
-        });
         await act(async () => {
             render(<AgentHookStateHost />);
         });
@@ -711,41 +568,12 @@ describe("usePiStream", () => {
         ]);
         expect(agentsPrompt).toHaveBeenCalledWith({
             agentId: "agent_1",
-            message: expect.stringContaining("agent follow up"),
+            message: "agent follow up",
             mode: "build",
         });
-        expect(appendMessageIpc).toHaveBeenCalledWith(
-            "s1",
-            expect.objectContaining({
-                role: "user",
-                content: "agent follow up",
-            }),
-        );
-        expect(useSessionStore.getState().sessions[0]?.messages).toMatchObject([
-            {
-                role: "user",
-                content: "agent follow up",
-            },
-        ]);
     });
 
-    it("does not persist unbound agent-scoped custom messages or usage into the current chat session", async () => {
-        useAgentStore.setState({
-            agents: [
-                {
-                    id: "agent_1",
-                    workspaceId: "ws1",
-                    title: "Workspace Agent",
-                    status: "idle",
-                    createdAt: 1,
-                    updatedAt: 1,
-                },
-            ],
-            currentAgentId: "agent_1",
-            messagesByAgent: {},
-            runtimeByAgent: {},
-            initialized: true,
-        });
+    it("does not persist agent-scoped custom messages or usage into the current chat session", async () => {
         await act(async () => {
             render(<AgentHookStateHost />);
         });
@@ -772,179 +600,8 @@ describe("usePiStream", () => {
         expect(session.usage).toBeUndefined();
     });
 
-    it("persists session-bound agent assistant turns and tool calls into the linked chat session", async () => {
-        useAgentStore.setState({
-            agents: [
-                {
-                    id: "agent_1",
-                    workspaceId: "ws1",
-                    title: "Bound Agent",
-                    status: "idle",
-                    sessionId: "s1",
-                    createdAt: 1,
-                    updatedAt: 1,
-                },
-            ],
-            currentAgentId: "agent_1",
-            messagesByAgent: {},
-            runtimeByAgent: {},
-            initialized: true,
-        });
-
-        await act(async () => {
-            render(<AgentHookStateHost />);
-        });
-
-        await act(async () => {
-            emitPiEvent?.({ type: "agent_start" });
-            emitPiEvent?.({
-                type: "message_update",
-                assistantMessageEvent: {
-                    type: "toolcall_start",
-                    toolCallId: "tc_bound_1",
-                    toolName: "read",
-                    args: { path: "README.md" },
-                },
-            });
-            emitPiEvent?.({
-                type: "message_update",
-                assistantMessageEvent: {
-                    type: "text_delta",
-                    delta: "agent bound answer",
-                },
-            });
-            emitPiEvent?.({
-                type: "message_update",
-                assistantMessageEvent: {
-                    type: "toolcall_end",
-                    toolCallId: "tc_bound_1",
-                    result: "done",
-                },
-            });
-            emitPiEvent?.({ type: "turn_end" });
-        });
-
-        const session = useSessionStore.getState().sessions[0];
-        expect(session.messages).toHaveLength(1);
-        expect(session.messages[0]).toMatchObject({
-            role: "assistant",
-            content: "agent bound answer",
-        });
-        expect(session.messages[0].toolCalls).toMatchObject([
-            {
-                id: "tc_bound_1",
-                name: "read",
-                input: { path: "README.md" },
-                output: "done",
-                status: "completed",
-            },
-        ]);
-        expect(appendMessageIpc).toHaveBeenCalledWith(
-            "s1",
-            expect.objectContaining({
-                role: "assistant",
-                content: "",
-            }),
-        );
-        expect(updateMessageIpc).toHaveBeenCalledTimes(1);
-        expect(updateMessageIpc).toHaveBeenCalledWith(
-            "s1",
-            expect.stringMatching(/^am_/),
-            expect.objectContaining({
-                content: "agent bound answer",
-                toolCalls: [
-                    expect.objectContaining({
-                        id: "tc_bound_1",
-                        name: "read",
-                        input: { path: "README.md" },
-                        output: "done",
-                        status: "completed",
-                    }),
-                ],
-            }),
-        );
-        expect(updateToolCallIpc).not.toHaveBeenCalled();
-    });
-
-    it("persists session-bound agent usage and custom cards into the linked chat session", async () => {
-        useAgentStore.setState({
-            agents: [
-                {
-                    id: "agent_1",
-                    workspaceId: "ws1",
-                    title: "Bound Agent",
-                    status: "idle",
-                    sessionId: "s1",
-                    createdAt: 1,
-                    updatedAt: 1,
-                },
-            ],
-            currentAgentId: "agent_1",
-            messagesByAgent: {},
-            runtimeByAgent: {},
-            initialized: true,
-        });
-
-        await act(async () => {
-            render(<AgentHookStateHost />);
-        });
-
-        await act(async () => {
-            emitPiEvent?.({
-                type: "usage_update",
-                usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 },
-            } as PiEvent);
-            emitPiEvent?.({
-                type: "custom_message",
-                card: {
-                    id: "session_bound_card",
-                    kind: "result-summary",
-                    title: "Bound card",
-                },
-            } as PiEvent);
-        });
-
-        const session = useSessionStore.getState().sessions[0];
-        expect(session.usage).toMatchObject({
-            inputTokens: 10,
-            outputTokens: 2,
-            totalTokens: 12,
-        });
-        expect(session.messages).toMatchObject([
-            {
-                role: "assistant",
-                customCard: {
-                    id: "session_bound_card",
-                    kind: "result-summary",
-                    title: "Bound card",
-                },
-            },
-        ]);
-        expect(updateSessionMetadataIpc).toHaveBeenCalledWith(
-            "s1",
-            expect.objectContaining({
-                usage: expect.objectContaining({
-                    inputTokens: 10,
-                    outputTokens: 2,
-                    totalTokens: 12,
-                }),
-            }),
-        );
-        expect(appendMessageIpc).toHaveBeenCalledWith(
-            "s1",
-            expect.objectContaining({
-                role: "assistant",
-                customCard: expect.objectContaining({
-                    id: "session_bound_card",
-                    kind: "result-summary",
-                    title: "Bound card",
-                }),
-            }),
-        );
-    });
-
-    it("blocks vague agent plan-mode input locally and shows clarification prompt", async () => {
-        usePlanStore.setState({ enabled: true });
+    it("forwards agent plan-mode input without local clarification", async () => {
+        useAgentModeStore.getState().setMode("ws1", "plan");
         await act(async () => {
             render(<AgentHookStateHost />);
         });
@@ -953,13 +610,16 @@ describe("usePiStream", () => {
             screen.getByText("send-agent-plan-greeting").click();
         });
 
-        expect(agentsPrompt).not.toHaveBeenCalled();
-        expect(usePlanStore.getState().pendingPlanClarification).not.toBeNull();
-        expect(usePlanStore.getState().pendingPlanClarification?.originalContent).toBe("你好?");
+        expect(agentsPrompt).toHaveBeenCalledWith({
+            agentId: "agent_1",
+            message: "你好?",
+            mode: "plan",
+        });
+        expect(usePlanStore.getState().pendingPlanClarification).toBeNull();
     });
 
-    it("sends plan prompt with /plan prefix after clarification is provided", async () => {
-        usePlanStore.setState({ enabled: true, pendingPlanClarification: { workspaceId: "ws1", originalContent: "了解一下这个项目" } });
+    it("forwards plan-mode tasks verbatim instead of wrapping them into /plan prompts", async () => {
+        useAgentModeStore.getState().setMode("ws1", "plan");
         await act(async () => {
             render(<PlanHookStateHost />);
         });
@@ -968,13 +628,7 @@ describe("usePiStream", () => {
             screen.getByText("send-plan-task").click();
         });
 
-        expect(sendPrompt).toHaveBeenCalledTimes(1);
-        const [, outbound] = sendPrompt.mock.calls[0] as unknown as [string, string];
-        expect(outbound).toContain("/plan\n");
-        expect(outbound).toContain("原始请求:");
-        expect(outbound).toContain("了解一下这个项目");
-        expect(outbound).toContain("补充目标:");
-        expect(outbound).toContain("为聊天输入框制定改版计划");
+        expect(sendPrompt).toHaveBeenCalledWith("ws1", "为聊天输入框制定改版计划", { mode: "plan" });
         expect(usePlanStore.getState().pendingPlanClarification).toBeNull();
     });
 
@@ -992,15 +646,11 @@ describe("usePiStream", () => {
             screen.getByText("send-follow-up").click();
         });
 
-        expect(sendPrompt).toHaveBeenCalledWith(
-            "ws1",
-            expect.stringContaining("follow up"),
-            { mode: "build" },
-        );
+        expect(sendPrompt).toHaveBeenCalledWith("ws1", "follow up", { mode: "build" });
     });
 
-    it("stops showing the current turn as thinking once a plan card is waiting for a decision", async () => {
-        usePlanStore.setState({ enabled: true, pendingPlanClarification: { workspaceId: "ws1", originalContent: "了解一下这个项目" } });
+    it("stops showing the current turn as thinking once a structured plan card arrives", async () => {
+        useAgentModeStore.getState().setMode("ws1", "plan");
         await act(async () => {
             render(<PlanHookStateHost />);
         });
@@ -1019,14 +669,11 @@ describe("usePiStream", () => {
                     delta: "正在制定计划",
                 },
             });
-            emitPiEvent?.({
-                type: "message_update",
-                assistantMessageEvent: {
-                    type: "toolcall_start",
-                    toolCallId: "plan_tool_1",
-                    toolName: "plan_write",
-                    args: { title: "测试计划", content: "- 检查\n- 修改" },
-                },
+            usePlanStore.getState().setCard({
+                id: "plan_tool_1",
+                title: "测试计划",
+                content: "- 检查\n- 修改",
+                createdAt: Date.now(),
             });
         });
 
@@ -1034,8 +681,8 @@ describe("usePiStream", () => {
         expect(screen.getByTestId("streaming").textContent).toBe("false");
     });
 
-    it("does not create an executable fallback plan card for a generic plan-mode greeting response", async () => {
-        usePlanStore.setState({ enabled: true, pendingPlanClarification: { workspaceId: "ws1", originalContent: "了解一下这个项目" } });
+    it("does not synthesize fallback plan cards from assistant text on turn_end", async () => {
+        useAgentModeStore.getState().setMode("ws1", "plan");
         await act(async () => {
             render(<PlanHookStateHost />);
         });
@@ -1051,10 +698,10 @@ describe("usePiStream", () => {
                 assistantMessageEvent: {
                     type: "text_delta",
                     delta: [
-                        "<think>用户只是问候，不应创建计划卡</think>",
-                        "你好。关于 /plan，它通常用于规划任务。",
-                        "新功能设计 -> 拆解任务、识别依赖、制定里程碑。",
-                        "请告诉我你的目标。",
+                        "实施计划：",
+                        "1. 修改输入框",
+                        "2. 跑测试",
+                        "[DONE:1]",
                     ].join("\n"),
                 },
             });
@@ -1065,8 +712,8 @@ describe("usePiStream", () => {
         expect(usePlanStore.getState().decisionRequest).toBeNull();
     });
 
-    it("blocks vague plan-mode greetings locally and shows clarification prompt", async () => {
-        usePlanStore.setState({ enabled: true });
+    it("forwards plan-mode greetings directly", async () => {
+        useAgentModeStore.getState().setMode("ws1", "plan");
         await act(async () => {
             render(<PlanHookStateHost />);
         });
@@ -1075,14 +722,12 @@ describe("usePiStream", () => {
             screen.getByText("send-plan-greeting").click();
         });
 
-        expect(sendPrompt).not.toHaveBeenCalled();
-        expect(agentsPrompt).not.toHaveBeenCalled();
-        expect(usePlanStore.getState().pendingPlanClarification).not.toBeNull();
-        expect(usePlanStore.getState().pendingPlanClarification?.originalContent).toBe("你好");
+        expect(sendPrompt).toHaveBeenCalledWith("ws1", "你好", { mode: "plan" });
+        expect(usePlanStore.getState().pendingPlanClarification).toBeNull();
     });
 
-    it("blocks vague plan-mode greetings with attachments locally", async () => {
-        usePlanStore.setState({ enabled: true });
+    it("forwards plan-mode greetings with attachments without stripping the outbound prompt", async () => {
+        useAgentModeStore.getState().setMode("ws1", "plan");
         await act(async () => {
             render(<PlanHookStateHost />);
         });
@@ -1091,12 +736,15 @@ describe("usePiStream", () => {
             screen.getByText("send-plan-greeting-with-attachment").click();
         });
 
-        expect(sendPrompt).not.toHaveBeenCalled();
-        expect(usePlanStore.getState().pendingPlanClarification).not.toBeNull();
+        expect(sendPrompt).toHaveBeenCalledTimes(1);
+        const [, outbound] = sendPrompt.mock.calls[0] as unknown as [string, string];
+        expect(outbound).toContain("附加文件:");
+        expect(outbound).toContain("用户消息:");
+        expect(outbound).toContain("你好?");
     });
 
-    it("sends short project exploration requests directly as plan prompts", async () => {
-        usePlanStore.setState({ enabled: true });
+    it("forwards short project exploration requests verbatim in plan mode", async () => {
+        useAgentModeStore.getState().setMode("ws1", "plan");
         await act(async () => {
             render(<PlanHookStateHost />);
         });
@@ -1105,76 +753,8 @@ describe("usePiStream", () => {
             screen.getByText("send-short-plan-task").click();
         });
 
-        expect(usePlanStore.getState().decisionRequest).toBeNull();
+        expect(sendPrompt).toHaveBeenCalledWith("ws1", "了解一下这个项目", { mode: "plan" });
         expect(usePlanStore.getState().pendingPlanClarification).toBeNull();
-        expect(sendPrompt).toHaveBeenCalledTimes(1);
-        const [, outbound] = sendPrompt.mock.calls[0] as unknown as [string, string];
-        expect(outbound).toContain("/plan\n");
-        expect(outbound).toContain("了解一下这个项目");
-        expect(outbound).toContain("先只读探索");
-    });
-
-    it("keeps project exploration instructions out of the visible user message", async () => {
-        usePlanStore.setState({ enabled: true });
-        await act(async () => {
-            render(<PlanHookStateHost />);
-        });
-
-        await act(async () => {
-            screen.getByText("send-short-plan-task").click();
-        });
-
-        const session = useSessionStore.getState().sessions[0];
-        expect(session.messages[0]).toMatchObject({
-            role: "user",
-            content: "了解一下这个项目",
-        });
-        expect(session.messages[0]?.content).not.toContain("要求:");
-        expect(session.messages[0]?.content).not.toContain("先只读探索");
-    });
-
-    it("sanitizes already wrapped plan prompts before showing the user message", async () => {
-        usePlanStore.setState({ enabled: true });
-        await act(async () => {
-            render(<PlanHookStateHost />);
-        });
-
-        await act(async () => {
-            screen.getByText("send-prewrapped-plan-task").click();
-        });
-
-        const session = useSessionStore.getState().sessions[0];
-        expect(session.messages[0]).toMatchObject({
-            role: "user",
-            content: "了解一下这个项目",
-        });
-        expect(session.messages[0]?.content).not.toContain("要求:");
-    });
-
-    it("combines original request with supplement when clarification is pending", async () => {
-        usePlanStore.setState({ enabled: true });
-        await act(async () => {
-            render(<PlanHookStateHost />);
-        });
-
-        await act(async () => {
-            screen.getByText("send-plan-greeting").click();
-        });
-        expect(sendPrompt).not.toHaveBeenCalled();
-        expect(usePlanStore.getState().pendingPlanClarification?.originalContent).toBe("你好");
-
-        await act(async () => {
-            screen.getByText("send-plan-task").click();
-        });
-
-        expect(usePlanStore.getState().pendingPlanClarification).toBeNull();
-        expect(sendPrompt).toHaveBeenCalledTimes(1);
-        const [, outbound] = sendPrompt.mock.calls[0] as unknown as [string, string];
-        expect(outbound).toContain("/plan\n");
-        expect(outbound).toContain("原始请求:");
-        expect(outbound).toContain("你好");
-        expect(outbound).toContain("补充目标:");
-        expect(outbound).toContain("为聊天输入框制定改版计划");
     });
 
     it("preserves text when duplicate agent_start arrives within the same turn", async () => {

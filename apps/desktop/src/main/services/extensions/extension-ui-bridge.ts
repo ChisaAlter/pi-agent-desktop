@@ -26,6 +26,14 @@ interface ExtensionUiBridgeScope {
     agentId?: string;
 }
 
+interface ExtensionUiBridgeObservers {
+    onPlanProgress?: (payload: {
+        workspaceId: string;
+        agentId?: string;
+        items: PlanProgressItem[];
+    }) => void;
+}
+
 const pendingRequests = new Map<string, PendingRequest>();
 let currentPermissionMode: "ask" | "smart" | "always" = "smart";
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
@@ -151,7 +159,11 @@ export function emitPlanCard(card: PlanCard, workspaceId?: string): void {
     });
 }
 
-export function createExtensionUiBridge(workspaceId: string, scope: ExtensionUiBridgeScope = {}): ExtensionUIContext {
+export function createExtensionUiBridge(
+    workspaceId: string,
+    scope: ExtensionUiBridgeScope = {},
+    observers: ExtensionUiBridgeObservers = {},
+): ExtensionUIContext {
     const request = async (
         kind: ExtensionUiRequest["kind"],
         rawTitle: string,
@@ -225,12 +237,18 @@ export function createExtensionUiBridge(workspaceId: string, scope: ExtensionUiB
         setWidget(key: string, content: unknown, _options?: ExtensionWidgetOptions) {
             if (key === "plan-todos") {
                 const lines = Array.isArray(content) ? content.filter((item): item is string => typeof item === "string") : [];
-                send("plan:progress", {
+                const payload = {
                     workspaceId,
                     agentId: scope.agentId,
                     items: parsePlanWidgetLines(lines),
                     status: lines.length > 0 ? "executing" : "idle",
+                } as const;
+                observers.onPlanProgress?.({
+                    workspaceId,
+                    agentId: scope.agentId,
+                    items: payload.items,
                 });
+                send("plan:progress", payload);
             }
         },
         setFooter() {},

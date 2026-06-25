@@ -8,6 +8,7 @@ import { useWorkspaceStore } from "../../stores/workspace-store";
 import { usePiStatusStore } from "../../stores/pi-status-store";
 import { usePlanStore } from "../../stores/plan-store";
 import { useAgentStore } from "../../stores/agent-store";
+import { useAgentModeStore } from "../../stores/agent-mode-store";
 import { ChatView } from "./ChatView";
 
 const clearError = vi.fn();
@@ -98,6 +99,7 @@ describe("ChatView", () => {
       progress: null,
     });
     usePlanStore.getState().reset();
+    useAgentModeStore.setState({ byWorkspace: {} });
     useAgentStore.setState({
       agents: [],
       currentAgentId: null,
@@ -126,6 +128,11 @@ describe("ChatView", () => {
           createdAt: Date.now(),
           updatedAt: Date.now(),
         })),
+        planMaterialize: vi.fn(async () => ({
+          filename: "inline-plan.md",
+          path: "C:/ai/pi-agent-desktop/.pi/plans/inline-plan.md",
+        })),
+        planSetEnabled: vi.fn(async () => undefined),
         agentsMessages: vi.fn(async () => []),
         agentsRuntimeState: vi.fn(async (agentId: string) => ({ agentId, status: "idle", isStreaming: false })),
       },
@@ -299,102 +306,6 @@ describe("ChatView", () => {
     expect(scrollTo).toHaveBeenCalled();
   });
 
-  it("scrolls to a targeted history message when App requests a message jump", async () => {
-    mockedStreamError = null;
-    const scrollIntoView = vi.fn();
-    Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
-      value: scrollIntoView,
-      configurable: true,
-    });
-
-    useSessionStore.setState({
-      sessions: [
-        {
-          id: "s1",
-          title: "Session 1",
-          workspaceId: "ws1",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          messages: [
-            { id: "m1", role: "user", content: "first", timestamp: new Date(1) },
-            { id: "m2", role: "assistant", content: "target message", timestamp: new Date(2) },
-          ],
-        },
-      ],
-      currentSessionId: "s1",
-    });
-
-    render(
-      <I18nProvider>
-        <ChatView jumpTarget={{ messageId: "m2", nonce: 1 }} />
-      </I18nProvider>,
-    );
-
-    await waitFor(() => {
-      expect(scrollIntoView).toHaveBeenCalled();
-    });
-  });
-
-  it("does not re-scroll the same jump target after later messages update the session", async () => {
-    mockedStreamError = null;
-    const scrollIntoView = vi.fn();
-    Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
-      value: scrollIntoView,
-      configurable: true,
-    });
-    useSessionStore.setState({
-      sessions: [
-        {
-          id: "s1",
-          title: "Session 1",
-          workspaceId: "ws1",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          messages: [
-            { id: "m1", role: "user", content: "first", timestamp: new Date(1) },
-            { id: "m2", role: "assistant", content: "target message", timestamp: new Date(2) },
-          ],
-        },
-      ],
-      currentSessionId: "s1",
-    });
-
-    const jumpTarget = { messageId: "m2", nonce: 1 };
-    const { rerender } = render(
-      <I18nProvider>
-        <ChatView jumpTarget={jumpTarget} />
-      </I18nProvider>,
-    );
-
-    await waitFor(() => {
-      expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    });
-
-    act(() => {
-      useSessionStore.setState((state) => ({
-        sessions: state.sessions.map((session) => (
-          session.id === "s1"
-            ? {
-                ...session,
-                messages: [
-                  ...session.messages,
-                  { id: "m3", role: "assistant", content: "follow up", timestamp: new Date(3) },
-                ],
-              }
-            : session
-        )),
-      }));
-    });
-    rerender(
-      <I18nProvider>
-        <ChatView jumpTarget={jumpTarget} />
-      </I18nProvider>,
-    );
-
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(scrollIntoView).toHaveBeenCalledTimes(1);
-  });
-
   it("does not create a session just by opening an empty draft", async () => {
     useSessionStore.setState({ sessions: [], currentSessionId: null });
 
@@ -429,7 +340,7 @@ describe("ChatView", () => {
       title: "未命名会话 Agent",
       sessionId: createdSessionId,
     });
-    expect(useSessionStore.getState().sessions[0]?.messages).toEqual([]);
+    expect(useSessionStore.getState().sessions[0]?.messages[0]?.content).toBe("draft hello");
     await waitFor(() => expect(startStreaming).toHaveBeenCalledWith("ws1", "draft hello", {
       agentId: `agent_${createdSessionId}`,
     }));
@@ -437,7 +348,6 @@ describe("ChatView", () => {
 
   it("uses the agent that belongs to the current workspace", async () => {
     mockedStreamError = null;
-    useSessionStore.setState({ sessions: [], currentSessionId: null });
     useWorkspaceStore.setState({
       workspaces: [
         {
@@ -495,46 +405,6 @@ describe("ChatView", () => {
     await waitFor(() => expect(startStreaming).toHaveBeenCalledWith("ws2", "draft hello", {
       agentId: expect.stringMatching(/^agent_/),
     }));
-  });
-
-  it("does not fall back to a workspace default agent while a session without a bound agent is open", () => {
-    mockedStreamError = null;
-    useAgentStore.setState({
-      agents: [
-        {
-          id: "agent_ws1_default",
-          workspaceId: "ws1",
-          title: "Repo one Agent",
-          status: "idle",
-          createdAt: 1,
-          updatedAt: 1,
-        },
-      ],
-      currentAgentId: "agent_ws1_default",
-      messagesByAgent: {
-        agent_ws1_default: [
-          {
-            id: "am_wrong",
-            agentId: "agent_ws1_default",
-            role: "assistant",
-            content: "workspace default agent reply",
-            createdAt: 10,
-          },
-        ],
-      },
-      runtimeByAgent: {},
-      initialized: true,
-    });
-
-    render(
-      <I18nProvider>
-        <ChatView />
-      </I18nProvider>,
-    );
-
-    expect(screen.getByTestId("chat-input-shell").getAttribute("data-agent-id")).toBe("");
-    expect(screen.getByText("hello")).toBeTruthy();
-    expect(screen.queryByText("workspace default agent reply")).toBeNull();
   });
 
   it("shows an inline error when continuing a read-only session fails", async () => {
@@ -627,8 +497,13 @@ describe("ChatView", () => {
     expect(screen.queryByText("Let me first understand the pi agent project.")).toBeNull();
   });
 
-  it("executes a plan through a hidden command while showing a clean user-facing message", async () => {
+  it("materializes the plan file before executing even when the plan metadata already has a filename", async () => {
     mockedStreamError = null;
+    useAgentModeStore.getState().setMode("ws1", "plan");
+    window.piAPI.planMaterialize = vi.fn(async () => ({
+      filename: "test-plan.md",
+      path: "C:/ai/pi-agent-desktop/.pi/plans/test-plan.md",
+    }));
     useSessionStore.setState((state) => ({
       sessions: state.sessions.map((session) => (
         session.id === "s1"
@@ -662,11 +537,68 @@ describe("ChatView", () => {
     fireEvent.click(screen.getByText("execute-plan"));
 
     await waitFor(() => {
+      expect(window.piAPI.planMaterialize).toHaveBeenCalledWith({
+        workspaceId: "ws1",
+        title: "测试计划",
+        content: "- 检查\n- 修改",
+        preferredFilename: "test-plan.md",
+      });
       expect(startStreaming).toHaveBeenCalledWith("ws1", "/execute_plan test-plan.md", {
         agentId: "agent_s1",
         visibleContent: "执行计划：test-plan.md",
       });
     });
+    expect(window.piAPI.planSetEnabled).not.toHaveBeenCalled();
+    expect(useAgentModeStore.getState().getMode("ws1")).toBe("build");
+  });
+
+  it("executes an inline inferred plan without forcing a filename argument", async () => {
+    mockedStreamError = null;
+    useAgentModeStore.getState().setMode("ws1", "plan");
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              messages: [
+                {
+                  id: "inline-plan-message",
+                  role: "assistant",
+                  content: "- 创建 plan_probe.txt\n- 验证文件存在",
+                  timestamp: new Date(0),
+                  planAction: {
+                    id: "plan_action_inline",
+                    title: "内联计划",
+                    status: "pending",
+                  },
+                },
+              ],
+            }
+          : session
+      )),
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByText("execute-plan"));
+
+    await waitFor(() => {
+      expect(window.piAPI.planMaterialize).toHaveBeenCalledWith({
+        workspaceId: "ws1",
+        title: "内联计划",
+        content: "- 创建 plan_probe.txt\n- 验证文件存在",
+      });
+      expect(startStreaming).toHaveBeenCalledWith("ws1", "/execute_plan inline-plan.md", {
+        agentId: "agent_s1",
+        visibleContent: "执行计划：inline-plan.md",
+      });
+    });
+    expect(window.piAPI.planSetEnabled).not.toHaveBeenCalled();
+    expect(useAgentModeStore.getState().getMode("ws1")).toBe("build");
   });
 
   it("pauses an executing plan through stopStreaming", async () => {

@@ -1,6 +1,6 @@
 // Approval Interceptor
-// Intercepts session events for plan-mode write blocking and post-edit review telemetry.
-// High-risk runtime permissions are now owned by pi-permission-system, not this interceptor.
+// Intercepts session events, decides whether to show approval, calls session.abort() on reject
+// Known limitation: abort kills entire turn (not single tool). Future: Pi extension for per-tool control
 // Event types use @shared/events PiEvent
 
 import { classifyToolCall } from "./classifier";
@@ -8,7 +8,7 @@ import { readFile } from "fs/promises";
 import { join } from "path";
 import type { PiEvent, PiToolExecutionStart, PiToolExecutionEnd } from "@shared/events";
 import type { PendingEdits } from "./pending-edits";
-import type { AgentMode } from "@shared";
+import type { AgentMode, PlanCard } from "@shared";
 import { isPlanModeToolAllowed } from "../agent-modes";
 
 export interface InterceptorDeps {
@@ -25,6 +25,7 @@ export interface ApprovalInterceptor {
 
 interface ToolCallArgs {
     toolCallId: string;
+    toolName: string;
     args: Record<string, unknown>;
 }
 
@@ -37,13 +38,17 @@ function asToolEnd(e: PiEvent): PiToolExecutionEnd | null {
 
 export function createApprovalInterceptor(workspaceId: string, deps: InterceptorDeps): ApprovalInterceptor {
     const announcedToolArgs = new Map<string, Record<string, unknown>>();
+    const emittedPlanCards = new Set<string>();
 
     return {
         async handleEvent(event: PiEvent) {
             if (!event || typeof event !== "object") return;
 
             const announced = asToolCallArgs(event);
-            if (announced) announcedToolArgs.set(announced.toolCallId, announced.args);
+            if (announced) {
+                announcedToolArgs.set(announced.toolCallId, announced.args);
+                emitStructuredPlanCard(announced.toolName, announced.toolCallId, announced.args, emittedPlanCards, workspaceId, deps.send);
+            }
 
             const start = asToolStart(event);
             if (start) {
@@ -53,6 +58,7 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                 const cachedArgs = announcedToolArgs.get(toolCallId);
                 const safeArgs: Record<string, unknown> =
                     hasMeaningfulArgs(eventArgs) ? eventArgs : cachedArgs ?? eventArgs ?? {};
+                emitStructuredPlanCard(toolName, toolCallId, safeArgs, emittedPlanCards, workspaceId, deps.send);
                 if (deps.getMode?.() === "plan" && !isPlanModeToolAllowed({
                     toolName,
                     args: safeArgs,
@@ -84,19 +90,11 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                     if (!filePath) return;
                     // autoApprove 时跳过 deferred 编辑追踪 (用户已选择自动批准)
                     if (deps.pendingEdits.autoApprove) return;
-                    let oldContent: string | undefined;
-                    try {
-                        const absPath = join(deps.workspacePath, filePath);
-                        oldContent = await readFile(absPath, "utf-8");
-                    } catch {
-                        // 目标文件可能尚不存在(新建文件)；review 时按空基线处理即可
-                    }
                     const changeId = deps.pendingEdits.track(
                         toolCallId,
                         toolName as "write" | "edit",
                         filePath,
                         {
-                            oldContent,
                             content: typeof safeArgs.content === "string" ? safeArgs.content
                                 : typeof safeArgs.file_text === "string" ? safeArgs.file_text
                                 : undefined,
@@ -136,7 +134,7 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                     // 文件可能不存在 (新建失败), 用空
                 }
 
-                const oldContent = change.oldContent ?? "";
+                const oldContent = change.newContent ?? "";
                 const diff = generateUnifiedDiff(oldContent, newContent, change.filePath);
                 deps.pendingEdits.review(change.id, diff, newContent);
                 deps.send("approval:review", workspaceId, {
@@ -164,8 +162,42 @@ function asToolCallArgs(event: PiEvent): ToolCallArgs | null {
     const payloadType = payload.type ?? payload.subtype;
     if (payloadType !== "toolcall_start") return null;
     if (typeof payload.toolCallId !== "string") return null;
+    if (typeof payload.toolName !== "string") return null;
     const args = extractToolArgs(payload) ?? {};
-    return { toolCallId: payload.toolCallId, args };
+    return { toolCallId: payload.toolCallId, toolName: payload.toolName, args };
+}
+
+function emitStructuredPlanCard(
+    toolName: string,
+    toolCallId: string,
+    args: Record<string, unknown>,
+    emittedPlanCards: Set<string>,
+    workspaceId: string,
+    send: InterceptorDeps["send"],
+): void {
+    if (toolName !== "plan_write" || emittedPlanCards.has(toolCallId)) return;
+    const card = planCardFromArgs(toolCallId, args);
+    if (!card) return;
+    emittedPlanCards.add(toolCallId);
+    send("plan:card", workspaceId, card);
+}
+
+function planCardFromArgs(toolCallId: string, args: Record<string, unknown>): PlanCard | null {
+    const title = typeof args.title === "string" && args.title.trim()
+        ? args.title.trim()
+        : "计划";
+    const content = typeof args.content === "string" ? args.content.trim() : "";
+    const filename = typeof args.filename === "string" && args.filename.trim()
+        ? args.filename.trim()
+        : undefined;
+    if (!content && !filename) return null;
+    return {
+        id: toolCallId,
+        title,
+        content,
+        filename,
+        createdAt: Date.now(),
+    };
 }
 
 function extractToolStartArgs(start: PiToolExecutionStart): Record<string, unknown> | undefined {

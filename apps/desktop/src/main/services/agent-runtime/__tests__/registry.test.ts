@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_LONG_HORIZON_SETTINGS } from "@shared";
 import { AgentRuntimeRegistry } from "../registry";
 import { PendingEdits } from "../../approval/pending-edits";
 import { createExtensionUiBridge } from "../../extensions/extension-ui-bridge";
 import { createApprovalInterceptor } from "../../approval/interceptor";
+import { createWorkspaceSession } from "../../pi-session/factory";
 
 const sessions: Array<{
     prompt: ReturnType<typeof vi.fn>;
@@ -40,6 +42,7 @@ vi.mock("../../pi-session/factory", () => ({
             dispose: session.dispose,
         };
     }),
+    resolveBundledDesktopExtensionPaths: vi.fn(() => []),
 }));
 
 vi.mock("../../approval/interceptor", () => ({
@@ -66,6 +69,7 @@ describe("AgentRuntimeRegistry", () => {
         sessions.length = 0;
         interceptorHandleMock.mockReset();
         interceptorHandleMock.mockResolvedValue(undefined);
+        vi.mocked(createWorkspaceSession).mockClear();
         emitted = [];
         registry = new AgentRuntimeRegistry({
             getWorkspace: (workspaceId) =>
@@ -91,7 +95,11 @@ describe("AgentRuntimeRegistry", () => {
     it("scopes extension UI permission requests to the created agent", async () => {
         const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
 
-        expect(createExtensionUiBridge).toHaveBeenCalledWith("ws_1", { agentId: agent.id });
+        expect(createExtensionUiBridge).toHaveBeenCalledWith(
+            "ws_1",
+            { agentId: agent.id },
+            expect.objectContaining({ onPlanProgress: expect.any(Function) }),
+        );
     });
 
     it("creates agent sessions with the selected desktop provider and model", async () => {
@@ -171,6 +179,50 @@ describe("AgentRuntimeRegistry", () => {
         });
     });
 
+    it("records recent user intent into long-horizon memory for agent prompts", async () => {
+        const memoryPut = vi.fn();
+        registry = new AgentRuntimeRegistry({
+            getWorkspace: (workspaceId) =>
+                workspaceId === "ws_1"
+                    ? { id: "ws_1", name: "demo", path: "C:/demo", createdAt: 1 }
+                    : undefined,
+            pendingEdits: new PendingEdits(),
+            send: (channel, payload) => emitted.push({ channel, payload }),
+            getSettings: () => ({
+                theme: "light",
+                fontSize: 14,
+                model: "LongCat-2.0-Preview",
+                provider: "longcat",
+                apiKey: "",
+                temperature: 0.7,
+                maxTokens: 4096,
+                autoSave: true,
+                showLineNumbers: true,
+                wordWrap: true,
+                permissionLevel: "smart",
+                longHorizon: {
+                    ...DEFAULT_LONG_HORIZON_SETTINGS,
+                    enabled: true,
+                    memory: {
+                        ...DEFAULT_LONG_HORIZON_SETTINGS.memory,
+                        enabled: true,
+                    },
+                },
+            }),
+            getMemoryService: () => ({ put: memoryPut }) as never,
+        });
+        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+
+        await registry.prompt({ agentId: agent.id, message: "remember this" });
+
+        expect(memoryPut).toHaveBeenCalledWith(expect.objectContaining({
+            workspaceId: "ws_1",
+            kind: "note",
+            text: "remember this",
+            tags: expect.arrayContaining(["recent-user-intent"]),
+        }));
+    });
+
     it("keeps internal plan wrapper text out of visible agent user messages", async () => {
         const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
         const wrapped = [
@@ -186,8 +238,8 @@ describe("AgentRuntimeRegistry", () => {
 
         await registry.prompt({ agentId: agent.id, message: wrapped, mode: "plan" });
 
-        expect(sessions[0].prompt).toHaveBeenCalledWith(expect.stringContaining("Plan mode is active"), undefined);
-        expect(sessions[0].prompt).toHaveBeenCalledWith(expect.stringContaining("用户请求:"), undefined);
+        expect(sessions[0].prompt).toHaveBeenNthCalledWith(1, "/plan");
+        expect(sessions[0].prompt).toHaveBeenNthCalledWith(2, expect.stringContaining("用户请求:"), undefined);
         expect(registry.getMessages(agent.id)[0]).toMatchObject({
             role: "user",
             content: "制定计划，了解一下这个项目",
@@ -196,95 +248,30 @@ describe("AgentRuntimeRegistry", () => {
         expect(registry.getMessages(agent.id)[0]?.content).not.toContain("先只读探索");
     });
 
+    it("enters real plan mode before sending the raw user request", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+
+        await registry.prompt({ agentId: agent.id, message: "改输入区", mode: "plan" });
+
+        expect(sessions[0].prompt).toHaveBeenNthCalledWith(1, "/plan");
+        expect(sessions[0].prompt).toHaveBeenNthCalledWith(2, "改输入区", undefined);
+    });
+
+    it("enters real compose mode before sending the raw user request", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+
+        await registry.prompt({ agentId: agent.id, message: "全面审查代码", mode: "compose" });
+
+        expect(sessions[0].prompt).toHaveBeenNthCalledWith(1, "/compose on");
+        expect(sessions[0].prompt).toHaveBeenNthCalledWith(2, "全面审查代码", undefined);
+    });
+
     it("forwards streaming behavior for queued prompts", async () => {
         const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
 
         await registry.prompt({ agentId: agent.id, message: "follow later", streamingBehavior: "followUp" });
 
         expect(sessions[0].prompt).toHaveBeenCalledWith("follow later", { streamingBehavior: "followUp" });
-    });
-
-    it("routes max mode through the max runner and replays the winner into the primary session", async () => {
-        const maxRun = vi.fn(async (input: { prompt: string; replayWinner: (content: string) => Promise<void> }) => {
-            expect(input.prompt).toContain("Max mode is active");
-            expect(input.prompt).toContain("solve hard task");
-            await input.replayWinner("winner plan");
-            return {
-                winnerId: "candidate-2",
-                reason: "best",
-                overhead: { candidates: 5, promptChars: 10, resultChars: 20 },
-            };
-        });
-        registry = new AgentRuntimeRegistry({
-            getWorkspace: (workspaceId) =>
-                workspaceId === "ws_1"
-                    ? { id: "ws_1", name: "demo", path: "C:/demo", createdAt: 1 }
-                    : undefined,
-            pendingEdits: new PendingEdits(),
-            send: (channel, payload) => emitted.push({ channel, payload }),
-            getModeOptions: () => ({ longHorizonEnabled: true, maxModeEnabled: true }),
-            maxModeService: { run: maxRun } as never,
-        });
-        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
-
-        await registry.prompt({ agentId: agent.id, message: "solve hard task", mode: "max" });
-
-        expect(maxRun).toHaveBeenCalledTimes(1);
-        expect(sessions[0].prompt).toHaveBeenCalledWith("winner plan", undefined);
-        expect(sessions[0].prompt).not.toHaveBeenCalledWith(expect.stringContaining("solve hard task"), undefined);
-    });
-
-    it("uses real temporary candidate and judge sessions for max mode when no runner is injected", async () => {
-        registry = new AgentRuntimeRegistry({
-            getWorkspace: (workspaceId) =>
-                workspaceId === "ws_1"
-                    ? { id: "ws_1", name: "demo", path: "C:/demo", createdAt: 1 }
-                    : undefined,
-            pendingEdits: new PendingEdits(),
-            send: (channel, payload) => emitted.push({ channel, payload }),
-            getModeOptions: () => ({ longHorizonEnabled: true, maxModeEnabled: true, maxCandidates: 2 }),
-        });
-        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
-
-        await registry.prompt({ agentId: agent.id, message: "solve hard task", mode: "max" });
-
-        expect(sessions).toHaveLength(4);
-        expect(sessions[1].prompt).toHaveBeenCalledWith(expect.stringContaining("solve hard task"));
-        expect(sessions[2].prompt).toHaveBeenCalledWith(expect.stringContaining("solve hard task"));
-        expect(sessions[3].prompt).toHaveBeenCalledWith(expect.stringContaining("candidate-1"));
-        expect(sessions[3].prompt).toHaveBeenCalledWith(expect.stringContaining("candidate-2"));
-        expect(sessions[0].prompt).toHaveBeenCalledWith("longer candidate answer", undefined);
-        expect(sessions[1].dispose).toHaveBeenCalled();
-        expect(sessions[2].dispose).toHaveBeenCalled();
-        expect(sessions[3].dispose).toHaveBeenCalled();
-    });
-
-    it("routes max candidate tool events through the approval interceptor in plan mode", async () => {
-        registry = new AgentRuntimeRegistry({
-            getWorkspace: (workspaceId) =>
-                workspaceId === "ws_1"
-                    ? { id: "ws_1", name: "demo", path: "C:/demo", createdAt: 1 }
-                    : undefined,
-            pendingEdits: new PendingEdits(),
-            send: (channel, payload) => emitted.push({ channel, payload }),
-            getModeOptions: () => ({ longHorizonEnabled: true, maxModeEnabled: true, maxCandidates: 1 }),
-        });
-        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
-        await registry.prompt({ agentId: agent.id, message: "solve hard task", mode: "max" });
-        interceptorHandleMock.mockClear();
-
-        await sessions[1].subscribers[0]?.({
-            type: "tool_execution_start",
-            toolName: "write",
-            args: { path: "src/a.ts" },
-            toolCallId: "tc1",
-        });
-
-        expect(interceptorHandleMock).toHaveBeenCalledWith(expect.objectContaining({ type: "tool_execution_start" }));
-        const candidateInterceptorDeps = vi.mocked(createApprovalInterceptor).mock.calls.find((call) =>
-            String((call[1] as { getMode?: () => string }).getMode?.()) === "plan"
-        );
-        expect(candidateInterceptorDeps).toBeTruthy();
     });
 
     it("restarts with the same session path and replaces runtime", async () => {
@@ -301,6 +288,19 @@ describe("AgentRuntimeRegistry", () => {
         expect(restarted.sessionPath).toBe("C:/pi/session.jsonl");
         expect(sessions[0].dispose).toHaveBeenCalled();
         expect(sessions).toHaveLength(2);
+    });
+
+    it("refreshes workspace runtimes in place without changing agent ids", async () => {
+        const first = await registry.create({ workspaceId: "ws_1", title: "A" });
+        const second = await registry.create({ workspaceId: "ws_1", title: "B" });
+
+        await registry.refreshWorkspace("ws_1");
+
+        expect(sessions[0].dispose).toHaveBeenCalled();
+        expect(sessions[1].dispose).toHaveBeenCalled();
+        expect(registry.list().map((agent) => agent.id)).toEqual([first.id, second.id]);
+        expect(registry.list().map((agent) => agent.title)).toEqual(["A", "B"]);
+        expect(sessions).toHaveLength(4);
     });
 
     it("stops one agent without touching another", async () => {

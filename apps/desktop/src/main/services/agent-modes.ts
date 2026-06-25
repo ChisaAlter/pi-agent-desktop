@@ -5,7 +5,6 @@ export interface AgentModeRuntimeOptions {
     longHorizonEnabled?: boolean;
     planModeEnabled?: boolean;
     composeModeEnabled?: boolean;
-    maxModeEnabled?: boolean;
 }
 
 export interface AgentRegistryEntry {
@@ -13,11 +12,6 @@ export interface AgentRegistryEntry {
     mode: AgentMode;
     role: "primary" | "subagent";
     experimental?: boolean;
-    description: string;
-}
-
-interface ComposeSkill {
-    name: string;
     description: string;
 }
 
@@ -46,26 +40,6 @@ const PRIMARY_AGENTS: AgentRegistryEntry[] = [
     { id: "build", mode: "build", role: "primary", description: "Default implementation mode." },
     { id: "plan", mode: "plan", role: "primary", description: "Read-only planning mode with .pi/plans/*.md as the only write target." },
     { id: "compose", mode: "compose", role: "primary", description: "Workflow/task orchestrator mode." },
-];
-
-const MAX_AGENT: AgentRegistryEntry = {
-    id: "max",
-    mode: "max",
-    role: "primary",
-    experimental: true,
-    description: "Experimental candidate generation and judge mode.",
-};
-
-const COMPOSE_SKILLS: ComposeSkill[] = [
-    { name: "compose:brainstorm", description: "澄清目标、约束和成功标准，形成可执行设计。" },
-    { name: "compose:plan", description: "把设计拆成可验证的实施计划，先计划再动手。" },
-    { name: "compose:execute", description: "按计划分步实现，并在关键步骤后验证。" },
-    { name: "compose:review", description: "审查代码改动，优先找 bug、风险和测试缺口。" },
-    { name: "compose:verify", description: "运行类型检查、lint、测试和必要的端到端验证。" },
-    { name: "compose:report", description: "汇总完成内容、验证证据、残留风险和后续动作。" },
-    { name: "compose:ask", description: "需要用户决策时提出短问题；可推断时继续执行。" },
-    { name: "compose:tdd", description: "先写失败测试，再实现最小代码，再重构。" },
-    { name: "compose:debug", description: "系统化排查：复现、假设、证据、修复、回归测试。" },
 ];
 
 const GOAL_COMMANDS: PiSlashCommand[] = [
@@ -150,35 +124,23 @@ export function agentRegistry(options: AgentModeRuntimeOptions = {}): AgentRegis
     const longHorizonEnabled = options.longHorizonEnabled ?? true;
     const planModeEnabled = options.planModeEnabled ?? true;
     const composeModeEnabled = options.composeModeEnabled ?? true;
-    const maxModeEnabled = options.maxModeEnabled ?? true;
     if (!longHorizonEnabled) return [PRIMARY_AGENTS[0]];
-    const primaryAgents = [
+    return [
         PRIMARY_AGENTS[0],
         ...(planModeEnabled ? [PRIMARY_AGENTS[1]] : []),
         ...(composeModeEnabled ? [PRIMARY_AGENTS[2]] : []),
+        ...SYSTEM_SUBAGENTS,
     ];
-    return maxModeEnabled ? [...primaryAgents, MAX_AGENT, ...SYSTEM_SUBAGENTS] : [...primaryAgents, ...SYSTEM_SUBAGENTS];
 }
 
 export function normalizeAgentMode(value: unknown, options: AgentModeRuntimeOptions = {}): AgentMode {
     const longHorizonEnabled = options.longHorizonEnabled ?? true;
     const planModeEnabled = options.planModeEnabled ?? true;
     const composeModeEnabled = options.composeModeEnabled ?? true;
-    const maxModeEnabled = options.maxModeEnabled ?? true;
     if (!longHorizonEnabled) return "build";
     if (value === "plan" && planModeEnabled) return value;
     if (value === "compose" && composeModeEnabled) return value;
-    if (value === "max" && maxModeEnabled) return "max";
     return "build";
-}
-
-export function composeSlashCommands(): PiSlashCommand[] {
-    return COMPOSE_SKILLS.map((skill) => ({
-        name: skill.name,
-        description: skill.description,
-        source: "skill",
-        requiresArgument: true,
-    }));
 }
 
 export function goalSlashCommands(): PiSlashCommand[] {
@@ -189,52 +151,8 @@ export function buildAgentModePrompt(mode: AgentMode, text: string, options: Age
     const content = text.trim();
     if (options.longHorizonEnabled === false) return content;
     if (mode === "build") return content;
-    if (mode === "plan") {
-        return [
-            "<system-reminder>",
-            "Plan mode is active. The user indicated that they do not want implementation yet.",
-            "You MUST NOT make edits outside `.pi/plans/*.md`, run non-readonly commands, change configuration, commit, or otherwise modify the system before the user explicitly approves the plan.",
-            "",
-            "Allowed write target: `.pi/plans/*.md` only.",
-            "",
-            "Workflow:",
-            "1. Explore the repository with read-only actions.",
-            "2. Ask concise clarification questions only when they materially change the plan.",
-            "3. Write or update a concise implementation plan under `.pi/plans/`.",
-            "4. End by asking the user whether to switch to Build mode and execute the plan, continue refining, or cancel.",
-            "</system-reminder>",
-            "",
-            content,
-        ].join("\n");
-    }
-    if (mode === "max") {
-        return [
-            "<system-reminder>",
-            "Max mode is active. Generate a high-confidence implementation path after comparing candidate approaches. Keep execution grounded in the current repository and avoid claiming native MiMo Max internals exist.",
-            "</system-reminder>",
-            "",
-            content,
-        ].join("\n");
-    }
-    return [
-        "<system-reminder>",
-        "Compose mode is active. Act as a workflow orchestrator inspired by MiMo-Code compose mode.",
-        "Use the local compose skills listed below as real process instructions. Do not claim a native `skill` tool exists; if a skill is relevant, follow its described workflow directly with the tools Pi Desktop actually exposes.",
-        "Route work through the smallest useful loop: understand, plan, execute, verify, report. Ask only when a decision materially changes the outcome.",
-        "</system-reminder>",
-        "",
-        composeSkillsBlock(),
-        "",
-        content,
-    ].join("\n");
-}
-
-export function composeSkillsBlock(): string {
-    return [
-        "<compose_skills>",
-        ...COMPOSE_SKILLS.map((skill) => `- ${skill.name}: ${skill.description}`),
-        "</compose_skills>",
-    ].join("\n");
+    if (mode === "plan") return content;
+    return content;
 }
 
 export function isPlanModeToolAllowed(input: {

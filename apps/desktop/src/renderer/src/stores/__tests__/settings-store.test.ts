@@ -201,27 +201,6 @@ describe("settings-store: updateSettings 走 IPC 错误路径", () => {
         expect(mockApi.setSettings).toHaveBeenCalledWith({ fontSize: 16, wordWrap: false });
     });
 
-    it("flushSettingsWrites 会在关闭窗口前立即落盘最近一次修改", async () => {
-        vi.useFakeTimers();
-        mockApi.setSettings.mockResolvedValue({});
-        useSettingsStore.setState({
-            settings: {
-                theme: "light", fontSize: 14, model: "", provider: "",
-                temperature: 0.7, maxTokens: 4096, autoSave: true,
-                showLineNumbers: true, wordWrap: true,
-            },
-            lastWriteError: null,
-        });
-
-        useSettingsStore.getState().updateSettings({ wordWrap: false });
-        expect(mockApi.setSettings).not.toHaveBeenCalled();
-
-        await useSettingsStore.getState().flushSettingsWrites();
-
-        expect(mockApi.setSettings).toHaveBeenCalledTimes(1);
-        expect(mockApi.setSettings).toHaveBeenCalledWith({ wordWrap: false });
-    });
-
     it("切换模型时同步写入 Pi 默认模型", async () => {
         vi.useFakeTimers();
         mockApi.setSettings.mockResolvedValue({});

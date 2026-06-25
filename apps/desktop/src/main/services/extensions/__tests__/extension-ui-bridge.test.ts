@@ -58,4 +58,39 @@ describe("createExtensionUiBridge pending requests", () => {
         await expect(promise).resolves.toBeUndefined();
         expect(_pendingExtensionUiRequestCount()).toBe(0);
     });
+
+    it("mirrors plan todo widgets into a plan-progress callback for task registry updates", () => {
+        const onPlanProgress = vi.fn();
+        const bridge = (createExtensionUiBridge as unknown as (
+            workspaceId: string,
+            scope?: { agentId?: string },
+            observers?: {
+                onPlanProgress?: (payload: {
+                    workspaceId: string;
+                    agentId?: string;
+                    items: Array<{ id: string; text: string; status: string }>;
+                }) => void;
+            },
+        ) => ReturnType<typeof createExtensionUiBridge>)("ws_1", { agentId: "agent_1" }, { onPlanProgress });
+
+        bridge.setWidget("plan-todos", [
+            "[ ] gather evidence",
+            "[x] write summary",
+            "⏸ wait for approval",
+        ]);
+
+        expect(onPlanProgress).toHaveBeenCalledWith({
+            workspaceId: "ws_1",
+            agentId: "agent_1",
+            items: [
+                { id: "plan_step_0", text: "gather evidence", status: "pending" },
+                { id: "plan_step_1", text: "write summary", status: "completed" },
+                { id: "plan_step_2", text: "⏸ wait for approval", status: "waiting" },
+            ],
+        });
+        expect(webContentsSend).toHaveBeenCalledWith("plan:progress", expect.objectContaining({
+            workspaceId: "ws_1",
+            agentId: "agent_1",
+        }));
+    });
 });

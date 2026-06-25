@@ -3,7 +3,12 @@
 // MIT License. Copyright (c) 2026 MiMo Code, Xiaomi Corporation.
 // MIT License. Copyright (c) 2025 opencode.
 
-import type { LongHorizonSettings, LongHorizonToggle } from "@shared";
+import type {
+    LongHorizonLoadedFrom,
+    LongHorizonRuntimeMeta,
+    LongHorizonRuntimeToggle,
+    LongHorizonSettings,
+} from "@shared";
 
 export interface MiMoCodeAgentPort {
     id: string;
@@ -14,29 +19,29 @@ export interface MiMoCodeAgentPort {
 }
 
 export interface MiMoCodeRuntimeFeatures {
-    planMode: LongHorizonToggle;
-    composeMode: LongHorizonToggle;
-    maxMode: { enabled: boolean; candidates: number };
-    memory: {
+    planMode: LongHorizonRuntimeToggle;
+    composeMode: LongHorizonRuntimeToggle;
+    maxMode: LongHorizonRuntimeMeta & { enabled: boolean; candidates: number };
+    memory: LongHorizonRuntimeMeta & {
         enabled: boolean;
         ccIndex: boolean;
         reconcileOnSearch: boolean;
         searchScoreFloor: number;
     };
-    history: LongHorizonToggle;
-    checkpoint: LongHorizonToggle;
-    goal: LongHorizonToggle;
-    task: LongHorizonToggle;
-    actor: LongHorizonToggle;
-    subagents: LongHorizonToggle;
-    workflow: {
+    history: LongHorizonRuntimeToggle;
+    checkpoint: LongHorizonRuntimeToggle;
+    goal: LongHorizonRuntimeToggle;
+    task: LongHorizonRuntimeToggle;
+    actor: LongHorizonRuntimeToggle;
+    subagents: LongHorizonRuntimeToggle;
+    workflow: LongHorizonRuntimeMeta & {
         enabled: boolean;
         maxConcurrentAgents: number;
         maxLifecycleAgents: number;
         maxDepth: number;
     };
-    dream: LongHorizonToggle;
-    distill: LongHorizonToggle;
+    dream: LongHorizonRuntimeToggle;
+    distill: LongHorizonRuntimeToggle;
 }
 
 export interface MiMoCodeRuntimePort {
@@ -46,7 +51,12 @@ export interface MiMoCodeRuntimePort {
     features: MiMoCodeRuntimeFeatures;
 }
 
-export const MIMOCODE_PRIMARY_AGENT_IDS = ["build", "plan", "compose", "max"] as const;
+export interface MiMoCodeRuntimeSupportOptions {
+    planModeSupported?: boolean;
+    composeModeSupported?: boolean;
+}
+
+export const MIMOCODE_PRIMARY_AGENT_IDS = ["build", "plan", "compose"] as const;
 
 export const MIMOCODE_SYSTEM_AGENT_IDS = [
     "checkpoint-writer",
@@ -101,13 +111,6 @@ const PRIMARY_AGENTS: Record<(typeof MIMOCODE_PRIMARY_AGENT_IDS)[number], MiMoCo
         description: "Compose mode. Orchestrates workflows with built-in compose skills.",
         permissionProfile: "compose",
     },
-    max: {
-        id: "max",
-        mode: "primary",
-        native: true,
-        description: "Experimental Max mode. Runs parallel reasoning candidates and executes the best one.",
-        permissionProfile: "build",
-    },
 };
 
 const SYSTEM_AGENTS: Record<(typeof MIMOCODE_SYSTEM_AGENT_IDS)[number], MiMoCodeAgentPort> = {
@@ -134,13 +137,15 @@ const SYSTEM_AGENTS: Record<(typeof MIMOCODE_SYSTEM_AGENT_IDS)[number], MiMoCode
     },
 };
 
-export function buildMiMoCodeRuntimePort(settings: LongHorizonSettings): MiMoCodeRuntimePort {
-    const features = buildFeatureState(settings);
+export function buildMiMoCodeRuntimePort(
+    settings: LongHorizonSettings,
+    support: MiMoCodeRuntimeSupportOptions = {},
+): MiMoCodeRuntimePort {
+    const features = buildFeatureState(settings, support);
     const primaryAgents = [
         PRIMARY_AGENTS.build,
         ...(features.planMode.enabled ? [PRIMARY_AGENTS.plan] : []),
         ...(features.composeMode.enabled ? [PRIMARY_AGENTS.compose] : []),
-        ...(features.maxMode.enabled ? [PRIMARY_AGENTS.max] : []),
     ];
     const systemAgents = settings.subagents.enabled ? [
         SYSTEM_AGENTS["checkpoint-writer"],
@@ -156,35 +161,54 @@ export function buildMiMoCodeRuntimePort(settings: LongHorizonSettings): MiMoCod
     };
 }
 
-function buildFeatureState(settings: LongHorizonSettings): MiMoCodeRuntimeFeatures {
+function buildFeatureState(
+    settings: LongHorizonSettings,
+    support: MiMoCodeRuntimeSupportOptions = {},
+): MiMoCodeRuntimeFeatures {
     const enabled = settings.enabled;
+    const unsupportedReason = "Pi Desktop 暂未实现该长程 runtime。";
     return {
-        planMode: { enabled: enabled && settings.planMode.enabled },
-        composeMode: { enabled: enabled && settings.composeMode.enabled },
+        planMode: conditionalToggle(
+            enabled,
+            settings.planMode.enabled,
+            support.planModeSupported ?? true,
+            "pi-openplan",
+            "Pi Desktop 未找到 pi-openplan plan runtime。",
+        ),
+        composeMode: conditionalToggle(
+            enabled,
+            settings.composeMode.enabled,
+            support.composeModeSupported ?? true,
+            "desktop",
+            "Pi Desktop 未找到 compose runtime bundle。",
+        ),
         maxMode: {
-            enabled: enabled && settings.maxMode.enabled,
+            ...unsupportedMeta("Pi Desktop 已移除 Max mode。"),
+            enabled: false,
             candidates: settings.maxMode.candidates ?? 5,
         },
         memory: {
+            ...supportedMeta(enabled && settings.memory.enabled, "desktop"),
             enabled: enabled && settings.memory.enabled,
             ccIndex: settings.memory.ccIndex ?? false,
             reconcileOnSearch: settings.memory.reconcileOnSearch ?? true,
             searchScoreFloor: settings.memory.searchScoreFloor ?? 0.15,
         },
-        history: { enabled: enabled && settings.history.enabled },
-        checkpoint: { enabled: enabled && settings.checkpoint.enabled },
-        goal: { enabled: enabled && settings.goal.enabled },
-        task: { enabled: enabled && settings.task.enabled },
-        actor: { enabled: enabled && settings.actor.enabled },
-        subagents: { enabled: enabled && settings.subagents.enabled },
+        history: supportedToggle(enabled, settings.history.enabled, "desktop"),
+        checkpoint: supportedToggle(enabled, settings.checkpoint.enabled, "desktop"),
+        goal: supportedToggle(enabled, settings.goal.enabled, "desktop"),
+        task: supportedToggle(enabled, settings.task.enabled, "desktop"),
+        actor: supportedToggle(enabled, settings.actor.enabled, "desktop"),
+        subagents: supportedToggle(enabled, settings.subagents.enabled, "desktop"),
         workflow: {
-            enabled: enabled && settings.workflow.enabled,
+            ...unsupportedMeta(unsupportedReason),
+            enabled: false,
             maxConcurrentAgents: settings.workflow.maxConcurrentAgents ?? 4,
             maxLifecycleAgents: settings.workflow.maxLifecycleAgents ?? 100,
             maxDepth: settings.workflow.maxDepth ?? 4,
         },
-        dream: { enabled: enabled && settings.dream.enabled },
-        distill: { enabled: enabled && settings.distill.enabled },
+        dream: unsupportedToggle(unsupportedReason),
+        distill: unsupportedToggle(unsupportedReason),
     };
 }
 
@@ -200,4 +224,60 @@ function enabledToolIds(features: MiMoCodeRuntimeFeatures): string[] {
         disabled.add("planexit");
     }
     return MIMOCODE_TOOL_IDS.filter((id) => !disabled.has(id));
+}
+
+function supportedToggle(
+    longHorizonEnabled: boolean,
+    featureEnabled: boolean,
+    loadedFromWhenEnabled: Extract<LongHorizonLoadedFrom, "desktop" | "pi-openplan">,
+): LongHorizonRuntimeToggle {
+    const enabled = longHorizonEnabled && featureEnabled;
+    return {
+        enabled,
+        ...supportedMeta(enabled, loadedFromWhenEnabled),
+    };
+}
+
+function conditionalToggle(
+    longHorizonEnabled: boolean,
+    featureEnabled: boolean,
+    runtimeSupported: boolean,
+    loadedFromWhenEnabled: Extract<LongHorizonLoadedFrom, "desktop" | "pi-openplan">,
+    unsupportedReason: string,
+): LongHorizonRuntimeToggle {
+    if (!longHorizonEnabled || !featureEnabled) {
+        return {
+            enabled: false,
+            ...supportedMeta(false, loadedFromWhenEnabled),
+        };
+    }
+    if (!runtimeSupported) {
+        return unsupportedToggle(unsupportedReason);
+    }
+    return supportedToggle(longHorizonEnabled, featureEnabled, loadedFromWhenEnabled);
+}
+
+function supportedMeta(
+    enabled: boolean,
+    loadedFromWhenEnabled: Extract<LongHorizonLoadedFrom, "desktop" | "pi-openplan">,
+): LongHorizonRuntimeMeta {
+    return {
+        supported: true,
+        loadedFrom: enabled ? loadedFromWhenEnabled : "disabled",
+    };
+}
+
+function unsupportedToggle(reason: string): LongHorizonRuntimeToggle {
+    return {
+        enabled: false,
+        ...unsupportedMeta(reason),
+    };
+}
+
+function unsupportedMeta(reason: string): LongHorizonRuntimeMeta {
+    return {
+        supported: false,
+        loadedFrom: "unsupported",
+        reason,
+    };
 }
