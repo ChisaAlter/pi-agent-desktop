@@ -179,9 +179,8 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
     if (!currentWorkspace) return null;
     if (currentSessionId) {
       const sessionAgent = agents.find((agent) => agent.workspaceId === currentWorkspace.id && agent.sessionId === currentSessionId);
-      if (sessionAgent) return sessionAgent;
+      return sessionAgent ?? null;
     }
-    if (!currentSessionId) return null;
     const selectedAgent = currentAgentId
       ? agents.find((agent) => agent.id === currentAgentId && agent.workspaceId === currentWorkspace.id && !agent.sessionId)
       : undefined;
@@ -303,14 +302,6 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
         const agent = await createAgent(currentWorkspace.id, `${sessionForSend.title || "未命名会话"} Agent`, undefined, sessionForSend.id);
         agentIdForSend = agent.id;
       }
-      if (agentIdForSend && sessionForSend.messages.length === 0) {
-        useSessionStore.getState().addMessage(sessionForSend.id, {
-          id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          role: "user",
-          content: options?.visibleContent ?? message,
-          timestamp: new Date(),
-        });
-      }
       if (options) {
         await startStreaming(currentWorkspace.id, message, agentIdForSend ? { ...options, agentId: agentIdForSend } : options);
       } else {
@@ -346,18 +337,24 @@ export function ChatView({ prefillText, onPrefillConsumed }: ChatViewProps = {})
       setSessionActionError(`继续会话失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
-  const rawMessages = useMemo(() => hasAgent && agentMessages.length > 0
-    ? agentMessages.map((message) => ({
-        id: message.id,
-        role: message.role === "assistant" || message.role === "system" || message.role === "user"
-          ? message.role
-          : "system",
-        content: message.content,
-        timestamp: new Date(message.createdAt),
-        thinking: message.thinking,
-        planAction: message.planAction,
-      }))
-    : currentSession?.messages || [], [agentMessages, currentSession?.messages, hasAgent]);
+  const rawMessages = useMemo(() => {
+    if (currentSession) {
+      return currentSession.messages;
+    }
+    if (!hasAgent || agentMessages.length === 0) {
+      return [];
+    }
+    return agentMessages.map((message) => ({
+      id: message.id,
+      role: message.role === "assistant" || message.role === "system" || message.role === "user"
+        ? message.role
+        : "system",
+      content: message.content,
+      timestamp: new Date(message.createdAt),
+      thinking: message.thinking,
+      planAction: message.planAction,
+    }));
+  }, [agentMessages, currentSession, hasAgent]);
   const messages = useMemo(() => {
     const merged = mergeAdjacentThinkingMessages(rawMessages);
     // v1.0.14-fix: 过滤后端偶发的完全空白 assistant 消息(有 content/thinking/card/tools/plan 至少一个才保留)

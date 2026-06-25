@@ -326,6 +326,11 @@ function createPlanAction(card: PlanCard): PlanMessageAction {
     };
 }
 
+function getAgentSessionId(agentId?: string | null): string | null {
+    if (!agentId) return null;
+    return useAgentStore.getState().agents.find((agent) => agent.id === agentId)?.sessionId ?? null;
+}
+
 function isExecutePlanCommand(content: string): boolean {
     return /^\/execute_plan(?:\s|$)/i.test(content.trimStart());
 }
@@ -445,62 +450,120 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         };
     }, [flushStreamPersist]);
 
-    const { getCurrentSession, addMessage, updateMessage, addToolCall, updateToolCall } = useSessionStore();
+    const { getCurrentSession, addMessage, updateMessage, addToolCall, updateToolCall, updateSessionUsage } = useSessionStore();
 
     useEffect(() => { agentIdRef.current = agentId ?? null; }, [agentId]);
     useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
 
-    const updateCurrentUsage = useCallback((updates: Partial<SessionUsageSnapshot>) => {
-        const session = useSessionStore.getState().getCurrentSession();
+    const getLinkedSessionId = useCallback((candidateAgentId?: string | null): string | null => {
+        const resolvedAgentId = candidateAgentId ?? agentIdRef.current;
+        const boundSessionId = getAgentSessionId(resolvedAgentId);
+        if (boundSessionId) {
+            sessionIdRef.current = boundSessionId;
+            return boundSessionId;
+        }
+        if (resolvedAgentId) {
+            return sessionIdRef.current;
+        }
+        if (sessionIdRef.current) {
+            return sessionIdRef.current;
+        }
+        return useSessionStore.getState().getCurrentSession()?.id ?? null;
+    }, []);
+
+    const getLinkedSession = useCallback((candidateAgentId?: string | null) => {
+        const linkedSessionId = getLinkedSessionId(candidateAgentId);
+        if (!linkedSessionId) return null;
+        return useSessionStore.getState().sessions.find((session) => session.id === linkedSessionId) ?? null;
+    }, [getLinkedSessionId]);
+
+    const queueSessionStreamPersist = useCallback((sessionId: string, messageId: string, updates?: {
+        content?: string;
+        thinking?: string;
+    }) => {
+        if (!streamPersistRef.current ||
+            streamPersistRef.current.sessionId !== sessionId ||
+            streamPersistRef.current.messageId !== messageId) {
+            streamPersistRef.current = {
+                sessionId,
+                messageId,
+            };
+        }
+        if (updates?.content !== undefined) {
+            streamPersistRef.current.content = updates.content;
+        }
+        if (updates?.thinking !== undefined) {
+            streamPersistRef.current.thinking = updates.thinking;
+        }
+        scheduleStreamPersist();
+    }, [scheduleStreamPersist]);
+
+    const updateCurrentUsage = useCallback((updates: Partial<SessionUsageSnapshot>, targetSessionId?: string | null) => {
+        const session = targetSessionId === undefined
+            ? getLinkedSession() ?? useSessionStore.getState().getCurrentSession()
+            : targetSessionId
+                ? useSessionStore.getState().sessions.find((item) => item.id === targetSessionId) ?? null
+                : null;
         if (!session) return;
-        useSessionStore.getState().updateSessionUsage(session.id, {
+        updateSessionUsage(session.id, {
             ...(session.usage ?? { updatedAt: Date.now() }),
             ...updates,
             updatedAt: Date.now(),
         });
-    }, []);
+    }, [getLinkedSession, updateSessionUsage]);
     const ensureAssistantMessage = useCallback(() => {
         if (messageIdRef.current) return;
         const aid = agentIdRef.current;
+        const linkedSession = getLinkedSession(aid);
+        if (!aid && !linkedSession) return;
+        const createdAt = Date.now();
+        const newId = `${aid ? "am" : "m"}_${createdAt}_${Math.random().toString(36).slice(2, 8)}`;
+        messageIdRef.current = newId;
+        setStreamingMessageId(newId);
         if (aid) {
-            const newId = `am_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-            messageIdRef.current = newId;
-            setStreamingMessageId(newId);
             useAgentStore.getState().appendStreamMessage(aid, {
                 id: newId,
                 agentId: aid,
                 role: "assistant",
                 content: "",
-                createdAt: Date.now(),
+                createdAt,
             });
-            return;
         }
-        const session = useSessionStore.getState().getCurrentSession();
-        if (!session) return;
-        sessionIdRef.current = session.id;
-        const newId = `m_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        messageIdRef.current = newId;
-        setStreamingMessageId(newId);
-        // Persist empty assistant message (once on creation, low frequency)
-        addMessage(session.id, {
-            id: newId,
-            role: "assistant",
-            content: "",
-            timestamp: new Date(),
-        }, { persist: true });
-    }, [addMessage]);
+        if (linkedSession) {
+            sessionIdRef.current = linkedSession.id;
+            // Persist empty assistant message (once on creation, low frequency)
+            addMessage(linkedSession.id, {
+                id: newId,
+                role: "assistant",
+                content: "",
+                timestamp: new Date(createdAt),
+            }, { persist: true });
+        }
+    }, [addMessage, getLinkedSession]);
 
     const appendAgentMessage = useCallback((agentId: string, role: "user" | "assistant", content: string, planAction?: PlanMessageAction) => {
+        const createdAt = Date.now();
+        const messageId = `${role === "user" ? "um" : "am"}_${createdAt}_${Math.random().toString(36).slice(2, 8)}`;
         useAgentStore.getState().appendStreamMessage(agentId, {
-            id: `${role === "user" ? "um" : "am"}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            id: messageId,
             agentId,
             role,
             content,
-            createdAt: Date.now(),
+            createdAt,
             ...(planAction ? { planAction } : {}),
             ...(role === "user" ? { meta: { optimistic: true } } : {}),
         });
-    }, []);
+        const linkedSessionId = getAgentSessionId(agentId);
+        if (!linkedSessionId) return;
+        sessionIdRef.current = linkedSessionId;
+        addMessage(linkedSessionId, {
+            id: messageId,
+            role,
+            content,
+            timestamp: new Date(createdAt),
+            ...(planAction ? { planAction } : {}),
+        }, { persist: true });
+    }, [addMessage]);
 
     const publishInlinePlanCard = useCallback((card: PlanCard) => {
         const cleanContent = card.content
@@ -518,12 +581,14 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 });
             } else {
                 appendAgentMessage(aid, "assistant", cleanContent, planAction);
+                return;
             }
-            return;
         }
-        const session = sessionIdRef.current
-            ? useSessionStore.getState().sessions.find((item) => item.id === sessionIdRef.current)
-            : useSessionStore.getState().getCurrentSession();
+        const session = aid
+            ? getLinkedSession(aid)
+            : sessionIdRef.current
+                ? useSessionStore.getState().sessions.find((item) => item.id === sessionIdRef.current)
+                : useSessionStore.getState().getCurrentSession();
         if (!session) return;
         if (messageIdRef.current) {
             updateMessage(session.id, messageIdRef.current, {
@@ -539,7 +604,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             timestamp: new Date(),
             planAction,
         });
-    }, [addMessage, appendAgentMessage, updateMessage]);
+    }, [addMessage, appendAgentMessage, getLinkedSession, updateMessage]);
 
     const pauseVisibleStreamingForPlanDecision = useCallback(() => {
         setIsStreaming(false);
@@ -642,19 +707,12 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                         useAgentStore.getState().updateStreamMessage(agentIdRef.current, messageIdRef.current, {
                             content: textRef.current,
                         });
-                    } else if (sessionIdRef.current && messageIdRef.current) {
+                    }
+                    const linkedSessionId = getLinkedSessionId();
+                    if (linkedSessionId && messageIdRef.current) {
                         // In-memory update (for UI), persistence via debounce
-                        updateMessage(sessionIdRef.current, messageIdRef.current, { content: textRef.current }, { persist: false });
-                        if (!streamPersistRef.current ||
-                            streamPersistRef.current.sessionId !== sessionIdRef.current ||
-                            streamPersistRef.current.messageId !== messageIdRef.current) {
-                            streamPersistRef.current = {
-                                sessionId: sessionIdRef.current,
-                                messageId: messageIdRef.current,
-                            };
-                        }
-                        streamPersistRef.current.content = textRef.current;
-                        scheduleStreamPersist();
+                        updateMessage(linkedSessionId, messageIdRef.current, { content: textRef.current }, { persist: false });
+                        queueSessionStreamPersist(linkedSessionId, messageIdRef.current, { content: textRef.current });
                     }
                 } else if (assistantEvent.type === "thinking_delta") {
                     const delta = assistantEvent.delta;
@@ -666,18 +724,11 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                         useAgentStore.getState().updateStreamMessage(agentIdRef.current, messageIdRef.current, {
                             thinking: thinkingRef.current,
                         });
-                    } else if (sessionIdRef.current && messageIdRef.current) {
-                        updateMessage(sessionIdRef.current, messageIdRef.current, { thinking: thinkingRef.current }, { persist: false });
-                        if (!streamPersistRef.current ||
-                            streamPersistRef.current.sessionId !== sessionIdRef.current ||
-                            streamPersistRef.current.messageId !== messageIdRef.current) {
-                            streamPersistRef.current = {
-                                sessionId: sessionIdRef.current,
-                                messageId: messageIdRef.current,
-                            };
-                        }
-                        streamPersistRef.current.thinking = thinkingRef.current;
-                        scheduleStreamPersist();
+                    }
+                    const linkedSessionId = getLinkedSessionId();
+                    if (linkedSessionId && messageIdRef.current) {
+                        updateMessage(linkedSessionId, messageIdRef.current, { thinking: thinkingRef.current }, { persist: false });
+                        queueSessionStreamPersist(linkedSessionId, messageIdRef.current, { thinking: thinkingRef.current });
                     }
                 } else if (assistantEvent.type === "toolcall_start") {
                     const e = assistantEvent as { toolCallId: string; toolName: string; args: Record<string, unknown> };
@@ -688,12 +739,13 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                         existingTc.args = e.args;
                         toolCallsRef.current.set(e.toolCallId, existingTc);
                         setToolCalls(new Map(toolCallsRef.current));
-                        if (sessionIdRef.current && messageIdRef.current) {
-                            updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
+                        const linkedSessionId = getLinkedSessionId();
+                        if (linkedSessionId && messageIdRef.current) {
+                            updateToolCall(linkedSessionId, messageIdRef.current, e.toolCallId, {
                                 name: e.toolName,
                                 input: e.args,
                             }, { persist: false });
-                            scheduleStreamPersist();
+                            queueSessionStreamPersist(linkedSessionId, messageIdRef.current);
                         }
                         break;
                     }
@@ -721,25 +773,17 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     };
                     toolCallsRef.current.set(e.toolCallId, tc);
                     setToolCalls(new Map(toolCallsRef.current));
-                    if (sessionIdRef.current && messageIdRef.current) {
-                        addToolCall(sessionIdRef.current, messageIdRef.current, {
+                    const linkedSessionId = getLinkedSessionId();
+                    if (linkedSessionId && messageIdRef.current) {
+                        addToolCall(linkedSessionId, messageIdRef.current, {
                             id: e.toolCallId,
                             name: e.toolName,
                             input: e.args,
                             status: "running",
                             startTime: new Date(tc.startTime),
                         }, { persist: false });
-                        // 累积 toolCalls 快照,turn_end 时一并 flush
-                        if (!streamPersistRef.current ||
-                            streamPersistRef.current.sessionId !== sessionIdRef.current ||
-                            streamPersistRef.current.messageId !== messageIdRef.current) {
-                            streamPersistRef.current = {
-                                sessionId: sessionIdRef.current,
-                                messageId: messageIdRef.current,
-                            };
-                        }
                         // 注意:turn_end flush 时直接从 store 取最新 toolCalls
-                        scheduleStreamPersist();
+                        queueSessionStreamPersist(linkedSessionId, messageIdRef.current);
                     }
                 } else if (assistantEvent.type === "toolcall_end") {
                     const e = assistantEvent as { toolCallId: string; result?: unknown };
@@ -750,13 +794,14 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                         tc.endTime = Date.now();
                         toolCallsRef.current.set(e.toolCallId, tc);
                         setToolCalls(new Map(toolCallsRef.current));
-                        if (sessionIdRef.current && messageIdRef.current) {
-                            updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
+                        const linkedSessionId = getLinkedSessionId();
+                        if (linkedSessionId && messageIdRef.current) {
+                            updateToolCall(linkedSessionId, messageIdRef.current, e.toolCallId, {
                                 status: "completed",
                                 output: e.result,
                                 endTime: new Date(tc.endTime),
                             }, { persist: false });
-                            scheduleStreamPersist();
+                            queueSessionStreamPersist(linkedSessionId, messageIdRef.current);
                         }
                     }
                 }
@@ -783,14 +828,11 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     useAgentStore.getState().updateStreamMessage(agentIdRef.current, messageIdRef.current, {
                         content: finalText,
                     });
-                } else if (sessionIdRef.current && messageIdRef.current) {
-                    updateMessage(sessionIdRef.current, messageIdRef.current, { content: finalText }, { persist: false });
-                    streamPersistRef.current = {
-                        sessionId: sessionIdRef.current,
-                        messageId: messageIdRef.current,
-                        content: finalText,
-                    };
-                    scheduleStreamPersist();
+                }
+                const linkedSessionId = getLinkedSessionId();
+                if (linkedSessionId && messageIdRef.current) {
+                    updateMessage(linkedSessionId, messageIdRef.current, { content: finalText }, { persist: false });
+                    queueSessionStreamPersist(linkedSessionId, messageIdRef.current, { content: finalText });
                 }
                 break;
             }
@@ -804,12 +846,13 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     existingTc.startTime = Date.now();
                     toolCallsRef.current.set(e.toolCallId, existingTc);
                     setToolCalls(new Map(toolCallsRef.current));
-                    if (sessionIdRef.current && messageIdRef.current) {
-                        updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
+                    const linkedSessionId = getLinkedSessionId();
+                    if (linkedSessionId && messageIdRef.current) {
+                        updateToolCall(linkedSessionId, messageIdRef.current, e.toolCallId, {
                             status: "running",
                             startTime: new Date(existingTc.startTime),
                         }, { persist: false });
-                        scheduleStreamPersist();
+                        queueSessionStreamPersist(linkedSessionId, messageIdRef.current);
                     }
                     break;
                 }
@@ -838,23 +881,16 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 };
                 toolCallsRef.current.set(e.toolCallId, tc);
                 setToolCalls(new Map(toolCallsRef.current));
-                if (sessionIdRef.current && messageIdRef.current) {
-                    addToolCall(sessionIdRef.current, messageIdRef.current, {
+                const linkedSessionId = getLinkedSessionId();
+                if (linkedSessionId && messageIdRef.current) {
+                    addToolCall(linkedSessionId, messageIdRef.current, {
                         id: e.toolCallId,
                         name: e.toolName,
                         input: e.args,
                         status: "running",
                         startTime: new Date(tc.startTime),
                     }, { persist: false });
-                    if (!streamPersistRef.current ||
-                        streamPersistRef.current.sessionId !== sessionIdRef.current ||
-                        streamPersistRef.current.messageId !== messageIdRef.current) {
-                        streamPersistRef.current = {
-                            sessionId: sessionIdRef.current,
-                            messageId: messageIdRef.current,
-                        };
-                    }
-                    scheduleStreamPersist();
+                    queueSessionStreamPersist(linkedSessionId, messageIdRef.current);
                 }
                 break;
             }
@@ -866,12 +902,13 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     tc.status = e.isError ? "error" : "completed";
                     tc.endTime = Date.now();
                     setToolCalls(new Map(toolCallsRef.current));
-                    if (sessionIdRef.current && messageIdRef.current) {
-                        updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
+                    const linkedSessionId = getLinkedSessionId();
+                    if (linkedSessionId && messageIdRef.current) {
+                        updateToolCall(linkedSessionId, messageIdRef.current, e.toolCallId, {
                             status: e.isError ? "error" : "completed",
                             endTime: new Date(tc.endTime),
                         }, { persist: false });
-                        scheduleStreamPersist();
+                        queueSessionStreamPersist(linkedSessionId, messageIdRef.current);
                     }
                 }
                 break;
@@ -906,27 +943,23 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
 
             case "usage_update":
             case "context_update": {
-                if (agentIdRef.current) break;
-                const session = useSessionStore.getState().getCurrentSession();
+                const session = getLinkedSession();
                 if (session) {
-                    useSessionStore.getState().updateSessionUsage(session.id, usageFromEvent(event, session.usage));
+                    updateSessionUsage(session.id, usageFromEvent(event, session.usage));
                 }
                 break;
             }
 
             case "compaction_start":
-                if (agentIdRef.current) break;
-                updateCurrentUsage({ compactionStatus: "running" });
+                updateCurrentUsage({ compactionStatus: "running" }, getLinkedSessionId());
                 break;
 
             case "compaction_end":
-                if (agentIdRef.current) break;
-                updateCurrentUsage({ compactionStatus: "completed" });
+                updateCurrentUsage({ compactionStatus: "completed" }, getLinkedSessionId());
                 break;
 
             case "custom_message": {
-                if (agentIdRef.current) break;
-                const session = useSessionStore.getState().getCurrentSession();
+                const session = getLinkedSession();
                 if (!session) break;
                 const card = sanitizeCustomCard((event as unknown as { card?: unknown; details?: unknown }).card ?? (event as unknown as { details?: unknown }).details ?? event);
                 addMessage(session.id, {
@@ -984,7 +1017,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 break;
         }
-    }, [updateMessage, addToolCall, updateToolCall, ensureAssistantMessage, flushStreamPersist, scheduleStreamPersist, updateCurrentUsage, addMessage, pauseVisibleStreamingForPlanDecision, publishInlinePlanCard]);
+    }, [updateMessage, addToolCall, updateToolCall, ensureAssistantMessage, flushStreamPersist, updateCurrentUsage, addMessage, pauseVisibleStreamingForPlanDecision, publishInlinePlanCard, getLinkedSession, getLinkedSessionId, queueSessionStreamPersist, updateSessionUsage]);
 
     useEffect(() => {
         handleEventRef.current = handleEvent;
@@ -1010,7 +1043,12 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         if (options.agentId) {
             agentIdRef.current = options.agentId;
         }
-        const session = aid ? null : getCurrentSession();
+        const boundSessionId = getAgentSessionId(aid);
+        const session = boundSessionId
+            ? useSessionStore.getState().sessions.find((item) => item.id === boundSessionId) ?? null
+            : aid
+                ? null
+                : getCurrentSession();
         const selectedMode = useAgentModeStore.getState().getMode(workspaceId);
         const planEnabled = selectedMode === "plan" || (selectedMode === "build" && usePlanStore.getState().enabled);
         const isFollowUpWhileStreaming = isStreamingRef.current || promptInFlightRef.current;

@@ -551,6 +551,23 @@ describe("usePiStream", () => {
     });
 
     it("adds an optimistic agent user message before the main-process echo arrives", async () => {
+        useAgentStore.setState({
+            agents: [
+                {
+                    id: "agent_1",
+                    workspaceId: "ws1",
+                    title: "Session Agent",
+                    status: "idle",
+                    sessionId: "s1",
+                    createdAt: 1,
+                    updatedAt: 1,
+                },
+            ],
+            currentAgentId: "agent_1",
+            messagesByAgent: {},
+            runtimeByAgent: {},
+            initialized: true,
+        });
         await act(async () => {
             render(<AgentHookStateHost />);
         });
@@ -572,9 +589,31 @@ describe("usePiStream", () => {
             message: "agent follow up",
             mode: "build",
         });
+        expect(useSessionStore.getState().sessions[0]?.messages).toMatchObject([
+            {
+                role: "user",
+                content: "agent follow up",
+            },
+        ]);
     });
 
-    it("does not persist agent-scoped custom messages or usage into the current chat session", async () => {
+    it("does not persist unbound agent-scoped custom messages or usage into the current chat session", async () => {
+        useAgentStore.setState({
+            agents: [
+                {
+                    id: "agent_1",
+                    workspaceId: "ws1",
+                    title: "Workspace Agent",
+                    status: "idle",
+                    createdAt: 1,
+                    updatedAt: 1,
+                },
+            ],
+            currentAgentId: "agent_1",
+            messagesByAgent: {},
+            runtimeByAgent: {},
+            initialized: true,
+        });
         await act(async () => {
             render(<AgentHookStateHost />);
         });
@@ -599,6 +638,131 @@ describe("usePiStream", () => {
         const session = useSessionStore.getState().sessions[0];
         expect(session.messages).toEqual([]);
         expect(session.usage).toBeUndefined();
+    });
+
+    it("persists session-bound agent assistant turns and tool calls into the linked chat session", async () => {
+        useAgentStore.setState({
+            agents: [
+                {
+                    id: "agent_1",
+                    workspaceId: "ws1",
+                    title: "Bound Agent",
+                    status: "idle",
+                    sessionId: "s1",
+                    createdAt: 1,
+                    updatedAt: 1,
+                },
+            ],
+            currentAgentId: "agent_1",
+            messagesByAgent: {},
+            runtimeByAgent: {},
+            initialized: true,
+        });
+
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: {
+                    type: "toolcall_start",
+                    toolCallId: "tc_bound_1",
+                    toolName: "read",
+                    args: { path: "README.md" },
+                },
+            });
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: {
+                    type: "text_delta",
+                    delta: "agent bound answer",
+                },
+            });
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: {
+                    type: "toolcall_end",
+                    toolCallId: "tc_bound_1",
+                    result: "done",
+                },
+            });
+            emitPiEvent?.({ type: "turn_end" });
+        });
+
+        const session = useSessionStore.getState().sessions[0];
+        expect(session.messages).toHaveLength(1);
+        expect(session.messages[0]).toMatchObject({
+            role: "assistant",
+            content: "agent bound answer",
+        });
+        expect(session.messages[0].toolCalls).toMatchObject([
+            {
+                id: "tc_bound_1",
+                name: "read",
+                input: { path: "README.md" },
+                output: "done",
+                status: "completed",
+            },
+        ]);
+    });
+
+    it("persists session-bound agent usage and custom cards into the linked chat session", async () => {
+        useAgentStore.setState({
+            agents: [
+                {
+                    id: "agent_1",
+                    workspaceId: "ws1",
+                    title: "Bound Agent",
+                    status: "idle",
+                    sessionId: "s1",
+                    createdAt: 1,
+                    updatedAt: 1,
+                },
+            ],
+            currentAgentId: "agent_1",
+            messagesByAgent: {},
+            runtimeByAgent: {},
+            initialized: true,
+        });
+
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({
+                type: "usage_update",
+                usage: { inputTokens: 10, outputTokens: 2, totalTokens: 12 },
+            } as PiEvent);
+            emitPiEvent?.({
+                type: "custom_message",
+                card: {
+                    id: "session_bound_card",
+                    kind: "result-summary",
+                    title: "Bound card",
+                },
+            } as PiEvent);
+        });
+
+        const session = useSessionStore.getState().sessions[0];
+        expect(session.usage).toMatchObject({
+            inputTokens: 10,
+            outputTokens: 2,
+            totalTokens: 12,
+        });
+        expect(session.messages).toMatchObject([
+            {
+                role: "assistant",
+                customCard: {
+                    id: "session_bound_card",
+                    kind: "result-summary",
+                    title: "Bound card",
+                },
+            },
+        ]);
     });
 
     it("blocks vague agent plan-mode input locally and shows clarification prompt", async () => {
