@@ -115,4 +115,5 @@ jobs:
       - name: Unmount short workspace path
         if: always()
         shell: pwsh
-        run: subst P: /d
+        run: |
+          subst P: /d
