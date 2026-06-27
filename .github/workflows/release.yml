@@ -49,6 +49,22 @@ jobs:
         env:
           PI_DESKTOP_ENABLE_AUTO_UPDATE: "1"
 
+      - name: Restore missing NSIS helper include
+        shell: pwsh
+        run: |
+          $includeDir = Get-ChildItem node_modules/.pnpm -Recurse -Directory |
+            Where-Object { $_.FullName -like '*app-builder-lib*templates\nsis\include' } |
+            Select-Object -First 1 -ExpandProperty FullName
+
+          if ([string]::IsNullOrWhiteSpace($includeDir)) {
+            throw "Cannot locate app-builder-lib NSIS include directory."
+          }
+
+          $target = Join-Path $includeDir 'allowOnlyOneInstallerInstance.nsh'
+          if (-not (Test-Path $target)) {
+            Copy-Item scripts/release/allowOnlyOneInstallerInstance.nsh $target
+          }
+
       - name: Package (NSIS installer for Windows)
         run: pnpm --filter @pi-desktop/desktop package:publish
         env:
