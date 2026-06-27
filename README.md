@@ -10,21 +10,21 @@ Pi Desktop is a Windows desktop client for the [Pi CLI](https://github.com/earen
 
 ## Current Status
 
-As of 2026-06-27, the checked-in application version is `0.1.0` in both the workspace root and the desktop package.
+As of 2026-06-27, the checked-in application version is `1.0.12` in both the workspace root and the desktop package.
 
 Current release snapshot:
 
 | Item | Status |
 | --- | --- |
-| Source version | `0.1.0` |
-| Desktop package version | `0.1.0` |
+| Source version | `1.0.12` |
+| Desktop package version | `1.0.12` |
 | Remote default branch | `master` |
-| Latest remote Git tag | `v1.0.2` |
+| Latest remote Git tag | `v1.0.12` after the release cut in this rollout |
 | GitHub Releases entries | none published |
 | In-app updater runtime | implemented and verified in packaged Windows builds |
-| Real updater result today | GitHub Releases feed returns `404` until a signed release is actually published |
+| Real updater result today | packaged build can discover release metadata once the signed release is published |
 
-That last line matters: the updater code path is in the app now, but packaged builds cannot discover a newer version until the repository has a real GitHub Release with `latest.yml`, installer, and blockmap assets.
+This release line is now internally consistent: source version, packaged version, installer name, and updater metadata all use the same `1.0.12` version family.
 
 ## What Pi Desktop Does
 
@@ -121,8 +121,8 @@ Windows packaging uses NSIS through `electron-builder`.
 
 Updater-enabled release artifacts must include:
 
-- `Pi Desktop-<version>-setup.exe`
-- `Pi Desktop-<version>-setup.exe.blockmap`
+- `Pi-Desktop-<version>-setup.exe`
+- `Pi-Desktop-<version>-setup.exe.blockmap`
 - `latest.yml`
 
 Packaged installs also carry `app-update.yml`, which is what `electron-updater` reads at runtime to locate GitHub release metadata.

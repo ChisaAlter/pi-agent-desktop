@@ -7,6 +7,23 @@ All notable changes to Pi Desktop will be documented here. Format follows [Keep 
 ### Planned
 - Electron 35+ bump to unblock e2e
 
+## [1.0.12] - 2026-06-27
+
+### Added
+- GitHub Releases updater state model across main, preload, and renderer
+- Settings > About update card with check, download, install, fallback release page, progress, and readable error states
+- Dedicated updater IPC handlers, renderer store, unit tests, and Electron updater E2E coverage
+- Release and auto-update runbook documenting the real packaged verification result and release prerequisites
+
+### Changed
+- Release workflow now fails fast when Windows signing secrets are missing
+- CI and release workflows now pin `pnpm/action-setup` to `9.0.0`, matching `packageManager`
+- NSIS installer artifact name now uses `Pi-Desktop-<version>-setup.exe` so packaged files match `latest.yml`
+
+### Fixed
+- Packaged updater errors are normalized before display instead of dumping raw GitHub headers into the UI
+- Release artifact upload paths now point at `apps/desktop/dist`, which is where the Windows build actually lands
+
 ## [1.0.9] - 2026-06-09
 
 ### Added

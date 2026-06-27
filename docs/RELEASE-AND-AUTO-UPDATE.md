@@ -13,18 +13,18 @@ After reading it, you should be able to:
 
 ## Current Version Snapshot
 
-This snapshot was verified on 2026-06-27 from the local checkout and the live GitHub remote.
+This snapshot was updated on 2026-06-27 as part of the updater release cut.
 
 | Item | Value |
 | --- | --- |
-| Workspace root version | `0.1.0` |
-| Desktop package version | `0.1.0` |
+| Workspace root version | `1.0.12` |
+| Desktop package version | `1.0.12` |
 | Remote default branch | `master` |
-| Latest remote Git tag | `v1.0.2` |
-| Published GitHub Releases | none |
-| Updater result in packaged build | `404` on the GitHub Releases feed |
+| Latest remote Git tag | `v1.0.12` after release |
+| Published GitHub Releases | `v1.0.12` after release |
+| Updater result in packaged build | release metadata can be resolved once the release assets are present |
 
-This is the important implication: updater support is implemented in the app, but it cannot discover newer versions until GitHub Releases is populated with a real signed release.
+The key point is that updater support depends on real signed release assets. Without them, packaged builds fall back to a visible error or manual release-page path.
 
 ## How Versioning Works
 
@@ -90,8 +90,8 @@ pnpm --filter @pi-desktop/desktop package
 
 After packaging, verify these outputs exist:
 
-- `Pi Desktop-<version>-setup.exe`
-- `Pi Desktop-<version>-setup.exe.blockmap`
+- `Pi-Desktop-<version>-setup.exe`
+- `Pi-Desktop-<version>-setup.exe.blockmap`
 - `latest.yml`
 - packaged app resources containing `app-update.yml`
 
@@ -121,7 +121,7 @@ Key behavior changes:
 
 A real packaged Windows build was launched and tested through the Settings > About screen.
 
-Observed behavior:
+Observed behavior before the release was published:
 
 - the updater service initialized in the packaged app
 - manual update checks executed
@@ -129,7 +129,7 @@ Observed behavior:
 - the actual failure was not a renderer bug or an IPC bug
 - the actual failure was missing published GitHub Releases metadata, which returned `404`
 
-That is the correct honest result for the repository today.
+That was the correct honest result before the release cut. The release work in this rollout is what removes that repository-side blocker.
 
 ## Common Failure Modes
 
@@ -168,4 +168,4 @@ That was fixed in this rollout. Updater errors should now be summarized before d
 
 Use this sentence:
 
-Pi Desktop is still on source version `0.1.0`; the updater implementation is in place and verified in packaged Windows builds, but GitHub Releases is not populated yet, so real update checks currently stop at a `404` metadata error instead of discovering a newer version.
+Pi Desktop is now aligned on source version `1.0.12`; the updater implementation, packaged installer naming, and GitHub release metadata are designed to move together, and a real signed release is required for live update discovery.

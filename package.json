@@ -1,6 +1,6 @@
 {
   "name": "pi-desktop",
-  "version": "0.1.0",
+  "version": "1.0.12",
   "private": true,
   "description": "Pi Agent Desktop Application - A Windows desktop app for Pi CLI",
   "keywords": [
