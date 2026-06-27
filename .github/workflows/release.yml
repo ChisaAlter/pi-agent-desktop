@@ -18,6 +18,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Mount short workspace path
+        shell: pwsh
+        run: |
+          subst P: "$env:GITHUB_WORKSPACE"
+          if (-not (Test-Path 'P:\')) {
+            throw "Failed to mount short workspace path."
+          }
+          Write-Host "Using short workspace path P:\ to avoid NSIS MAX_PATH failures."
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -29,13 +38,16 @@ jobs:
           version: 9.0.0
 
       - name: Install dependencies
+        working-directory: P:\
         run: pnpm install --frozen-lockfile
 
       - name: Test
+        working-directory: P:\
         run: pnpm -r test
 
       - name: Validate Windows signing secrets
         shell: pwsh
+        working-directory: P:\
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -45,27 +57,36 @@ jobs:
           }
 
       - name: Build (renderer + main)
+        working-directory: P:\
         run: pnpm --filter @pi-desktop/desktop build
         env:
           PI_DESKTOP_ENABLE_AUTO_UPDATE: "1"
 
       - name: Restore missing NSIS helper include
         shell: pwsh
+        working-directory: P:\
         run: |
-          $includeDir = Get-ChildItem node_modules/.pnpm -Recurse -Directory |
+          $includeDirs = Get-ChildItem node_modules/.pnpm -Recurse -Directory |
             Where-Object { $_.FullName -like '*app-builder-lib*templates\nsis\include' } |
-            Select-Object -First 1 -ExpandProperty FullName
+            Select-Object -ExpandProperty FullName -Unique
 
-          if ([string]::IsNullOrWhiteSpace($includeDir)) {
+          if (-not $includeDirs) {
             throw "Cannot locate app-builder-lib NSIS include directory."
           }
 
-          $target = Join-Path $includeDir 'allowOnlyOneInstallerInstance.nsh'
-          if (-not (Test-Path $target)) {
-            Copy-Item scripts/release/allowOnlyOneInstallerInstance.nsh $target
+          foreach ($includeDir in $includeDirs) {
+            $target = Join-Path $includeDir 'allowOnlyOneInstallerInstance.nsh'
+            if (-not (Test-Path $target)) {
+              Copy-Item scripts/release/allowOnlyOneInstallerInstance.nsh $target
+            }
+            if (-not (Test-Path $target)) {
+              throw "Failed to restore NSIS helper: $target"
+            }
+            Write-Host "NSIS helper ready: $target (length=$($target.Length))"
           }
 
       - name: Package (NSIS installer for Windows)
+        working-directory: P:\
         run: pnpm --filter @pi-desktop/desktop package:publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -82,3 +103,8 @@ jobs:
             apps/desktop/dist/*.exe.blockmap
             apps/desktop/dist/latest.yml
           if-no-files-found: error
+
+      - name: Unmount short workspace path
+        if: always()
+        shell: pwsh
+        run: subst P: /d
