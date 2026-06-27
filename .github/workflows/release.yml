@@ -38,34 +38,40 @@ jobs:
           version: 9.0.0
 
       - name: Install dependencies
-        working-directory: P:\
-        run: pnpm install --frozen-lockfile
+        shell: pwsh
+        run: |
+          Set-Location P:\
+          pnpm install --frozen-lockfile
 
       - name: Test
-        working-directory: P:\
-        run: pnpm -r test
+        shell: pwsh
+        run: |
+          Set-Location P:\
+          pnpm -r test
 
       - name: Validate Windows signing secrets
         shell: pwsh
-        working-directory: P:\
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: |
+          Set-Location P:\
           if ([string]::IsNullOrWhiteSpace($env:CSC_LINK) -or [string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD)) {
             throw "Missing CSC_LINK or CSC_KEY_PASSWORD. Refusing to publish an auto-update-enabled release without signing secrets."
           }
 
       - name: Build (renderer + main)
-        working-directory: P:\
-        run: pnpm --filter @pi-desktop/desktop build
+        shell: pwsh
+        run: |
+          Set-Location P:\
+          pnpm --filter @pi-desktop/desktop build
         env:
           PI_DESKTOP_ENABLE_AUTO_UPDATE: "1"
 
       - name: Restore missing NSIS helper include
         shell: pwsh
-        working-directory: P:\
         run: |
+          Set-Location P:\
           $includeDirs = Get-ChildItem node_modules/.pnpm -Recurse -Directory |
             Where-Object { $_.FullName -like '*app-builder-lib*templates\nsis\include' } |
             Select-Object -ExpandProperty FullName -Unique
@@ -86,8 +92,10 @@ jobs:
           }
 
       - name: Package (NSIS installer for Windows)
-        working-directory: P:\
-        run: pnpm --filter @pi-desktop/desktop package:publish
+        shell: pwsh
+        run: |
+          Set-Location P:\
+          pnpm --filter @pi-desktop/desktop package:publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
