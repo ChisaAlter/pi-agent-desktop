@@ -106,7 +106,7 @@ After packaging, verify these outputs exist:
 3. push the commit
 4. confirm CI is green on that commit
 5. create and push the release tag
-6. let the release workflow publish the signed installer and update metadata
+6. let the release workflow build the signed installer and generate `latest.yml`
 7. verify the GitHub Release page contains the installer, blockmap, and `latest.yml`
 8. verify `https://github.com/<owner>/<repo>/releases.atom` and `.../releases/latest/download/latest.yml` are publicly reachable
 9. install the packaged app and run a real updater check from Settings > About
@@ -122,6 +122,7 @@ Key behavior changes:
 - unsigned builds, development runs, missing release metadata, and network failures all surface as visible disabled or error states
 - the About tab includes a direct GitHub Releases fallback action
 - noisy updater exceptions are normalized into short human-readable messages before they reach the UI
+- the release workflow now uploads installer, blockmap, and `latest.yml` with explicit `gh release upload`, instead of relying on `electron-builder` auto-publish side effects
 
 ## Real Acceptance Result on 2026-06-28
 
@@ -157,6 +158,7 @@ The publication blockers from earlier in the day are closed:
 - workflow YAML parser issues around the short-path fix
 - short-path copy step exiting non-zero on successful `robocopy`
 - `lefthook install` failing in the mirrored workspace because `.git` was missing
+- duplicate GitHub releases / missing `.blockmap` caused by `electron-builder` auto-publish; the workflow now creates or edits one release explicitly and uploads assets with `--clobber`
 
 ## Common Failure Modes
 

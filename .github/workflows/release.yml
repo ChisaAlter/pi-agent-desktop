@@ -49,6 +49,18 @@ jobs:
           Set-Location C:\p
           pnpm install --frozen-lockfile
 
+      - name: Typecheck
+        shell: pwsh
+        run: |
+          Set-Location C:\p
+          pnpm -r typecheck
+
+      - name: Lint
+        shell: pwsh
+        run: |
+          Set-Location C:\p
+          pnpm -r lint
+
       - name: Test
         shell: pwsh
         run: |
@@ -101,12 +113,60 @@ jobs:
         shell: pwsh
         run: |
           Set-Location C:\p
-          pnpm --filter @pi-desktop/desktop package:publish
+          pnpm --filter @pi-desktop/desktop package
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           PI_DESKTOP_ENABLE_AUTO_UPDATE: "1"
+
+      - name: Verify packaged release artifacts
+        shell: pwsh
+        run: |
+          Set-Location C:\p
+          $required = @(
+            'apps\desktop\dist\Pi-Desktop-*.exe',
+            'apps\desktop\dist\Pi-Desktop-*.exe.blockmap',
+            'apps\desktop\dist\latest.yml'
+          )
+
+          foreach ($pattern in $required) {
+            $matches = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue
+            if (-not $matches) {
+              throw "Missing required release artifact for pattern: $pattern"
+            }
+          }
+
+      - name: Publish GitHub release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Set-Location C:\p
+          $tag = $env:GITHUB_REF_NAME
+          $notesFile = "RELEASE-NOTES-$tag.md"
+          $title = "Pi Desktop $tag"
+
+          if (-not (Test-Path $notesFile)) {
+            @"
+# $title
+
+Release artifacts for $tag.
+"@ | Set-Content -Path $notesFile -Encoding UTF8
+          }
+
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release edit $tag --repo $env:GITHUB_REPOSITORY --title $title --notes-file $notesFile
+          } else {
+            gh release create $tag --repo $env:GITHUB_REPOSITORY --title $title --notes-file $notesFile
+          }
+
+          gh release upload $tag `
+            apps/desktop/dist/Pi-Desktop-*.exe `
+            apps/desktop/dist/Pi-Desktop-*.exe.blockmap `
+            apps/desktop/dist/latest.yml `
+            --repo $env:GITHUB_REPOSITORY `
+            --clobber
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

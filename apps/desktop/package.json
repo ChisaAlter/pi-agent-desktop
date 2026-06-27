@@ -10,7 +10,7 @@
     "preview": "electron-vite preview",
     "package": "electron-builder build --win --publish never",
     "package:dir": "electron-builder build --win --dir",
-    "package:publish": "electron-builder build --win --publish onTagOrDraft",
+    "package:publish": "node -e \"console.error('Disabled: use the GitHub release workflow upload step instead of electron-builder auto-publish.'); process.exit(1)\"",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src extensions --ext .ts,.tsx",
     "test": "vitest --run",
