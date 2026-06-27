@@ -30,6 +30,7 @@ jobs:
           if ($LASTEXITCODE -gt 7) {
             throw "robocopy failed with exit code $LASTEXITCODE"
           }
+          $global:LASTEXITCODE = 0
           Write-Host "Using real short workspace path C:\p to avoid NSIS MAX_PATH failures."
 
       - name: Setup Node.js
