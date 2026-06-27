@@ -23,6 +23,7 @@ import { setupGitIpc } from './ipc/git.ipc';
 import { setupPiDriverIpc } from './ipc/pi-driver.ipc';
 import { setupSettingsIpc } from './ipc/settings.ipc';
 import { setupSettingsWindowIpc } from './ipc/settings-window.ipc';
+import { setupUpdaterIpc } from './ipc/updater.ipc';
 import { setupWindowIpc, setupWindowEvents } from './ipc/window.ipc';
 import { setupWorkspaceIpc } from './ipc/workspace.ipc';
 import { setupProjectShellIpc } from './ipc/project-shell.ipc';
@@ -30,7 +31,7 @@ import { setupWorkbenchIpc } from './ipc/workbench.ipc';
 import { registerLocalFileProtocol } from './services/local-file-protocol';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
 import { clearPendingExtensionUiRequests } from './services/extensions/extension-ui-bridge';
-import { setupAutoUpdater } from './services/updater';
+import { setupAutoUpdater, type AppUpdaterService } from './services/updater';
 import { ptyManager } from './services/shell/pty-manager';
 import { DEFAULT_LONG_HORIZON_SETTINGS, type AppSettings, type Session } from '@shared';
 import { AgentRuntimeRegistry } from './services/agent-runtime/registry';
@@ -234,7 +235,7 @@ function initializePiDriver(): void {
 }
 
 // IPC Handlers
-function setupIPC(): void {
+function setupIPC(updaterService: AppUpdaterService): void {
   // Pi session (long-lived AgentSession)
   const longHorizonRoot = join(app.getPath('userData'), 'long-horizon');
   memoryService ??= new MemoryService({ rootDir: longHorizonRoot });
@@ -333,6 +334,7 @@ function setupIPC(): void {
   });
 
   setupSettingsWindowIpc(() => mainWindow);
+  setupUpdaterIpc(updaterService);
 
   // Terminal (node-pty)
   setupTerminalIpc();
@@ -344,8 +346,6 @@ function setupIPC(): void {
   // Workbench context (renderer tells main which file user is viewing)
   setupWorkbenchIpc();
 
-  // Auto-updater
-  setupAutoUpdater({ getMainWindow: () => mainWindow });
 }
 
 // App lifecycle
@@ -371,7 +371,8 @@ app.whenReady().then(() => {
   }
 
   createWindow();
-  setupIPC();
+  const updaterService = setupAutoUpdater();
+  setupIPC(updaterService);
   initializePiDriver();
 
   app.on('activate', () => {

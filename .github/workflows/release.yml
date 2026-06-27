@@ -34,20 +34,35 @@ jobs:
       - name: Test
         run: pnpm -r test
 
+      - name: Validate Windows signing secrets
+        shell: pwsh
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:CSC_LINK) -or [string]::IsNullOrWhiteSpace($env:CSC_KEY_PASSWORD)) {
+            throw "Missing CSC_LINK or CSC_KEY_PASSWORD. Refusing to publish an auto-update-enabled release without signing secrets."
+          }
+
       - name: Build (renderer + main)
         run: pnpm --filter @pi-desktop/desktop build
+        env:
+          PI_DESKTOP_ENABLE_AUTO_UPDATE: "1"
 
       - name: Package (NSIS installer for Windows)
         run: pnpm --filter @pi-desktop/desktop package:publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          PI_DESKTOP_ENABLE_AUTO_UPDATE: "1"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: pi-desktop-${{ github.ref_name }}-windows
           path: |
-            release/*.exe
-            release/*.exe.blockmap
-            release/latest.yml
-          if-no-files-found: warn
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.exe.blockmap
+            apps/desktop/dist/latest.yml
+          if-no-files-found: error

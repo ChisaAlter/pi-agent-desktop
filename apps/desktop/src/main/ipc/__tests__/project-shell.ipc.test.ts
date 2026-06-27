@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
-const { openPathMock, showItemInFolderMock } = vi.hoisted(() => ({
+const { openPathMock, openExternalMock, showItemInFolderMock } = vi.hoisted(() => ({
     openPathMock: vi.fn(),
+    openExternalMock: vi.fn(),
     showItemInFolderMock: vi.fn(),
 }));
 
@@ -14,6 +15,7 @@ vi.mock("electron", () => ({
     },
     shell: {
         openPath: openPathMock,
+        openExternal: openExternalMock,
         showItemInFolder: showItemInFolderMock,
     },
 }));
@@ -30,6 +32,7 @@ describe("setupProjectShellIpc", () => {
     beforeEach(() => {
         handlers.clear();
         openPathMock.mockReset();
+        openExternalMock.mockReset();
         showItemInFolderMock.mockReset();
         setupProjectShellIpc();
     });
@@ -83,6 +86,17 @@ describe("setupProjectShellIpc", () => {
         expect(result).toMatchObject({
             code: "ipcErrors.files.protectedPath",
         });
+        expect(openPathMock).not.toHaveBeenCalled();
+    });
+
+    it("opens https URLs through Electron shell external browser", async () => {
+        openExternalMock.mockResolvedValueOnce(undefined);
+
+        const handler = handlers.get("shell:open-path")!;
+        const result = await handler({}, "https://github.com/ChisaAlter/pi-agent-desktop/releases/latest");
+
+        expect(result).toBe("");
+        expect(openExternalMock).toHaveBeenCalledWith("https://github.com/ChisaAlter/pi-agent-desktop/releases/latest");
         expect(openPathMock).not.toHaveBeenCalled();
     });
 

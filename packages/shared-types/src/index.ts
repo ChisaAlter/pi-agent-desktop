@@ -703,6 +703,36 @@ export interface PiInstallProgress {
     percent?: number;
 }
 
+export type AppUpdaterPhase =
+    | "disabled"
+    | "idle"
+    | "checking"
+    | "available"
+    | "not-available"
+    | "downloading"
+    | "downloaded"
+    | "error";
+
+export interface AppUpdaterProgress {
+    percent: number;
+    bytesPerSecond: number;
+    transferred: number;
+    total: number;
+}
+
+export interface AppUpdaterState {
+    phase: AppUpdaterPhase;
+    currentVersion: string;
+    latestVersion: string | null;
+    updateAvailable: boolean;
+    releaseNotes: string | null;
+    progress: AppUpdaterProgress | null;
+    lastCheckedAt: number | null;
+    disabledReason: string | null;
+    error: string | null;
+    releasePageUrl: string;
+}
+
 // Pi 事件 — 走 @shared/events 那个跨进程 union 类型, 不在这里重新定义
 // (避免两套 PiEvent 互相 conflict)
 import type { PiEvent, PiEventType } from "./events";
@@ -905,6 +935,11 @@ export interface PiAPI {
     cancelPiOperation(): Promise<void>;
     onPiStatusChanged(cb: (status: PiStatus) => void): Unsubscribe;
     onPiInstallProgress(cb: (progress: PiInstallProgress) => void): Unsubscribe;
+    updaterGetState(): Promise<AppUpdaterState | IpcError>;
+    updaterCheck(): Promise<AppUpdaterState | IpcError>;
+    updaterDownload(): Promise<AppUpdaterState | IpcError>;
+    updaterInstall(): Promise<AppUpdaterState | IpcError>;
+    onUpdaterStateChanged(cb: (state: AppUpdaterState) => void): Unsubscribe;
 
     // Approval flow (M1)
     respondApproval(requestId: string, approved: boolean): void;

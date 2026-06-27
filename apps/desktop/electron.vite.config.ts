@@ -8,9 +8,13 @@ import { readFileSync } from 'fs';
 const pkg = JSON.parse(
   readFileSync(resolve(__dirname, 'package.json'), 'utf-8'),
 ) as { version: string };
+const autoUpdateEnabled = process.env.PI_DESKTOP_ENABLE_AUTO_UPDATE === "1";
 
 export default defineConfig({
   main: {
+    define: {
+      __PI_DESKTOP_AUTO_UPDATE_ENABLED__: JSON.stringify(autoUpdateEnabled),
+    },
     plugins: [
       externalizeDepsPlugin({
         exclude: [

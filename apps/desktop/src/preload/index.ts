@@ -4,6 +4,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import type {
     PiStatus,
+    AppUpdaterState,
     IpcError,
     PiInstallProgress,
     ApprovalRequest,
@@ -73,6 +74,11 @@ const piAPI: PiAPI = {
 
     onPiStatusChanged: (cb) => subscribe<PiStatus>("pi:status-changed", cb),
     onPiInstallProgress: (cb) => subscribe<PiInstallProgress>("pi:install-progress", cb),
+    updaterGetState: () => ipcRenderer.invoke("updater:get-state") as Promise<AppUpdaterState | IpcError>,
+    updaterCheck: () => ipcRenderer.invoke("updater:check") as Promise<AppUpdaterState | IpcError>,
+    updaterDownload: () => ipcRenderer.invoke("updater:download") as Promise<AppUpdaterState | IpcError>,
+    updaterInstall: () => ipcRenderer.invoke("updater:install") as Promise<AppUpdaterState | IpcError>,
+    onUpdaterStateChanged: (cb) => subscribe<AppUpdaterState>("updater:state-changed", cb),
 
     // M1: Approval flow
     respondApproval: (requestId, approved) => {

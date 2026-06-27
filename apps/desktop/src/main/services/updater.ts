@@ -1,88 +1,287 @@
-// AutoUpdater (M5 Task M5-1)
-// 集成 electron-updater, 从 GitHub Releases 检查更新
-
-import { app, BrowserWindow, dialog } from "electron";
+import { app, BrowserWindow } from "electron";
 import { autoUpdater, type ProgressInfo, type UpdateInfo } from "electron-updater";
 import log from "electron-log/main";
+import type { AppUpdaterProgress, AppUpdaterState } from "@shared";
 
-export interface UpdaterDeps {
-    getMainWindow: () => BrowserWindow | null;
+declare const __PI_DESKTOP_AUTO_UPDATE_ENABLED__: boolean;
+
+const RELEASE_PAGE_URL = "https://github.com/ChisaAlter/pi-agent-desktop/releases/latest";
+const STARTUP_CHECK_DELAY_MS = 3_000;
+const PERIODIC_CHECK_MS = 6 * 60 * 60 * 1_000;
+
+interface BrowserWindowLike {
+    isDestroyed(): boolean;
+    webContents: { send(channel: string, payload: unknown): void };
 }
 
-export function setupAutoUpdater(deps: UpdaterDeps): void {
-    // 配置: 开发环境不检查
-    if (!app.isPackaged) {
-        log.info("[AutoUpdater] Skipping in dev mode");
-        return;
+export interface AppUpdaterLike {
+    autoDownload: boolean;
+    autoInstallOnAppQuit: boolean;
+    on(
+        event:
+            | "checking-for-update"
+            | "update-available"
+            | "update-not-available"
+            | "download-progress"
+            | "update-downloaded"
+            | "error",
+        handler: (...args: unknown[]) => void,
+    ): void;
+    checkForUpdates(): Promise<unknown>;
+    downloadUpdate(): Promise<unknown>;
+    quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
+}
+
+export interface AppUpdaterService {
+    getState(): AppUpdaterState;
+    checkForUpdates(): Promise<AppUpdaterState>;
+    downloadUpdate(): Promise<AppUpdaterState>;
+    installUpdate(): Promise<AppUpdaterState>;
+}
+
+export interface SetupAutoUpdaterOptions {
+    autoUpdateEnabled?: boolean;
+    currentVersion?: string;
+    getWindows?: () => BrowserWindowLike[];
+    isPackaged?: boolean;
+    updater?: AppUpdaterLike;
+    scheduleChecks?: boolean;
+}
+
+function createState(currentVersion: string): AppUpdaterState {
+    return {
+        phase: "idle",
+        currentVersion,
+        latestVersion: null,
+        updateAvailable: false,
+        releaseNotes: null,
+        progress: null,
+        lastCheckedAt: null,
+        disabledReason: null,
+        error: null,
+        releasePageUrl: RELEASE_PAGE_URL,
+    };
+}
+
+function normalizeReleaseNotes(releaseNotes: UpdateInfo["releaseNotes"]): string | null {
+    if (typeof releaseNotes === "string") {
+        const normalized = releaseNotes.trim();
+        return normalized || null;
+    }
+    if (!Array.isArray(releaseNotes)) return null;
+    const normalized = releaseNotes
+        .map((item) => {
+            const note = typeof item.note === "string" ? item.note.trim() : "";
+            if (!note) return null;
+            return item.version ? `v${item.version}\n${note}` : note;
+        })
+        .filter((item): item is string => Boolean(item))
+        .join("\n\n");
+    return normalized || null;
+}
+
+function normalizeProgress(progress: ProgressInfo): AppUpdaterProgress {
+    return {
+        percent: progress.percent ?? 0,
+        bytesPerSecond: progress.bytesPerSecond ?? 0,
+        transferred: progress.transferred ?? 0,
+        total: progress.total ?? 0,
+    };
+}
+
+function normalizeErrorMessage(error: unknown): string {
+    const raw = error instanceof Error ? error.message : String(error);
+    const compact = raw.replace(/\s+/g, " ").trim();
+
+    if (/app-update\.yml/i.test(raw)) {
+        return "当前打包产物缺少 app-update.yml，只有正式 NSIS 发布包才能检查更新。";
     }
 
-    // 安全闸: 当前发布流程未启用代码签名 (release.yml 无 CSC_* / certificate).
-    // 未签名包若被自动下载安装, 一旦 GitHub Release 资源被劫持即等于任意代码执行.
-    // 在引入 Authenticode 证书并在构建中注入 CSC_* secrets 前, 显式禁用自动更新.
-    // 手动设置环境变量 PI_DESKTOP_SIGNED=1 (配合已签名构建) 可重新启用.
-    const signed = process.env.PI_DESKTOP_SIGNED === "1";
-    if (!signed) {
-        log.warn(
-            "[AutoUpdater] Disabled: build is not code-signed (set PI_DESKTOP_SIGNED=1 once Authenticode signing is wired).",
-        );
-        return;
+    if (/releases\.atom/i.test(raw) && /\b404\b/.test(raw)) {
+        return "未找到 GitHub Releases 元数据（404）。请确认仓库、发布页和 latest.yml 已公开发布。";
     }
 
-    autoUpdater.autoDownload = true; // 自动下载
-    autoUpdater.autoInstallOnAppQuit = true; // 退出时自动装
+    if (/(ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|socket hang up|network error|net::ERR)/i.test(raw)) {
+        return "连接 GitHub Releases 失败，请检查网络连接后重试。";
+    }
 
-    autoUpdater.on("checking-for-update", () => {
-        log.info("[AutoUpdater] Checking for update...");
-        deps.getMainWindow()?.webContents.send("updater:checking");
-    });
+    if (!compact) {
+        return "检查更新失败，请稍后重试。";
+    }
 
-    autoUpdater.on("update-available", (info: UpdateInfo) => {
-        log.info(`[AutoUpdater] Update available: v${info.version}`);
-        deps.getMainWindow()?.webContents.send("updater:available", info);
-    });
+    const summary = compact.split(/\s+Headers:/i)[0]?.trim() ?? compact;
+    return summary.length > 280 ? `${summary.slice(0, 277)}...` : summary;
+}
 
-    autoUpdater.on("update-not-available", (info: UpdateInfo) => {
-        log.info(`[AutoUpdater] No update available (current: v${info.version})`);
-        deps.getMainWindow()?.webContents.send("updater:not-available", info);
-    });
+export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpdaterService {
+    const updater = options.updater ?? autoUpdater;
+    const getWindows = options.getWindows ?? (() => BrowserWindow.getAllWindows() as BrowserWindowLike[]);
+    const currentVersion = options.currentVersion ?? app.getVersion();
+    const autoUpdateEnabled = options.autoUpdateEnabled ?? __PI_DESKTOP_AUTO_UPDATE_ENABLED__;
+    const packaged = options.isPackaged ?? app.isPackaged;
+    const state = createState(currentVersion);
 
-    autoUpdater.on("download-progress", (progress: ProgressInfo) => {
-        deps.getMainWindow()?.webContents.send("updater:progress", progress);
-    });
-
-    autoUpdater.on("update-downloaded", async (info: UpdateInfo) => {
-        log.info(`[AutoUpdater] Update downloaded: v${info.version}`);
-        const win = deps.getMainWindow();
-        if (!win) return;
-        const choice = await dialog.showMessageBox(win, {
-            type: "info",
-            title: "更新已下载",
-            message: `新版本 v${info.version} 已下载, 重启后生效`,
-            buttons: ["立即重启", "下次再说"],
-            defaultId: 0,
-            cancelId: 1,
-        });
-        if (choice.response === 0) {
-            autoUpdater.quitAndInstall();
+    const broadcast = () => {
+        for (const win of getWindows()) {
+            if (!win.isDestroyed()) {
+                win.webContents.send("updater:state-changed", { ...state });
+            }
         }
+    };
+
+    const patch = (updates: Partial<AppUpdaterState>) => {
+        Object.assign(state, updates);
+        broadcast();
+    };
+
+    if (!packaged) {
+        patch({
+            phase: "disabled",
+            disabledReason: "开发环境不检查应用更新。",
+        });
+        return {
+            getState: () => ({ ...state }),
+            checkForUpdates: async () => ({ ...state }),
+            downloadUpdate: async () => ({ ...state }),
+            installUpdate: async () => ({ ...state }),
+        };
+    }
+
+    if (!autoUpdateEnabled) {
+        patch({
+            phase: "disabled",
+            disabledReason: "当前构建未启用签名自动更新，请从 GitHub Releases 手动下载。",
+        });
+        return {
+            getState: () => ({ ...state }),
+            checkForUpdates: async () => ({ ...state }),
+            downloadUpdate: async () => ({ ...state }),
+            installUpdate: async () => ({ ...state }),
+        };
+    }
+
+    updater.autoDownload = false;
+    updater.autoInstallOnAppQuit = false;
+
+    updater.on("checking-for-update", () => {
+        log.info("[AutoUpdater] checking for update");
+        patch({
+            phase: "checking",
+            error: null,
+            lastCheckedAt: Date.now(),
+        });
     });
 
-    autoUpdater.on("error", (err: Error) => {
-        log.error("[AutoUpdater] Error:", err);
-        deps.getMainWindow()?.webContents.send("updater:error", err.message);
+    updater.on("update-available", (info: unknown) => {
+        const typedInfo = info as UpdateInfo;
+        log.info(`[AutoUpdater] update available: ${typedInfo.version}`);
+        patch({
+            phase: "available",
+            latestVersion: typedInfo.version ?? state.latestVersion,
+            updateAvailable: true,
+            releaseNotes: normalizeReleaseNotes(typedInfo.releaseNotes),
+            progress: null,
+            error: null,
+            lastCheckedAt: Date.now(),
+        });
     });
 
-    // 启动时检查 (延迟 3s 避免启动阻塞)
-    setTimeout(() => {
-        void autoUpdater.checkForUpdates();
-    }, 3_000);
+    updater.on("update-not-available", (info: unknown) => {
+        const typedInfo = info as UpdateInfo;
+        log.info("[AutoUpdater] no update available");
+        patch({
+            phase: "not-available",
+            latestVersion: typedInfo.version ?? state.currentVersion,
+            updateAvailable: false,
+            releaseNotes: normalizeReleaseNotes(typedInfo.releaseNotes),
+            progress: null,
+            error: null,
+            lastCheckedAt: Date.now(),
+        });
+    });
 
-    // 每 6 小时检查
-    setInterval(() => {
-        void autoUpdater.checkForUpdates();
-    }, 6 * 60 * 60 * 1000);
-}
+    updater.on("download-progress", (progress: unknown) => {
+        const typedProgress = progress as ProgressInfo;
+        patch({
+            phase: "downloading",
+            progress: normalizeProgress(typedProgress),
+            error: null,
+        });
+    });
 
-export function checkForUpdatesManually(): Promise<unknown> {
-    return autoUpdater.checkForUpdates();
+    updater.on("update-downloaded", (info: unknown) => {
+        const typedInfo = info as UpdateInfo;
+        log.info(`[AutoUpdater] update downloaded: ${typedInfo.version}`);
+        patch({
+            phase: "downloaded",
+            latestVersion: typedInfo.version ?? state.latestVersion,
+            updateAvailable: true,
+            releaseNotes: normalizeReleaseNotes(typedInfo.releaseNotes),
+            progress: {
+                percent: 100,
+                bytesPerSecond: state.progress?.bytesPerSecond ?? 0,
+                transferred: state.progress?.total ?? state.progress?.transferred ?? 0,
+                total: state.progress?.total ?? state.progress?.transferred ?? 0,
+            },
+            error: null,
+        });
+    });
+
+    updater.on("error", (error: unknown) => {
+        const message = normalizeErrorMessage(error);
+        log.error("[AutoUpdater] error:", error);
+        patch({
+            phase: "error",
+            error: message,
+            progress: null,
+            lastCheckedAt: Date.now(),
+        });
+    });
+
+    if (options.scheduleChecks !== false) {
+        setTimeout(() => {
+            void updater.checkForUpdates().catch((error) => {
+                const message = normalizeErrorMessage(error);
+                log.error("[AutoUpdater] startup check failed:", error);
+                patch({ phase: "error", error: message, lastCheckedAt: Date.now() });
+            });
+        }, STARTUP_CHECK_DELAY_MS);
+
+        setInterval(() => {
+            void updater.checkForUpdates().catch((error) => {
+                const message = normalizeErrorMessage(error);
+                log.error("[AutoUpdater] periodic check failed:", error);
+                patch({ phase: "error", error: message, lastCheckedAt: Date.now() });
+            });
+        }, PERIODIC_CHECK_MS);
+    }
+
+    return {
+        getState: () => ({ ...state }),
+        checkForUpdates: async () => {
+            try {
+                await updater.checkForUpdates();
+            } catch (error) {
+                const message = normalizeErrorMessage(error);
+                patch({ phase: "error", error: message, lastCheckedAt: Date.now() });
+            }
+            return { ...state };
+        },
+        downloadUpdate: async () => {
+            if (!state.updateAvailable) return { ...state };
+            try {
+                await updater.downloadUpdate();
+            } catch (error) {
+                const message = normalizeErrorMessage(error);
+                patch({ phase: "error", error: message });
+            }
+            return { ...state };
+        },
+        installUpdate: async () => {
+            if (state.phase === "downloaded") {
+                updater.quitAndInstall(false, true);
+            }
+            return { ...state };
+        },
+    };
 }

@@ -62,6 +62,20 @@ describe("preload surface audit", () => {
         }
     });
 
+    it("exposes dedicated updater methods instead of forcing invoke-only usage", () => {
+        const methods = [
+            "updaterGetState",
+            "updaterCheck",
+            "updaterDownload",
+            "updaterInstall",
+            "onUpdaterStateChanged",
+        ];
+        for (const method of methods) {
+            expect(piAPI).toHaveProperty(method);
+            expect(typeof piAPI[method]).toBe("function");
+        }
+    });
+
     it("no method name contains internal or debug", () => {
         const keys = Object.keys(piAPI);
         for (const key of keys) {

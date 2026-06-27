@@ -9,6 +9,10 @@ function protectedPathError(path: string, reason: string) {
     return ipcError("ipcErrors.files.protectedPath", reason, { path });
 }
 
+function isExternalUrl(target: string): boolean {
+    return /^https?:\/\//i.test(target);
+}
+
 export function setupProjectShellIpc(): void {
     ipcMain.handle("project:detect", async (_event, workspacePath: string) => {
         const reason = getProtectedPathReason(workspacePath);
@@ -23,9 +27,13 @@ export function setupProjectShellIpc(): void {
     });
 
     ipcMain.handle("shell:open-path", async (_event, targetPath: string) => {
-        const reason = getProtectedPathReason(targetPath);
-        if (reason) return protectedPathError(targetPath, reason);
         try {
+            if (isExternalUrl(targetPath)) {
+                await shell.openExternal(targetPath);
+                return "";
+            }
+            const reason = getProtectedPathReason(targetPath);
+            if (reason) return protectedPathError(targetPath, reason);
             const result = await shell.openPath(targetPath);
             if (result) {
                 return ipcError(

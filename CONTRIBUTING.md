@@ -6,7 +6,7 @@ Thanks for your interest in contributing! Pi Desktop is an open-source Electron 
 
 ```bash
 # 1. Fork & clone
-git clone https://github.com/yourname/pi-desktop.git
+git clone https://github.com/ChisaAlter/pi-agent-desktop.git
 cd pi-desktop
 pnpm install
 
@@ -37,7 +37,7 @@ docs/                # Specs, plans, spike notes
 1. Pick an issue or open one describing what you want to change
 2. Create a branch: `git checkout -b feature/m6-xxx`
 3. Implement + write tests (TDD preferred)
-4. Verify: `pnpm -r test && pnpm -r typecheck`
+4. Verify: `pnpm -r typecheck && pnpm -r lint && pnpm -r test`
 5. Commit with clear messages: `feat(approval): add X` / `fix(terminal): Y`
 6. Open a PR against `master`
 
@@ -63,14 +63,17 @@ We use **vitest** + **@testing-library/react**. Tests live next to the code:
 
 - Main-process logic: `apps/desktop/src/main/**/__tests__/*.test.ts`
 - Renderer components: `apps/desktop/src/renderer/src/**/__tests__/*.test.tsx`
-- E2E: `apps/desktop/src/test/e2e/`
+- E2E: `apps/desktop/e2e/*.spec.ts`
 
 Run:
 
 ```bash
-pnpm -r test              # all packages
-pnpm test classifier     # single file by name
+pnpm -r typecheck
+pnpm -r lint
+pnpm -r test
 ```
+
+For release or updater work, also read the release guide in `docs/RELEASE-AND-AUTO-UPDATE.md`.
 
 ## Style
 
@@ -85,7 +88,7 @@ pnpm test classifier     # single file by name
 - **macOS / Linux** testing & packaging (M5.1)
 - **Skill editor** (Monaco integration) — see `m3 plan` for design
 - **Real Pi extension** to replace M1's interceptor (cleaner approval)
-- **Translations** (currently zh-CN only, but easy to add i18n)
+- **Translations** — zh-CN and en are present, but coverage still needs cleanup
 - **Documentation** — clearer examples, GIFs, troubleshooting
 
 ## Issues

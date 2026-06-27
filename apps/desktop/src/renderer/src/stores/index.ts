@@ -4,6 +4,7 @@ export { useSessionStore } from './session-store';
 export { useWorkspaceStore } from './workspace-store';
 export { useSettingsStore } from './settings-store';
 export { usePiStatusStore } from './pi-status-store';
+export { useUpdaterStore } from './updater-store';
 
 export type { Message, ToolCall, Session } from './session-store';
 export type { Workspace, GitStatus } from './workspace-store';

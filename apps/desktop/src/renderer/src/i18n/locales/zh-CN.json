@@ -476,7 +476,32 @@
       "heading": "关于 Pi 桌面",
       "version": "版本: {{version}}",
       "description": "Pi 桌面是一款 Windows 桌面应用程序，为 Pi Agent 提供图形化界面，方便与 Pi CLI 交互。",
-      "stack": "基于 Electron + React + TypeScript 构建。"
+      "stack": "基于 Electron + React + TypeScript 构建。",
+      "unknownVersion": "未知",
+      "updater": {
+        "heading": "应用更新",
+        "currentVersion": "当前版本: {{version}}",
+        "latestVersion": "最新版本: {{version}}",
+        "lastChecked": "上次检查: {{timestamp}}",
+        "progress": "下载进度",
+        "releaseNotes": "更新说明",
+        "phase": {
+          "disabled": "不可用",
+          "idle": "待检查",
+          "checking": "检查中",
+          "available": "可更新",
+          "not-available": "已是最新",
+          "downloading": "下载中",
+          "downloaded": "待安装",
+          "error": "出错"
+        },
+        "actions": {
+          "check": "检查更新",
+          "download": "下载更新",
+          "install": "重启并安装",
+          "openReleasePage": "打开 GitHub Releases"
+        }
+      }
     },
     "reset": "恢复默认",
     "resetAria": "恢复默认设置",
@@ -499,6 +524,11 @@
       "installFailed": "Pi CLI 安装失败: {{message}}",
       "updateFailed": "Pi CLI 更新失败: {{message}}",
       "uninstallFailed": "Pi CLI 卸载失败: {{message}}"
+    },
+    "updater": {
+      "checkFailed": "检查应用更新失败: {{message}}",
+      "downloadFailed": "下载应用更新失败: {{message}}",
+      "installFailed": "安装应用更新失败: {{message}}"
     },
     "chat": {
       "workspaceNotFound": "工作区不存在: {{id}}",

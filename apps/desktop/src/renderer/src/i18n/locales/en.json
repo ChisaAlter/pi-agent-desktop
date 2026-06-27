@@ -478,7 +478,32 @@
       "heading": "About Pi Desktop",
       "version": "Version: {{version}}",
       "description": "Pi Desktop is a Windows desktop application that provides a graphical interface for the Pi Agent, making it easy to interact with the Pi CLI.",
-      "stack": "Built on Electron + React + TypeScript."
+      "stack": "Built on Electron + React + TypeScript.",
+      "unknownVersion": "Unknown",
+      "updater": {
+        "heading": "App updates",
+        "currentVersion": "Current version: {{version}}",
+        "latestVersion": "Latest version: {{version}}",
+        "lastChecked": "Last checked: {{timestamp}}",
+        "progress": "Download progress",
+        "releaseNotes": "Release notes",
+        "phase": {
+          "disabled": "Unavailable",
+          "idle": "Idle",
+          "checking": "Checking",
+          "available": "Update available",
+          "not-available": "Up to date",
+          "downloading": "Downloading",
+          "downloaded": "Ready to install",
+          "error": "Error"
+        },
+        "actions": {
+          "check": "Check for updates",
+          "download": "Download update",
+          "install": "Restart and install",
+          "openReleasePage": "Open GitHub Releases"
+        }
+      }
     },
     "reset": "Reset to defaults",
     "resetAria": "Reset to defaults",
@@ -501,6 +526,11 @@
       "installFailed": "Failed to install Pi CLI: {{message}}",
       "updateFailed": "Failed to update Pi CLI: {{message}}",
       "uninstallFailed": "Failed to uninstall Pi CLI: {{message}}"
+    },
+    "updater": {
+      "checkFailed": "Failed to check for app updates: {{message}}",
+      "downloadFailed": "Failed to download the app update: {{message}}",
+      "installFailed": "Failed to install the app update: {{message}}"
     },
     "chat": {
       "workspaceNotFound": "Workspace not found: {{id}}",

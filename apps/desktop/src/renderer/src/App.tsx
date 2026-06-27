@@ -37,6 +37,7 @@ import {
 import { useWorkspaceStore } from "./stores/workspace-store";
 import { useSettingsStore } from "./stores/settings-store";
 import { usePiStatusStore } from "./stores/pi-status-store";
+import { useUpdaterStore } from "./stores/updater-store";
 import { useApprovalStore } from "./stores/approval-store";
 import { useSessionStore } from "./stores/session-store";
 import { useAgentStore } from "./stores/agent-store";
@@ -52,6 +53,7 @@ import { useRuntimeFeatureStore } from "./stores/runtime-feature-store";
 import type { TerminalCommandMode } from "./utils/terminal-command";
 import { isIpcError } from "@shared";
 import { applyTheme, watchSystemTheme, type Theme } from "./utils/theme";
+import { addToast } from "./stores/toast-store";
 
 type MainPanel = "chat" | "skills" | "git" | "files" | "tasks" | "memory" | "history";
 
@@ -192,6 +194,10 @@ function AppShell(): React.ReactElement {
     const { loadPiConfig, settings, rightRailCollapsed, sidebarGroupMode } = useSettingsStore();
     const { setSidebarGroupMode } = useSettingsStore();
     const { status, loading: piStatusLoading, refreshStatus } = usePiStatusStore();
+    const updaterState = useUpdaterStore((state) => state.state);
+    const setupUpdaterListeners = useUpdaterStore((state) => state.setupListeners);
+    const cleanupUpdaterListeners = useUpdaterStore((state) => state.cleanupListeners);
+    const hydrateUpdaterState = useUpdaterStore((state) => state.hydrate);
     const refreshRuntimeFeatureState = useRuntimeFeatureStore((state) => state.refresh);
     const pendingApprovalCount = useApprovalStore(
         (s) => s.changes.filter((c) => c.status === "pending").length,
@@ -204,7 +210,14 @@ function AppShell(): React.ReactElement {
     const pendingDefaultAgentWorkspaces = useRef<Set<string>>(new Set());
     const pendingSessionAgentSessions = useRef<Set<string>>(new Set());
     const rightRailManualPreferenceRef = useRef<"open" | "collapsed" | null>(null);
+    const updaterSetupRef = useRef(setupUpdaterListeners);
+    const updaterCleanupRef = useRef(cleanupUpdaterListeners);
+    const updaterHydrateRef = useRef(hydrateUpdaterState);
+    const lastUpdaterToastRef = useRef<string | null>(null);
     const activePanel = panelForSection(activeSection);
+    updaterSetupRef.current = setupUpdaterListeners;
+    updaterCleanupRef.current = cleanupUpdaterListeners;
+    updaterHydrateRef.current = hydrateUpdaterState;
     const setLeftSidebarWidth = useCallback((width: number): void => {
         const next = clampLeftSidebarWidth(width);
         setLeftSidebarWidthState(next);
@@ -225,6 +238,29 @@ function AppShell(): React.ReactElement {
         emitWorkspaceNotice({ message: workspaceError, tone: "error" });
         clearWorkspaceError();
     }, [clearWorkspaceError, workspaceError]);
+
+    useEffect(() => {
+        updaterSetupRef.current();
+        void updaterHydrateRef.current();
+        return () => updaterCleanupRef.current();
+    }, []);
+
+    useEffect(() => {
+        if (!updaterState) return;
+        if (updaterState.phase === "available" && updaterState.latestVersion) {
+            const signature = `available:${updaterState.latestVersion}`;
+            if (lastUpdaterToastRef.current === signature) return;
+            lastUpdaterToastRef.current = signature;
+            addToast(`发现新版本 ${updaterState.latestVersion}，可在“关于”里下载更新。`, "info");
+            return;
+        }
+        if (updaterState.phase === "downloaded" && updaterState.latestVersion) {
+            const signature = `downloaded:${updaterState.latestVersion}`;
+            if (lastUpdaterToastRef.current === signature) return;
+            lastUpdaterToastRef.current = signature;
+            addToast(`更新 ${updaterState.latestVersion} 已下载完成，可在“关于”里重启安装。`, "success");
+        }
+    }, [updaterState]);
 
     useEffect(() => {
         if (!currentWorkspace || !agentsInitialized || sessionsLoading) return;
