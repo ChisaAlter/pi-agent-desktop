@@ -9,23 +9,23 @@ describe("CheckpointService", () => {
     const dirs: string[] = [];
     const memories: MemoryService[] = [];
 
-    afterEach(() => {
+    afterEach(async () => {
         for (const memory of memories.splice(0)) {
-            memory.close();
+            await memory.close();
         }
         for (const dir of dirs.splice(0)) {
             rmSync(dir, { recursive: true, force: true });
         }
     });
 
-    it("writes structured checkpoints and rebuilds context blocks", () => {
+    it("writes structured checkpoints and rebuilds context blocks", async () => {
         const dir = mkdtempSync(join(tmpdir(), "pi-checkpoint-"));
         dirs.push(dir);
         const memory = new MemoryService({ rootDir: dir });
         memories.push(memory);
         const service = new CheckpointService(memory);
 
-        service.writeCheckpoint({
+        await service.writeCheckpoint({
             workspaceId: "ws1",
             sessionId: "s1",
             summary: "已完成 settings schema 和 GoalService",
@@ -33,7 +33,7 @@ describe("CheckpointService", () => {
             nextSteps: ["接入右侧栏 plan ledger"],
         });
 
-        const block = service.rebuildContext({
+        const block = await service.rebuildContext({
             workspaceId: "ws1",
             sessionId: "s1",
             goal: "完成长程能力集成",

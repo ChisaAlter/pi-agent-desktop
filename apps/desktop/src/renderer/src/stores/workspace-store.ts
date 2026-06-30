@@ -9,6 +9,7 @@ import { isNumberOrUndefined } from '../utils/format';
 import { isIpcError } from '@shared';
 import { useSessionStore } from './session-store';
 import { addToast } from './toast-store';
+import { getPiAPI } from '../utils/pi-api';
 
 export interface Workspace {
   id: string;
@@ -46,10 +47,7 @@ interface WorkspaceState {
   updateGitStatus: (workspaceId: string, gitStatus: GitStatus) => void;
   getCurrentWorkspace: () => Workspace | null;
   clearError: () => void;
-}
-
-function getPiAPI(): Window["piAPI"] | undefined {
-  return typeof window !== "undefined" ? window.piAPI : undefined;
+  init: () => void;
 }
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
@@ -89,13 +87,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
       addToast("工作区加载失败", "error");
     }
   };
-  loadWorkspaces();
 
   return {
   workspaces: [],
   currentWorkspaceId: null,
   lastError: null,
   loaded: false,
+  init: () => { void loadWorkspaces(); },
 
   addWorkspace: (name: string, path: string, id?: string) => {
     const now = new Date();
@@ -246,3 +244,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
   clearError: () => set({ lastError: null }),
   };
 });
+
+// Trigger initial load at module load time (preserves original behavior:
+// in tests window.piAPI is not yet set up, so getPiAPI() returns undefined
+// and loadWorkspaces() is a no-op; in production it loads from main process).
+useWorkspaceStore.getState().init();

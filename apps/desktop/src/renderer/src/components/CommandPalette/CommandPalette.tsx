@@ -3,7 +3,7 @@
 // 可用度-D: 文件搜索失败 → 友好错误 + 重试按钮 (a11y: role="alert")
 // v1.0.4: 用户可见文案 + 命令 label 走 t()
 
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { fuzzyScore } from "../../utils/fuzzy-match";
 import { useSessionStore } from "../../stores/session-store";
 import { useI18n } from "../../i18n";
@@ -113,6 +113,7 @@ export function CommandPalette({
     const inputRef = useRef<HTMLInputElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
     const { t } = useI18n();
+    const sessions = useSessionStore((s) => s.sessions);
 
     const loadGitStatus = useCallback(async (): Promise<void> => {
         if (!window.piAPI?.getGitStatus || !workspacePath) return;
@@ -219,193 +220,199 @@ export function CommandPalette({
         setFilesReloadKey((k) => k + 1);
     }, []);
 
-    if (!isOpen) return null;
+    const gitContextCommands = useMemo<GitContextCommand[]>(
+        () =>
+            gitChangedFiles(gitStatus).flatMap(({ file, status }) => [
+                {
+                    id: `git-open-change:${file}`,
+                    labelKey: "commandPalette.commands.git_open_change",
+                    file,
+                    status,
+                    kind: "open-file" as const,
+                },
+                {
+                    id: `git-open-diff:${file}`,
+                    labelKey: "commandPalette.commands.git_open_diff",
+                    file,
+                    status,
+                    kind: "open-diff" as const,
+                },
+                {
+                    id: `git-stage-file:${file}`,
+                    labelKey: "commandPalette.commands.git_stage_file",
+                    file,
+                    status,
+                    kind: "stage-file" as const,
+                },
+            ]),
+        [gitStatus],
+    );
 
     // 根据 mode 决定 results
-    let results: CommandResult[] = [];
+    const results = useMemo<CommandResult[]>(() => {
+        let computed: CommandResult[] = [];
 
-    const projectCommands: ProjectScriptCommand[] = project?.scripts
-        ? Object.keys(project.scripts).slice(0, 12).map((name) => ({
-            id: `project-script:${name}`,
-            name,
-            command: projectScriptCommand(project.packageManager, name),
-            rawScript: String(project.scripts?.[name] ?? ""),
-        }))
-        : [];
-    const gitContextCommands: GitContextCommand[] = gitChangedFiles(gitStatus)
-        .flatMap(({ file, status }) => [
-            {
-                id: `git-open-change:${file}`,
-                labelKey: "commandPalette.commands.git_open_change",
-                file,
-                status,
-                kind: "open-file" as const,
-            },
-            {
-                id: `git-open-diff:${file}`,
-                labelKey: "commandPalette.commands.git_open_diff",
-                file,
-                status,
-                kind: "open-diff" as const,
-            },
-            {
-                id: `git-stage-file:${file}`,
-                labelKey: "commandPalette.commands.git_stage_file",
-                file,
-                status,
-                kind: "stage-file" as const,
-            },
-        ]);
-
-    if (mode === "file") {
-        results = files
-            .map((f) => ({ f, s: fuzzyScore(f.path, query) }))
-            .filter((x) => x.s > 0)
-            .sort((a, b) => b.s - a.s)
-            .slice(0, 20)
-            .map((x) => ({
-                id: x.f.path,
-                primary: x.f.path,
-                onSelect: () => onSelectFile?.(x.f.path),
-            }));
-    } else if (mode === "cmd") {
-        const builtInResults = COMMANDS
-            .map((c) => ({ c, s: fuzzyScore(t(c.labelKey), query) }))
-            .filter((x) => x.s > 0)
-            .sort((a, b) => b.s - a.s)
-            .map((x) => ({
-                id: x.c.id,
-                primary: t(x.c.labelKey),
-                secondary: x.c.hint,
-                keepOpen: x.c.id === "switch_workspace",
-                onSelect: () => onRunCommand?.(x.c.id),
-            }));
-        const projectResults = projectCommands
-            .map((c) => ({
-                c,
-                s: Math.max(
-                    fuzzyScore(c.name, query),
-                    fuzzyScore(c.command, query),
-                    fuzzyScore(`run ${c.name}`, query),
-                ),
+        const projectCommands: ProjectScriptCommand[] = project?.scripts
+            ? Object.keys(project.scripts).slice(0, 12).map((name) => ({
+                id: `project-script:${name}`,
+                name,
+                command: projectScriptCommand(project.packageManager, name),
+                rawScript: String(project.scripts?.[name] ?? ""),
             }))
-            .filter((x) => x.s > 0)
-            .sort((a, b) => b.s - a.s)
-            .map((x) => ({
-                id: x.c.id,
-                primary: `${t("commandPalette.projectScriptPrefix")} ${x.c.name}`,
-                secondary: x.c.command,
-                keepOpen: true,
-                onSelect: () => {
-                    const mode = classifyTerminalCommand(`${x.c.command}\n${x.c.rawScript}`);
-                    setActionStatus({
-                        message: t(
-                            mode === "draft"
-                                ? "commandPalette.states.projectScriptDrafted"
-                                : "commandPalette.states.projectScriptSent",
-                            { name: x.c.name },
-                        ),
-                        tone: "success",
-                    });
-                    window.dispatchEvent(new CustomEvent("terminal:run-command", {
-                        detail: { command: x.c.command, mode },
-                    }));
-                },
-            }));
-        const gitContextResults = gitContextCommands
-            .map((c) => ({
-                c,
-                label: t(c.labelKey, { file: c.file }),
-                s: Math.max(
-                    fuzzyScore(t(c.labelKey, { file: c.file }), query),
-                    fuzzyScore(c.file, query),
-                    fuzzyScore(
-                        c.kind === "open-diff"
-                            ? "diff git changes"
-                            : c.kind === "stage-file"
-                                ? `stage git add ${c.file}`
-                                : "open changed file",
-                        query,
+            : [];
+
+        if (mode === "file") {
+            computed = files
+                .map((f) => ({ f, s: fuzzyScore(f.path, query) }))
+                .filter((x) => x.s > 0)
+                .sort((a, b) => b.s - a.s)
+                .slice(0, 20)
+                .map((x) => ({
+                    id: x.f.path,
+                    primary: x.f.path,
+                    onSelect: () => onSelectFile?.(x.f.path),
+                }));
+        } else if (mode === "cmd") {
+            const builtInResults = COMMANDS
+                .map((c) => ({ c, s: fuzzyScore(t(c.labelKey), query) }))
+                .filter((x) => x.s > 0)
+                .sort((a, b) => b.s - a.s)
+                .map((x) => ({
+                    id: x.c.id,
+                    primary: t(x.c.labelKey),
+                    secondary: x.c.hint,
+                    keepOpen: x.c.id === "switch_workspace",
+                    onSelect: () => onRunCommand?.(x.c.id),
+                }));
+            const projectResults = projectCommands
+                .map((c) => ({
+                    c,
+                    s: Math.max(
+                        fuzzyScore(c.name, query),
+                        fuzzyScore(c.command, query),
+                        fuzzyScore(`run ${c.name}`, query),
                     ),
-                ),
-            }))
-            .filter((x) => x.s > 0)
-            .sort((a, b) => b.s - a.s)
-            .map((x) => ({
-                id: x.c.id,
-                primary: x.label,
-                secondary: `${x.c.status} ${x.c.file}`,
-                keepOpen: x.c.kind === "stage-file",
-                onSelect: async () => {
-                    if (x.c.kind === "open-diff") {
-                        setActionStatus({ message: t("commandPalette.states.gitDiffOpened", { file: x.c.file }), tone: "success" });
-                        window.dispatchEvent(new CustomEvent("workspace:open-git-diff", { detail: { file: x.c.file } }));
-                        return;
-                    }
-                    if (x.c.kind === "stage-file") {
-                        if (!window.piAPI?.gitAdd) return;
-                        try {
-                            const result = await window.piAPI.gitAdd(workspacePath, [x.c.file]);
-                            if (isIpcError(result)) {
-                                setActionStatus({ message: result.fallback, tone: "error" });
-                                return;
-                            }
-                            setActionStatus({ message: t("commandPalette.states.gitStageSuccess", { file: x.c.file }), tone: "success" });
-                            window.dispatchEvent(
-                                new CustomEvent("workspace:git-changed", {
-                                    detail: { workspacePath, files: [x.c.file], reason: "stage" },
-                                }),
-                            );
-                            await loadGitStatus();
-                        } catch (err) {
-                            setActionStatus({ message: err instanceof Error ? err.message : String(err), tone: "error" });
+                }))
+                .filter((x) => x.s > 0)
+                .sort((a, b) => b.s - a.s)
+                .map((x) => ({
+                    id: x.c.id,
+                    primary: `${t("commandPalette.projectScriptPrefix")} ${x.c.name}`,
+                    secondary: x.c.command,
+                    keepOpen: true,
+                    onSelect: () => {
+                        const mode = classifyTerminalCommand(`${x.c.command}\n${x.c.rawScript}`);
+                        setActionStatus({
+                            message: t(
+                                mode === "draft"
+                                    ? "commandPalette.states.projectScriptDrafted"
+                                    : "commandPalette.states.projectScriptSent",
+                                { name: x.c.name },
+                            ),
+                            tone: "success",
+                        });
+                        window.dispatchEvent(new CustomEvent("terminal:run-command", {
+                            detail: { command: x.c.command, mode },
+                        }));
+                    },
+                }));
+            const gitContextResults = gitContextCommands
+                .map((c) => ({
+                    c,
+                    label: t(c.labelKey, { file: c.file }),
+                    s: Math.max(
+                        fuzzyScore(t(c.labelKey, { file: c.file }), query),
+                        fuzzyScore(c.file, query),
+                        fuzzyScore(
+                            c.kind === "open-diff"
+                                ? "diff git changes"
+                                : c.kind === "stage-file"
+                                    ? `stage git add ${c.file}`
+                                    : "open changed file",
+                            query,
+                        ),
+                    ),
+                }))
+                .filter((x) => x.s > 0)
+                .sort((a, b) => b.s - a.s)
+                .map((x) => ({
+                    id: x.c.id,
+                    primary: x.label,
+                    secondary: `${x.c.status} ${x.c.file}`,
+                    keepOpen: x.c.kind === "stage-file",
+                    onSelect: async () => {
+                        if (x.c.kind === "open-diff") {
+                            setActionStatus({ message: t("commandPalette.states.gitDiffOpened", { file: x.c.file }), tone: "success" });
+                            window.dispatchEvent(new CustomEvent("workspace:open-git-diff", { detail: { file: x.c.file } }));
+                            return;
                         }
-                        return;
-                    }
-                    setActionStatus({ message: t("commandPalette.states.gitChangeOpened", { file: x.c.file }), tone: "success" });
-                    window.dispatchEvent(
-                        new CustomEvent("workspace:open-file", {
-                            detail: { path: `${workspacePath.replace(/[\\/]+$/, "")}\\${x.c.file.replace(/^[\\/]+/, "")}` },
+                        if (x.c.kind === "stage-file") {
+                            if (!window.piAPI?.gitAdd) return;
+                            try {
+                                const result = await window.piAPI.gitAdd(workspacePath, [x.c.file]);
+                                if (isIpcError(result)) {
+                                    setActionStatus({ message: result.fallback, tone: "error" });
+                                    return;
+                                }
+                                setActionStatus({ message: t("commandPalette.states.gitStageSuccess", { file: x.c.file }), tone: "success" });
+                                window.dispatchEvent(
+                                    new CustomEvent("workspace:git-changed", {
+                                        detail: { workspacePath, files: [x.c.file], reason: "stage" },
+                                    }),
+                                );
+                                await loadGitStatus();
+                            } catch (err) {
+                                setActionStatus({ message: err instanceof Error ? err.message : String(err), tone: "error" });
+                            }
+                            return;
+                        }
+                        setActionStatus({ message: t("commandPalette.states.gitChangeOpened", { file: x.c.file }), tone: "success" });
+                        window.dispatchEvent(
+                            new CustomEvent("workspace:open-file", {
+                                detail: { path: `${workspacePath.replace(/[\\/]+$/, "")}\\${x.c.file.replace(/^[\\/]+/, "")}` },
+                            }),
+                        );
+                    },
+                }));
+            computed = [
+                ...builtInResults,
+                ...gitContextResults.slice(0, CONTEXT_RESULT_LIMIT),
+                ...projectResults.slice(0, CONTEXT_RESULT_LIMIT),
+            ].slice(0, COMMAND_RESULT_LIMIT);
+        } else if (mode === "history") {
+            // 历史搜索 (M2-6): 跨 session 搜消息内容
+            const filteredSessions = sessions.filter(
+                (session) => !workspaceId || session.workspaceId === workspaceId,
+            );
+            const q = query.toLowerCase();
+            const all: Array<{ id: string; primary: string; secondary?: string; onSelect: () => void }> = [];
+            for (const s of filteredSessions) {
+                for (const m of s.messages) {
+                    if (q && !m.content.toLowerCase().includes(q)) continue;
+                    all.push({
+                        id: `${s.id}_${m.id}`,
+                        primary: m.content.length > 80 ? m.content.slice(0, 80) + "..." : m.content,
+                        secondary: t("commandPalette.historyLine", {
+                            title: s.title,
+                            role: m.role === "user" ? t("messageBubble.userAuthor") : t("messageBubble.piAuthor"),
                         }),
-                    );
-                },
-            }));
-        results = [
-            ...builtInResults,
-            ...gitContextResults.slice(0, CONTEXT_RESULT_LIMIT),
-            ...projectResults.slice(0, CONTEXT_RESULT_LIMIT),
-        ].slice(0, COMMAND_RESULT_LIMIT);
-    } else if (mode === "history") {
-        // 历史搜索 (M2-6): 跨 session 搜消息内容
-        const sessions = useSessionStore
-            .getState()
-            .sessions
-            .filter((session) => !workspaceId || session.workspaceId === workspaceId);
-        const q = query.toLowerCase();
-        const all: Array<{ id: string; primary: string; secondary?: string; onSelect: () => void }> = [];
-        for (const s of sessions) {
-            for (const m of s.messages) {
-                if (q && !m.content.toLowerCase().includes(q)) continue;
-                all.push({
-                    id: `${s.id}_${m.id}`,
-                    primary: m.content.length > 80 ? m.content.slice(0, 80) + "..." : m.content,
-                    secondary: t("commandPalette.historyLine", {
-                        title: s.title,
-                        role: m.role === "user" ? t("messageBubble.userAuthor") : t("messageBubble.piAuthor"),
-                    }),
-                    onSelect: () => onSelectHistory?.(s.id, m.id),
-                });
+                        onSelect: () => onSelectHistory?.(s.id, m.id),
+                    });
+                    if (all.length >= 30) break;
+                }
                 if (all.length >= 30) break;
             }
-            if (all.length >= 30) break;
+            // 按 score 排序
+            computed = all
+                .map((r) => ({ r, s: fuzzyScore(r.primary, query) }))
+                .sort((a, b) => b.s - a.s)
+                .slice(0, 20)
+                .map((x) => x.r);
         }
-        // 按 score 排序
-        results = all
-            .map((r) => ({ r, s: fuzzyScore(r.primary, query) }))
-            .sort((a, b) => b.s - a.s)
-            .slice(0, 20)
-            .map((x) => x.r);
-    }
+        return computed;
+    }, [mode, query, files, project, gitContextCommands, sessions, workspaceId, workspacePath, onSelectFile, onSelectHistory, onRunCommand, t, loadGitStatus]);
+
+    if (!isOpen) return null;
 
     const handleClose = () => onClose();
 

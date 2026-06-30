@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, renameSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, createReadStream } from "fs";
 import { dirname, join } from "path";
 import { randomUUID } from "crypto";
+import readline from "node:readline";
 import { DatabaseSync } from "node:sqlite";
 import type {
     GoalState,
@@ -60,16 +61,18 @@ function deriveLayer(scope: MemoryScope, kind: MemoryKind): LongHorizonMemoryLay
     return "project_memory";
 }
 
-function tokenize(value: string): string[] {
-    const normalized = value.toLowerCase();
-    const ascii = normalized.match(/[a-z0-9_-]{2,}/g) ?? [];
-    const cjk = normalized.match(/[\u4e00-\u9fff]{2,}/g) ?? [];
-    const cjkBigrams = cjk.flatMap((chunk) => {
-        const result: string[] = [chunk];
-        for (let i = 0; i < chunk.length - 1; i += 1) result.push(chunk.slice(i, i + 2));
-        return result;
-    });
-    return [...new Set([...ascii, ...cjkBigrams])];
+function tokenize(text: string): string[] {
+    const tokens: string[] = [];
+    const ascii = text.match(/[a-zA-Z0-9]+/g) || [];
+    tokens.push(...ascii);
+    const cjk = text.match(/[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]+/g) || [];
+    for (const segment of cjk) {
+        for (const ch of segment) tokens.push(ch);  // unigram
+        for (let i = 0; i < segment.length - 1; i++) {
+            tokens.push(segment.substring(i, i + 2));  // bigram
+        }
+    }
+    return tokens;
 }
 
 function buildSearchText(text: string, tags?: string[]): string {
@@ -121,7 +124,12 @@ export class LongHorizonDatabase {
         this.migrate();
     }
 
-    close(): void {
+    private async yieldToEventLoop(): Promise<void> {
+        return new Promise(resolve => setImmediate(resolve));
+    }
+
+    async close(): Promise<void> {
+        await this.yieldToEventLoop();
         this.db.close();
     }
 
@@ -129,24 +137,33 @@ export class LongHorizonDatabase {
         return this.dbPath;
     }
 
-    migrateLegacyMemoryJsonl(jsonlPath: string): void {
+    async migrateLegacyMemoryJsonl(jsonlPath: string): Promise<void> {
+        await this.yieldToEventLoop();
         if (!existsSync(jsonlPath)) return;
         const countRow = this.db.prepare("SELECT COUNT(*) AS count FROM memories").get() as { count: number };
         if ((countRow?.count ?? 0) > 0) return;
-        const content = readFileSync(jsonlPath, "utf8");
-        for (const line of content.split(/\r?\n/)) {
+        const rl = readline.createInterface({ input: createReadStream(jsonlPath), crlfDelay: Infinity });
+        const batch: MemoryInput[] = [];
+        for await (const line of rl) {
             if (!line.trim()) continue;
             try {
-                const parsed = JSON.parse(line) as MemoryInput & { id?: string; createdAt?: number };
-                this.insertMemory(parsed);
+                const record = JSON.parse(line) as MemoryInput;
+                batch.push(record);
             } catch {
                 // Skip invalid legacy lines.
             }
+            if (batch.length >= 100) {
+                this.insertBatch(batch);
+                batch.length = 0;
+                await this.yieldToEventLoop();
+            }
         }
+        if (batch.length > 0) this.insertBatch(batch);
         renameSync(jsonlPath, `${jsonlPath}.migrated`);
     }
 
-    migrateLegacyGoalsFile(goalsPath: string): void {
+    async migrateLegacyGoalsFile(goalsPath: string): Promise<void> {
+        await this.yieldToEventLoop();
         if (!existsSync(goalsPath)) return;
         const countRow = this.db.prepare("SELECT COUNT(*) AS count FROM goals").get() as { count: number };
         if ((countRow?.count ?? 0) > 0) return;
@@ -154,7 +171,7 @@ export class LongHorizonDatabase {
             const parsed = JSON.parse(readFileSync(goalsPath, "utf8")) as { goals?: GoalState[] };
             for (const goal of parsed.goals ?? []) {
                 if (!goal.workspaceId || goal.status === "cleared") continue;
-                this.upsertGoal(goal);
+                await this.upsertGoal(goal);
             }
             renameSync(goalsPath, `${goalsPath}.migrated`);
         } catch {
@@ -162,7 +179,8 @@ export class LongHorizonDatabase {
         }
     }
 
-    insertMemory(input: MemoryInput): LongHorizonMemoryRecord {
+    async insertMemory(input: MemoryInput): Promise<LongHorizonMemoryRecord> {
+        await this.yieldToEventLoop();
         const timestamp = input.createdAt ?? Date.now();
         const record: LongHorizonMemoryRecord = {
             id: input.id ?? randomUUID(),
@@ -210,7 +228,8 @@ export class LongHorizonDatabase {
         return record;
     }
 
-    upsertHistoryMessage(input: HistoryMessageInput): LongHorizonMemoryRecord | null {
+    async upsertHistoryMessage(input: HistoryMessageInput): Promise<LongHorizonMemoryRecord | null> {
+        await this.yieldToEventLoop();
         const text = [input.role, input.content.trim(), input.thinking?.trim() ?? ""]
             .filter(Boolean)
             .join("\n");
@@ -227,7 +246,8 @@ export class LongHorizonDatabase {
         });
     }
 
-    searchMemories(query: string, options: MemorySearchOptions = {}): LongHorizonMemoryRecord[] {
+    async searchMemories(query: string, options: MemorySearchOptions = {}): Promise<LongHorizonMemoryRecord[]> {
+        await this.yieldToEventLoop();
         const terms = tokenize(query);
         if (terms.length === 0) return [];
         const memoryHits = this.searchLayered(terms, options, false);
@@ -235,59 +255,68 @@ export class LongHorizonDatabase {
         return this.searchLayered(terms, options, true);
     }
 
-    listRecentMemories(options: RecentMemoryOptions = {}): LongHorizonMemoryRecord[] {
+    async listRecentMemories(options: RecentMemoryOptions = {}): Promise<LongHorizonMemoryRecord[]> {
+        await this.yieldToEventLoop();
         const rows = this.db.prepare(`
             SELECT *
             FROM memories
-            WHERE (?1 IS NULL OR workspace_id = ?1 OR workspace_id IS NULL OR workspace_id = '')
-              AND (?2 IS NULL OR session_id = ?2 OR session_id IS NULL OR session_id = '')
-            ORDER BY created_at DESC, id DESC
-            LIMIT ?3
+            WHERE (?1 IS NULL OR workspace_id = ?1 OR (scope = 'global' AND workspace_id IS NULL))
+            ORDER BY created_at DESC
+            LIMIT ?2
         `).all(
             options.workspaceId ?? null,
-            options.sessionId ?? null,
             Math.max(1, options.limit ?? 10),
         ) as Array<Record<string, unknown>>;
         return rows.map(rowToMemory);
     }
 
-    getMemoryTree(rootId: string): { record: LongHorizonMemoryRecord; children: Array<{ record: LongHorizonMemoryRecord; children: unknown[] }> } | null {
+    async getMemoryTree(rootId: string): Promise<{ record: LongHorizonMemoryRecord; children: Array<{ record: LongHorizonMemoryRecord; children: unknown[] }> } | null> {
+        await this.yieldToEventLoop();
         const row = this.db.prepare("SELECT * FROM memories WHERE id = ?").get(rootId) as Record<string, unknown> | undefined;
         if (!row) return null;
         return this.buildTree(rowToMemory(row));
     }
 
-    setSourceTasks(
+    async setSourceTasks(
         workspaceId: string,
         agentId: string | undefined,
         source: "goal" | "plan",
         items: Array<Pick<LongHorizonTaskRecord, "id" | "text" | "status">>,
-    ): void {
+    ): Promise<void> {
+        await this.yieldToEventLoop();
         const now = Date.now();
-        this.db.prepare("DELETE FROM tasks WHERE workspace_id = ? AND agent_key = ? AND source = ?")
-            .run(workspaceId, agentKey(agentId), source);
-        const insert = this.db.prepare(`
-            INSERT INTO tasks (
-                id, workspace_id, agent_id, agent_key, source, text, status, ordinal, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-        for (const [index, item] of items.entries()) {
-            insert.run(
-                item.id,
-                workspaceId,
-                agentId ?? null,
-                agentKey(agentId),
-                source,
-                item.text,
-                item.status,
-                index,
-                now,
-                now,
-            );
+        this.db.exec("BEGIN");
+        try {
+            this.db.prepare("DELETE FROM tasks WHERE workspace_id = ? AND agent_key = ? AND source = ?")
+                .run(workspaceId, agentKey(agentId), source);
+            const insert = this.db.prepare(`
+                INSERT INTO tasks (
+                    id, workspace_id, agent_id, agent_key, source, text, status, ordinal, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+            for (const [index, item] of items.entries()) {
+                insert.run(
+                    item.id,
+                    workspaceId,
+                    agentId ?? null,
+                    agentKey(agentId),
+                    source,
+                    item.text,
+                    item.status,
+                    index,
+                    now,
+                    now,
+                );
+            }
+            this.db.exec("COMMIT");
+        } catch (err) {
+            this.db.exec("ROLLBACK");
+            throw err;
         }
     }
 
-    listTasks(input: LongHorizonTaskListInput): LongHorizonTaskRecord[] {
+    async listTasks(input: LongHorizonTaskListInput): Promise<LongHorizonTaskRecord[]> {
+        await this.yieldToEventLoop();
         const rows = this.db.prepare(`
             SELECT *
             FROM tasks
@@ -302,12 +331,15 @@ export class LongHorizonDatabase {
         return rows.map(rowToTask);
     }
 
-    getActiveTask(input: LongHorizonTaskListInput): LongHorizonTaskRecord | null {
-        const active = this.listTasks(input).find((task) => task.status === "running" || task.status === "waiting" || task.status === "pending");
+    async getActiveTask(input: LongHorizonTaskListInput): Promise<LongHorizonTaskRecord | null> {
+        await this.yieldToEventLoop();
+        const tasks = await this.listTasks(input);
+        const active = tasks.find((task) => task.status === "running" || task.status === "waiting" || task.status === "pending");
         return active ?? null;
     }
 
-    upsertGoal(goal: GoalState): GoalState {
+    async upsertGoal(goal: GoalState): Promise<GoalState> {
+        await this.yieldToEventLoop();
         const createdAt = goal.createdAt ?? Date.now();
         this.db.prepare(`
             INSERT OR REPLACE INTO goals (
@@ -327,26 +359,96 @@ export class LongHorizonDatabase {
         return { ...goal, createdAt };
     }
 
-    getGoal(workspaceId: string, agentId?: string): GoalState | null {
+    async getGoal(workspaceId: string, agentId?: string): Promise<GoalState | null> {
+        await this.yieldToEventLoop();
         const direct = this.selectGoal(workspaceId, agentId);
         if (direct) return direct;
         if (agentId) return this.selectGoal(workspaceId, undefined);
         return null;
     }
 
-    clearGoal(workspaceId: string, agentId?: string): GoalState | null {
-        const existing = this.getGoal(workspaceId, agentId);
+    async clearGoal(workspaceId: string, agentId?: string): Promise<GoalState | null> {
+        await this.yieldToEventLoop();
+        const existing = await this.getGoal(workspaceId, agentId);
         if (!existing) return null;
         const targetKey = this.selectGoal(workspaceId, agentId)?.agentId ?? existing.agentId;
         this.db.prepare("DELETE FROM goals WHERE workspace_id = ? AND agent_key = ?").run(workspaceId, agentKey(targetKey));
         return existing;
     }
 
-    private buildTree(record: LongHorizonMemoryRecord): { record: LongHorizonMemoryRecord; children: Array<{ record: LongHorizonMemoryRecord; children: unknown[] }> } {
+    private insertBatch(records: MemoryInput[]): void {
+        this.db.exec("BEGIN");
+        try {
+            const insertMemoryStmt = this.db.prepare(`
+                INSERT OR REPLACE INTO memories (
+                    id, scope, layer, kind, text, parent_id, workspace_id, session_id, tags_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+            const insertFtsStmt = this.db.prepare(`
+                INSERT OR REPLACE INTO memory_fts (id, search_text, kind, layer, workspace_id, session_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `);
+            for (const input of records) {
+                const timestamp = input.createdAt ?? Date.now();
+                const record: LongHorizonMemoryRecord = {
+                    id: input.id ?? randomUUID(),
+                    scope: input.scope,
+                    layer: deriveLayer(input.scope, input.kind),
+                    kind: input.kind,
+                    text: input.text,
+                    parentId: input.parentId,
+                    workspaceId: input.workspaceId,
+                    sessionId: input.sessionId,
+                    tags: input.tags,
+                    createdAt: timestamp,
+                    updatedAt: timestamp,
+                };
+                const tagsJson = record.tags?.length ? JSON.stringify(record.tags) : null;
+                const searchText = buildSearchText(record.text, record.tags);
+                insertMemoryStmt.run(
+                    record.id,
+                    record.scope,
+                    record.layer,
+                    record.kind,
+                    record.text,
+                    record.parentId ?? null,
+                    record.workspaceId ?? null,
+                    record.sessionId ?? null,
+                    tagsJson,
+                    timestamp,
+                    timestamp,
+                );
+                insertFtsStmt.run(
+                    record.id,
+                    searchText,
+                    record.kind,
+                    record.layer,
+                    record.workspaceId ?? "",
+                    record.sessionId ?? "",
+                );
+            }
+            this.db.exec("COMMIT");
+        } catch (err) {
+            this.db.exec("ROLLBACK");
+            throw err;
+        }
+    }
+
+    private buildTree(
+        record: LongHorizonMemoryRecord,
+        depth = 0,
+        visited = new Set<string>(),
+    ): { record: LongHorizonMemoryRecord; children: Array<{ record: LongHorizonMemoryRecord; children: unknown[] }> } | null {
+        const maxDepth = 16;
+        if (visited.has(record.id) || depth > maxDepth) return null;
+        visited.add(record.id);
         const rows = this.db.prepare("SELECT * FROM memories WHERE parent_id = ? ORDER BY created_at ASC").all(record.id) as Array<Record<string, unknown>>;
+        const children = rows
+            .map((row) => this.buildTree(rowToMemory(row), depth + 1, visited))
+            .filter((child): child is { record: LongHorizonMemoryRecord; children: Array<{ record: LongHorizonMemoryRecord; children: unknown[] }> } => child !== null);
         return {
             record,
-            children: rows.map((row) => this.buildTree(rowToMemory(row))),
+            children,
         };
     }
 
@@ -375,9 +477,15 @@ export class LongHorizonDatabase {
         if (rows.length === 0) return [];
         const mapped = rows.map(rowToMemory);
         const floor = options.searchScoreFloor ?? 0.15;
-        const cutoff = floor > 0 ? (mapped[0]?.score ?? 0) * floor : -Infinity;
-        return mapped
-            .filter((record, index) => index === 0 || (record.score ?? 0) >= cutoff)
+        const withScores = mapped.filter(
+            (record): record is LongHorizonMemoryRecord & { score: number } =>
+                record.score != null && Math.abs(record.score) > 0,
+        );
+        if (withScores.length === 0) return [];
+        const topScore = Math.max(...withScores.map((record) => Math.abs(record.score)));
+        const cutoff = topScore * (1 - floor);
+        return withScores
+            .filter((record) => Math.abs(record.score) >= cutoff)
             .slice(0, options.limit ?? 8);
     }
 

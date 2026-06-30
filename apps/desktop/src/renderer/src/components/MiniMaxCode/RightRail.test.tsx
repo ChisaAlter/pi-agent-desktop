@@ -1,12 +1,18 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RightRail } from "./RightRail";
+import { I18nProvider } from "../../i18n";
 import { usePlanStore } from "../../stores/plan-store";
 import { useSessionStore } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useQueueStore } from "../../stores/queue-store";
+
+function renderWithI18n(ui: ReactElement): ReturnType<typeof render> {
+  return render(ui, { wrapper: I18nProvider });
+}
 
 describe("RightRail", () => {
   const getGitStatus = vi.fn();
@@ -16,6 +22,7 @@ describe("RightRail", () => {
   const revealPath = vi.fn();
 
   beforeEach(() => {
+    window.localStorage.setItem("pi-desktop.locale", "zh-CN");
     getGitStatus.mockReset();
     gitDiff.mockReset();
     detectProject.mockReset();
@@ -42,6 +49,7 @@ describe("RightRail", () => {
         ...useSettingsStore.getState().settings,
         model: "",
         provider: "",
+        language: "zh-CN",
         workspaceToolDefaults: {},
       },
     });
@@ -76,7 +84,7 @@ describe("RightRail", () => {
       "+another",
     ].join("\n"));
 
-    render(<RightRail workspacePath="C:/ai/pi-agent-desktop/apps/desktop" />);
+    renderWithI18n(<RightRail workspacePath="C:/ai/pi-agent-desktop/apps/desktop" />);
 
     await waitFor(() => {
       expect(screen.getByText("master")).toBeTruthy();
@@ -104,7 +112,7 @@ describe("RightRail", () => {
       scripts: { test: "vitest", build: "tsc" },
     });
 
-    render(<RightRail workspacePath="C:/repo" />);
+    renderWithI18n(<RightRail workspacePath="C:/repo" />);
 
     expect(await screen.findByText("pi-workbench")).toBeTruthy();
     expect(screen.getByText("node")).toBeTruthy();
@@ -129,7 +137,7 @@ describe("RightRail", () => {
       scripts: { test: "vitest", build: "tsc" },
     });
 
-    render(<RightRail workspacePath="C:/repo" />);
+    renderWithI18n(<RightRail workspacePath="C:/repo" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "test" }));
 
@@ -154,7 +162,7 @@ describe("RightRail", () => {
     });
     gitDiff.mockResolvedValue("");
 
-    render(<RightRail workspacePath="C:/repo" />);
+    renderWithI18n(<RightRail workspacePath="C:/repo" />);
 
     await waitFor(() => {
       expect(screen.getAllByText("a.ts").length).toBeGreaterThan(0);
@@ -181,7 +189,7 @@ describe("RightRail", () => {
     });
     gitDiff.mockResolvedValue("");
 
-    render(<RightRail workspacePath="C:/repo" />);
+    renderWithI18n(<RightRail workspacePath="C:/repo" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "src/a.ts" }));
     expect(openFileSpy).toHaveBeenCalledWith(
@@ -224,7 +232,7 @@ describe("RightRail", () => {
       });
     gitDiff.mockResolvedValue("");
 
-    render(<RightRail workspacePath="C:/repo" />);
+    renderWithI18n(<RightRail workspacePath="C:/repo" />);
     await waitFor(() => {
       expect(getGitStatus).toHaveBeenCalledTimes(1);
     });
@@ -259,7 +267,7 @@ describe("RightRail", () => {
       });
     gitDiff.mockResolvedValue("");
 
-    render(<RightRail workspacePath="C:/repo" />);
+    renderWithI18n(<RightRail workspacePath="C:/repo" />);
     await waitFor(() => {
       expect(getGitStatus).toHaveBeenCalledTimes(1);
     });
@@ -281,7 +289,7 @@ describe("RightRail", () => {
       ],
     });
 
-    render(
+    renderWithI18n(
       <RightRail
         tasks={[{ id: "t1", name: "普通任务", status: "running" }]}
       />,
@@ -305,7 +313,7 @@ describe("RightRail", () => {
     });
     gitDiff.mockResolvedValue("");
 
-    render(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
+    renderWithI18n(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
 
     expect(await screen.findByText("环境信息")).toBeTruthy();
     expect(screen.getByText("工具权限")).toBeTruthy();
@@ -315,6 +323,49 @@ describe("RightRail", () => {
     expect(screen.getByText("文件输出")).toBeTruthy();
     expect((screen.getByLabelText("网络") as HTMLInputElement).checked).toBe(false);
     expect(screen.queryByText("最近工具")).toBeNull();
+  });
+
+  it("keeps cards in natural-height scroll flow instead of shrinkable flex columns", () => {
+    const { container } = renderWithI18n(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
+
+    const rail = container.querySelector("aside");
+
+    expect(rail?.className ?? "").toContain("overflow-y-auto");
+    expect(rail?.className ?? "").toContain("space-y-3");
+    expect(rail?.className ?? "").not.toMatch(/\bflex-col\b/);
+  });
+
+  it("follows the language setting for visible right rail cards", async () => {
+    window.localStorage.setItem("pi-desktop.locale", "en-US");
+    useSettingsStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        language: "en-US",
+      },
+    }));
+    getGitStatus.mockResolvedValue({
+      branch: "master",
+      modified: [],
+      added: [],
+      deleted: [],
+      untracked: [],
+      ahead: 0,
+      behind: 0,
+    });
+    gitDiff.mockResolvedValue("");
+
+    renderWithI18n(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
+
+    expect(await screen.findByText("Environment")).toBeTruthy();
+    expect(screen.getByText("Tool permissions")).toBeTruthy();
+    expect(screen.getByText("Token usage")).toBeTruthy();
+    expect(screen.getByText("Progress")).toBeTruthy();
+    expect(screen.getByText("File output")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Browse all files" })).toBeTruthy();
+    expect(screen.getByLabelText("Network")).toBeTruthy();
+    expect(screen.queryByText("环境信息")).toBeNull();
+    expect(screen.queryByText("工具权限")).toBeNull();
+    expect(screen.queryByText("Token 使用统计")).toBeNull();
   });
 
   it("shows the active goal above plan progress from the shared plan store", () => {
@@ -332,7 +383,7 @@ describe("RightRail", () => {
       ],
     });
 
-    render(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
+    renderWithI18n(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
 
     expect(screen.getByText("任务目标：完成长程能力集成")).toBeTruthy();
     expect(screen.getByText("judge 检查中")).toBeTruthy();
@@ -363,7 +414,7 @@ describe("RightRail", () => {
       followUp: ["跑完整测试"],
     });
 
-    render(<RightRail workspacePath="C:/repo" />);
+    renderWithI18n(<RightRail workspacePath="C:/repo" />);
 
     expect(screen.getByText("运行队列")).toBeTruthy();
     expect(screen.getByText("修复 Git 工作流")).toBeTruthy();
@@ -385,7 +436,7 @@ describe("RightRail", () => {
     useQueueStore.getState().applyEvent({ type: "agent_start" });
     useQueueStore.getState().applyEvent({ type: "extension_error", message: "tool crashed" } as never);
 
-    const { rerender } = render(<RightRail workspacePath="C:/repo" />);
+    const { rerender } = renderWithI18n(<RightRail workspacePath="C:/repo" />);
 
     expect(screen.getByRole("alert").textContent).toContain("tool crashed");
 
@@ -414,7 +465,7 @@ describe("RightRail", () => {
     });
     useQueueStore.getState().applyEvent({ type: "auto_retry_start" });
 
-    render(<RightRail workspacePath="C:/repo" />);
+    renderWithI18n(<RightRail workspacePath="C:/repo" />);
 
     expect(screen.getAllByText("自动重试中").length).toBeGreaterThan(0);
     expect(screen.getAllByText("自动重试").length).toBeGreaterThan(0);
@@ -429,13 +480,13 @@ describe("RightRail", () => {
       args: { command: "pnpm test" },
     });
 
-    render(<RightRail workspacePath="C:/repo" />);
+    renderWithI18n(<RightRail workspacePath="C:/repo" />);
 
     expect(screen.getAllByText("bash 运行中").length).toBeGreaterThan(0);
   });
 
   it("includes fallback tool tasks in the task flow", () => {
-    render(
+    renderWithI18n(
       <RightRail
         tasks={[{ id: "t1", name: "运行测试", status: "running" }]}
       />,
@@ -509,7 +560,7 @@ describe("RightRail", () => {
       },
     });
 
-    render(<RightRail workspacePath="C:/repo" />);
+    renderWithI18n(<RightRail workspacePath="C:/repo" />);
 
     await waitFor(() => {
       expect(screen.getByText("output.md")).toBeTruthy();
@@ -544,7 +595,7 @@ describe("RightRail", () => {
       ],
     });
 
-    render(<RightRail workspacePath="C:/repo" />);
+    renderWithI18n(<RightRail workspacePath="C:/repo" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "系统打开" }));
 
@@ -571,7 +622,7 @@ describe("RightRail", () => {
       ],
     });
 
-    render(<RightRail workspacePath="C:/repo" />);
+    renderWithI18n(<RightRail workspacePath="C:/repo" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "系统打开" }));
 
@@ -598,7 +649,7 @@ describe("RightRail", () => {
       ],
     });
 
-    render(<RightRail workspacePath="C:/repo" />);
+    renderWithI18n(<RightRail workspacePath="C:/repo" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "定位" }));
 
@@ -628,7 +679,7 @@ describe("RightRail", () => {
       ],
     });
 
-    render(<RightRail workspacePath="C:/repo" />);
+    renderWithI18n(<RightRail workspacePath="C:/repo" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "复制路径" }));
 
@@ -658,7 +709,7 @@ describe("RightRail", () => {
       ],
     });
 
-    render(<RightRail workspacePath="C:/repo" />);
+    renderWithI18n(<RightRail workspacePath="C:/repo" />);
 
     fireEvent.click(await screen.findByRole("button", { name: "引用" }));
 
@@ -724,7 +775,7 @@ describe("RightRail", () => {
       ],
     });
 
-    render(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
+    renderWithI18n(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
 
     expect(screen.queryByText("运行状态")).toBeNull();
     expect(screen.queryByText("思考")).toBeNull();

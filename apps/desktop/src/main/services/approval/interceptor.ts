@@ -123,7 +123,7 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                 // turn 结束前每个 tool_execution_end 都清理对应缓存, 防止 announcedToolArgs 无界增长
                 announcedToolArgs.delete(toolCallId);
                 if (toolName !== "write" && toolName !== "edit") return;
-                const change = deps.pendingEdits.list().find((c) => c.toolCallId === toolCallId);
+                const change = deps.pendingEdits.getByToolCallId(toolCallId);
                 if (!change) return;
 
                 let newContent = "";

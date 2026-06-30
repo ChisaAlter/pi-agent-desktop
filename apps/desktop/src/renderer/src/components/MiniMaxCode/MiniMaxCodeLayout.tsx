@@ -12,6 +12,7 @@
 // v2.0: 支持左右栏折叠 + CSS 动画过渡
 
 import React, { useEffect, useRef, useState } from "react";
+import { MINIMAX_CHROME_ICON_BUTTON_CLASSNAME } from "./chromeButton";
 import { MiniMaxCodeTitleBar } from "./MiniMaxCodeTitleBar";
 
 const DEFAULT_LEFT_WIDTH = 190;
@@ -72,7 +73,7 @@ const SidebarToggleIcon: React.FC<{ side: "left" | "right"; collapsed: boolean }
     </svg>
 );
 
-const FLOATING_TOGGLE_CLASSNAME = "absolute top-[calc((42px-1.75rem)/2)] z-[80] flex h-7 w-7 items-center justify-center rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-main)] text-[var(--mm-text-tertiary)] shadow-[0_2px_8px_rgba(15,23,42,0.08)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]";
+const FLOATING_TOGGLE_CLASSNAME = `absolute top-[calc((42px-1.75rem)/2)] z-[80] ${MINIMAX_CHROME_ICON_BUTTON_CLASSNAME}`;
 
 const FloatingToggleButton: React.FC<{
     side: "left" | "right";
@@ -206,11 +207,13 @@ export function MiniMaxCodeLayout({
                     className="relative flex min-h-0 w-full flex-1 data-[has-global-composer=true]:pb-[var(--pi-global-composer-height,103px)]"
                     data-mmcode-region="body"
                 >
-                    <FloatingToggleButton
-                        side="left"
-                        collapsed={leftCollapsed}
-                        onClick={onCollapseLeft}
-                    />
+                    {leftCollapsed ? (
+                        <FloatingToggleButton
+                            side="left"
+                            collapsed={leftCollapsed}
+                            onClick={onCollapseLeft}
+                        />
+                    ) : null}
                     <FloatingToggleButton
                         side="right"
                         collapsed={rightCollapsed}
@@ -224,7 +227,7 @@ export function MiniMaxCodeLayout({
                         data-mmcode-region="left"
                         aria-label="primary navigation"
                     >
-                        <div className={`min-h-0 min-w-0 flex-1 overflow-y-auto ${leftCollapsed ? "" : "pl-10"}`} style={{ minWidth: leftCollapsed ? 0 : undefined }}>
+                        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto" style={{ minWidth: leftCollapsed ? 0 : undefined }}>
                             {leftSlot}
                         </div>
                     </aside>

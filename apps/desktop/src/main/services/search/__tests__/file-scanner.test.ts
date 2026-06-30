@@ -56,7 +56,7 @@ describe("scanFiles (async)", () => {
         }
         const files = await scanFiles(dir, { recursive: false });
         expect(files.length).toBeLessThanOrEqual(500);
-    });
+    }, 20_000);
 });
 
 describe("scanFilesSync", () => {

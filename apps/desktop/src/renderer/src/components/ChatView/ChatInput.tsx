@@ -2,7 +2,7 @@
 // v1.0.13: 附件/权限/模型下拉真接通
 // v1.1: @ 文件引用弹窗 + 图片粘贴 + 暗色主题 (所有颜色走 CSS 变量)
 
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useAttachmentsStore } from "../../stores/attachments-store";
 import { useI18n } from "../../i18n";
@@ -16,6 +16,9 @@ import { useWorkspaceStore } from "../../stores/workspace-store";
 import { logger } from "../../utils/logger";
 import { PermissionRequestStack } from "./PermissionRequestStack";
 import { isIpcError, type AgentMode, type PermissionMode } from "@shared";
+import { useInputText } from "./hooks/useInputText";
+import { usePrefillConsumer } from "./hooks/usePrefillConsumer";
+import { useInputShortcuts } from "./hooks/useInputShortcuts";
 
 interface ChatInputProps {
   isConnected: boolean;
@@ -33,23 +36,23 @@ interface ChatInputProps {
   referenceFrame?: boolean;
 }
 
-const PERMISSION_OPTIONS: Array<{ value: PermissionMode; label: string; desc: string }> = [
-  { value: "ask", label: "主动询问", desc: "写入和命令默认询问" },
-  { value: "smart", label: "智能授权", desc: "只读自动放行，写入询问" },
-  { value: "always", label: "始终授权", desc: "尽量自动允许，保留审计" },
+const PERMISSION_OPTIONS: Array<{ value: PermissionMode; labelKey: string; descKey: string }> = [
+  { value: "ask", labelKey: "chatInput.permissions.ask.label", descKey: "chatInput.permissions.ask.desc" },
+  { value: "smart", labelKey: "chatInput.permissions.smart.label", descKey: "chatInput.permissions.smart.desc" },
+  { value: "always", labelKey: "chatInput.permissions.always.label", descKey: "chatInput.permissions.always.desc" },
 ];
 
-const AGENT_MODE_OPTIONS: Array<{ value: AgentMode; label: string; desc: string }> = [
-  { value: "build", label: "Build", desc: "正常实现模式，可按权限读写和执行工具" },
-  { value: "plan", label: "Plan", desc: "只制定计划，仅允许写入 .pi/plans/*.md" },
-  { value: "compose", label: "Compose", desc: "按 MiMo 风格编排工作流和技能" },
+const AGENT_MODE_OPTIONS: Array<{ value: AgentMode; labelKey: string; descKey: string }> = [
+  { value: "build", labelKey: "chatInput.agentMode.build.label", descKey: "chatInput.agentMode.build.desc" },
+  { value: "plan", labelKey: "chatInput.agentMode.plan.label", descKey: "chatInput.agentMode.plan.desc" },
+  { value: "compose", labelKey: "chatInput.agentMode.compose.label", descKey: "chatInput.agentMode.compose.desc" },
 ];
 
 const THINKING_OPTIONS = [
-  { value: "none", label: "关闭" },
-  { value: "low", label: "低" },
-  { value: "medium", label: "中" },
-  { value: "high", label: "高" },
+  { value: "none", labelKey: "chatInput.thinking.none" },
+  { value: "low", labelKey: "chatInput.thinking.low" },
+  { value: "medium", labelKey: "chatInput.thinking.medium" },
+  { value: "high", labelKey: "chatInput.thinking.high" },
 ] as const;
 
 type ThinkingLevel = typeof THINKING_OPTIONS[number]["value"];
@@ -96,15 +99,6 @@ function errorMessage(value: unknown, fallback: string): string {
   if (value instanceof Error) return value.message;
   if (typeof value === "string" && value.trim()) return value;
   return fallback;
-}
-
-function mergePrefillDraft(current: string, incoming: string): string {
-  const text = incoming.trim();
-  if (!text) return current;
-  const existing = current.trimEnd();
-  if (!existing) return incoming;
-  if (existing.includes(text)) return current;
-  return `${existing} ${text}${incoming.endsWith(" ") ? " " : ""}`;
 }
 
 function parseSlashCommandDraft(value: string): { command: string; args: string } | null {
@@ -180,13 +174,12 @@ export function ChatInput({
   focusKey,
   referenceFrame = false,
 }: ChatInputProps): React.JSX.Element {
-  const [inputValue, setInputValue] = useState("");
+  const { textareaRef, inputValue, setInputValue } = useInputText();
   const [cursorPos, setCursorPos] = useState(0);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [composerHeight, setComposerHeight] = useState(COMPOSER_MIN_HEIGHT);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const slashListboxRef = useRef<HTMLDivElement>(null);
   const slashOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const sendingRef = useRef(false);
@@ -198,6 +191,30 @@ export function ChatInput({
   const permissionStore = usePermissionStore();
   const runtimeFeatureState = useRuntimeFeatureStore((state) => state.featureState);
   const refreshRuntimeFeatureState = useRuntimeFeatureStore((state) => state.refresh);
+  const { t } = useI18n();
+  const permissionOptions = useMemo(
+    () => PERMISSION_OPTIONS.map((option) => ({
+      ...option,
+      label: t(option.labelKey),
+      desc: t(option.descKey),
+    })),
+    [t],
+  );
+  const translatedAgentModeOptions = useMemo(
+    () => AGENT_MODE_OPTIONS.map((option) => ({
+      ...option,
+      label: t(option.labelKey),
+      desc: t(option.descKey),
+    })),
+    [t],
+  );
+  const thinkingOptions = useMemo(
+    () => THINKING_OPTIONS.map((option) => ({
+      ...option,
+      label: t(option.labelKey),
+    })),
+    [t],
+  );
   const longHorizon = settings.longHorizon;
   const longHorizonEnabled = longHorizon?.enabled ?? true;
   const allowedModes = supportedAgentModes(runtimeFeatureState, longHorizon);
@@ -206,7 +223,7 @@ export function ChatInput({
     runtimeFeatureState,
     longHorizon,
   );
-  const agentModeOptions = AGENT_MODE_OPTIONS.filter((mode) => allowedModes.includes(mode.value));
+  const agentModeOptions = translatedAgentModeOptions.filter((mode) => allowedModes.includes(mode.value));
   const currentAgentMode = useAgentModeStore((state) => {
     const mode = state.getMode(workspaceId, defaultAgentMode);
     return agentModeOptions.some((option) => option.value === mode) ? mode : "build";
@@ -214,8 +231,8 @@ export function ChatInput({
   const setAgentMode = useAgentModeStore((state) => state.setMode);
   const { workspaces, getCurrentWorkspace, setCurrentWorkspace, addWorkspace, createWorkspace } = useWorkspaceStore();
   const { add: addAttachment, remove: removeAttachment, clear: clearAttachments, list: listAttachments } = useAttachmentsStore();
-  const { t } = useI18n();
 
+  const mention = useMentions(inputValue, cursorPos, workspacePath);
   const {
     activeMention,
     candidates,
@@ -223,16 +240,16 @@ export function ChatInput({
     setHighlightIndex,
     selectCandidate,
     close: closeMentions,
-  } = useMentions(inputValue, cursorPos, workspacePath);
+  } = mention;
 
+  const slash = useSlashCommands(inputValue, cursorPos, workspaceId, agentId, currentAgentMode);
   const {
     activeCommand,
     candidates: slashCandidates,
     highlightIndex: slashHighlightIndex,
     setHighlightIndex: setSlashHighlightIndex,
     selectCandidate: selectSlashCandidate,
-    close: closeSlashCommands,
-  } = useSlashCommands(inputValue, cursorPos, workspaceId, agentId, currentAgentMode);
+  } = slash;
 
   const attachments = workspaceId ? listAttachments(workspaceId) : [];
 
@@ -279,35 +296,7 @@ export function ChatInput({
     [workspaceId, addAttachment],
   );
 
-  const adjustTextareaHeight = useCallback(() => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = "auto";
-      const maxHeight = 200;
-      textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
-    }
-  }, []);
-
-  useEffect(() => {
-    adjustTextareaHeight();
-  }, [inputValue, adjustTextareaHeight]);
-
-  const onConsumedRef = useRef(onPrefillConsumed);
-  onConsumedRef.current = onPrefillConsumed;
-  useEffect(() => {
-    if (typeof prefill === "string" && prefill.length > 0) {
-      setInputValue((current) => mergePrefillDraft(current, prefill));
-      requestAnimationFrame(() => {
-        textareaRef.current?.focus();
-        const ta = textareaRef.current;
-        if (ta) {
-          const len = ta.value.length;
-          ta.setSelectionRange(len, len);
-        }
-      });
-      onConsumedRef.current?.();
-    }
-  }, [prefill, prefillKey]);
+  usePrefillConsumer(prefill, prefillKey, onPrefillConsumed, textareaRef, setInputValue);
 
   useEffect(() => {
     if (focusKey === undefined) return;
@@ -326,7 +315,7 @@ export function ChatInput({
     if (sendingRef.current || !inputValue.trim() || !isConnected) return;
     const slashDraft = parseSlashCommandDraft(inputValue);
     if (slashDraft && attachments.length > 0) {
-      setAttachmentError("Slash 命令不能和附件一起发送");
+      setAttachmentError(t("chatInput.errors.slashWithAttachment"));
       return;
     }
     sendingRef.current = true;
@@ -361,7 +350,7 @@ export function ChatInput({
           return;
         }
       } catch (err) {
-        setSendError(`发送失败: ${errorMessage(err, "未知错误")}`);
+        setSendError(t("chatInput.errors.sendFailed", { message: errorMessage(err, t("chatInput.errors.unknown")) }));
         sendingRef.current = false;
         setIsSending(false);
         return;
@@ -371,13 +360,13 @@ export function ChatInput({
     let imagePrefix = "";
     if (imageAttachments.length > 0) {
       if (!settings.visionProvider || !settings.visionModel) {
-        setAttachmentError("请先在设置中选择识图模型");
+        setAttachmentError(t("chatInput.errors.visionNotConfigured"));
         sendingRef.current = false;
         setIsSending(false);
         return;
       }
       if (!window.piAPI?.describeImages) {
-        setAttachmentError("识图服务不可用 (preload 未注入)");
+        setAttachmentError(t("chatInput.errors.visionUnavailable"));
         sendingRef.current = false;
         setIsSending(false);
         return;
@@ -395,7 +384,7 @@ export function ChatInput({
           "用户消息:",
         ].join("\n");
       } catch (err) {
-        setAttachmentError(`识图失败: ${errorMessage(err, "未知错误")}`);
+        setAttachmentError(t("chatInput.errors.visionFailed", { message: errorMessage(err, t("chatInput.errors.unknown")) }));
         sendingRef.current = false;
         setIsSending(false);
         return;
@@ -424,7 +413,7 @@ export function ChatInput({
         await onSend(outbound);
       }
     } catch (err) {
-      setSendError(`发送失败: ${errorMessage(err, "未知错误")}`);
+      setSendError(t("chatInput.errors.sendFailed", { message: errorMessage(err, t("chatInput.errors.unknown")) }));
       sendingRef.current = false;
       setIsSending(false);
       return;
@@ -439,82 +428,14 @@ export function ChatInput({
     setIsSending(false);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent): void => {
-    if (activeMention && candidates.length > 0) {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setHighlightIndex((i) => Math.min(i + 1, candidates.length - 1));
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setHighlightIndex((i) => Math.max(i - 1, 0));
-        return;
-      }
-      if (e.key === "Enter" || e.key === "Tab") {
-        e.preventDefault();
-        const selected = candidates[highlightIndex];
-        if (selected) {
-          const newText = selectCandidate(selected);
-          setInputValue(newText);
-          requestAnimationFrame(() => {
-            if (textareaRef.current) {
-              const pos = newText.length;
-              textareaRef.current.setSelectionRange(pos, pos);
-              setCursorPos(pos);
-            }
-          });
-          closeMentions();
-        }
-        return;
-      }
-      if (e.key === "Escape") {
-        e.preventDefault();
-        closeMentions();
-        return;
-      }
-    }
-
-    if (!activeMention && activeCommand && slashCandidates.length > 0) {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setSlashHighlightIndex((i) => Math.min(i + 1, slashCandidates.length - 1));
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSlashHighlightIndex((i) => Math.max(i - 1, 0));
-        return;
-      }
-      if (e.key === "Enter" || e.key === "Tab") {
-        e.preventDefault();
-        const selected = slashCandidates[slashHighlightIndex];
-        if (selected) {
-          const newText = selectSlashCandidate(selected);
-          setInputValue(newText);
-          requestAnimationFrame(() => {
-            if (textareaRef.current) {
-              const pos = newText.length;
-              textareaRef.current.setSelectionRange(pos, pos);
-              setCursorPos(pos);
-            }
-          });
-        }
-        return;
-      }
-      if (e.key === "Escape") {
-        e.preventDefault();
-        closeSlashCommands();
-        return;
-      }
-    }
-
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      if (e.repeat) return;
-      void handleSend();
-    }
-  };
+  const handleKeyDown = useInputShortcuts({
+    mention,
+    slash,
+    setInputValue,
+    textareaRef,
+    setCursorPos,
+    submit: handleSend,
+  });
 
   const handleSelect = useCallback((): void => {
     const ta = textareaRef.current;
@@ -525,11 +446,11 @@ export function ChatInput({
 
   const handlePickFiles = useCallback(async (): Promise<void> => {
     if (!window.piAPI?.selectFiles) {
-      setAttachmentError("文件选择不可用 (preload 未注入)");
+      setAttachmentError(t("chatInput.errors.filePickerUnavailable"));
       return;
     }
     if (!workspaceId) {
-      setAttachmentError("请先选择 workspace");
+      setAttachmentError(t("chatInput.errors.workspaceRequired"));
       return;
     }
     setAttachmentError(null);
@@ -549,9 +470,9 @@ export function ChatInput({
         });
       }
     } catch (err) {
-      setAttachmentError(`打开文件选择器失败: ${errorMessage(err, "未知错误")}`);
+      setAttachmentError(t("chatInput.errors.filePickerFailed", { message: errorMessage(err, t("chatInput.errors.unknown")) }));
     }
-  }, [workspaceId, addAttachment]);
+  }, [workspaceId, addAttachment, t]);
 
   const currentPermission = normalizePermissionMode(settings.permissionLevel ?? permissionStore.mode);
   const currentModel = settings.model;
@@ -659,14 +580,14 @@ export function ChatInput({
         setAttachmentError(null);
       } catch (e) {
         logger.error("[ChatInput] selectWorkspace failed:", e);
-        setAttachmentError(`切换 workspace 失败: ${errorMessage(e, "未知错误")}`);
+        setAttachmentError(t("chatInput.errors.switchWorkspaceFailed", { message: errorMessage(e, t("chatInput.errors.unknown")) }));
       }
     },
-    [setCurrentWorkspace, workspaces],
+    [setCurrentWorkspace, t, workspaces],
   );
   const handleSelectNewWorkspace = useCallback(async (): Promise<void> => {
     if (!window.piAPI?.selectDirectory) {
-      setAttachmentError("目录选择不可用 (preload 未注入)");
+      setAttachmentError(t("chatInput.errors.directoryPickerUnavailable"));
       return;
     }
     try {
@@ -707,7 +628,7 @@ export function ChatInput({
 
       const ws = await createWorkspace(name, path);
       if (!ws) {
-        setAttachmentError(useWorkspaceStore.getState().lastError ?? "创建 workspace 失败");
+        setAttachmentError(useWorkspaceStore.getState().lastError ?? t("chatInput.errors.createWorkspaceFailed", { message: t("chatInput.errors.unknown") }));
         return;
       }
       const result = await window.piAPI.selectWorkspace?.(path);
@@ -718,32 +639,33 @@ export function ChatInput({
       setAttachmentError(null);
     } catch (e) {
       logger.error("[ChatInput] create workspace failed:", e);
-      setAttachmentError(`创建 workspace 失败: ${errorMessage(e, "未知错误")}`);
+      setAttachmentError(t("chatInput.errors.createWorkspaceFailed", { message: errorMessage(e, t("chatInput.errors.unknown")) }));
     }
-  }, [addWorkspace, createWorkspace, handleSwitchWorkspace, setCurrentWorkspace, workspaces]);
+  }, [addWorkspace, createWorkspace, handleSwitchWorkspace, setCurrentWorkspace, t, workspaces]);
 
   const canSend = inputValue.trim().length > 0 && isConnected && !isSending;
-  const currentPermissionLabel = PERMISSION_OPTIONS.find((p) => p.value === currentPermission)?.label ?? "智能授权";
-  const currentModelLabel = [settings.provider, currentModel].filter(Boolean).join(" / ") || "未配置模型";
-  const currentThinking = THINKING_OPTIONS.some((option) => option.value === settings.thinkingLevel)
+  const currentPermissionLabel = permissionOptions.find((p) => p.value === currentPermission)?.label ?? t("chatInput.permissions.smart.label");
+  const currentModelLabel = [settings.provider, currentModel].filter(Boolean).join(" / ") || t("chatInput.model.notConfigured");
+  const currentThinking = thinkingOptions.some((option) => option.value === settings.thinkingLevel)
     ? settings.thinkingLevel as ThinkingLevel
     : "medium";
-  const currentThinkingLabel = THINKING_OPTIONS.find((option) => option.value === currentThinking)?.label ?? "中";
+  const currentThinkingLabel = thinkingOptions.find((option) => option.value === currentThinking)?.label ?? t("chatInput.thinking.medium");
   const inputPlaceholder = !isConnected
     ? t("chatInput.placeholder.noConnection")
     : referenceFrame
-      ? "输入消息，使用 / 调用命令、@ 引用文件..."
+      ? t("chatInput.placeholder.reference")
     : isProcessing
       ? runContext === "plan_execution"
-        ? "正在执行计划，输入内容会作为补充指令发送"
-        : "任务运行中，输入内容会作为追加指令发送"
+        ? t("chatInput.placeholder.planRunning")
+        : t("chatInput.placeholder.taskRunning")
       : t("chatInput.placeholder.ready");
   const runningLabel = runContext === "plan_execution"
-    ? "正在执行计划 · 新输入会作为补充指令进入当前执行"
-    : "任务运行中 · 新输入会作为追加指令进入当前会话";
-  const stopLabel = runContext === "plan_execution" ? "暂停执行" : "停止";
-  const stopAriaLabel = runContext === "plan_execution" ? "暂停执行" : t("chatView.stopGeneration");
+    ? t("chatInput.running.plan")
+    : t("chatInput.running.task");
+  const stopLabel = runContext === "plan_execution" ? t("chatInput.pauseExecution") : t("chatInput.stop");
+  const stopAriaLabel = runContext === "plan_execution" ? t("chatInput.pauseExecution") : t("chatView.stopGeneration");
 
+  // TODO: extract sub-components (InputAttachments, InputMentionPopover, InputCommandPopover, InputToolbar)
   return (
     <div className={`${referenceFrame ? "pointer-events-auto w-full px-2 pb-2" : "w-full px-3 pb-6"} bg-transparent pt-1`}>
       <PermissionRequestStack workspaceId={workspaceId} agentId={agentId} />
@@ -755,7 +677,7 @@ export function ChatInput({
         {referenceFrame ? (
           <div
             role="separator"
-            aria-label="调整输入框高度"
+            aria-label={t("chatInput.resizeComposer")}
             aria-orientation="horizontal"
             tabIndex={0}
             onPointerDown={handleResizePointerDown}
@@ -782,7 +704,7 @@ export function ChatInput({
         )}
         {/* 附件 chips */}
         {attachments.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 px-4 pt-3" role="list" aria-label="已选附件">
+          <div className="flex flex-wrap gap-1.5 px-4 pt-3" role="list" aria-label={t("chatInput.attachmentsSelected")}>
             {attachments.map((a) => (
               <span
                 key={a.id}
@@ -802,7 +724,7 @@ export function ChatInput({
                   type="button"
                   onClick={() => workspaceId && removeAttachment(workspaceId, a.id)}
                   className="ml-0.5 text-[var(--mm-text-tertiary)] hover:text-[var(--mm-text-primary)] transition-colors"
-                  aria-label={`移除附件 ${a.name}`}
+                  aria-label={t("chatInput.removeAttachment", { name: a.name })}
                 >
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -823,7 +745,7 @@ export function ChatInput({
               <div className="mb-2 flex">
                 <span
                   className="inline-flex h-7 items-center gap-1.5 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-hover)] px-2.5 text-xs font-semibold text-[var(--color-success)]"
-                  aria-label={`${currentAgentMode} 模式已启用`}
+                  aria-label={t("chatInput.agentMode.enabled", { mode: currentAgentMode })}
                 >
                   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />
@@ -856,7 +778,7 @@ export function ChatInput({
             {activeMention && candidates.length > 0 && (
               <div
                 role="listbox"
-                aria-label="文件候选"
+                aria-label={t("chatInput.fileCandidates")}
                 className="absolute left-0 bottom-full mb-1 w-72 max-h-56 overflow-y-auto bg-[var(--mm-bg-sidebar)] border border-[var(--color-border)] rounded-lg shadow-lg z-50 py-1"
               >
                 {candidates.map((c, i) => (
@@ -896,7 +818,7 @@ export function ChatInput({
               <div
                 ref={slashListboxRef}
                 role="listbox"
-                aria-label="Pi 命令候选"
+                aria-label={t("chatInput.commandCandidates")}
                 className="absolute left-0 bottom-full z-50 mb-1 max-h-64 w-[min(520px,calc(100vw-48px))] overflow-y-auto rounded-lg border border-[var(--color-border)] bg-[var(--mm-bg-sidebar)] py-1 shadow-lg"
               >
                 {slashCandidates.map((candidate, i) => (
@@ -948,8 +870,8 @@ export function ChatInput({
                 ? "border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:border-[var(--mm-border-subtle)] disabled:text-[var(--mm-text-tertiary)]"
                 : "bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)] hover:opacity-90 disabled:cursor-not-allowed disabled:bg-[var(--mm-bg-selected)] disabled:text-[var(--mm-text-tertiary)]"
             }`}
-            aria-label={isProcessing ? "发送追加指令" : t("chatInput.send")}
-            title={isProcessing ? "发送追加指令" : t("chatInput.send")}
+            aria-label={isProcessing ? t("chatInput.sendFollowUp") : t("chatInput.send")}
+            title={isProcessing ? t("chatInput.sendFollowUp") : t("chatInput.send")}
           >
             {isProcessing ? (
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -982,12 +904,12 @@ export function ChatInput({
         {referenceFrame ? (
           <div className="relative z-20 flex h-[34px] shrink-0 items-center justify-between px-3 pb-2 pt-0" data-testid="chat-input-reference-controls">
             <div className="flex items-center gap-3 text-[var(--mm-text-secondary)]">
-              <button type="button" onClick={() => void handlePickFiles()} className="flex h-6 w-6 items-center justify-center rounded-[3px] hover:bg-[var(--mm-bg-hover)]" aria-label="添加文件或图片">
+              <button type="button" onClick={() => void handlePickFiles()} className="flex h-6 w-6 items-center justify-center rounded-[3px] hover:bg-[var(--mm-bg-hover)]" aria-label={t("chatInput.addFileOrImage")}>
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3 3 0 1 1 4 4L8.5 18.5a1.5 1.5 0 1 1-2-2L15 8" />
                 </svg>
               </button>
-              <button type="button" onClick={openSlashCommands} className="flex h-6 w-6 items-center justify-center rounded-[3px] hover:bg-[var(--mm-bg-hover)]" aria-label="打开 Slash 命令">
+              <button type="button" onClick={openSlashCommands} className="flex h-6 w-6 items-center justify-center rounded-[3px] hover:bg-[var(--mm-bg-hover)]" aria-label={t("chatInput.openSlashCommands")}>
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="m8 9-4 3 4 3m8-6 4 3-4 3M14 5l-4 14" />
                 </svg>
@@ -996,7 +918,7 @@ export function ChatInput({
                 align="start"
                 contentClassName="w-[246px] rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-1.5 shadow-[0_16px_38px_rgba(20,31,50,0.14)]"
                 trigger={
-                  <button type="button" className="flex h-6 items-center gap-1 rounded-[4px] px-1.5 text-[11px] hover:bg-[var(--mm-bg-hover)]" aria-label="选择 Agent 模式">
+                  <button type="button" className="flex h-6 items-center gap-1 rounded-[4px] px-1.5 text-[11px] hover:bg-[var(--mm-bg-hover)]" aria-label={t("chatInput.agentMode.aria")}>
                     <span className="font-medium text-[var(--mm-text-primary)]">
                       {agentModeOptions.find((mode) => mode.value === currentAgentMode)?.label ?? "Build"}
                     </span>
@@ -1007,7 +929,7 @@ export function ChatInput({
                 }
               >
                 {(close) => (
-                  <div role="menu" aria-label="Agent 模式">
+                  <div role="menu" aria-label={t("chatInput.agentMode.menu")}>
                     {agentModeOptions.map((mode) => (
                       <button
                         key={mode.value}
@@ -1042,7 +964,7 @@ export function ChatInput({
                   <button
                     type="button"
                     className="flex h-7 w-[150px] items-center gap-1.5 px-2 text-left text-[10px] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
-                    aria-label={`当前模型: ${currentModelLabel}`}
+                    aria-label={t("chatInput.model.current", { model: currentModelLabel })}
                   >
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--mm-accent-blue)]" aria-hidden />
                     <span className="truncate">{currentModelLabel}</span>
@@ -1051,7 +973,7 @@ export function ChatInput({
               >
                 {(close) => (
                   <div className="py-1">
-                    <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--mm-text-tertiary)]">选择模型</div>
+                    <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--mm-text-tertiary)]">{t("chatInput.model.select")}</div>
                     {piModels && piModels.length > 0 ? (
                       piModels.map((m) => {
                         const isSelected = settings.provider === m.provider && settings.model === m.id;
@@ -1083,7 +1005,7 @@ export function ChatInput({
                       })
                     ) : (
                       <div className="px-3 py-3 text-xs text-[var(--mm-text-tertiary)]">
-                        暂无可用模型 (Pi CLI 未配置)
+                        {t("chatInput.model.empty")}
                       </div>
                     )}
                   </div>
@@ -1096,7 +1018,7 @@ export function ChatInput({
                   <button
                     type="button"
                     className="flex h-7 items-center gap-1 border-l border-[var(--mm-border)] px-2 text-[10px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
-                    aria-label={`思考强度: ${currentThinkingLabel}`}
+                    aria-label={t("chatInput.thinking.aria", { label: currentThinkingLabel })}
                   >
                     <span className="font-medium text-[var(--mm-text-primary)]">{currentThinkingLabel}</span>
                     <svg className="h-3 w-3 text-[var(--mm-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -1106,9 +1028,9 @@ export function ChatInput({
                 }
               >
                 {(close) => (
-                  <div role="menu" aria-label="思考强度">
-                    <div className="px-2 py-1 text-[10px] text-[var(--mm-text-tertiary)]">推理</div>
-                    {THINKING_OPTIONS.map((option) => (
+                  <div role="menu" aria-label={t("chatInput.thinking.menu")}>
+                    <div className="px-2 py-1 text-[10px] text-[var(--mm-text-tertiary)]">{t("chatInput.thinking.heading")}</div>
+                    {thinkingOptions.map((option) => (
                       <button
                         key={option.value}
                         type="button"
@@ -1157,7 +1079,7 @@ export function ChatInput({
                 <button
                   type="button"
                   className="flex h-[22px] w-[22px] items-center justify-center rounded-[4px] border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] text-base leading-none text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
-                  aria-label="添加附件和工具"
+                  aria-label={t("chatInput.addAttachmentAndTools")}
                   data-testid="chat-input-plus-trigger"
                 >
                   +
@@ -1175,13 +1097,13 @@ export function ChatInput({
                     }}
                     disabled={!workspaceId}
                     className="flex min-h-8 w-full items-center justify-between gap-3 rounded-[9px] px-2 text-left text-sm text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-label="添加文件或图片"
+                    aria-label={t("chatInput.addFileOrImage")}
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <svg className="h-3.5 w-3.5 shrink-0 text-[var(--mm-text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3 3 0 1 1 4 4L8.5 18.5a1.5 1.5 0 1 1-2-2L15 8" />
                       </svg>
-                      添加文件或图片
+                      {t("chatInput.addFileOrImage")}
                     </span>
                   </button>
                   <button
@@ -1192,15 +1114,15 @@ export function ChatInput({
                       window.dispatchEvent(new CustomEvent("app:switch-section", { detail: { section: "tools" } }));
                     }}
                     className="flex min-h-8 w-full items-center justify-between gap-3 rounded-[9px] px-2 text-left text-sm text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
-                    aria-label="打开工具面板"
+                    aria-label={t("chatInput.openTools")}
                   >
                     <span className="flex min-w-0 items-center gap-2">
                       <svg className="h-3.5 w-3.5 shrink-0 text-[var(--mm-text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M6 3h9l3 3v15H6zM14 3v5h5M9 13h6M9 17h4" />
                       </svg>
-                      工具
+                      {t("chatInput.tools")}
                     </span>
-                    <span className="text-[var(--mm-text-tertiary)]" aria-hidden>打开</span>
+                    <span className="text-[var(--mm-text-tertiary)]" aria-hidden>{t("chatInput.open")}</span>
                   </button>
                 </div>
               )}
@@ -1214,13 +1136,13 @@ export function ChatInput({
                   className="flex h-[22px] max-w-[110px] cursor-pointer items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-all hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"
                   role="button"
                   tabIndex={0}
-                  aria-label={currentWorkspace ? `当前工作目录: ${currentWorkspace.name}` : "选择工作目录"}
+                  aria-label={currentWorkspace ? t("chatInput.workspace.current", { name: currentWorkspace.name }) : t("chatInput.workspace.select")}
                   data-testid="chat-input-workspace-trigger"
                 >
                   <svg className="h-3.5 w-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
                   </svg>
-                  <span className="truncate">{currentWorkspace?.name ?? "选择工作目录"}</span>
+                  <span className="truncate">{currentWorkspace?.name ?? t("chatInput.workspace.select")}</span>
                   <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
@@ -1231,7 +1153,7 @@ export function ChatInput({
                 <div className="py-1">
                   {recentWorkspaces.length > 0 && (
                     <>
-                      <div className="px-3 py-1.5 text-[10px] text-[var(--mm-text-tertiary)]">最近</div>
+                      <div className="px-3 py-1.5 text-[10px] text-[var(--mm-text-tertiary)]">{t("chatInput.workspace.recent")}</div>
                       {recentWorkspaces.map((ws) => (
                         <button
                           key={ws.id}
@@ -1271,7 +1193,7 @@ export function ChatInput({
                     <svg className="h-3.5 w-3.5 shrink-0 text-[var(--mm-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M12 5v14m-7-7h14" />
                     </svg>
-                    <span className="truncate">选择新项目</span>
+                    <span className="truncate">{t("chatInput.workspace.chooseNew")}</span>
                   </button>
                 </div>
               )}
@@ -1286,7 +1208,7 @@ export function ChatInput({
                   className="flex h-[22px] cursor-pointer items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-all hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"
                   role="button"
                   tabIndex={0}
-                  aria-label={`权限: ${currentPermissionLabel}`}
+                  aria-label={t("chatInput.permissionAria", { label: currentPermissionLabel })}
                   data-testid="chat-input-permission-trigger"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -1301,7 +1223,7 @@ export function ChatInput({
             >
               {(close) => (
                 <div className="py-1">
-                  {PERMISSION_OPTIONS.map((opt) => (
+                  {permissionOptions.map((opt) => (
                     <button
                       key={opt.value}
                       type="button"
@@ -1351,13 +1273,13 @@ export function ChatInput({
                   className="flex h-[22px] max-w-[96px] cursor-pointer items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-all hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"
                   role="button"
                   tabIndex={0}
-                  aria-label={currentModel ? `当前模型: ${currentModel}` : "未选择模型"}
+                  aria-label={currentModel ? t("chatInput.model.current", { model: currentModel }) : t("chatInput.model.notSelected")}
                   data-testid="chat-input-model-trigger"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                   </svg>
-                  <span className="truncate">{currentModel || "未选择"}</span>
+                  <span className="truncate">{currentModel || t("chatInput.model.notSelected")}</span>
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
@@ -1366,7 +1288,7 @@ export function ChatInput({
             >
               {(close) => (
                 <div className="py-1">
-                  <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--mm-text-tertiary)]">选择模型</div>
+                  <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--mm-text-tertiary)]">{t("chatInput.model.select")}</div>
                   {piModels && piModels.length > 0 ? (
                     piModels.map((m) => (
                       <button
@@ -1394,7 +1316,7 @@ export function ChatInput({
                     ))
                   ) : (
                     <div className="px-3 py-3 text-xs text-[var(--mm-text-tertiary)]">
-                      暂无可用模型 (Pi CLI 未配置)
+                      {t("chatInput.model.empty")}
                     </div>
                   )}
                 </div>

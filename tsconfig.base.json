@@ -10,6 +10,7 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
+    "verbatimModuleSyntax": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitReturns": true,
@@ -22,7 +23,9 @@
     "paths": {
       "@pi-desktop/*": ["packages/*/src"],
       "@shared": ["packages/shared-types/src"],
-      "@shared/*": ["packages/shared-types/src/*"]
+      "@shared/*": ["packages/shared-types/src/*"],
+      "@/*": ["apps/desktop/src/renderer/src/*"],
+      "@": ["apps/desktop/src/renderer/src"]
     }
   },
   "exclude": ["node_modules", "dist", "build", "out"]

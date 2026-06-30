@@ -2,7 +2,7 @@
 // Real PTY management via node-pty (replaces child_process.spawn)
 // Supports resize, TUI apps, and ANSI colors
 
-import { IPty } from "node-pty";
+import type { IPty } from "node-pty";
 import { homedir, platform } from "os";
 import log from "electron-log/main";
 

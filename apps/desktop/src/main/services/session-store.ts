@@ -20,26 +20,49 @@ export interface SessionPersistence {
     set<K extends "sessions">(key: K, value: Session[]): void;
 }
 
-// ── Mutex: 串行化所有写操作 ────────────────────────────────────────────
+// ── Mutex: 按 key 串行化写操作 ────────────────────────────────────────────
 
-let mutexChain: Promise<unknown> = Promise.resolve();
+const mutexChains = new Map<string, Promise<unknown>>();
 
 /**
- * 把异步或同步操作串行化,前一个完成后下一个才进.
+ * 按 key 串行化异步或同步操作: 同一 key 的操作排队执行, 不同 key 可并行.
  * 解决: renderer 端流式 text_delta + turn_end 同时调用 appendMessage/updateMessage
  * 时,主进程 store.set 全量写会因并发 mutate 同一对象导致丢字段.
+ * 按 session 粒度加锁后, 不同 session 的操作互不阻塞, 提升并发吞吐.
  */
-async function withLock<T>(fn: () => Promise<T> | T): Promise<T> {
-    const prev = mutexChain;
-    let release: () => void = () => undefined;
-    mutexChain = new Promise<void>((resolve) => {
-        release = resolve;
-    });
-    try {
-        await prev;
-        return await fn();
-    } finally {
-        release();
+function withLock<T>(key: string, fn: () => Promise<T> | T): Promise<T> {
+    const prev = mutexChains.get(key) ?? Promise.resolve();
+    const next = prev.then(fn, fn); // run regardless of previous success/failure
+    mutexChains.set(key, next);
+    // Cleanup: remove from map when settled to prevent memory leak.
+    // Use then(onFulfilled, onRejected) instead of finally: finally would
+    // propagate `next`'s rejection to its own returned promise, producing an
+    // unhandled rejection when the caller already handled `next` directly.
+    const cleanup = (): void => {
+        if (mutexChains.get(key) === next) mutexChains.delete(key);
+    };
+    next.then(cleanup, cleanup);
+    return next;
+}
+
+// ── Session index ──────────────────────────────────────────────────────
+//
+// NOTE: electron-store 8.x 的 get() 返回深拷贝 (structuredClone), 不是 live 引用.
+// 因此 sessionIndex 缓存的对象引用与下次 store.get("sessions") 返回的不是同一个对象,
+// 直接修改 index 里的对象不会反映到 store. 所有写操作必须从 store.get("sessions")
+// 返回的数组里 find target 并就地修改, 再 store.set 写回.
+// sessionIndex 仅用于 O(1) "session 是否存在" 判断, 不作为修改入口.
+
+const sessionIndex = new Map<string, boolean>();
+let indexedStore: SessionPersistence | null = null;
+
+function ensureIndexSynced(store: SessionPersistence): void {
+    if (indexedStore !== store) {
+        sessionIndex.clear();
+        for (const s of store.get("sessions")) {
+            sessionIndex.set(s.id, true);
+        }
+        indexedStore = store;
     }
 }
 
@@ -78,7 +101,8 @@ export async function createSession(
     title?: string,
     id?: string,
 ): Promise<Session> {
-    return withLock(() => {
+    return withLock("__global__", () => {
+        ensureIndexSynced(store);
         const session: Session = {
             id: id ?? `s_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
             workspaceId,
@@ -93,6 +117,7 @@ export async function createSession(
         };
         const all = store.get("sessions");
         all.push(session);
+        sessionIndex.set(session.id, true);
         store.set("sessions", all);
         return cloneForRead(session);
     });
@@ -103,7 +128,8 @@ export async function renameSession(
     id: string,
     title: string,
 ): Promise<Session> {
-    return withLock(() => {
+    return withLock(id, () => {
+        ensureIndexSynced(store);
         const all = store.get("sessions");
         const target = all.find((s) => s.id === id);
         if (!target) {
@@ -121,8 +147,10 @@ export async function deleteSession(
     store: SessionPersistence,
     id: string,
 ): Promise<void> {
-    return withLock(() => {
+    return withLock("__global__", () => {
+        ensureIndexSynced(store);
         const all = store.get("sessions").filter((s) => s.id !== id);
+        sessionIndex.delete(id);
         store.set("sessions", all);
     });
 }
@@ -132,7 +160,8 @@ export async function archiveSession(
     id: string,
     archived: boolean,
 ): Promise<Session> {
-    return withLock(() => {
+    return withLock(id, () => {
+        ensureIndexSynced(store);
         const all = store.get("sessions");
         const target = all.find((s) => s.id === id);
         if (!target) {
@@ -164,7 +193,8 @@ export async function updateSessionMetadata(
         | "forkedAt"
     >,
 ): Promise<Session> {
-    return withLock(() => {
+    return withLock(id, () => {
+        ensureIndexSynced(store);
         const all = store.get("sessions");
         const target = all.find((s) => s.id === id);
         if (!target) {
@@ -226,7 +256,8 @@ export async function appendMessage(
     sessionId: string,
     message: Message,
 ): Promise<Session> {
-    return withLock(() => {
+    return withLock(sessionId, () => {
+        ensureIndexSynced(store);
         const all = store.get("sessions");
         const target = all.find((s) => s.id === sessionId);
         if (!target) {
@@ -253,7 +284,8 @@ export async function updateMessage(
     messageId: string,
     updates: Partial<Message>,
 ): Promise<Session> {
-    return withLock(() => {
+    return withLock(sessionId, () => {
+        ensureIndexSynced(store);
         const all = store.get("sessions");
         const target = all.find((s) => s.id === sessionId);
         if (!target) {
@@ -283,7 +315,8 @@ export async function updateToolCall(
     toolCallId: string,
     updates: Partial<ToolCall>,
 ): Promise<Session> {
-    return withLock(() => {
+    return withLock(sessionId, () => {
+        ensureIndexSynced(store);
         const all = store.get("sessions");
         const target = all.find((s) => s.id === sessionId);
         if (!target) {

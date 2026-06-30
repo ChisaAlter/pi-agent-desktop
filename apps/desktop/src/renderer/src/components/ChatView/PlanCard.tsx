@@ -1,7 +1,8 @@
 // PlanCard — 消息气泡内使用的统一计划卡片 (v2.0)
 // 支持: 独立卡片样式 / 折叠正文 / 内联步骤列表 / 选项按钮 / 补充文本区 / 文件链接 / 进度指示
 
-import React, { useState, useCallback } from "react";
+import React, { useCallback, useMemo, useState } from "react";
+import { useI18n } from "../../i18n";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 export interface PlanStepItem {
@@ -36,27 +37,6 @@ export interface PlanCardProps {
   onCancel?: () => void;
   onPause?: () => void;
   onResume?: () => void;
-}
-
-function statusLabel(status: PlanCardStatus): string {
-  switch (status) {
-    case "executing":
-      return "执行中";
-    case "pausing":
-      return "正在暂停";
-    case "paused":
-      return "已暂停";
-    case "executed":
-      return "已完成";
-    case "cancelled":
-      return "已取消";
-    case "failed":
-      return "执行失败";
-    case "refining":
-      return "等待补充";
-    default:
-      return "等待确认";
-  }
 }
 
 function statusBadgeClass(status: PlanCardStatus): string {
@@ -157,12 +137,34 @@ export function PlanCard({
   onPause,
   onResume,
 }: PlanCardProps): React.JSX.Element {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
 
-  const options = extractChoiceOptions(content);
+  const options = useMemo(() => extractChoiceOptions(content), [content]);
   const hasOptions = options && options.length >= 2;
+
+  const statusLabel = useMemo(() => {
+    switch (status) {
+      case "executing":
+        return t("planCard.status.executing");
+      case "pausing":
+        return t("planCard.status.pausing");
+      case "paused":
+        return t("planCard.status.paused");
+      case "executed":
+        return t("planCard.status.executed");
+      case "cancelled":
+        return t("planCard.status.cancelled");
+      case "failed":
+        return t("planCard.status.failed");
+      case "refining":
+        return t("planCard.status.refining");
+      default:
+        return t("planCard.status.pending");
+    }
+  }, [status, t]);
 
   const handleExecute = useCallback(() => {
     if (selectedOption && onRefine) {
@@ -186,7 +188,9 @@ export function PlanCard({
 
   const completedCount = steps?.filter((s) => s.status === "completed").length ?? 0;
   const totalCount = steps?.length ?? 0;
-  const progressText = totalCount > 0 ? ` (${completedCount}/${totalCount})` : "";
+  const progressText = totalCount > 0
+    ? t("planCard.progressSuffix", { completed: completedCount, total: totalCount })
+    : "";
 
   const openPlanFile = (): void => {
     if (!filename) return;
@@ -207,7 +211,7 @@ export function PlanCard({
             data-testid="plan-status"
             className={`inline-flex h-5 items-center rounded-full border px-2 text-[11px] font-medium ${statusBadgeClass(status)}`}
           >
-            {statusLabel(status)}{progressText}
+            {statusLabel}{progressText}
           </span>
           <span className="truncate text-xs text-[var(--mm-text-tertiary)]" title={title}>
             {title}
@@ -243,7 +247,7 @@ export function PlanCard({
                 onClick={() => setExpanded(true)}
                 className="mt-1 text-xs text-[var(--mm-text-tertiary)] hover:text-[var(--mm-text-secondary)] transition-colors"
               >
-                展开计划详情 ↓
+                {t("planCard.expandDetails")}
               </button>
             )}
           </div>
@@ -254,7 +258,7 @@ export function PlanCard({
             onClick={() => setExpanded(false)}
             className="mt-1 text-xs text-[var(--mm-text-tertiary)] hover:text-[var(--mm-text-secondary)] transition-colors"
           >
-            收起 ↑
+            {t("planCard.collapse")}
           </button>
         )}
       </div>
@@ -264,7 +268,7 @@ export function PlanCard({
         <div className="px-4 pb-2">
           <div className="rounded-lg border border-[#f0f0ee] bg-[var(--mm-bg-panel)] p-2.5">
             <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-[10px] font-medium uppercase tracking-wider text-[#aaa]">计划步骤</span>
+              <span className="text-[10px] font-medium uppercase tracking-wider text-[#aaa]">{t("planCard.stepsLabel")}</span>
               {totalCount > 0 && (
                 <span className="text-[10px] text-[#aaa]">
                   {completedCount}/{totalCount}
@@ -303,7 +307,7 @@ export function PlanCard({
                 key={opt.value}
                 type="button"
                 data-testid="plan-option"
-                aria-label={`选项 ${opt.label} ${opt.value}`}
+                aria-label={t("planCard.optionAria", { label: opt.label, value: opt.value })}
                 onClick={() => setSelectedOption(opt.value)}
                 className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${
                   selectedOption === opt.value
@@ -329,7 +333,7 @@ export function PlanCard({
                 type="text"
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
-                placeholder={hasOptions ? "选好后可补充说明（可选）" : "有补充就写在这里"}
+                placeholder={hasOptions ? t("planCard.feedbackPlaceholderWithOptions") : t("planCard.feedbackPlaceholder")}
                 className="flex-1 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-1.5 text-xs focus:border-[#d6d6d1] focus:outline-none focus:ring-0"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
@@ -348,7 +352,7 @@ export function PlanCard({
                 className="h-8 rounded-full bg-[#242423] px-3 text-xs font-medium text-white hover:bg-[#111] disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={Boolean(hasOptions && !selectedOption)}
               >
-                {hasOptions ? (selectedOption ? "确认并执行" : "请选择选项") : "执行计划"}
+                {hasOptions ? (selectedOption ? t("planCard.confirmAndExecute") : t("planCard.selectOptionPrompt")) : t("planCard.executePlan")}
               </button>
               <button
                 type="button"
@@ -356,17 +360,17 @@ export function PlanCard({
                 disabled={!feedback.trim()}
                 className="h-8 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                发送补充
+                {t("planCard.sendSupplement")}
               </button>
               <button
                 type="button"
                 onClick={onCancel}
                 className="h-8 rounded-full px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
               >
-                取消
+                {t("planCard.cancel")}
               </button>
               {hasOptions && !selectedOption && status !== "refining" && (
-                <span className="text-xs text-[var(--mm-text-tertiary)]">先选一个选项再执行</span>
+                <span className="text-xs text-[var(--mm-text-tertiary)]">{t("planCard.selectFirstHint")}</span>
               )}
             </div>
           </div>
@@ -380,11 +384,11 @@ export function PlanCard({
               disabled={status === "pausing"}
               className="h-8 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-60"
             >
-              {status === "pausing" ? "正在暂停..." : "暂停执行"}
+              {status === "pausing" ? t("planCard.pausing") : t("planCard.pauseExecution")}
             </button>
             {totalCount > 0 && (
               <span className="text-xs text-[var(--mm-text-tertiary)]">
-                进度 {completedCount}/{totalCount}
+                {t("planCard.progressLabel", { completed: completedCount, total: totalCount })}
               </span>
             )}
           </div>
@@ -397,14 +401,14 @@ export function PlanCard({
               onClick={onResume}
               className="h-8 rounded-full bg-[#242423] px-3 text-xs font-medium text-white hover:bg-[#111]"
             >
-              继续执行
+              {t("planCard.resumeExecution")}
             </button>
             <button
               type="button"
               onClick={onCancel}
               className="h-8 rounded-full px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
             >
-              取消
+              {t("planCard.cancel")}
             </button>
           </div>
         )}
@@ -412,11 +416,15 @@ export function PlanCard({
         {isTerminal && (
           <div className="flex items-center gap-2">
             <span className="text-xs text-[var(--mm-text-tertiary)]">
-              {status === "executed" ? "计划已执行完毕" : status === "cancelled" ? "计划已取消" : "计划执行失败"}
+              {status === "executed"
+                ? t("planCard.terminalExecuted")
+                : status === "cancelled"
+                  ? t("planCard.terminalCancelled")
+                  : t("planCard.terminalFailed")}
             </span>
             {totalCount > 0 && (
               <span className="text-xs text-[var(--mm-text-tertiary)]">
-                完成 {completedCount}/{totalCount}
+                {t("planCard.completedLabel", { completed: completedCount, total: totalCount })}
               </span>
             )}
           </div>

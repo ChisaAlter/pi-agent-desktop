@@ -2,6 +2,7 @@
 
 export {
     SHORTCUTS,
+    getEffectiveShortcuts,
     groupByCategory,
     matchesCombo,
     findMatchingShortcut,

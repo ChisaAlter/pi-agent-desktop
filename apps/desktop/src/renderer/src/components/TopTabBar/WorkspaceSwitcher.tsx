@@ -127,7 +127,7 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
 
     const addBlankWorkspace = async (): Promise<void> => {
         setError(null);
-        const name = window.prompt("请输入新项目名称", "NewProject")?.trim();
+        const name = window.prompt(t("workspaceSwitcher.promptName"), "NewProject")?.trim();
         if (!name) return;
         try {
             const parentPath = await window.piAPI?.selectDirectory?.();
@@ -154,14 +154,14 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
                 onClick={() => setOpen((v) => !v)}
                 aria-haspopup="true"
                 aria-expanded={open}
-                aria-label={`切换工作区：${current?.name ?? t("sidebar.workspaceNone")}`}
+                aria-label={t("workspaceSwitcher.switchAria", { name: current?.name ?? t("sidebar.workspaceNone") })}
                 className={triggerClass}
                 title={current?.path ?? t("sidebar.workspaceNone")}
             >
                 <span className="flex h-4 w-4 items-center justify-center" aria-hidden="true">
                     <IconFolder />
                 </span>
-                {variant === "strip" && <span className="shrink-0 text-[var(--mm-text-secondary)]">工作区:</span>}
+                {variant === "strip" && <span className="shrink-0 text-[var(--mm-text-secondary)]">{t("workspaceSwitcher.prefix")}</span>}
                 <span className={variant === "topbar" ? "max-w-[48px] truncate" : "min-w-0 max-w-[150px] truncate"}>
                     {current?.name ?? t("sidebar.workspaceNone")}
                 </span>
@@ -176,10 +176,10 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
                         <IconSearch />
                         <input
                             type="search"
-                            aria-label="搜索项目"
+                            aria-label={t("workspaceSwitcher.search")}
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
-                            placeholder="搜索项目"
+                            placeholder={t("workspaceSwitcher.search")}
                             className="min-w-0 flex-1 border-0 bg-transparent text-[12px] text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] outline-none"
                             autoFocus
                         />
@@ -205,7 +205,7 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
                                 <span className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${ws.id === currentWorkspaceId ? "bg-[var(--mm-accent-blue)]" : "bg-transparent"}`} aria-hidden="true" />
                             </button>
                         )) : (
-                            <div className="px-3 py-4 text-[12px] text-[var(--mm-text-tertiary)]">没有匹配的项目</div>
+                            <div className="px-3 py-4 text-[12px] text-[var(--mm-text-tertiary)]">{t("workspaceSwitcher.noMatches")}</div>
                         )}
                     </div>
                     <div className="border-t border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] p-1">
@@ -216,7 +216,7 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
                             className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[12px] text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
                         >
                             <IconPlus />
-                            <span>新增空白项目</span>
+                            <span>{t("workspaceSwitcher.newBlankProject")}</span>
                         </button>
                         <button
                             type="button"
@@ -225,7 +225,7 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
                             className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[12px] text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
                         >
                             <IconFolder />
-                            <span>使用现有文件夹</span>
+                            <span>{t("workspaceSwitcher.useExistingFolder")}</span>
                         </button>
                     </div>
                     {error && <div className="border-t border-[var(--mm-border)] px-3 py-2 text-[11px] text-[var(--color-error)]">{error}</div>}

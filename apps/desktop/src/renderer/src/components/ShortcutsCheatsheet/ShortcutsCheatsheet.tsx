@@ -6,7 +6,7 @@
 // v1.0.4: 标题/分组/label 走 t(), category 来自 registry 的 key 翻译
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { SHORTCUTS, groupByCategory, type ShortcutDef } from "../../shortcuts/registry";
+import { getEffectiveShortcuts, groupByCategory, type ShortcutDef } from "../../shortcuts/registry";
 import { useI18n } from "../../i18n";
 
 export interface ShortcutsCheatsheetProps {
@@ -22,7 +22,7 @@ export function ShortcutsCheatsheet({
     const containerRef = useRef<HTMLDivElement>(null);
     const { t } = useI18n();
 
-    const groups = useMemo(() => groupByCategory(SHORTCUTS), []);
+    const groups = useMemo(() => (isOpen ? groupByCategory(getEffectiveShortcuts()) : []), [isOpen]);
     // 扁平化, 用于键盘上下导航
     const flat: ShortcutDef[] = useMemo(
         () => groups.flatMap((g) => g.items),

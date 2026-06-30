@@ -2,6 +2,18 @@ pre-commit:
   parallel: true
   commands:
     typecheck:
+      glob: "*.{ts,tsx}"
       run: pnpm -r typecheck
     lint:
+      glob: "*.{ts,tsx,js,jsx}"
       run: pnpm -r lint
+
+pre-push:
+  commands:
+    test:
+      run: pnpm --filter @pi-desktop/desktop test
+
+commit-msg:
+  commands:
+    conventional-commit:
+      run: node scripts/validate-commit-msg.cjs {1}

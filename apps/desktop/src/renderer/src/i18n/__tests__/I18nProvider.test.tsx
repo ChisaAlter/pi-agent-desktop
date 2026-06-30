@@ -7,6 +7,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import React, { useState } from "react";
 import { I18nProvider, useI18n, SUPPORTED_LOCALES } from "../index";
+import { useSettingsStore } from "../../stores/settings-store";
 
 function LocaleProbe({ label }: { label: string }): React.ReactElement {
     const { locale, t, setLocale } = useI18n();
@@ -26,6 +27,12 @@ beforeEach(() => {
     // 隔离每个 case, 强制 zh-CN 起点
     window.localStorage.setItem("pi-desktop.locale", "zh-CN");
     window.localStorage.removeItem("__test_cleared__");
+    useSettingsStore.setState((state) => ({
+        settings: {
+            ...state.settings,
+            language: "zh-CN",
+        },
+    }));
 });
 
 describe("I18nProvider", () => {
@@ -75,6 +82,39 @@ describe("I18nProvider", () => {
             </I18nProvider>
         );
         expect(screen.getByTestId("locale").textContent).toBe("en-US");
+    });
+
+    it("setLocale 同步写入 AppSettings.language, 供其他窗口刷新", () => {
+        render(
+            <I18nProvider>
+                <LocaleProbe label="switch" />
+            </I18nProvider>
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "switch" }));
+
+        expect(useSettingsStore.getState().settings.language).toBe("en-US");
+    });
+
+    it("AppSettings.language 变化时当前窗口 locale 跟随更新", () => {
+        render(
+            <I18nProvider>
+                <LocaleProbe label="switch" />
+            </I18nProvider>
+        );
+        expect(screen.getByTestId("locale").textContent).toBe("zh-CN");
+
+        act(() => {
+            useSettingsStore.setState((state) => ({
+                settings: {
+                    ...state.settings,
+                    language: "en-US",
+                },
+            }));
+        });
+
+        expect(screen.getByTestId("locale").textContent).toBe("en-US");
+        expect(screen.getByTestId("greeting").textContent).toBe("Keyboard shortcuts");
     });
 
     it("缺 key 时 i18next 返 key 字符串本身 (returnNull: false 的行为)", () => {

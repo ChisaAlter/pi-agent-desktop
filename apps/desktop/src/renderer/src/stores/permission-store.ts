@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { ExtensionUiRequest, PermissionDecision, PermissionMode } from "@shared";
 import { logger } from "../utils/logger";
+import { createSubscriptionManager } from "../utils/subscription-manager";
 
 interface PermissionState {
   mode: PermissionMode;
@@ -48,26 +49,20 @@ export const usePermissionStore = create<PermissionState>((set, get) => ({
   },
 }));
 
-let subscribed = false;
-let unsubscribe: (() => void) | null = null;
+const { ensure, cleanup } = createSubscriptionManager();
 
 export function ensurePermissionSubscriptions(): void {
-  if (subscribed || !window.piAPI?.onPermissionRequest) return;
-  subscribed = true;
-  const off = window.piAPI.onPermissionRequest((request) => {
-    usePermissionStore.getState().enqueue(request);
+  if (!window.piAPI?.onPermissionRequest) return;
+  ensure(() => {
+    const off = window.piAPI!.onPermissionRequest((request) => {
+      usePermissionStore.getState().enqueue(request);
+    });
+    // onPermissionRequest 可能返回 unsubscribe 函数; 否则仅记录用于测试期重置
+    return typeof off === "function" ? off : undefined;
   });
-  // onPermissionRequest 可能返回 unsubscribe 函数; 否则仅记录用于测试期重置
-  if (typeof off === "function") unsubscribe = off;
 }
 
 /** 退订 onPermissionRequest, 供测试 / AppShell 重挂时重置 (生产环境通常不需调用). */
 export function cleanupPermissionSubscriptions(): void {
-  try {
-    unsubscribe?.();
-  } catch {
-    // ignore
-  }
-  unsubscribe = null;
-  subscribed = false;
+  cleanup();
 }

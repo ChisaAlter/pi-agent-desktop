@@ -9,7 +9,7 @@ import { gitAddSchema, gitCommitSchema, gitDiffSchema, gitDiffStagedSchema, gitC
 export function setupGitIpc(): void {
   ipcMain.handle('git:status', async (_, workspacePath: string) => {
     try {
-      return getGitStatus(workspacePath);
+      return await getGitStatus(workspacePath);
     } catch (err) {
       log.error("[git.ipc] git:status failed:", err);
       return ipcError(
@@ -32,7 +32,7 @@ export function setupGitIpc(): void {
       );
     }
     try {
-      return gitDiff(workspacePath, filePath);
+      return await gitDiff(workspacePath, filePath);
     } catch (err) {
       log.error("[git.ipc] git:diff failed:", err);
       return ipcError(
@@ -55,7 +55,7 @@ export function setupGitIpc(): void {
     }
     try {
       // gitDiffStaged delegates to git with the standard ['diff', '--staged'] argv.
-      return gitDiffStaged(workspacePath);
+      return await gitDiffStaged(workspacePath);
     } catch (err) {
       log.error("[git.ipc] git:diff-staged failed:", err);
       return ipcError(
@@ -77,7 +77,7 @@ export function setupGitIpc(): void {
     }
     if (files.length === 0) return;
     try {
-      return gitAdd(workspacePath, files);
+      return await gitAdd(workspacePath, files);
     } catch (err) {
       log.error("[git.ipc] git:add exec failed:", err);
       return ipcError(
@@ -99,7 +99,7 @@ export function setupGitIpc(): void {
     }
     if (files.length === 0) return undefined;
     try {
-      return gitUnstage(workspacePath, files);
+      return await gitUnstage(workspacePath, files);
     } catch (err) {
       log.error("[git.ipc] git:unstage exec failed:", err);
       return ipcError(
@@ -120,7 +120,7 @@ export function setupGitIpc(): void {
       );
     }
     try {
-      return gitCommit(workspacePath, message);
+      return await gitCommit(workspacePath, message);
     } catch (err) {
       log.error("[git.ipc] git:commit exec failed:", err);
       return ipcError(
@@ -185,13 +185,17 @@ export function setupGitIpc(): void {
   });
 
   ipcMain.handle('git:checkout', async (_, workspacePath: string, branch: string) => {
+    const checkoutPathReason = getProtectedPathReason(workspacePath);
+    if (checkoutPathReason) {
+      return ipcError("ipcErrors.git.protectedPath", checkoutPathReason, { path: workspacePath });
+    }
     try {
       gitCheckoutSchema.parse([workspacePath, branch]);
     } catch (err) {
       return ipcError("ipcErrors.git.invalidArgs", `git checkout 参数无效: ${err instanceof Error ? err.message : String(err)}`);
     }
     try {
-      const result = gitCheckout(workspacePath, branch);
+      const result = await gitCheckout(workspacePath, branch);
       if (result && typeof result === 'object' && 'code' in result) return result;
       // 重新获取分支列表
       const output = execFileSync('git', ['branch', '-a'], { cwd: workspacePath, encoding: 'utf-8' });
@@ -207,13 +211,17 @@ export function setupGitIpc(): void {
   });
 
   ipcMain.handle('git:create-branch', async (_, workspacePath: string, branchName: string) => {
+    const createBranchPathReason = getProtectedPathReason(workspacePath);
+    if (createBranchPathReason) {
+      return ipcError("ipcErrors.git.protectedPath", createBranchPathReason, { path: workspacePath });
+    }
     try {
       gitCreateBranchSchema.parse([workspacePath, branchName]);
     } catch (err) {
       return ipcError("ipcErrors.git.invalidArgs", `git create-branch 参数无效: ${err instanceof Error ? err.message : String(err)}`);
     }
     try {
-      const result = gitCreateBranch(workspacePath, branchName);
+      const result = await gitCreateBranch(workspacePath, branchName);
       if (result && typeof result === 'object' && 'code' in result) return result;
       const output = execFileSync('git', ['branch', '-a'], { cwd: workspacePath, encoding: 'utf-8' });
       return output.split('\n').filter(l => l.trim()).map(l => ({
@@ -234,7 +242,7 @@ export function setupGitIpc(): void {
       return ipcError("ipcErrors.git.invalidArgs", `git original-content 参数无效: ${err instanceof Error ? err.message : String(err)}`);
     }
     try {
-      return gitOriginalContent(workspacePath, filePath);
+      return await gitOriginalContent(workspacePath, filePath);
     } catch (err) {
       log.error("[git.ipc] git:original-content failed:", err);
       return ipcError("ipcErrors.git.originalContentFailed", `读取 HEAD 原始内容失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -248,7 +256,7 @@ export function setupGitIpc(): void {
       return ipcError("ipcErrors.git.invalidArgs", `git changed-files 参数无效: ${err instanceof Error ? err.message : String(err)}`);
     }
     try {
-      return gitChangedFiles(workspacePath);
+      return await gitChangedFiles(workspacePath);
     } catch (err) {
       log.error("[git.ipc] git:changed-files failed:", err);
       return ipcError("ipcErrors.git.changedFilesFailed", `读取改动文件列表失败: ${err instanceof Error ? err.message : String(err)}`);

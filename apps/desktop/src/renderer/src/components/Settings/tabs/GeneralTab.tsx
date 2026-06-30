@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useSettingsStore } from '../../../stores/settings-store';
 import { useI18n, SUPPORTED_LOCALES, type Locale } from '../../../i18n';
 import { isSoundEnabled, setSoundEnabled, getSoundVolume, setSoundVolume } from '../../../utils/sounds';
-import { requestNotificationPermission, canNotify } from '../../../utils/notifications';
+import { requestNotificationPermission, canNotify, isNotificationEnabled, setNotificationEnabled } from '../../../utils/notifications';
 import { SectionTitle, FieldRow, SwitchControl } from '../_shared';
 
 export function GeneralTab(): React.JSX.Element {
@@ -12,7 +12,7 @@ export function GeneralTab(): React.JSX.Element {
     const { t, locale, setLocale } = useI18n();
     const [soundEnabled, setSoundEnabledState] = useState(isSoundEnabled());
     const [soundVolume, setSoundVolumeState] = useState(getSoundVolume());
-    const [notificationsEnabled, setNotificationsEnabled] = useState(canNotify());
+    const [notificationsEnabled, setNotificationsEnabled] = useState(isNotificationEnabled() && canNotify());
 
     return (
         <div className="settings-tab-panel" role="tabpanel" id="settings-tabpanel-general" aria-labelledby="settings-tab-general">
@@ -43,26 +43,29 @@ export function GeneralTab(): React.JSX.Element {
                 </FieldRow>
             </div>
 
-            <SectionTitle title="通知" description="控制系统通知和声音提示" />
+            <SectionTitle title={t('settings.general.notifications.heading')} description={t('settings.general.notifications.description')} />
             <div className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4">
-                <FieldRow label="系统通知" description="任务完成和错误时发送系统通知">
+                <FieldRow label={t('settings.general.notifications.system.label')} description={t('settings.general.notifications.system.description')}>
                     <SwitchControl
                         checked={notificationsEnabled}
-                        label="系统通知"
+                        label={t('settings.general.notifications.system.label')}
                         onChange={async () => {
                             if (!notificationsEnabled) {
                                 const result = await requestNotificationPermission();
-                                setNotificationsEnabled(result === "granted");
+                                const next = result === "granted";
+                                setNotificationEnabled(next);
+                                setNotificationsEnabled(next);
                             } else {
+                                setNotificationEnabled(false);
                                 setNotificationsEnabled(false);
                             }
                         }}
                     />
                 </FieldRow>
-                <FieldRow label="提示音" description="消息接收和任务完成时播放声音">
+                <FieldRow label={t('settings.general.notifications.sound.label')} description={t('settings.general.notifications.sound.description')}>
                     <SwitchControl
                         checked={soundEnabled}
-                        label="提示音"
+                        label={t('settings.general.notifications.sound.label')}
                         onChange={() => {
                             const next = !soundEnabled;
                             setSoundEnabledState(next);
@@ -71,7 +74,7 @@ export function GeneralTab(): React.JSX.Element {
                     />
                 </FieldRow>
                 {soundEnabled && (
-                    <FieldRow label={`音量: ${Math.round(soundVolume * 100)}%`}>
+                    <FieldRow label={t('settings.general.notifications.volume.label', { value: Math.round(soundVolume * 100) })}>
                         <input
                             type="range"
                             min="0"
@@ -83,7 +86,7 @@ export function GeneralTab(): React.JSX.Element {
                                 setSoundVolume(vol);
                             }}
                             className="w-full"
-                            aria-label="音量"
+                            aria-label={t('settings.general.notifications.volume.aria')}
                         />
                     </FieldRow>
                 )}

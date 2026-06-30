@@ -103,6 +103,8 @@ const store = new Store<StoreSchema>({
       runtimeChannel: 'stable',
       autoCompactionEnabled: false,
       workspaceToolDefaults: {},
+      sidebarGroupMode: 'date',
+      shortcutOverrides: [],
       longHorizon: DEFAULT_LONG_HORIZON_SETTINGS
     }
   }
@@ -280,7 +282,7 @@ function setupIPC(updaterService: AppUpdaterService): void {
   setupClaudeSessionsIpc(claudeSessionImporter);
 
   // File search (for @ references and CommandPalette)
-  setupFilesIpc();
+  setupFilesIpc({ getMainWindow: () => mainWindow });
 
   // Skills panel (SkillHub integration)
   setupSkillsIpc({

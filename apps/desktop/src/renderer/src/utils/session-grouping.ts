@@ -46,10 +46,7 @@ export interface SessionGroup {
 }
 
 export function groupSessionsByWorkspace(sessions: Session[], workspaces: Workspace[]): SessionGroup[] {
-  const sortedWorkspaces = [...workspaces].sort(
-    (a, b) => b.lastActiveAt.getTime() - a.lastActiveAt.getTime(),
-  );
-  return sortedWorkspaces
+  return [...workspaces]
     .map((workspace) => {
       const workspaceSessions = sessions.filter((session) => session.workspaceId === workspace.id);
       const byId = new Map(workspaceSessions.map((session) => [session.id, session]));

@@ -9,6 +9,7 @@ import { usePiStatusStore } from "../../stores/pi-status-store";
 import { usePlanStore } from "../../stores/plan-store";
 import { useAgentStore } from "../../stores/agent-store";
 import { useAgentModeStore } from "../../stores/agent-mode-store";
+import { MINIMAX_CHROME_ICON_BUTTON_CLASSNAME } from "../MiniMaxCode/chromeButton";
 import { ChatView } from "./ChatView";
 
 const clearError = vi.fn();
@@ -695,6 +696,8 @@ describe("ChatView", () => {
     const toggleButton = screen.getByRole("button", { name: "展开右侧栏" });
 
     expect(statusText.compareDocumentPosition(toggleButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(toggleButton.className).toBe(MINIMAX_CHROME_ICON_BUTTON_CLASSNAME);
+    expect(toggleButton.parentElement?.className ?? "").toContain("translate-y-[0.5px]");
 
     fireEvent.click(toggleButton);
     expect(onToggleRightRail).toHaveBeenCalledTimes(1);

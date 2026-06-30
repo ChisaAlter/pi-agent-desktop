@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { act, fireEvent, render as rtlRender, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { I18nProvider } from "../../i18n";
 import { FileWorkspace } from "./FileWorkspace";
+import { useSettingsStore } from "../../stores/settings-store";
 
 // Mock MonacoEditor to render a simple textarea for testing
 vi.mock("../Editor/MonacoEditor", () => ({
@@ -51,6 +54,10 @@ const gitDiff = vi.fn();
 const openPath = vi.fn();
 const revealPath = vi.fn();
 
+function render(ui: ReactElement) {
+  return rtlRender(ui, { wrapper: I18nProvider });
+}
+
 function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (reason?: unknown) => void } {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -92,6 +99,7 @@ const tree = {
 
 describe("FileWorkspace", () => {
   beforeEach(() => {
+    vi.useRealTimers();
     filesGetTree.mockReset();
     filesReadTextFile.mockReset();
     filesWriteTextFile.mockReset();
@@ -125,6 +133,14 @@ describe("FileWorkspace", () => {
     gitDiff.mockResolvedValue("diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new");
     openPath.mockResolvedValue("");
     revealPath.mockResolvedValue(undefined);
+    useSettingsStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        autoSave: false,
+        showLineNumbers: true,
+        wordWrap: true,
+      },
+    }));
     Object.defineProperty(window, "piAPI", {
       value: { filesGetTree, filesReadTextFile, filesWriteTextFile, filesSearch, getGitStatus, gitDiff, openPath, revealPath },
       configurable: true,
@@ -147,6 +163,24 @@ describe("FileWorkspace", () => {
     });
     expect(filesReadTextFile).toHaveBeenCalledWith("C:/repo/src/app.ts", "C:/repo");
     expect(screen.getByText("1")).toBeTruthy();
+  });
+
+  it("respects disabled line numbers and word wrap in file preview", async () => {
+    useSettingsStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        showLineNumbers: false,
+        wordWrap: false,
+      },
+    }));
+
+    render(<FileWorkspace workspacePath="C:/repo" />);
+    fireEvent.click(await screen.findByRole("button", { name: /app\.ts/ }));
+
+    const preview = await screen.findByLabelText("文件只读预览");
+    expect(preview.parentElement?.className).not.toContain("grid-cols");
+    expect(preview.className).toContain("whitespace-pre");
+    expect(preview.className).not.toContain("break-words");
   });
 
   it("ignores stale file read responses when switching files quickly", async () => {
@@ -474,14 +508,14 @@ describe("FileWorkspace", () => {
     const editor = await screen.findByRole("textbox", { name: "编辑文件内容" });
     fireEvent.change(editor, { target: { value: "export const app = false;" } });
 
-    expect(await screen.findByText("未保存")).toBeTruthy();
+    expect(await screen.findAllByText("有未保存修改")).not.toHaveLength(0);
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => {
       expect(filesWriteTextFile).toHaveBeenCalledWith("C:/repo/src/app.ts", "export const app = false;", "C:/repo", { expectedMtimeMs: 1000 });
     });
     expect(await screen.findByText("已保存")).toBeTruthy();
-    expect(screen.queryByText("未保存")).toBeNull();
+    expect(screen.queryByText("有未保存修改")).toBeNull();
     expect(savedSpy).toHaveBeenCalled();
     expect(gitDiff).not.toHaveBeenCalled();
     window.removeEventListener("workspace:file-saved", savedSpy);
@@ -853,6 +887,27 @@ describe("FileWorkspace", () => {
     expect(screen.getByRole("button", { name: "返回预览" })).toBeTruthy();
   });
 
+  it("does not reopen an initial target when the draft becomes dirty", async () => {
+    render(
+      <FileWorkspace
+        workspacePath="C:/repo"
+        initialTarget={{ path: "C:/repo/src/app.ts", mode: "edit", nonce: 1 }}
+      />,
+    );
+
+    await screen.findByText("export const app = true;");
+    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+    const editor = await screen.findByRole("textbox", { name: "编辑文件内容" });
+
+    fireEvent.change(editor, { target: { value: "export const app = 'dirty';" } });
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 20));
+    });
+
+    expect(filesReadTextFile).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole("textbox", { name: "编辑文件内容" }) as HTMLTextAreaElement).value).toBe("export const app = 'dirty';");
+  });
+
   it("discards unsaved edits back to the last loaded content", async () => {
     render(<FileWorkspace workspacePath="C:/repo" />);
     fireEvent.click(await screen.findByRole("button", { name: /app\.ts/ }));
@@ -878,6 +933,67 @@ describe("FileWorkspace", () => {
     await waitFor(() => {
       expect(filesWriteTextFile).toHaveBeenCalledWith("C:/repo/src/app.ts", "export const app = 1;", "C:/repo", { expectedMtimeMs: 1000 });
     });
+  });
+
+  it("auto-saves dirty editable files when autoSave is enabled", async () => {
+    useSettingsStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        autoSave: true,
+      },
+    }));
+
+    render(<FileWorkspace workspacePath="C:/repo" />);
+    fireEvent.click(await screen.findByRole("button", { name: /app\.ts/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+
+    const editor = await screen.findByRole("textbox", { name: "编辑文件内容" });
+    vi.useFakeTimers();
+    fireEvent.change(editor, {
+      target: { value: "export const app = 'auto';" },
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+    });
+
+    expect(filesWriteTextFile).toHaveBeenCalledWith("C:/repo/src/app.ts", "export const app = 'auto';", "C:/repo", { expectedMtimeMs: 1000 });
+  });
+
+  it("does not repeatedly auto-save the same failing draft", async () => {
+    filesWriteTextFile.mockResolvedValue({
+      code: "ipcErrors.files.protectedPath",
+      fallback: "保存失败：文件受保护",
+    });
+    useSettingsStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        autoSave: true,
+      },
+    }));
+
+    render(<FileWorkspace workspacePath="C:/repo" />);
+    fireEvent.click(await screen.findByRole("button", { name: /app\.ts/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "编辑" }));
+
+    const editor = await screen.findByRole("textbox", { name: "编辑文件内容" });
+    vi.useFakeTimers();
+    fireEvent.change(editor, {
+      target: { value: "export const app = 'blocked';" },
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+      await Promise.resolve();
+    });
+    expect(filesWriteTextFile).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+      await Promise.resolve();
+    });
+    expect(filesWriteTextFile).toHaveBeenCalledTimes(1);
   });
 
   it("asks before switching files with unsaved edits and respects cancellation", async () => {

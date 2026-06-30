@@ -97,6 +97,30 @@ async function expectSettingsScrollerWorks(settingsWindow: Page): Promise<void> 
     expect(metrics.documentOverflow, "settings window document should not own vertical scrolling").toBeLessThanOrEqual(4);
 }
 
+async function expectSoftInputFocus(locator: ReturnType<Page["locator"]>, label: string): Promise<void> {
+    await locator.focus();
+    const style = await locator.evaluate((element) => {
+        const computed = window.getComputedStyle(element);
+        return {
+            borderColor: computed.borderColor,
+            boxShadow: computed.boxShadow,
+            outlineColor: computed.outlineColor,
+            outlineStyle: computed.outlineStyle,
+            outlineWidth: computed.outlineWidth,
+        };
+    });
+    const blueFocusColors = new Set([
+        "rgb(10, 104, 196)",
+        "rgb(37, 99, 235)",
+        "rgb(90, 167, 255)",
+        "rgb(96, 165, 250)",
+    ]);
+    expect(blueFocusColors.has(style.borderColor), `${label} should not use a blue focus border`).toBe(false);
+    expect(blueFocusColors.has(style.outlineColor), `${label} should not use a blue focus outline`).toBe(false);
+    expect(style.outlineStyle === "none" || style.outlineWidth === "0px", `${label} should not show an outline`).toBe(true);
+    expect(style.boxShadow, `${label} should show a soft focus shadow`).not.toBe("none");
+}
+
 async function installManagedModelsIpcStubs(app: ElectronApplication): Promise<void> {
     await app.evaluate(({ ipcMain }) => {
         type Model = {
@@ -105,7 +129,8 @@ async function installManagedModelsIpcStubs(app: ElectronApplication): Promise<v
             modelId: string;
             modelName: string;
             baseUrl?: string;
-            apiType?: "openai" | "responses";
+            apiType?: string;
+            api?: string;
             contextWindow?: number;
             maxTokens?: number;
             reasoning?: boolean;
@@ -120,7 +145,8 @@ async function installManagedModelsIpcStubs(app: ElectronApplication): Promise<v
             providerId: string;
             providerName?: string;
             baseUrl?: string;
-            apiType?: "openai" | "responses";
+            apiType?: string;
+            api?: string;
             modelId: string;
             modelName?: string;
             contextWindow?: number;
@@ -129,7 +155,7 @@ async function installManagedModelsIpcStubs(app: ElectronApplication): Promise<v
             setDefault?: boolean;
         };
         type DeleteInput = { providerId: string; modelId: string };
-        type Event = { channel: string; providerId?: string; modelId?: string; modelName?: string };
+        type Event = { channel: string; providerId?: string; modelId?: string; modelName?: string; api?: string; apiType?: string };
         const target = globalThis as typeof globalThis & {
             __settingsModelEvents?: Event[];
             __settingsModels?: Model[];
@@ -181,6 +207,8 @@ async function installManagedModelsIpcStubs(app: ElectronApplication): Promise<v
                 providerId: input.providerId,
                 modelId: input.modelId,
                 modelName: input.modelName,
+                api: input.api,
+                apiType: input.apiType,
             });
             const nextModel: Model = {
                 providerId: input.providerId,
@@ -189,6 +217,7 @@ async function installManagedModelsIpcStubs(app: ElectronApplication): Promise<v
                 modelName: input.modelName ?? input.modelId,
                 baseUrl: input.baseUrl,
                 apiType: input.apiType ?? "openai",
+                api: input.api,
                 contextWindow: input.contextWindow,
                 maxTokens: input.maxTokens,
                 reasoning: Boolean(input.reasoning),
@@ -401,6 +430,97 @@ test.describe("Pi Desktop — settings window interaction audit", () => {
         await expect(settingsWindow.getByText("Audit Model")).toBeVisible();
     });
 
+    test("managed model dialog is fully visible and includes Anthropic API format", async () => {
+        const userDataDir = test.info().outputPath(`settings-model-dialog-${Date.now()}`);
+        const workspacePath = test.info().outputPath("workspace");
+        await mkdir(workspacePath, { recursive: true });
+
+        let page: Page;
+        ({ app, page } = await launchApp(userDataDir));
+        await prepareWorkspace(page, workspacePath);
+        await installManagedModelsIpcStubs(app);
+
+        const settingsWindow = await openSettingsWindow(app, page);
+        await settingsWindow.getByRole("tab", { name: "模型" }).click();
+        await settingsWindow.getByTestId("settings-scroll-region").evaluate((element) => {
+            element.scrollTop = element.scrollHeight;
+        });
+        await settingsWindow.getByRole("button", { name: "新增模型" }).click();
+
+        const dialog = settingsWindow.getByRole("dialog", { name: "模型编辑" });
+        await expect(dialog).toBeVisible();
+        await expect(dialog.getByText("新增模型")).toBeVisible();
+
+        const visibility = await dialog.evaluate((element) => {
+            const viewport = { width: window.innerWidth, height: window.innerHeight };
+            const dialogRect = element.getBoundingClientRect();
+            const controls = Array.from(element.querySelectorAll("label, button")).map((control) => {
+                const rect = control.getBoundingClientRect();
+                return {
+                    text: (control.textContent ?? control.getAttribute("aria-label") ?? "").trim(),
+                    top: rect.top,
+                    bottom: rect.bottom,
+                    left: rect.left,
+                    right: rect.right,
+                };
+            });
+            return {
+                viewport,
+                dialog: {
+                    top: dialogRect.top,
+                    bottom: dialogRect.bottom,
+                    left: dialogRect.left,
+                    right: dialogRect.right,
+                },
+                clippedControls: controls.filter((control) =>
+                    control.top < 0 ||
+                    control.left < 0 ||
+                    control.bottom > viewport.height ||
+                    control.right > viewport.width
+                ),
+            };
+        });
+
+        expect(visibility.dialog.top, "dialog top should be inside the settings window").toBeGreaterThanOrEqual(0);
+        expect(visibility.dialog.bottom, "dialog bottom should be inside the settings window").toBeLessThanOrEqual(visibility.viewport.height);
+        expect(visibility.clippedControls, "dialog controls should not be clipped").toEqual([]);
+
+        const apiOptions = await dialog.getByLabel("API 类型").locator("option").evaluateAll((options) =>
+            options.map((option) => ({ label: option.textContent?.trim(), value: option.getAttribute("value") }))
+        );
+        expect(apiOptions).toEqual(expect.arrayContaining([
+            { label: "OpenAI Chat Completions", value: "openai-completions" },
+            { label: "OpenAI Responses", value: "openai-responses" },
+            { label: "Anthropic Messages", value: "anthropic-messages" },
+        ]));
+
+        await expectSoftInputFocus(dialog.getByLabel("Provider ID"), "Provider ID input");
+        await expectSoftInputFocus(dialog.getByLabel("API 类型"), "API type select");
+
+        await dialog.getByLabel("API 类型").selectOption("anthropic-messages");
+        await dialog.getByLabel("Provider ID").fill("anthropic");
+        await dialog.getByLabel("Provider 名称").fill("Anthropic");
+        await dialog.getByLabel("Base URL").fill("https://api.anthropic.com/v1");
+        await dialog.getByLabel("API Key").fill("sk-ant-test");
+        await dialog.getByLabel("模型 ID").fill("claude-sonnet-4-20250514");
+        await dialog.getByLabel("模型名称").fill("Claude Sonnet 4");
+        await dialog.getByRole("button", { name: "保存模型" }).click();
+        await expect(settingsWindow.getByText("模型已保存")).toBeVisible({ timeout: 10_000 });
+
+        const events = await app.evaluate(() => {
+            const target = globalThis as typeof globalThis & {
+                __settingsModelEvents?: Array<{ channel: string; providerId?: string; modelId?: string; modelName?: string; api?: string; apiType?: string }>;
+            };
+            return target.__settingsModelEvents ?? [];
+        });
+        expect(events).toContainEqual(expect.objectContaining({
+            channel: "config:save-managed-model",
+            providerId: "anthropic",
+            modelId: "claude-sonnet-4-20250514",
+            api: "anthropic-messages",
+        }));
+    });
+
     test("managed model row buttons test, edit, cancel delete, and confirm delete", async () => {
         const userDataDir = test.info().outputPath(`settings-model-actions-${Date.now()}`);
         const workspacePath = test.info().outputPath("workspace");
@@ -444,17 +564,17 @@ test.describe("Pi Desktop — settings window interaction audit", () => {
 
         const events = await app.evaluate(() => {
             const target = globalThis as typeof globalThis & {
-                __settingsModelEvents?: Array<{ channel: string; providerId?: string; modelId?: string; modelName?: string }>;
+                __settingsModelEvents?: Array<{ channel: string; providerId?: string; modelId?: string; modelName?: string; api?: string; apiType?: string }>;
             };
             return target.__settingsModelEvents ?? [];
         });
         expect(events).toContainEqual({ channel: "config:test-provider", providerId: "stub_provider", modelId: "stub-model" });
-        expect(events).toContainEqual({
+        expect(events).toContainEqual(expect.objectContaining({
             channel: "config:save-managed-model",
             providerId: "stub_provider",
             modelId: "stub-model",
             modelName: "Stub Model Edited",
-        });
+        }));
         expect(events).toContainEqual({ channel: "config:delete-managed-model", providerId: "stub_provider", modelId: "stub-model" });
     });
 

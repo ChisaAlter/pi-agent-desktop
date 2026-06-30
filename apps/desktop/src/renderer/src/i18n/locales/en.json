@@ -76,6 +76,8 @@
     "subtitle": "Desktop workspace",
     "workspaceNone": "No workspace selected",
     "newConversation": "New conversation",
+    "quickNewConversation": "Quick new conversation",
+    "groupModeAria": "Session grouping",
     "groupByDate": "Group by date",
     "groupByWorkspace": "Group by workspace",
     "status": {
@@ -84,12 +86,19 @@
       "offline": "pi-agent offline"
     },
     "sessions": {
+      "listAria": "Conversation list",
       "unnamed": "Untitled session",
+      "pinned": "Pinned",
+      "pin": "Pin",
+      "unpin": "Unpin",
+      "rename": "Rename",
+      "renameSession": "Rename session",
       "archive": "Archive",
       "restore": "Restore",
       "delete": "Delete",
       "archived": "Archived",
       "empty": "No sessions yet.",
+      "emptyHint": "Send your first message and it will appear here.",
       "deleteConfirm": "Delete \"{{name}}\"? This cannot be undone.",
       "dateGroup": {
         "today": "Today",
@@ -211,23 +220,182 @@
       "title": "Send failed",
       "retry": "Retry"
     },
+    "empty": {
+      "title": "New chat",
+      "subtitle": "After you send a message, Pi Agent will start working in the current workspace.",
+      "workspace": "Workspace",
+      "model": "Model",
+      "permission": "Permission",
+      "thinking": "Thinking"
+    },
+    "permissionPrefix": "Permission:",
+    "status": {
+      "running": "Running",
+      "connected": "Connected",
+      "disconnected": "Disconnected"
+    },
+    "session": {
+      "untitled": "Untitled session",
+      "renameAria": "Rename current session",
+      "renameTitle": "Rename session",
+      "switchAria": "Switch session"
+    },
+    "plan": {
+      "execute": "Execute plan",
+      "executeNamed": "Execute plan: {{name}}",
+      "supplement": "Follow-up: {{text}}"
+    },
+    "errors": {
+      "readOnlyHistory": "This is a read-only history session. Continue from it first.",
+      "continueFailed": "Failed to continue session: {{message}}"
+    },
     "streamIndicator": "Pi is thinking...",
     "stopGeneration": "Stop generating",
     "stop": "Stop",
+    "rightRail": {
+      "expand": "Expand right rail",
+      "collapse": "Collapse right rail"
+    },
+    "scrollTop": "Back to top",
+    "readOnly": {
+      "label": "This is a read-only history session",
+      "continue": "Continue from this session"
+    },
     "messagesAria": "Conversation messages",
     "messageAria": "Message from {{author}}"
+  },
+  "planCard": {
+    "status": {
+      "pending": "Awaiting confirmation",
+      "refining": "Awaiting follow-up",
+      "executing": "Executing",
+      "pausing": "Pausing",
+      "paused": "Paused",
+      "executed": "Completed",
+      "cancelled": "Cancelled",
+      "failed": "Execution failed"
+    },
+    "progressSuffix": " ({{completed}}/{{total}})",
+    "expandDetails": "Expand plan details ↓",
+    "collapse": "Collapse ↑",
+    "stepsLabel": "Plan steps",
+    "optionAria": "Option {{label}} {{value}}",
+    "feedbackPlaceholder": "Add follow-up notes here",
+    "feedbackPlaceholderWithOptions": "Optional: add follow-up notes after choosing",
+    "executePlan": "Execute plan",
+    "confirmAndExecute": "Confirm and execute",
+    "selectOptionPrompt": "Please pick an option",
+    "sendSupplement": "Send follow-up",
+    "cancel": "Cancel",
+    "selectFirstHint": "Pick an option before executing",
+    "pauseExecution": "Pause execution",
+    "pausing": "Pausing...",
+    "resumeExecution": "Resume execution",
+    "progressLabel": "Progress {{completed}}/{{total}}",
+    "completedLabel": "Done {{completed}}/{{total}}",
+    "terminalExecuted": "Plan executed successfully",
+    "terminalCancelled": "Plan cancelled",
+    "terminalFailed": "Plan execution failed"
   },
   "chatInput": {
     "placeholder": {
       "ready": "Describe what you want to build or change...",
-      "noConnection": "Pi CLI not connected. Please make sure `pi` is installed and on PATH."
+      "noConnection": "Pi CLI not connected. Please make sure `pi` is installed and on PATH.",
+      "reference": "Type a message, use / for commands or @ to reference files...",
+      "planRunning": "Executing a plan. New input will be sent as follow-up instructions.",
+      "taskRunning": "Task running. New input will be sent as additional instructions."
     },
     "send": "Send",
+    "sendFollowUp": "Send follow-up",
     "stop": "Stop",
+    "pauseExecution": "Pause execution",
+    "resizeComposer": "Resize composer",
     "addAttachment": "Add attachment",
+    "addAttachmentAndTools": "Add attachment or tool",
+    "addFileOrImage": "Add file or image",
+    "openSlashCommands": "Open Slash commands",
+    "openTools": "Open tools panel",
+    "tools": "Tools",
+    "open": "Open",
     "attachment": "Attachment",
+    "removeAttachment": "Remove attachment {{name}}",
+    "attachmentsSelected": "Selected attachments",
+    "fileCandidates": "File candidates",
+    "commandCandidates": "Pi command candidates",
     "permission": "Permission settings",
     "permissionLabel": "Full access",
+    "permissionAria": "Permission: {{label}}",
+    "permissions": {
+      "ask": {
+        "label": "Ask",
+        "desc": "Ask before writes and commands"
+      },
+      "smart": {
+        "label": "Smart",
+        "desc": "Allow reads, ask for writes"
+      },
+      "always": {
+        "label": "Always allow",
+        "desc": "Auto-allow when possible, keep audit trail"
+      }
+    },
+    "agentMode": {
+      "aria": "Select Agent mode",
+      "menu": "Agent mode",
+      "enabled": "{{mode}} mode enabled",
+      "build": {
+        "label": "Build",
+        "desc": "Normal implementation mode with permitted reads, writes, and tools"
+      },
+      "plan": {
+        "label": "Plan",
+        "desc": "Plan only, with writes limited to .pi/plans/*.md"
+      },
+      "compose": {
+        "label": "Compose",
+        "desc": "Orchestrate workflows and skills in the MiMo style"
+      }
+    },
+    "thinking": {
+      "aria": "Thinking strength: {{label}}",
+      "menu": "Thinking strength",
+      "heading": "Reasoning",
+      "none": "Off",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "model": {
+      "current": "Current model: {{model}}",
+      "notConfigured": "No model configured",
+      "notSelected": "No model selected",
+      "select": "Select model",
+      "empty": "No available models (Pi CLI is not configured)"
+    },
+    "workspace": {
+      "current": "Current working directory: {{name}}",
+      "select": "Select working directory",
+      "recent": "Recent",
+      "chooseNew": "Select new project"
+    },
+    "running": {
+      "plan": "Executing plan · new input will enter the current execution as follow-up instructions",
+      "task": "Task running · new input will enter the current session as additional instructions"
+    },
+    "errors": {
+      "unknown": "Unknown error",
+      "slashWithAttachment": "Slash commands cannot be sent with attachments",
+      "sendFailed": "Send failed: {{message}}",
+      "visionNotConfigured": "Select a vision model in Settings first",
+      "visionUnavailable": "Vision service unavailable (preload not injected)",
+      "visionFailed": "Image recognition failed: {{message}}",
+      "filePickerUnavailable": "File picker unavailable (preload not injected)",
+      "workspaceRequired": "Select a workspace first",
+      "filePickerFailed": "Failed to open file picker: {{message}}",
+      "switchWorkspaceFailed": "Switch workspace failed: {{message}}",
+      "directoryPickerUnavailable": "Directory picker unavailable (preload not injected)",
+      "createWorkspaceFailed": "Create workspace failed: {{message}}"
+    },
     "shortcuts": {
       "send": "Send",
       "newline": "Newline"
@@ -310,6 +478,262 @@
     "oldFileLine": "Old file line",
     "newFileLine": "New file line"
   },
+  "editor": {
+    "loading": "Loading editor...",
+    "saveFile": "Save file"
+  },
+  "workspaceSwitcher": {
+    "switchAria": "Switch workspace: {{name}}",
+    "prefix": "Workspace:",
+    "search": "Search projects",
+    "noMatches": "No matching projects",
+    "newBlankProject": "New blank project",
+    "useExistingFolder": "Use existing folder",
+    "promptName": "Enter a new project name"
+  },
+  "fileWorkspace": {
+    "region": "File workspace",
+    "title": "Files",
+    "refreshTree": "Refresh file tree",
+    "refresh": "Refresh",
+    "searchFiles": "Search files",
+    "truncated": "Truncated",
+    "emptyDirectory": "Directory is empty",
+    "selectFile": "Select a file from the tree or search results.",
+    "selectPrompt": "Select a file to preview",
+    "previewAria": "Read-only file preview",
+    "lineNumbersAria": "File line numbers",
+    "statusBarAria": "File status bar",
+    "tree": {
+      "loading": "Reading file tree...",
+      "errorTitle": "File tree failed to load",
+      "loadFailed": "Failed to load file tree: {{message}}"
+    },
+    "search": {
+      "loading": "Searching files...",
+      "errorTitle": "File search failed",
+      "empty": "No matching files"
+    },
+    "status": {
+      "browse": "{{count}} files available",
+      "reading": "Reading file",
+      "readFailed": "Read failed",
+      "conflict": "Save conflict",
+      "diffLoading": "Reading diff",
+      "diffView": "Git diff view",
+      "saveFailed": "Save failed",
+      "dirty": "Unsaved changes",
+      "loadingTree": "loading tree",
+      "treeError": "tree error",
+      "ready": "ready",
+      "loading": "loading",
+      "readError": "read error",
+      "gitClean": "git clean",
+      "saving": "saving",
+      "saved": "saved"
+    },
+    "mode": {
+      "preview": {
+        "label": "Read-only preview",
+        "description": "Read-only"
+      },
+      "edit": {
+        "label": "Edit",
+        "description": "Editable"
+      },
+      "diff": {
+        "label": "Diff",
+        "description": "Diff view"
+      },
+      "conflict": {
+        "label": "Conflict",
+        "description": "Conflict view"
+      }
+    },
+    "readonly": {
+      "binary": "Binary files cannot be edited directly",
+      "truncated": "This file is too large and truncated, so saving is disabled"
+    },
+    "actions": {
+      "edit": "Edit",
+      "readOnly": "Read-only",
+      "discard": "Discard changes",
+      "saving": "Saving",
+      "save": "Save",
+      "viewDiff": "View diff",
+      "backToPreview": "Back to preview",
+      "continueEditing": "Continue editing",
+      "viewConflict": "View conflict",
+      "open": "Open",
+      "reveal": "Reveal",
+      "copyPath": "Copy path",
+      "copyRelativePath": "Copy relative path",
+      "copied": "Copied",
+      "quoteToChat": "Quote in chat",
+      "retrySave": "Retry save",
+      "useDiskVersion": "Use disk version",
+      "copyError": "Copy error",
+      "copyDraft": "Copy draft",
+      "reloadFile": "Reload file",
+      "quote": "Quote"
+    },
+    "messages": {
+      "discardConfirmFile": "The current file has unsaved changes. Switching files will discard them. Continue?",
+      "discardConfirmDirectory": "The current file has unsaved changes. Switching directories will discard them. Continue?",
+      "discarded": "Discarded unsaved changes",
+      "saved": "Saved",
+      "selectedDirectory": "Directory selected",
+      "copiedAbsolute": "Copied absolute path",
+      "copiedRelative": "Copied relative path",
+      "openRequested": "Requested system open",
+      "revealRequested": "Requested system reveal",
+      "copiedError": "Copied error details",
+      "copiedDraft": "Copied current draft",
+      "reloaded": "Reloaded disk file",
+      "usedDiskVersion": "Using disk version",
+      "readFileFailed": "Failed to read file: {{message}}",
+      "saveFailed": "Save failed: {{message}}",
+      "copyPathFailed": "Copy path failed: {{message}}",
+      "copyRelativeFailed": "Copy relative path failed: {{message}}",
+      "openFailed": "System open failed: {{message}}",
+      "revealFailed": "System reveal failed: {{message}}",
+      "copyErrorFailed": "Copy error details failed: {{message}}",
+      "copyDraftFailed": "Copy draft failed: {{message}}"
+    },
+    "emptyStates": {
+      "noDiff": "This file has no workspace diff to display.",
+      "binary": "Binary files cannot be previewed here. Use Open or Reveal.",
+      "truncated": "This file is too large. Showing the first 512KB only. Truncated files cannot be edited to avoid accidental saves."
+    },
+    "conflict": {
+      "warning": "The disk file changed externally. The diff below shows \"disk version\" to \"current draft\"; your draft remains in the editor.",
+      "continueDraft": "Continue editing draft"
+    },
+    "details": {
+      "heading": "File info",
+      "name": "Name",
+      "size": "Size",
+      "status": "Status",
+      "limit": "Limit",
+      "mode": "Mode",
+      "gitUnchanged": "Unchanged",
+      "saveStatus": "Save status",
+      "recentAction": "Recent action",
+      "conflictHandling": "Conflict handling",
+      "recovery": "Recovery",
+      "actions": "Actions"
+    }
+  },
+  "rightRail": {
+    "environment": "Environment",
+    "noGit": "No Git",
+    "unknownProject": "Unknown project",
+    "packageManager": "Package manager",
+    "configFiles": "Config files",
+    "scripts": "Scripts",
+    "runInTerminal": "Run {{command}} in terminal",
+    "changes": "Changes",
+    "commitOrPush": "Commit or push",
+    "commitOrPushAria": "Commit or push, open Git panel",
+    "projectFiles": "Project files",
+    "browseAllFiles": "Browse all files",
+    "openFile": "Open {{path}} in Files",
+    "viewDiff": "View Git diff for {{path}}",
+    "collapseFiles": "Collapse files",
+    "expandRemainingFiles": "Show {{count}} more files",
+    "progress": "Progress",
+    "itemCount": "{{count}} items",
+    "idle": "idle",
+    "recentTaskCompleted": "Recent task completed",
+    "goal": "Goal: {{condition}}",
+    "goalStatus": {
+      "running": "Running",
+      "checking": "Judge checking",
+      "satisfied": "Satisfied",
+      "impossible": "Impossible",
+      "cleared": "Cleared"
+    },
+    "queue": "Run queue",
+    "autoRetry": "Auto retry",
+    "running": "Running",
+    "queued": "Queued",
+    "currentSession": "Current session",
+    "emptyProgress": "Plans, tool calls, and long-running task progress will appear here after you start a chat or run a tool.",
+    "fileOutput": "File output",
+    "preview": "Preview",
+    "openInSystem": "Open",
+    "reveal": "Reveal",
+    "copyPath": "Copy path",
+    "copied": "Copied",
+    "quote": "Quote",
+    "emptyFileOutput": "Files generated, changed, or referenced in this turn will appear here for preview, reveal, and path copy.",
+    "source": {
+      "taskOutput": "Task output",
+      "reply": "Reply",
+      "tool": "Tool"
+    },
+    "status": {
+      "copiedPath": "Copied path",
+      "copyPathFailed": "Copy path failed: {{message}}",
+      "systemOpenFailed": "System open failed: {{message}}",
+      "systemRevealFailed": "System reveal failed: {{message}}",
+      "openRequested": "Requested system open",
+      "revealRequested": "Requested system reveal",
+      "quotedToChat": "Quoted in chat",
+      "fileOpened": "Opened {{name}}",
+      "diffOpened": "Opened diff {{file}}",
+      "highRiskCommandDrafted": "High-risk command was drafted in the terminal; review before running",
+      "commandSent": "Sent command to terminal"
+    },
+    "queueActivity": {
+      "agentStarted": "Agent started",
+      "turnStarted": "Turn started",
+      "agentEnded": "Agent ended",
+      "turnEnded": "Turn ended",
+      "autoRetrying": "Auto retrying",
+      "autoRetryEnded": "Auto retry ended",
+      "extensionError": "Extension error",
+      "queueUpdated": "Queue updated",
+      "taskRunning": "Current task running",
+      "taskCompleted": "Current task completed",
+      "toolRunning": "{{name}} running",
+      "toolFailed": "{{name}} failed",
+      "toolCompleted": "{{name}} completed"
+    }
+  },
+  "toolPermissions": {
+    "title": "Tool permissions",
+    "preset": {
+      "minimal": "Minimal",
+      "development": "Development",
+      "all": "All enabled"
+    },
+    "tool": {
+      "fileRead": "File read",
+      "fileWrite": "File write",
+      "shell": "Bash / PowerShell",
+      "git": "Git",
+      "network": "Network",
+      "extensions": "Extension tools"
+    },
+    "status": {
+      "saveFailed": "Tool permissions save failed: {{message}}",
+      "sessionPersistFailed": "Tool permissions were applied to this session, but saving failed: {{message}}",
+      "noTarget": "Select a workspace or open a session before changing tool permissions.",
+      "sessionApplied": "Applied to this session. Saving in the background.",
+      "workspaceUpdated": "Updated workspace default permissions.",
+      "workspaceUnavailable": "Select a workspace to configure default tool permissions."
+    }
+  },
+  "usageStats": {
+    "title": "Token usage",
+    "totalTokens": "Total tokens",
+    "sessions": "Sessions",
+    "inputTokens": "Input tokens",
+    "outputTokens": "Output tokens",
+    "modelBreakdown": "By model",
+    "footer": "{{count}} sessions · Current workspace data"
+  },
   "settings": {
     "title": "Settings",
     "tabsAria": "Settings categories",
@@ -343,7 +767,23 @@
     },
     "general": {
       "heading": "General settings",
-      "description": "Control language, save behavior, and editor display preferences."
+      "description": "Control language, save behavior, and editor display preferences.",
+      "notifications": {
+        "heading": "Notifications",
+        "description": "Control system notifications and sound alerts.",
+        "system": {
+          "label": "System notifications",
+          "description": "Send system notifications when tasks finish or fail."
+        },
+        "sound": {
+          "label": "Sound alerts",
+          "description": "Play sounds when messages arrive and tasks finish."
+        },
+        "volume": {
+          "label": "Volume: {{value}}%",
+          "aria": "Volume"
+        }
+      }
     },
     "longHorizon": {
       "heading": "Long-horizon capabilities",

@@ -9,6 +9,7 @@ import { DEFAULT_LOCALE, LOCALE_STORAGE_KEY, SUPPORTED_LOCALES, type SupportedLo
 import enUS from './locales/en.json';
 import zhCN from './locales/zh-CN.json';
 import type { I18nContextValue, Locale } from './types';
+import { useSettingsStore } from '../stores/settings-store';
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
@@ -26,6 +27,10 @@ function resolveInitialLocale(): SupportedLocale {
   if (nav.startsWith('zh')) return 'zh-CN';
   if (nav.startsWith('en')) return 'en-US';
   return DEFAULT_LOCALE;
+}
+
+function isSupportedLocale(value: unknown): value is Locale {
+  return typeof value === 'string' && (SUPPORTED_LOCALES as readonly string[]).includes(value);
 }
 
 // 初始化 i18next (singleton) — 用 zh-CN 作为初始值避免空字典
@@ -47,6 +52,8 @@ interface I18nProviderProps {
 export function I18nProvider({ children }: I18nProviderProps) {
   const { i18n, ready } = useTranslation();
   const [locale, setLocaleState] = useState<Locale>(() => (i18n.language as Locale) || DEFAULT_LOCALE);
+  const settingsLanguage = useSettingsStore((state) => state.settings.language);
+  const updateSettings = useSettingsStore((state) => state.updateSettings);
 
   // 故意只跑一次 (mount). 把 i18n / setLocaleState / locale 都过 ref, 避开 deps 警告
   // 又不依赖 i18n.language 防止循环
@@ -67,7 +74,7 @@ export function I18nProvider({ children }: I18nProviderProps) {
     }
   }, []);
 
-  const setLocale = useCallback((next: Locale) => {
+  const applyLocale = useCallback((next: Locale) => {
     void i18n.changeLanguage(next);
     setLocaleState(next);
     try {
@@ -76,6 +83,19 @@ export function I18nProvider({ children }: I18nProviderProps) {
       // localStorage 写入失败 (隐私模式), 不阻塞
     }
   }, [i18n]);
+
+  useEffect(() => {
+    if (!isSupportedLocale(settingsLanguage)) return;
+    if (settingsLanguage === locale) return;
+    applyLocale(settingsLanguage);
+  }, [applyLocale, locale, settingsLanguage]);
+
+  const setLocale = useCallback((next: Locale) => {
+    applyLocale(next);
+    if (useSettingsStore.getState().settings.language !== next) {
+      updateSettings({ language: next });
+    }
+  }, [applyLocale, updateSettings]);
 
   const t = useCallback<I18nContextValue['t']>(
     (key, options) => i18n.t(key, options) as string,

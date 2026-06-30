@@ -109,28 +109,35 @@ function defaultPlan(args: ComposeWorkflowArgs, tasks = defaultTasks(args)): str
     ].join("\n");
 }
 
-function parseReviewResult(body: string): { ready: boolean; critical: string[]; important: string[] } {
-    const lines = body.split(/\r?\n/);
-    const critical: string[] = [];
-    const important: string[] = [];
-    let section: "critical" | "important" | null = null;
-    let ready = !/READY:\s*no/i.test(body);
-    for (const line of lines) {
-        if (/^CRITICAL:/i.test(line)) {
-            section = "critical";
-            continue;
-        }
-        if (/^IMPORTANT:/i.test(line)) {
-            section = "important";
-            continue;
-        }
-        const bullet = line.match(/^\s*[-*]\s+(.+)$/)?.[1]?.trim();
-        if (!bullet) continue;
-        if (section === "critical") critical.push(bullet);
-        if (section === "important") important.push(bullet);
+const REVIEW_MARKER = "===REVIEW===";
+
+interface ReviewResult {
+    ready: boolean;
+    critical: string[];
+    important: string[];
+}
+
+function parseReviewResult(body: string): ReviewResult {
+    // Fail-safe defaults: any parse problem → ready:false so Merge is blocked.
+    const empty: ReviewResult = { ready: false, critical: [], important: [] };
+    const idx = body.indexOf(REVIEW_MARKER);
+    if (idx < 0) return empty;
+    try {
+        const raw = body.substring(idx + REVIEW_MARKER.length).trim();
+        const parsed = JSON.parse(raw) as unknown;
+        if (!parsed || typeof parsed !== "object") return empty;
+        const obj = parsed as Record<string, unknown>;
+        const ready = typeof obj.ready === "boolean" ? obj.ready : false;
+        const critical = Array.isArray(obj.critical)
+            ? obj.critical.filter((v): v is string => typeof v === "string")
+            : [];
+        const important = Array.isArray(obj.important)
+            ? obj.important.filter((v): v is string => typeof v === "string")
+            : [];
+        return { ready, critical, important };
+    } catch {
+        return empty;
     }
-    if (critical.length > 0) ready = false;
-    return { ready, critical, important };
 }
 
 function refreshWorkflowUi(ctx: ExtensionContext, snapshot: WorkflowRunSnapshot): void {
@@ -239,43 +246,143 @@ function normalizeTasks(args: ComposeWorkflowArgs, body: string): ComposeWorkflo
 function topoSortTasks(tasks: ComposeWorkflowTask[]): { batches: ComposeWorkflowTask[][]; degradedReason?: string } {
     if (tasks.length <= 1) return { batches: tasks.map((task) => [task]) };
     const byId = new Map(tasks.map((task) => [task.id, task]));
-    const indegree = new Map<string, number>();
+    const unknownDeps: string[] = [];
     const outgoing = new Map<string, string[]>();
-
-    for (const task of tasks) {
-        indegree.set(task.id, 0);
-        outgoing.set(task.id, []);
-    }
-
+    for (const task of tasks) outgoing.set(task.id, []);
+    // Build adjacency (dep -> dependents). Skip unknown deps but record them.
     for (const task of tasks) {
         for (const dep of task.dependsOn) {
-            if (!byId.has(dep)) continue;
-            indegree.set(task.id, (indegree.get(task.id) ?? 0) + 1);
+            if (!byId.has(dep)) {
+                if (!unknownDeps.includes(dep)) unknownDeps.push(dep);
+                continue;
+            }
             outgoing.get(dep)?.push(task.id);
         }
     }
+    const selfLoops = new Set<string>();
+    for (const task of tasks) {
+        if (task.dependsOn.includes(task.id)) selfLoops.add(task.id);
+    }
 
-    const remaining = new Set(tasks.map((task) => task.id));
-    const batches: ComposeWorkflowTask[][] = [];
-
-    while (remaining.size > 0) {
-        const ready = [...remaining].filter((id) => (indegree.get(id) ?? 0) === 0);
-        if (ready.length === 0) {
-            return {
-                batches: tasks.map((task) => [task]),
-                degradedReason: "Design task dependencies formed a cycle; fell back to sequential task order.",
-            };
+    // Tarjan's SCC algorithm. Produces SCCs in reverse topological order.
+    let index = 0;
+    const indices = new Map<string, number>();
+    const lowLinks = new Map<string, number>();
+    const onStack = new Set<string>();
+    const stack: string[] = [];
+    const sccs: string[][] = [];
+    const strongconnect = (v: string): void => {
+        indices.set(v, index);
+        lowLinks.set(v, index);
+        index += 1;
+        stack.push(v);
+        onStack.add(v);
+        for (const w of outgoing.get(v) ?? []) {
+            if (!indices.has(w)) {
+                strongconnect(w);
+                lowLinks.set(v, Math.min(lowLinks.get(v)!, lowLinks.get(w)!));
+            } else if (onStack.has(w)) {
+                lowLinks.set(v, Math.min(lowLinks.get(v)!, indices.get(w)!));
+            }
         }
-        batches.push(ready.map((id) => byId.get(id)!).filter(Boolean));
-        for (const id of ready) {
-            remaining.delete(id);
-            for (const next of outgoing.get(id) ?? []) {
-                indegree.set(next, Math.max(0, (indegree.get(next) ?? 0) - 1));
+        if (lowLinks.get(v) === indices.get(v)) {
+            const scc: string[] = [];
+            let w: string;
+            do {
+                w = stack.pop()!;
+                onStack.delete(w);
+                scc.push(w);
+            } while (w !== v);
+            sccs.push(scc);
+        }
+    };
+    for (const task of tasks) {
+        if (!indices.has(task.id)) strongconnect(task.id);
+    }
+
+    // Map each task id to its SCC index.
+    const sccId = new Map<string, number>();
+    sccs.forEach((scc, i) => {
+        for (const id of scc) sccId.set(id, i);
+    });
+    // An SCC is "cyclic" if it has >1 node, or a single node with a self-loop.
+    const cyclicSccs = new Set<number>();
+    sccs.forEach((scc, i) => {
+        if (scc.length > 1) cyclicSccs.add(i);
+        else if (selfLoops.has(scc[0])) cyclicSccs.add(i);
+    });
+
+    // Build condensation DAG and indegrees between SCCs.
+    const sccOutgoing = new Map<number, Set<number>>();
+    const sccIndegree = new Map<number, number>();
+    sccs.forEach((_, i) => {
+        sccOutgoing.set(i, new Set());
+        sccIndegree.set(i, 0);
+    });
+    for (const task of tasks) {
+        const u = sccId.get(task.id)!;
+        for (const w of outgoing.get(task.id) ?? []) {
+            const v = sccId.get(w)!;
+            if (u !== v && !sccOutgoing.get(u)!.has(v)) {
+                sccOutgoing.get(u)!.add(v);
+                sccIndegree.set(v, (sccIndegree.get(v) ?? 0) + 1);
             }
         }
     }
 
-    return { batches };
+    // Kahn's algorithm on the condensation. Each "wave" of ready SCCs:
+    //  - non-cyclic SCCs (size 1, no self-loop) collapse into one parallel batch
+    //  - cyclic SCCs expand to one serial batch per task (cycle → run serially)
+    const remainingSccs = new Set(sccs.map((_, i) => i));
+    const batches: ComposeWorkflowTask[][] = [];
+    let cyclicTaskCount = 0;
+
+    while (remainingSccs.size > 0) {
+        const ready = [...remainingSccs].filter((i) => (sccIndegree.get(i) ?? 0) === 0);
+        if (ready.length === 0) {
+            // Defensive: should be unreachable after SCC decomposition.
+            const leftover = [...remainingSccs].flatMap((i) => sccs[i].map((id) => byId.get(id)!).filter(Boolean));
+            batches.push(leftover);
+            break;
+        }
+        const nonCyclicReady = ready.filter((i) => !cyclicSccs.has(i));
+        const cyclicReady = ready.filter((i) => cyclicSccs.has(i));
+        if (nonCyclicReady.length > 0) {
+            const batch: ComposeWorkflowTask[] = [];
+            for (const i of nonCyclicReady) {
+                for (const id of sccs[i]) {
+                    const t = byId.get(id);
+                    if (t) batch.push(t);
+                }
+            }
+            batches.push(batch);
+        }
+        for (const i of cyclicReady) {
+            cyclicTaskCount += sccs[i].length;
+            for (const id of sccs[i]) {
+                const t = byId.get(id);
+                if (t) batches.push([t]);
+            }
+        }
+        for (const i of ready) {
+            remainingSccs.delete(i);
+            for (const v of sccOutgoing.get(i) ?? []) {
+                sccIndegree.set(v, Math.max(0, (sccIndegree.get(v) ?? 0) - 1));
+            }
+        }
+    }
+
+    const reasons: string[] = [];
+    if (cyclicTaskCount > 0) {
+        reasons.push(`${cyclicTaskCount} task(s) formed cycles and will run serially within each cycle; acyclic tasks remain parallel`);
+    }
+    if (unknownDeps.length > 0) {
+        reasons.push(`unknown dependencies ignored: ${unknownDeps.join(", ")}`);
+    }
+    return {
+        batches,
+        degradedReason: reasons.length > 0 ? reasons.join("; ") : undefined,
+    };
 }
 
 function defaultCommitMessage(args: ComposeWorkflowArgs): string {
@@ -381,6 +488,10 @@ async function runSequentialTask(
     };
 }
 
+// TODO: split into phases/*.ts (SubTask 25.5 deferred). Each phase
+// (brainstorm/design/implement/verify/review/report/merge) should become its
+// own module to shrink this orchestrator. Deferred because the 7-file split is
+// high-risk and the logic fixes above are the priority.
 export async function executeComposeWorkflow(
     options: ExecuteComposeWorkflowOptions,
 ): Promise<WorkflowRunOutcome> {
@@ -397,8 +508,23 @@ export async function executeComposeWorkflow(
         : undefined;
     const phaseSummaries: string[] = [];
     const taskHistory: ImplementTaskResult[] = [];
+    // Global deadline for the whole workflow. Default 1h.
+    const deadline = Date.now() + (args.timeoutMs ?? 60 * 60 * 1000);
+    const assertBeforeDeadline = (): void => {
+        if (Date.now() > deadline) {
+            throw new Error("compose.timeout: Compose 工作流超时");
+        }
+    };
 
     try {
+        // SubTask 25.2: fast-fail if commit was requested but the repo is dirty.
+        // worktreeSupport.clean is undefined when not a git repo; treat as not-dirty
+        // so the Merge phase can produce its own clearer error for non-repo workspaces.
+        if (args.commit === true && worktreeSupport.clean === false) {
+            throw new Error("compose.dirtyRepo: 仓库不干净,无法提交");
+        }
+
+        assertBeforeDeadline();
         const brainstorm = await runSingleChildPhase(
             options,
             "Brainstorm",
@@ -411,6 +537,7 @@ export async function executeComposeWorkflow(
         );
         phaseSummaries.push(`Brainstorm: ${summarizeText(brainstorm)}`);
 
+        assertBeforeDeadline();
         const design = await runSingleChildPhase(
             options,
             "Design",
@@ -436,6 +563,7 @@ export async function executeComposeWorkflow(
         writeFileSync(artifactPaths.planPath, planMarkdown.endsWith("\n") ? planMarkdown : `${planMarkdown}\n`, "utf8");
         phaseSummaries.push(`Design: wrote ${artifactPaths.specPath} and ${artifactPaths.planPath}`);
 
+        assertBeforeDeadline();
         beginPhase(options, "Implement");
         const topo = topoSortTasks(tasks);
         if (topo.degradedReason) {
@@ -505,6 +633,7 @@ export async function executeComposeWorkflow(
         completePhase(options, "Implement", summarizeText(implementSummary, 500));
         phaseSummaries.push(`Implement: ${summarizeText(implementSummary, 500)}`);
 
+        assertBeforeDeadline();
         const verify = await runSingleChildPhase(
             options,
             "Verify",
@@ -519,6 +648,7 @@ export async function executeComposeWorkflow(
         );
         phaseSummaries.push(`Verify: ${summarizeText(verify)}`);
 
+        assertBeforeDeadline();
         const review = await runSingleChildPhase(
             options,
             "Review",
@@ -527,17 +657,16 @@ export async function executeComposeWorkflow(
                 `Task: ${args.task}`,
                 `Read ${artifactPaths.specPath} and ${artifactPaths.planPath}.`,
                 "Review the current workspace changes against them.",
-                "Return exactly:",
-                "READY: yes|no",
-                "CRITICAL:",
-                "- ...",
-                "IMPORTANT:",
-                "- ...",
+                "Return exactly this format and nothing else:",
+                "===REVIEW===",
+                '{"ready": true|false, "critical": ["..."], "important": ["..."]}',
+                "ready=false if any critical issue would block merge. critical/important are short bullet strings.",
             ].join("\n"),
         );
         const reviewResult = parseReviewResult(review);
         phaseSummaries.push(`Review: ${reviewResult.ready ? "ready" : "not ready"}`);
 
+        assertBeforeDeadline();
         if (args.skipReport) {
             skipPhase(options, "Report", "report generation skipped by args.skipReport");
             phaseSummaries.push("Report: skipped");
@@ -581,6 +710,7 @@ export async function executeComposeWorkflow(
             phaseSummaries.push(`Report: wrote ${artifactPaths.reportPath}`);
         }
 
+        assertBeforeDeadline();
         beginPhase(options, "Merge");
         let mergeSummary: string;
         if (!reviewResult.ready) {

@@ -204,7 +204,7 @@ The SQLite schema supports tree-structured conversations (Pi JSONL v3) via `pare
 
 - **Electron 41.2.0** with **electron-vite 5** for building
 - **Package manager**: pnpm 9
-- **Native modules**: `node-pty` (terminal), `sharp` (images), `better-sqlite3` (persistence) — require node-gyp + Python + Visual Studio on Windows
+- **Native modules**: `node-pty` (terminal), `sharp` (images) — require node-gyp + Python + Visual Studio on Windows
 - **Bundled modules**: `@pi-desktop/shared-types` and `@earendil-works/pi-coding-agent` are explicitly excluded from externalization in electron-vite config (bundled into main/preload)
 - **`npmRebuild: false`** in electron-builder.yml — native modules handled separately
 - **Electron download mirror**: npmmirror (`https://npmmirror.com/mirrors/electron/`) with local `.electron-cache`

@@ -49,6 +49,12 @@ jobs:
           Set-Location C:\p
           pnpm install --frozen-lockfile
 
+      - name: Rebuild native modules
+        shell: pwsh
+        run: |
+          Set-Location C:\p
+          pnpm --filter @pi-desktop/desktop exec electron-rebuild -f -w node-pty,sharp
+
       - name: Typecheck
         shell: pwsh
         run: |
@@ -85,6 +91,12 @@ jobs:
           pnpm --filter @pi-desktop/desktop build
         env:
           PI_DESKTOP_ENABLE_AUTO_UPDATE: "1"
+
+      - name: Smoke test main runtime
+        shell: pwsh
+        run: |
+          Set-Location C:\p
+          node scripts/smoke-main-runtime.cjs
 
       - name: Restore missing NSIS helper include
         shell: pwsh
@@ -147,11 +159,11 @@ jobs:
           $title = "Pi Desktop $tag"
 
           if (-not (Test-Path $notesFile)) {
-            @"
-# $title
-
-Release artifacts for $tag.
-"@ | Set-Content -Path $notesFile -Encoding UTF8
+            @(
+              "# $title",
+              "",
+              "Release artifacts for $tag."
+            ) | Set-Content -Path $notesFile -Encoding UTF8
           }
 
           gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null

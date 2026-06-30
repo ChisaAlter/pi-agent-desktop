@@ -358,6 +358,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     const agentIdRef = useRef<string | null>(null);
     const isTurnActiveRef = useRef(false);
     const lastProviderErrorRef = useRef<string | null>(null);
+    const hasCompletionSignalRef = useRef(false);
 
     // Debounce + flush mechanism
     //   - streamPersistRef 累积待 flush 的内容
@@ -453,8 +454,6 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         };
     }, [flushStreamPersist]);
 
-    const { getCurrentSession, addMessage, updateMessage, addToolCall, updateToolCall } = useSessionStore();
-
     useEffect(() => { agentIdRef.current = agentId ?? null; }, [agentId]);
     useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
 
@@ -515,14 +514,14 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         if (linkedSession) {
             sessionIdRef.current = linkedSession.id;
             // Persist empty assistant message (once on creation, low frequency)
-            addMessage(linkedSession.id, {
+            useSessionStore.getState().addMessage(linkedSession.id, {
                 id: newId,
                 role: "assistant",
                 content: "",
                 timestamp: new Date(),
             }, { persist: true });
         }
-    }, [addMessage, getTargetSession]);
+    }, [getTargetSession]);
 
     const appendAgentMessage = useCallback((agentId: string, role: "user" | "assistant", content: string) => {
         useAgentStore.getState().appendStreamMessage(agentId, {
@@ -613,6 +612,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 setCurrentThinking("");
                 textRef.current = "";
                 thinkingRef.current = "";
+                hasCompletionSignalRef.current = false;
                 lastProviderErrorRef.current = null;
                 toolCallsRef.current = new Map();
                 setToolCalls(new Map());
@@ -631,6 +631,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     const delta = assistantEvent.delta;
                     if (!delta) break;
                     ensureAssistantMessage();
+                    hasCompletionSignalRef.current = true;
                     textRef.current += delta;
                     setCurrentText(textRef.current);
                     if (agentIdRef.current && messageIdRef.current) {
@@ -640,11 +641,12 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     }
                     if (sessionIdRef.current && messageIdRef.current) {
                         // In-memory update (for UI), persistence via debounce
-                        updateMessage(sessionIdRef.current, messageIdRef.current, { content: textRef.current }, { persist: false });
+                        useSessionStore.getState().updateMessage(sessionIdRef.current, messageIdRef.current, { content: textRef.current }, { persist: false });
                         if (!streamPersistRef.current ||
                             streamPersistRef.current.sessionId !== sessionIdRef.current ||
                             streamPersistRef.current.messageId !== messageIdRef.current) {
                             streamPersistRef.current = {
+                                ...streamPersistRef.current,
                                 sessionId: sessionIdRef.current,
                                 messageId: messageIdRef.current,
                             };
@@ -664,11 +666,12 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                         });
                     }
                     if (sessionIdRef.current && messageIdRef.current) {
-                        updateMessage(sessionIdRef.current, messageIdRef.current, { thinking: thinkingRef.current }, { persist: false });
+                        useSessionStore.getState().updateMessage(sessionIdRef.current, messageIdRef.current, { thinking: thinkingRef.current }, { persist: false });
                         if (!streamPersistRef.current ||
                             streamPersistRef.current.sessionId !== sessionIdRef.current ||
                             streamPersistRef.current.messageId !== messageIdRef.current) {
                             streamPersistRef.current = {
+                                ...streamPersistRef.current,
                                 sessionId: sessionIdRef.current,
                                 messageId: messageIdRef.current,
                             };
@@ -686,7 +689,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                         toolCallsRef.current.set(e.toolCallId, existingTc);
                         setToolCalls(new Map(toolCallsRef.current));
                         if (sessionIdRef.current && messageIdRef.current) {
-                            updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
+                            useSessionStore.getState().updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
                                 name: e.toolName,
                                 input: e.args,
                             }, { persist: false });
@@ -705,7 +708,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     toolCallsRef.current.set(e.toolCallId, tc);
                     setToolCalls(new Map(toolCallsRef.current));
                     if (sessionIdRef.current && messageIdRef.current) {
-                        addToolCall(sessionIdRef.current, messageIdRef.current, {
+                        useSessionStore.getState().addToolCall(sessionIdRef.current, messageIdRef.current, {
                             id: e.toolCallId,
                             name: e.toolName,
                             input: e.args,
@@ -717,6 +720,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                             streamPersistRef.current.sessionId !== sessionIdRef.current ||
                             streamPersistRef.current.messageId !== messageIdRef.current) {
                             streamPersistRef.current = {
+                                ...streamPersistRef.current,
                                 sessionId: sessionIdRef.current,
                                 messageId: messageIdRef.current,
                             };
@@ -734,7 +738,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                         toolCallsRef.current.set(e.toolCallId, tc);
                         setToolCalls(new Map(toolCallsRef.current));
                         if (sessionIdRef.current && messageIdRef.current) {
-                            updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
+                            useSessionStore.getState().updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
                                 status: "completed",
                                 output: e.result,
                                 endTime: new Date(tc.endTime),
@@ -768,6 +772,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 }
                 if (!cleanedFinalText || cleanedFinalText === textRef.current) break;
                 ensureAssistantMessage();
+                hasCompletionSignalRef.current = true;
                 textRef.current = cleanedFinalText;
                 setCurrentText(cleanedFinalText);
                 if (agentIdRef.current && messageIdRef.current) {
@@ -776,8 +781,9 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     });
                 }
                 if (sessionIdRef.current && messageIdRef.current) {
-                    updateMessage(sessionIdRef.current, messageIdRef.current, { content: cleanedFinalText }, { persist: false });
+                    useSessionStore.getState().updateMessage(sessionIdRef.current, messageIdRef.current, { content: cleanedFinalText }, { persist: false });
                     streamPersistRef.current = {
+                        ...streamPersistRef.current,
                         sessionId: sessionIdRef.current,
                         messageId: messageIdRef.current,
                         content: cleanedFinalText,
@@ -797,7 +803,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     toolCallsRef.current.set(e.toolCallId, existingTc);
                     setToolCalls(new Map(toolCallsRef.current));
                     if (sessionIdRef.current && messageIdRef.current) {
-                        updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
+                        useSessionStore.getState().updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
                             status: "running",
                             startTime: new Date(existingTc.startTime),
                         }, { persist: false });
@@ -817,7 +823,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 toolCallsRef.current.set(e.toolCallId, tc);
                 setToolCalls(new Map(toolCallsRef.current));
                 if (sessionIdRef.current && messageIdRef.current) {
-                    addToolCall(sessionIdRef.current, messageIdRef.current, {
+                    useSessionStore.getState().addToolCall(sessionIdRef.current, messageIdRef.current, {
                         id: e.toolCallId,
                         name: e.toolName,
                         input: e.args,
@@ -828,6 +834,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                         streamPersistRef.current.sessionId !== sessionIdRef.current ||
                         streamPersistRef.current.messageId !== messageIdRef.current) {
                         streamPersistRef.current = {
+                            ...streamPersistRef.current,
                             sessionId: sessionIdRef.current,
                             messageId: messageIdRef.current,
                         };
@@ -845,7 +852,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     tc.endTime = Date.now();
                     setToolCalls(new Map(toolCallsRef.current));
                     if (sessionIdRef.current && messageIdRef.current) {
-                        updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
+                        useSessionStore.getState().updateToolCall(sessionIdRef.current, messageIdRef.current, e.toolCallId, {
                             status: e.isError ? "error" : "completed",
                             endTime: new Date(tc.endTime),
                         }, { persist: false });
@@ -899,7 +906,8 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     usePlanStore.getState().markPaused();
                 }
                 const card = sanitizeCustomCard((event as unknown as { card?: unknown; details?: unknown }).card ?? (event as unknown as { details?: unknown }).details ?? event);
-                addMessage(session.id, {
+                hasCompletionSignalRef.current = true;
+                useSessionStore.getState().addMessage(session.id, {
                     id: `cm_${card.id}`,
                     role: "assistant",
                     content: card.kind === "markdown-fallback" ? (card.content ?? "") : "",
@@ -938,12 +946,15 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 sessionIdRef.current = null;
                 // Notify useTaskProgress: agent ended
                 window.dispatchEvent(new CustomEvent("pi:stream-end"));
-                // 声音和系统通知
-                playCompleteSound();
-                if (canNotify()) {
+                // 只在本轮产生了用户可见结果时提示，避免纯工具阶段反复响铃
+                if (hasCompletionSignalRef.current && !lastProviderErrorRef.current) {
+                    playCompleteSound();
+                }
+                if (hasCompletionSignalRef.current && !lastProviderErrorRef.current && canNotify()) {
                     const currentSession = useSessionStore.getState().getCurrentSession();
                     notifyTaskComplete(currentSession?.title ?? "对话");
                 }
+                hasCompletionSignalRef.current = false;
                 break;
 
             case "extension_error":
@@ -957,10 +968,11 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 if (usePlanStore.getState().activeExecution?.phase === "executing") {
                     usePlanStore.getState().markFailed();
                 }
+                hasCompletionSignalRef.current = false;
                 window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 break;
         }
-    }, [updateMessage, addToolCall, updateToolCall, ensureAssistantMessage, flushStreamPersist, scheduleStreamPersist, syncUsageFromAssistantMessage, updateCurrentUsage, addMessage, getTargetSession]);
+    }, [ensureAssistantMessage, flushStreamPersist, scheduleStreamPersist, syncUsageFromAssistantMessage, updateCurrentUsage, getTargetSession]);
 
     useEffect(() => {
         handleEventRef.current = handleEvent;
@@ -986,7 +998,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         if (options.agentId) {
             agentIdRef.current = options.agentId;
         }
-        const session = aid ? getTargetSession(aid) : getCurrentSession();
+        const session = aid ? getTargetSession(aid) : useSessionStore.getState().getCurrentSession();
         const selectedMode = useAgentModeStore.getState().getMode(workspaceId);
         const isFollowUpWhileStreaming = isStreamingRef.current || promptInFlightRef.current;
         const isSlashCommand = content.trimStart().startsWith("/");
@@ -997,7 +1009,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 appendAgentMessage(aid, "user", visibleContent);
             }
             if (session) {
-                addMessage(session.id, {
+                useSessionStore.getState().addMessage(session.id, {
                     id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
                     role: "user",
                     content: visibleContent,
@@ -1024,6 +1036,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             } catch (err) {
                 setError(String(err));
             }
+            promptInFlightRef.current = false;
             return;
         }
         promptInFlightRef.current = true;
@@ -1033,6 +1046,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         setError(null);
         textRef.current = "";
         thinkingRef.current = "";
+        hasCompletionSignalRef.current = false;
         lastProviderErrorRef.current = null;
         messageIdRef.current = null;
         sessionIdRef.current = session?.id ?? null;
@@ -1051,7 +1065,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             appendAgentMessage(aid, "user", visibleContent);
         } else if (!aid && session) {
             sessionIdRef.current = session.id;
-            addMessage(session.id, {
+            useSessionStore.getState().addMessage(session.id, {
                 id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
                 role: "user",
                 content: visibleContent,
@@ -1083,9 +1097,9 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     if (isIpcError(result)) {
                         setError(result.fallback);
                         // Add visible error message in chat
-                        const errSession = getCurrentSession();
+                        const errSession = useSessionStore.getState().getCurrentSession();
                         if (errSession) {
-                            addMessage(errSession.id, {
+                            useSessionStore.getState().addMessage(errSession.id, {
                                 id: `err_${Date.now()}`,
                                 role: "assistant",
                                 content: `⚠️ 发送失败: ${result.fallback}`,
@@ -1130,7 +1144,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             // Notify useTaskProgress: streaming error
             window.dispatchEvent(new CustomEvent("pi:stream-end"));
         }
-    }, [getCurrentSession, addMessage, appendAgentMessage, getTargetSession]);
+    }, [appendAgentMessage, getTargetSession]);
 
     const stopStreaming = useCallback((workspaceId: string) => {
         if (!window.piAPI) return;
@@ -1156,6 +1170,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         setIsStreaming(false);
         isStreamingRef.current = false;
         promptInFlightRef.current = false;
+        hasCompletionSignalRef.current = false;
         setStreamingMessageId(null);
         if (usePlanStore.getState().activeExecution?.phase === "pausing" || usePlanStore.getState().activeExecution?.phase === "executing") {
             usePlanStore.getState().markPaused();

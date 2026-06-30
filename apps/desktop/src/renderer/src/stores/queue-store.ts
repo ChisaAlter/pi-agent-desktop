@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { PiEvent, PiQueueUpdate } from "@shared/events";
+import { createSubscriptionManager } from "../utils/subscription-manager";
 
 export type QueueTaskStatus = "running" | "waiting" | "pending" | "completed" | "error";
 
@@ -203,20 +204,16 @@ export const useQueueStore = create<QueueState>((set) => ({
   clear: () => set({ steering: [], followUp: [], items: [], updatedAt: null, running: false, autoRetrying: false, lastActivity: null, lastError: null, lastCompletedAt: null }),
 }));
 
-let subscribed = false;
-let unsubscribe: (() => void) | null = null;
+const { ensure, cleanup } = createSubscriptionManager();
 
 export function ensureQueueSubscription(): void {
-  if (subscribed || typeof window === "undefined" || !window.piAPI?.onEvent) return;
-  subscribed = true;
-  unsubscribe = window.piAPI.onEvent((event) => {
+  if (typeof window === "undefined" || !window.piAPI?.onEvent) return;
+  ensure(() => window.piAPI!.onEvent((event) => {
     useQueueStore.getState().applyEvent(event);
-  });
+  }));
 }
 
 /** 退订 queue 事件, 供测试 / AppShell 重挂时重置. */
 export function cleanupQueueSubscription(): void {
-  try { unsubscribe?.(); } catch { /* ignore */ }
-  unsubscribe = null;
-  subscribed = false;
+  cleanup();
 }

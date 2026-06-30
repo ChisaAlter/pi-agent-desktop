@@ -12,8 +12,10 @@ import {
     uninstallSkill,
     checkSkillhubInstalled,
 } from "../services/skills/skillhub-adapter";
+import { isSafeUrl } from "../services/ssrf-guard";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "fs";
 import { dirname, basename, join } from "path";
+import { tmpdir } from "os";
 import { execFileSync } from "child_process";
 
 interface SkillsIpcDeps {
@@ -28,6 +30,14 @@ const SKILL_SLUG_PATTERN = /^[a-zA-Z0-9_-]+$/;
 interface SkillsState {
     version: number;
     disabled: string[]; // slugs that are disabled
+}
+
+// Module-level mutex: 序列化 skills:toggle 的 read-modify-write, 避免并发 toggle 丢更新
+let skillsToggleChain: Promise<unknown> = Promise.resolve();
+function withSkillsLock<T>(fn: () => T | Promise<T>): Promise<T> {
+    const next = skillsToggleChain.then(fn, fn);
+    skillsToggleChain = next.catch(() => {}); // prevent unhandled rejection
+    return next;
 }
 
 function loadState(file: string): SkillsState {
@@ -143,14 +153,16 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
 
     ipcMain.handle("skills:toggle", async (_event, slug: string, enabled: boolean) => {
         try {
-            const state = loadState(deps.getStateFile());
-            if (enabled) {
-                state.disabled = state.disabled.filter((s) => s !== slug);
-            } else {
-                if (!state.disabled.includes(slug)) state.disabled.push(slug);
-            }
-            saveState(deps.getStateFile(), state);
-            return { success: true };
+            return await withSkillsLock(() => {
+                const state = loadState(deps.getStateFile());
+                if (enabled) {
+                    state.disabled = state.disabled.filter((s) => s !== slug);
+                } else {
+                    if (!state.disabled.includes(slug)) state.disabled.push(slug);
+                }
+                saveState(deps.getStateFile(), state);
+                return { success: true };
+            });
         } catch (err) {
             log.error("[skills.ipc] toggle failed:", err);
             return ipcError(
@@ -182,6 +194,11 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
             );
         }
 
+        // SSRF 防护: 复用共享 isSafeUrl 校验, 阻断云元数据端点/链路本地地址
+        if (!isSafeUrl(repoUrl)) {
+            return ipcError("ipcErrors.skills.invalidUrl", "URL 不安全", { url: repoUrl });
+        }
+
         // 从 URL 解析仓库名 (e.g., "https://github.com/user/repo" → "repo")
         const repoName = basename(repoUrl.replace(/\.git$/, "")).replace(/\/$/, "");
         if (!repoName) {
@@ -201,7 +218,6 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
         // rmSync 已从 "fs" 顶部 import (writeFileSync 旁边的)
         // 注意: rmSync 在 Node 14.14+ 可用, 本项目要求 Node >= 22
         if (existsSync(targetPath)) {
-            const { rmSync } = await import("fs");
             rmSync(targetPath, { recursive: true, force: true });
         }
 
@@ -209,7 +225,8 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
             // git clone — 禁用仓库自带 hooks, 防止克隆未审计仓库时 post-checkout 等钩子
             // 在工作区内执行任意代码 (供应链风险). 用空 GIT_TEMPLATE_DIR 阻止 git 安装
             // 模板钩子, 并用 -c core.hooksPath 指向一个空目录禁用仓库内钩子 (跨平台).
-            const emptyHooksDir = join(cwd, ".git-empty-hooks-tmp");
+            // emptyHooksDir 放在系统临时目录下 (避免污染工作区), 用 PID+时间戳避免并发冲突.
+            const emptyHooksDir = join(tmpdir(), `pi-empty-hooks-${process.pid}-${Date.now()}`);
             mkdirSync(emptyHooksDir, { recursive: true });
             try {
                 execFileSync("git", [
@@ -224,7 +241,11 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
                     env: { ...process.env, GIT_TEMPLATE_DIR: emptyHooksDir },
                 });
             } finally {
-                try { rmSync(emptyHooksDir, { recursive: true, force: true }); } catch { /* ignore */ }
+                try {
+                    rmSync(emptyHooksDir, { recursive: true, force: true });
+                } catch (cleanupErr) {
+                    log.warn("[skills.ipc] failed to clean up empty hooks dir:", cleanupErr);
+                }
             }
 
             // 检查 SKILL.md 是否存在

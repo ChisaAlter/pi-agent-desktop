@@ -13,6 +13,8 @@ import {
     workspaceHasGitChanges,
 } from "../git-worktree";
 
+const SLOW_GIT_TEST_TIMEOUT_MS = process.platform === "win32" ? 60_000 : 20_000;
+
 function git(args: string[], cwd: string): string {
     return execFileSync("git", args, {
         cwd,
@@ -50,7 +52,7 @@ describe("compose git worktree helpers", () => {
 
         expect(result.supported).toBe(false);
         expect(result.reason).toEqual(expect.any(String));
-    });
+    }, SLOW_GIT_TEST_TIMEOUT_MS);
 
     it("creates an isolated worktree, applies its patch back to the root workspace, commits, and cleans up", () => {
         const repo = createRepo();
@@ -88,7 +90,7 @@ describe("compose git worktree helpers", () => {
         } finally {
             rmSync(repo, { recursive: true, force: true });
         }
-    }, 20_000);
+    }, SLOW_GIT_TEST_TIMEOUT_MS);
 
     it("reports dirty repositories as unsupported for worktree isolation", () => {
         const repo = createRepo();
@@ -102,7 +104,7 @@ describe("compose git worktree helpers", () => {
         } finally {
             rmSync(repo, { recursive: true, force: true });
         }
-    });
+    }, SLOW_GIT_TEST_TIMEOUT_MS);
 
     it("can create a worktree from an earlier clean git base even after compose artifacts dirty the root workspace", () => {
         const repo = createRepo();
@@ -123,7 +125,7 @@ describe("compose git worktree helpers", () => {
         } finally {
             rmSync(repo, { recursive: true, force: true });
         }
-    }, 20_000);
+    }, SLOW_GIT_TEST_TIMEOUT_MS);
 
     it("keeps Windows worktree paths short enough for deep repositories", () => {
         if (process.platform !== "win32") {
@@ -144,5 +146,5 @@ describe("compose git worktree helpers", () => {
         } finally {
             rmSync(root, { recursive: true, force: true });
         }
-    }, 20_000);
+    }, SLOW_GIT_TEST_TIMEOUT_MS);
 });

@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { test, expect, _electron, type ElectronApplication, type Page } from "@playwright/test";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
@@ -193,16 +195,16 @@ test.describe("Pi Desktop — session history navigation", () => {
         await expect(sidebar.getByRole("button", { name: "待归档会话", exact: true })).toBeVisible({ timeout: 5_000 });
 
         const deleteRow = sidebar.getByRole("button", { name: "待删除会话", exact: true });
-        await deleteRow.hover();
-        await sidebar.getByRole("button", { name: "删除 待删除会话" }).click();
+        await deleteRow.click({ button: "right" });
+        await sidebar.getByRole("menuitem", { name: "删除 待删除会话" }).click();
         const confirmDialog = sidebar.getByRole("dialog", { name: "确定删除「待删除会话」？此操作不可恢复。" });
         await expect(confirmDialog).toBeVisible({ timeout: 5_000 });
         await confirmDialog.getByRole("button", { name: "取消" }).click();
         await expect(confirmDialog).toHaveCount(0, { timeout: 5_000 });
         await expect(deleteRow).toBeVisible();
 
-        await deleteRow.hover();
-        await sidebar.getByRole("button", { name: "删除 待删除会话" }).click();
+        await deleteRow.click({ button: "right" });
+        await sidebar.getByRole("menuitem", { name: "删除 待删除会话" }).click();
         await expect(confirmDialog).toBeVisible({ timeout: 5_000 });
         await confirmDialog.getByRole("button", { name: "确认" }).click();
         await expect(sidebar.getByRole("button", { name: "待删除会话", exact: true })).toHaveCount(0, { timeout: 5_000 });
@@ -213,5 +215,109 @@ test.describe("Pi Desktop — session history navigation", () => {
         });
         expect(remainingSessionIds).toContain("sidebar-archive-session");
         expect(remainingSessionIds).not.toContain("sidebar-delete-session");
+    });
+
+    test("left sidebar grouping, pinned area, archive and context menu actions work", async () => {
+        const userDataDir = test.info().outputPath(`user-data-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        const workspacePathA = test.info().outputPath("workspace-a");
+        const workspacePathB = test.info().outputPath("workspace-b");
+        const now = Date.now();
+        const screenshotDir = join(process.cwd(), "e2e-output", "sidebar-grouping-pinned");
+
+        let page: Page;
+        ({ app, page } = await launchApp(userDataDir));
+
+        await page.evaluate(
+            async ({ workspacePathA, workspacePathB, now }) => {
+                window.localStorage.setItem("pi-desktop:firstLaunchDone", "true");
+                const wsA = await window.piAPI.createWorkspace("sidebar-ws-a", workspacePathA);
+                const wsB = await window.piAPI.createWorkspace("sidebar-ws-b", workspacePathB);
+                const pinSession = await window.piAPI.createSession(wsA.id, "待置顶会话", "sidebar-pin-session");
+                const archiveSession = await window.piAPI.createSession(wsA.id, "待归档会话", "sidebar-archive-context-session");
+                const renameSession = await window.piAPI.createSession(wsA.id, "待重命名会话", "sidebar-rename-session");
+                const deleteSession = await window.piAPI.createSession(wsA.id, "待右键删除会话", "sidebar-context-delete-session");
+                const wsBSession = await window.piAPI.createSession(wsB.id, "工作区二会话", "sidebar-ws-b-session");
+                for (const session of [pinSession, archiveSession, renameSession, deleteSession, wsBSession]) {
+                    await window.piAPI.appendMessage(session.id, {
+                        id: `${session.id}-message`,
+                        role: "user",
+                        content: `${session.title} message`,
+                        timestamp: new Date(now).toISOString(),
+                    });
+                }
+            },
+            { workspacePathA, workspacePathB, now },
+        );
+
+        await app.close();
+        app = undefined;
+
+        ({ app, page } = await launchApp(userDataDir));
+        await mkdir(screenshotDir, { recursive: true });
+
+        const sidebar = page.getByRole("navigation", { name: "会话列表" });
+        await sidebar.getByRole("button", { name: "按工作区分组" }).click();
+        await expect(sidebar.getByRole("button", { name: "按工作区分组" })).toHaveAttribute("aria-pressed", "true");
+        await expect(sidebar.getByText("sidebar-ws-a")).toBeVisible({ timeout: 10_000 });
+        await expect(sidebar.getByText("sidebar-ws-b")).toBeVisible({ timeout: 10_000 });
+
+        const workspaceAGroup = sidebar.getByRole("button", { name: /^sidebar-ws-a \d+$/ });
+        if ((await workspaceAGroup.getAttribute("aria-expanded")) !== "true") {
+            await workspaceAGroup.click();
+        }
+        await expect(sidebar.getByRole("button", { name: "待置顶会话", exact: true })).toBeVisible({
+            timeout: 5_000,
+        });
+
+        const pinRow = sidebar.getByRole("button", { name: "待置顶会话", exact: true });
+        await pinRow.hover();
+        await sidebar.getByRole("button", { name: "置顶 待置顶会话" }).click();
+        const pinnedRegion = sidebar.getByRole("region", { name: "置顶" });
+        await expect(pinnedRegion.getByRole("button", { name: "待置顶会话", exact: true })).toBeVisible({ timeout: 5_000 });
+        await expect(sidebar.getByRole("button", { name: "待置顶会话", exact: true })).toHaveCount(1);
+
+        const archiveRow = sidebar.getByRole("button", { name: "待归档会话", exact: true });
+        await archiveRow.hover();
+        await sidebar.getByRole("button", { name: "归档 待归档会话" }).click();
+        await expect(sidebar.getByRole("button", { name: "待归档会话", exact: true })).toHaveCount(0, { timeout: 5_000 });
+        await expect(sidebar.getByRole("button", { name: /已归档/ })).toBeVisible({ timeout: 5_000 });
+        await page.screenshot({ path: join(screenshotDir, "01-pinned-workspace-archive.png"), fullPage: true });
+
+        const renameRow = sidebar.getByRole("button", { name: "待重命名会话", exact: true });
+        await renameRow.click({ button: "right" });
+        await expect(sidebar.getByRole("menuitem", { name: "重命名 待重命名会话" })).toBeVisible({ timeout: 5_000 });
+        await expect(sidebar.getByRole("menuitem", { name: "删除 待重命名会话" })).toBeVisible({ timeout: 5_000 });
+        await page.screenshot({ path: join(screenshotDir, "02-context-menu.png"), fullPage: true });
+        await sidebar.getByRole("menuitem", { name: "重命名 待重命名会话" }).click();
+        const renameInput = sidebar.getByRole("textbox", { name: "重命名会话 待重命名会话" });
+        await renameInput.fill("右键已重命名");
+        await renameInput.press("Enter");
+        await expect(sidebar.getByRole("button", { name: "右键已重命名", exact: true })).toBeVisible({ timeout: 5_000 });
+
+        const contextDeleteRow = sidebar.getByRole("button", { name: "待右键删除会话", exact: true });
+        await contextDeleteRow.click({ button: "right" });
+        await sidebar.getByRole("menuitem", { name: "删除 待右键删除会话" }).click();
+        const deleteDialog = sidebar.getByRole("dialog", { name: "确定删除「待右键删除会话」？此操作不可恢复。" });
+        await expect(deleteDialog).toBeVisible({ timeout: 5_000 });
+        await deleteDialog.getByRole("button", { name: "确认" }).click();
+        await expect(sidebar.getByRole("button", { name: "待右键删除会话", exact: true })).toHaveCount(0, { timeout: 5_000 });
+        await page.screenshot({ path: join(screenshotDir, "03-renamed-and-deleted.png"), fullPage: true });
+
+        const finalSessions = await page.evaluate(async () => {
+            return (await window.piAPI.listSessions()).map((session) => ({
+                id: session.id,
+                title: session.title,
+                favorite: session.favorite,
+                archived: session.archived,
+            }));
+        });
+        expect(finalSessions).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ id: "sidebar-pin-session", favorite: true }),
+                expect.objectContaining({ id: "sidebar-archive-context-session", archived: true }),
+                expect.objectContaining({ id: "sidebar-rename-session", title: "右键已重命名" }),
+            ]),
+        );
+        expect(finalSessions.some((session) => session.id === "sidebar-context-delete-session")).toBe(false);
     });
 });

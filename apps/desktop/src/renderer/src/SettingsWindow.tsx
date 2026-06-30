@@ -2,7 +2,7 @@
 
 import React, { useEffect } from 'react';
 import { useSettingsStore } from './stores/settings-store';
-import { I18nProvider } from './i18n';
+import { I18nProvider, useI18n } from './i18n';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { SettingsContent } from './components/Settings/SettingsContent';
 import { MiniMaxCodeTitleBar } from './components/MiniMaxCode/MiniMaxCodeTitleBar';
@@ -10,6 +10,7 @@ import { applyTheme, watchSystemTheme, type Theme } from './utils/theme';
 
 function SettingsShell(): React.JSX.Element {
     const { settings, loadPiConfig, flushPendingSettingsWrite } = useSettingsStore();
+    const { t } = useI18n();
     const [isMaximized, setIsMaximized] = React.useState(false);
 
     useEffect(() => {
@@ -56,7 +57,7 @@ function SettingsShell(): React.JSX.Element {
                 data-mmcode-layout="window-frame"
                 data-mm-window-kind="settings"
             >
-                <MiniMaxCodeTitleBar title="系统设置" variant="settings" className="settings-window-titlebar" onClose={handleCloseWindow} />
+                <MiniMaxCodeTitleBar title={t('settings.title')} variant="settings" className="settings-window-titlebar" onClose={handleCloseWindow} />
                 <div className="flex min-h-0 flex-1 overflow-hidden">
                     <SettingsContent />
                 </div>

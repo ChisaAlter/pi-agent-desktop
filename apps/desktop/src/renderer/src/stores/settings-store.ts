@@ -6,10 +6,11 @@
 //          启动时由 loadPiConfig 真从 Pi CLI 配置读;读不到时 Pi ChatInput / 设置页走空态
 
 import { create } from 'zustand';
-import { DEFAULT_LONG_HORIZON_SETTINGS, isIpcError, type AppSettings, type IpcError, type ToolPermissions } from '@shared';
+import { DEFAULT_LONG_HORIZON_SETTINGS, isIpcError, type AppSettings, type IpcError, type ShortcutOverride, type ToolPermissions } from '@shared';
 import { logger } from '../utils/logger';
 import { addToast } from './toast-store';
 import { applyFontSize, applyTheme, getInitialFontSize, getInitialTheme, normalizeFontSize, type Theme } from '../utils/theme';
+import { getPiAPI } from '../utils/pi-api';
 
 export type { AppSettings };
 
@@ -50,6 +51,44 @@ interface SettingsState {
   setSidebarGroupMode: (mode: 'date' | 'workspace') => void;
 }
 
+const SHORTCUT_OVERRIDE_STORAGE_KEY = "pi-desktop-shortcut-overrides";
+
+function sanitizeShortcutOverrides(value: unknown): ShortcutOverride[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is ShortcutOverride =>
+      Boolean(item) &&
+      typeof item === "object" &&
+      typeof (item as Partial<ShortcutOverride>).id === "string" &&
+      typeof (item as Partial<ShortcutOverride>).keys === "string",
+    )
+    .map((item) => ({ id: item.id, keys: item.keys }));
+}
+
+function readCachedShortcutOverrides(): ShortcutOverride[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage?.getItem(SHORTCUT_OVERRIDE_STORAGE_KEY);
+    return raw ? sanitizeShortcutOverrides(JSON.parse(raw)) : [];
+  } catch {
+    return [];
+  }
+}
+
+function cacheShortcutOverrides(overrides: readonly ShortcutOverride[] | undefined): void {
+  try {
+    if (typeof window === "undefined") return;
+    const normalized = sanitizeShortcutOverrides(overrides);
+    if (normalized.length === 0) {
+      window.localStorage?.removeItem(SHORTCUT_OVERRIDE_STORAGE_KEY);
+      return;
+    }
+    window.localStorage?.setItem(SHORTCUT_OVERRIDE_STORAGE_KEY, JSON.stringify(normalized));
+  } catch {
+    // Ignore unavailable localStorage in restricted renderer contexts.
+  }
+}
+
 const defaultSettings: AppSettings = {
   theme: getInitialTheme(),
   fontSize: getInitialFontSize(),
@@ -64,6 +103,8 @@ const defaultSettings: AppSettings = {
   runtimeChannel: 'stable',
   autoCompactionEnabled: false,
   workspaceToolDefaults: {},
+  sidebarGroupMode: 'date',
+  shortcutOverrides: readCachedShortcutOverrides(),
   showThinking: true,
   thinkingLevel: 'medium',
   longHorizon: DEFAULT_LONG_HORIZON_SETTINGS,
@@ -132,10 +173,6 @@ export const TOOL_PERMISSION_PRESETS: Record<"minimal" | "development" | "all", 
 function reportWriteError(e: unknown): IpcError | string {
   if (isIpcError(e)) return e;
     return String(e);
-}
-
-function getPiAPI(): Window["piAPI"] | undefined {
-  return typeof window !== "undefined" ? window.piAPI : undefined;
 }
 
 function shouldSyncPiDefaultModel(updates: Partial<AppSettings>, next: AppSettings): boolean {
@@ -220,7 +257,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
           if (updatesToSave.fontSize !== undefined) {
             applyAndCacheFontSize(previousSettings.fontSize);
           }
-          set({ settings: previousSettings, lastWriteError: result });
+          if (updatesToSave.shortcutOverrides !== undefined) {
+            cacheShortcutOverrides(previousSettings.shortcutOverrides);
+          }
+          set({
+            settings: previousSettings,
+            sidebarGroupMode: previousSettings.sidebarGroupMode ?? 'date',
+            lastWriteError: result,
+          });
         } else {
           set({ lastWriteError: result });
         }
@@ -239,7 +283,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
         if (updatesToSave.fontSize !== undefined) {
           applyAndCacheFontSize(previousSettings.fontSize);
         }
-        set({ settings: previousSettings, lastWriteError: reportWriteError(e) });
+        if (updatesToSave.shortcutOverrides !== undefined) {
+          cacheShortcutOverrides(previousSettings.shortcutOverrides);
+        }
+        set({
+          settings: previousSettings,
+          sidebarGroupMode: previousSettings.sidebarGroupMode ?? 'date',
+          lastWriteError: reportWriteError(e),
+        });
       } else {
         set({ lastWriteError: reportWriteError(e) });
       }
@@ -286,7 +337,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
         const next = { ...defaultSettings, ...persisted };
         applyAndCacheTheme(next.theme as Theme);
         applyAndCacheFontSize(next.fontSize);
-        set({ settings: next });
+        cacheShortcutOverrides(next.shortcutOverrides);
+        set({ settings: next, sidebarGroupMode: next.sidebarGroupMode ?? 'date' });
       }
     } catch (e) {
       logger.error('[settings-store] Failed to load settings:', e);
@@ -302,7 +354,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
     const reconciled = pending ? { ...next, ...pending } : next;
     applyAndCacheTheme(reconciled.theme as Theme);
     applyAndCacheFontSize(reconciled.fontSize);
-    set({ settings: reconciled, lastWriteError: null });
+    cacheShortcutOverrides(reconciled.shortcutOverrides);
+    set({
+      settings: reconciled,
+      sidebarGroupMode: reconciled.sidebarGroupMode ?? 'date',
+      lastWriteError: null,
+    });
+  });
+
+  // TODO: Phase 3 SubTask 35.4 DEFER — settings-store init refactor
+  // (listener registration + 6 closure variables make this too risky to extract now)
+  getPiAPI()?.onPiConfigChanged?.(() => {
+    void get().loadPiConfig();
   });
 
   return {
@@ -310,7 +373,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
     piModels: null,
     lastWriteError: null,
     rightRailCollapsed: true,
-    sidebarGroupMode: 'date',
+    sidebarGroupMode: defaultSettings.sidebarGroupMode ?? 'date',
 
     // 从 Pi CLI 加载本地配置
     loadPiConfig: async () => {
@@ -318,15 +381,32 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
         const piAPI = getPiAPI();
         if (piAPI?.loadPiConfig) {
           const config = (await piAPI.loadPiConfig()) as PiConfigPayload;
-          if (config.models && config.models.length > 0) {
-            set({ piModels: config.models });
-          }
+          const models = Array.isArray(config.models) ? config.models : [];
+          set({ piModels: models });
           // 如果 Pi 配置中有当前模型信息，自动更新
           if (config.currentModel) {
             const next = {
               model: config.currentModel.model,
               provider: config.currentModel.provider,
             };
+            set((state) => ({
+              settings: {
+                ...state.settings,
+                ...next,
+              },
+            }));
+            void piAPI.setSettings(next)
+              .then((result) => {
+                if (isIpcError(result)) {
+                  set({ lastWriteError: result });
+                }
+              })
+              .catch((e) => {
+                set({ lastWriteError: reportWriteError(e) });
+                addToast(e instanceof Error ? e.message : "同步模型配置失败", "error");
+              });
+          } else if (get().settings.model || get().settings.provider) {
+            const next = { model: "", provider: "" };
             set((state) => ({
               settings: {
                 ...state.settings,
@@ -359,8 +439,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
       if (updates.fontSize !== undefined) {
         applyAndCacheFontSize(normalizeFontSize(updates.fontSize));
       }
+      if (updates.shortcutOverrides !== undefined) {
+        cacheShortcutOverrides(updates.shortcutOverrides);
+      }
       // 乐观更新: 立刻改本地, 失败时回滚
-      set({ settings: merged });
+      set({
+        settings: merged,
+        ...(updates.sidebarGroupMode ? { sidebarGroupMode: updates.sidebarGroupMode } : {}),
+      });
       const piAPI = getPiAPI();
       if (!piAPI) return;
       scheduleSettingsWrite(piAPI, updates, previous, merged);
@@ -383,15 +469,21 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
       clearPendingSettingsWrite();
       applyAndCacheTheme(defaultSettings.theme as Theme);
       applyAndCacheFontSize(defaultSettings.fontSize);
-      set({ settings: defaultSettings });
+      cacheShortcutOverrides(defaultSettings.shortcutOverrides);
+      set({ settings: defaultSettings, sidebarGroupMode: defaultSettings.sidebarGroupMode ?? 'date' });
       const piAPI = getPiAPI();
       if (!piAPI) return;
       piAPI.setSettings(defaultSettings)
         .then((result) => {
-          if (isIpcError(result)) {
+            if (isIpcError(result)) {
             applyAndCacheTheme(previous.theme as Theme);
             applyAndCacheFontSize(previous.fontSize);
-            set({ settings: previous, lastWriteError: result });
+            cacheShortcutOverrides(previous.shortcutOverrides);
+            set({
+              settings: previous,
+              sidebarGroupMode: previous.sidebarGroupMode ?? 'date',
+              lastWriteError: result,
+            });
             addToast(result.fallback, "error");
           } else {
             set({ lastWriteError: null });
@@ -401,7 +493,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
           logger.error('[settings-store] setSettings (reset) failed:', e);
           applyAndCacheTheme(previous.theme as Theme);
           applyAndCacheFontSize(previous.fontSize);
-          set({ settings: previous, lastWriteError: reportWriteError(e) });
+          cacheShortcutOverrides(previous.shortcutOverrides);
+          set({
+            settings: previous,
+            sidebarGroupMode: previous.sidebarGroupMode ?? 'date',
+            lastWriteError: reportWriteError(e),
+          });
           addToast(e instanceof Error ? e.message : "重置设置失败", "error");
         });
     },
@@ -430,6 +527,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
     },
 
     toggleRightRail: () => set((state) => ({ rightRailCollapsed: !state.rightRailCollapsed })),
-    setSidebarGroupMode: (mode: 'date' | 'workspace') => set({ sidebarGroupMode: mode }),
+    setSidebarGroupMode: (mode: 'date' | 'workspace') => {
+      set({ sidebarGroupMode: mode });
+      get().updateSettings({ sidebarGroupMode: mode });
+    },
   };
 });

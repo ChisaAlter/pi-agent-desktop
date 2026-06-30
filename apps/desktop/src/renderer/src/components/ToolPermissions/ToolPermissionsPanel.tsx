@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { isIpcError, type ToolPermissionKey, type ToolPermissions, type ToolPermissionPreset } from "@shared";
+import { useI18n } from "../../i18n";
 import { TOOL_PERMISSION_PRESETS, useSettingsStore } from "../../stores/settings-store";
 import { useSessionStore } from "../../stores/session-store";
 
@@ -34,6 +35,7 @@ export function describeToolPermissions(permissions: ToolPermissions): string {
 }
 
 export function ToolPermissionsPanel({ workspaceId }: ToolPermissionsPanelProps): React.JSX.Element {
+  const { t } = useI18n();
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const pendingSessionPersistCount = useRef<number | null>(null);
   const currentSession = useSessionStore((state) =>
@@ -58,42 +60,42 @@ export function ToolPermissionsPanel({ workspaceId }: ToolPermissionsPanelProps)
 
   useEffect(() => {
     if (settingsWriteError) {
-      setStatus({ type: "error", message: `工具权限保存失败：${formatWriteError(settingsWriteError)}` });
+      setStatus({ type: "error", message: t("toolPermissions.status.saveFailed", { message: formatWriteError(settingsWriteError) }) });
     }
-  }, [settingsWriteError]);
+  }, [settingsWriteError, t]);
 
   useEffect(() => {
     if (pendingSessionPersistCount.current == null) return;
     if (persistErrorCount <= pendingSessionPersistCount.current) return;
     setStatus({
       type: "error",
-      message: `工具权限已应用到当前会话，但保存失败：${lastPersistError ?? "未知错误"}`,
+      message: t("toolPermissions.status.sessionPersistFailed", { message: lastPersistError ?? t("chatInput.errors.unknown") }),
     });
     pendingSessionPersistCount.current = null;
-  }, [lastPersistError, persistErrorCount]);
+  }, [lastPersistError, persistErrorCount, t]);
 
   const applyPermissions = (next: ToolPermissions): void => {
     if (!canApply) {
-      setStatus({ type: "error", message: "请先选择工作区或打开会话后再修改工具权限。" });
+      setStatus({ type: "error", message: t("toolPermissions.status.noTarget") });
       return;
     }
     if (currentSession) {
       pendingSessionPersistCount.current = persistErrorCount;
       updateSessionToolPermissions(currentSession.id, next);
-      setStatus({ type: "success", message: "已应用到当前会话，正在后台保存。" });
+      setStatus({ type: "success", message: t("toolPermissions.status.sessionApplied") });
       return;
     }
     if (workspaceId) {
       clearWriteError();
       updateWorkspaceToolDefaults(workspaceId, next);
-      setStatus({ type: "success", message: "已更新工作区默认权限。" });
+      setStatus({ type: "success", message: t("toolPermissions.status.workspaceUpdated") });
     }
   };
 
   return (
-    <section className="rounded-[14px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
+    <section className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="m-0 text-[13px] font-medium">工具权限</h2>
+        <h2 className="m-0 text-[13px] font-medium">{t("toolPermissions.title")}</h2>
         <span className="text-[10px] text-[var(--mm-text-tertiary)]">
           {currentSession ? "Session" : "Workspace"}
         </span>
@@ -105,9 +107,9 @@ export function ToolPermissionsPanel({ workspaceId }: ToolPermissionsPanelProps)
             type="button"
             disabled={!canApply}
             onClick={() => applyPermissions(TOOL_PERMISSION_PRESETS[preset.id])}
-            className="rounded-md border border-[var(--mm-border)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45"
+            className="rounded-[2px] border border-[var(--mm-border)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {preset.label}
+            {t(`toolPermissions.preset.${preset.id}`)}
           </button>
         ))}
       </div>
@@ -115,11 +117,11 @@ export function ToolPermissionsPanel({ workspaceId }: ToolPermissionsPanelProps)
         {TOOL_LABELS.map((item) => (
           <label
             key={item.key}
-            className={`flex min-h-8 items-center justify-between gap-2 rounded-md px-2 text-xs transition-colors ${
+            className={`flex min-h-8 items-center justify-between gap-2 rounded-[2px] px-2 text-xs transition-colors ${
               canApply ? "cursor-pointer hover:bg-[var(--mm-bg-hover)]" : "cursor-not-allowed opacity-60"
             }`}
           >
-            <span>{item.label}</span>
+            <span>{t(`toolPermissions.tool.${item.key}`)}</span>
             <input
               type="checkbox"
               checked={effective[item.key]}
@@ -131,14 +133,14 @@ export function ToolPermissionsPanel({ workspaceId }: ToolPermissionsPanelProps)
         ))}
       </div>
       {!canApply && !status ? (
-        <div className="mt-3 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--mm-text-tertiary)]" role="status">
-          选择工作区后可配置默认工具权限。
+        <div className="mt-3 rounded-[2px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--mm-text-tertiary)]" role="status">
+          {t("toolPermissions.status.workspaceUnavailable")}
         </div>
       ) : null}
       {status ? (
         <div
           role={status.type === "error" ? "alert" : "status"}
-          className={`mt-3 rounded-md border px-2.5 py-2 text-[11px] leading-relaxed ${
+          className={`mt-3 rounded-[2px] border px-2.5 py-2 text-[11px] leading-relaxed ${
             status.type === "error"
               ? "border-red-200 bg-red-50 text-red-700"
               : "border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] text-[var(--mm-text-secondary)]"

@@ -3,11 +3,15 @@
 appId: com.pi-desktop.desktop
 productName: Pi Desktop
 asar: true
+asarUnpack:
+  - "**/node-pty/**"
+  - "**/sharp/**"
+  - "**/*.node"
 directories:
   buildResources: build
 files:
   - '!**/.vscode/*'
-  - '!src/*'
+  - '!src/**/*'
   - '!electron.vite.config.*'
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
@@ -17,7 +21,7 @@ win:
   executableName: "Pi Desktop"
   icon: build/icon.ico
   signtoolOptions:
-    publisherName: "CN=Pi Desktop Contributors"
+    publisherName: "${env.PI_DESKTOP_PUBLISHER_NAME}"
   target:
     - target: nsis
       arch: x64
@@ -33,7 +37,7 @@ nsis:
   perMachine: false
   allowToChangeInstallationDirectory: true
   deleteAppDataOnUninstall: false
-  warningsAsErrors: false
+  warningsAsErrors: true
 
 mac:
   entitlementsInherit: build/entitlements.mac.plist
@@ -49,7 +53,7 @@ npmRebuild: false
 
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
-  cache: .electron-cache
+  cache: "${env.ELECTRON_CACHE}"
 
 # 自动更新源: GitHub Releases. electron-updater 据此拉取 latest.yml.
 # 只有在 release workflow 已验证签名 secrets 并用 PI_DESKTOP_ENABLE_AUTO_UPDATE=1

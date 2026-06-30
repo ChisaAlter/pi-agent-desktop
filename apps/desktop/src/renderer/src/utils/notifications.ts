@@ -1,4 +1,27 @@
 const PERMISSION_KEY = "pi-desktop-notification-permission";
+const ENABLED_KEY = "pi-desktop-notifications-enabled";
+
+function readEnabledPreference(): boolean {
+  try {
+    const stored = localStorage.getItem(ENABLED_KEY);
+    if (stored === null) return true;
+    return stored === "true";
+  } catch {
+    return true;
+  }
+}
+
+export function isNotificationEnabled(): boolean {
+  return readEnabledPreference();
+}
+
+export function setNotificationEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(ENABLED_KEY, String(enabled));
+  } catch {
+    // Ignore localStorage failures and fall back to runtime permission only.
+  }
+}
 
 export async function requestNotificationPermission(): Promise<NotificationPermission> {
   if (typeof Notification === "undefined") return "denied";
@@ -9,7 +32,9 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
 }
 
 export function canNotify(): boolean {
-  return typeof Notification !== "undefined" && Notification.permission === "granted";
+  return isNotificationEnabled()
+    && typeof Notification !== "undefined"
+    && Notification.permission === "granted";
 }
 
 export function sendNotification(title: string, body?: string, options?: NotificationOptions): void {

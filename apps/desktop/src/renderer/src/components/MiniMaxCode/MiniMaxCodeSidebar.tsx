@@ -6,7 +6,7 @@
 //  - 字号: 主 13px / 次 12px / 分组标题 11px letter-spacing 0.5px 浅灰
 //  - 行高 32px,左右 padding 12px
 //  - hover 浅灰 --mm-bg-hover (#f0f0f0)
-//  - 激活态: 黑底白字 (--mm-bg-active + --mm-text-on-active),圆角 6px
+//  - 分组切换: 浅灰容器 + 柔和分段高亮,避免重黑块
 //  - icon 用 inline SVG stroke 1.5;**不**用 emoji, **不**用 lucide-react
 //    (项目无 lucide-react 依赖,见 IconBar.tsx 同款约定)
 //  - 所有颜色/尺寸走 --mm-*,不硬编码
@@ -24,12 +24,15 @@
 //
 // 不持有路由状态: 父级通过 currentSection/onSectionChange 控制激活。
 
-import React from "react";
-import { useSessionStore } from "../../stores/session-store";
+import React, { useMemo } from "react";
+import { useSessionStore, type Session } from "../../stores/session-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { useI18n } from "../../i18n";
 import { ProjectGroupedSessionList } from "./ProjectGroupedSessionList";
 import { DateGroupedSessionList } from "./DateGroupedSessionList";
+import { sessionActivityTime, sessionDepth } from "../../utils/session-grouping";
+import { SessionRow } from "./SessionRow";
+import { MINIMAX_CHROME_ICON_BUTTON_CLASSNAME } from "./chromeButton";
 
 // ----------------------------------------------------------------------
 // 类型
@@ -48,6 +51,8 @@ export interface MiniMaxCodeSidebarProps {
     groupMode?: "date" | "workspace";
     /** 切换分组模式回调 */
     onGroupModeChange?: (mode: "date" | "workspace") => void;
+    /** 折叠左侧栏 */
+    onToggleCollapse?: () => void;
 }
 
 // ----------------------------------------------------------------------
@@ -60,6 +65,112 @@ function IconPlus(): React.JSX.Element {
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 5v14m-7-7h14" />
         </svg>
+    );
+}
+
+function IconSidebarCollapse(): React.JSX.Element {
+    return (
+        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+            <rect x="2" y="3" width="12" height="10" rx="1.5" />
+            <line x1="6" y1="3" x2="6" y2="13" />
+        </svg>
+    );
+}
+
+interface GroupModeSwitchProps {
+    mode: "date" | "workspace";
+    onChange?: (mode: "date" | "workspace") => void;
+    t: (key: string) => string;
+}
+
+function GroupModeSwitch({ mode, onChange, t }: GroupModeSwitchProps): React.JSX.Element {
+    const buttonClass = (active: boolean): string =>
+        `h-8 min-w-0 flex-1 rounded-lg px-3 text-[11px] font-medium transition-[background-color,color,box-shadow] focus:outline-none ${
+            active
+                ? "bg-[var(--mm-bg-panel)] text-[var(--mm-text-primary)] shadow-[0_6px_16px_rgba(15,23,42,0.08)]"
+                : "bg-transparent text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
+        }`;
+
+    return (
+        <div
+            role="group"
+            aria-label={t("sidebar.groupModeAria")}
+            data-mmcode-group-switch="soft-segmented"
+            className="flex shrink-0 items-center gap-1 rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] p-1 shadow-[0_10px_26px_rgba(15,23,42,0.05)]"
+        >
+            <button
+                type="button"
+                aria-pressed={mode === "date"}
+                onClick={() => onChange?.("date")}
+                className={buttonClass(mode === "date")}
+            >
+                {t("sidebar.groupByDate")}
+            </button>
+            <button
+                type="button"
+                aria-pressed={mode === "workspace"}
+                onClick={() => onChange?.("workspace")}
+                className={buttonClass(mode === "workspace")}
+            >
+                {t("sidebar.groupByWorkspace")}
+            </button>
+        </div>
+    );
+}
+
+interface PinnedSessionListProps {
+    currentSessionId: string | null;
+    onSelectSession: (id: string) => void;
+    onArchiveSession: (id: string, archived: boolean) => void;
+    onToggleFavorite: (id: string) => void;
+    onRenameSession: (id: string, title: string) => void;
+    onDeleteSession: (id: string) => void;
+    t: (key: string, opts?: Record<string, unknown>) => string;
+}
+
+function PinnedSessionList({
+    currentSessionId,
+    onSelectSession,
+    onArchiveSession,
+    onToggleFavorite,
+    onRenameSession,
+    onDeleteSession,
+    t,
+}: PinnedSessionListProps): React.JSX.Element | null {
+    const sessions = useSessionStore((state) => state.sessions);
+    const pinnedSessions = useMemo(
+        () =>
+            sessions
+                .filter((session) => session.favorite && !session.archived)
+                .sort((a, b) => sessionActivityTime(b).getTime() - sessionActivityTime(a).getTime()),
+        [sessions],
+    );
+    const byIdAll = useMemo(() => new Map<string, Session>(sessions.map((session) => [session.id, session])), [sessions]);
+
+    if (pinnedSessions.length === 0) return null;
+
+    return (
+        <section className="flex flex-col gap-0.5" role="region" aria-label={t("sidebar.sessions.pinned")}>
+            <div className="flex h-7 items-center gap-2 px-3 text-[11px] font-medium text-[var(--mm-text-tertiary)]">
+                <span className="min-w-0 flex-1 truncate">{t("sidebar.sessions.pinned")}</span>
+                <span className="rounded bg-[var(--mm-bg-hover)] px-1.5 py-0.5 text-[10px]">{pinnedSessions.length}</span>
+            </div>
+            {pinnedSessions.map((session) => (
+                <SessionRow
+                    key={session.id}
+                    session={session}
+                    active={currentSessionId === session.id}
+                    depth={sessionDepth(session, byIdAll)}
+                    archived={false}
+                    onSelect={() => onSelectSession(session.id)}
+                    onArchive={(archived) => onArchiveSession(session.id, archived)}
+                    onToggleFavorite={() => onToggleFavorite(session.id)}
+                    onRename={(title) => onRenameSession(session.id, title)}
+                    onDelete={() => onDeleteSession(session.id)}
+                    t={t}
+                />
+            ))}
+        </section>
     );
 }
 
@@ -86,11 +197,20 @@ export function MiniMaxCodeSidebar({
     currentWorkspaceId,
     onSectionChange,
     groupMode = "date",
+    onGroupModeChange,
+    onToggleCollapse,
 }: MiniMaxCodeSidebarProps): React.JSX.Element {
     const { t } = useI18n();
     const currentSessionId = useSessionStore((state) => state.currentSessionId);
+    const sessions = useSessionStore((state) => state.sessions);
     const archiveSession = useSessionStore((state) => state.archiveSession);
+    const renameSession = useSessionStore((state) => state.renameSession);
+    const toggleFavorite = useSessionStore((state) => state.toggleFavorite);
     const deleteSession = useSessionStore((state) => state.deleteSession);
+    const hasPinnedSessions = useMemo(
+        () => sessions.some((session) => session.favorite && !session.archived),
+        [sessions],
+    );
 
     return (
         <div
@@ -100,10 +220,21 @@ export function MiniMaxCodeSidebar({
             {/* ============== 中间 scroll 区 ============== */}
             <nav
                 className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1 pb-3 pt-0"
-                aria-label="会话列表"
+                aria-label={t("sidebar.sessions.listAria")}
             >
                 <div className="flex min-h-[42px] shrink-0 items-center">
-                    <div className="mx-[11px] flex h-7 w-full items-center gap-2">
+                    <div className="flex h-7 w-full items-center gap-2">
+                        {onToggleCollapse && (
+                            <button
+                                type="button"
+                                onClick={onToggleCollapse}
+                                aria-label="折叠左侧栏"
+                                title="折叠左侧栏"
+                                className={MINIMAX_CHROME_ICON_BUTTON_CLASSNAME}
+                            >
+                                <IconSidebarCollapse />
+                            </button>
+                        )}
                         <button
                             type="button"
                             onClick={() => onSectionChange("new-task")}
@@ -112,27 +243,39 @@ export function MiniMaxCodeSidebar({
                             className="flex h-7 min-w-0 flex-1 items-center rounded-[2px] border border-[var(--mm-border)] bg-[var(--mm-bg-control)] px-2 text-left text-[11px] text-[var(--mm-text-tertiary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-secondary)] focus:outline-none"
                             data-mmcode-section="new-task"
                         >
-                            <span className="truncate">新对话</span>
+                            <span className="truncate">{t("sidebar.newConversation")}</span>
                         </button>
                         <button
                             type="button"
                             onClick={() => onSectionChange("new-task")}
-                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[2px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none"
-                            aria-label="快速新建对话"
+                            className={MINIMAX_CHROME_ICON_BUTTON_CLASSNAME}
+                            aria-label={t("sidebar.quickNewConversation")}
                         >
                             <IconPlus />
                         </button>
                     </div>
                 </div>
 
-                {/* 会话列表 */}
-                <div className="mt-[9px]">
+                <div className="mt-[3px] flex flex-col gap-2">
+                    <PinnedSessionList
+                        currentSessionId={currentSessionId}
+                        onSelectSession={(id) => onSectionChange(`session:${id}`)}
+                        onArchiveSession={archiveSession}
+                        onToggleFavorite={toggleFavorite}
+                        onRenameSession={renameSession}
+                        onDeleteSession={deleteSession}
+                        t={t}
+                    />
+                    <GroupModeSwitch mode={groupMode} onChange={onGroupModeChange} t={t} />
                     {groupMode === "date" ? (
                         <DateGroupedSessionList
                             currentSessionId={currentSessionId}
                             onSelectSession={(id) => onSectionChange(`session:${id}`)}
                             onArchiveSession={archiveSession}
+                            onToggleFavorite={toggleFavorite}
+                            onRenameSession={renameSession}
                             onDeleteSession={deleteSession}
+                            hideEmptyState={hasPinnedSessions}
                         />
                     ) : (
                         <ProjectGroupedSessionList
@@ -140,8 +283,11 @@ export function MiniMaxCodeSidebar({
                             currentSessionId={currentSessionId}
                             onSelectSession={(id) => onSectionChange(`session:${id}`)}
                             onArchiveSession={archiveSession}
+                            onToggleFavorite={toggleFavorite}
+                            onRenameSession={renameSession}
                             onDeleteSession={deleteSession}
                             onSwitchWorkspace={(wid) => useWorkspaceStore.getState().setCurrentWorkspace(wid)}
+                            hideEmptyState={hasPinnedSessions}
                         />
                     )}
                 </div>

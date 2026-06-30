@@ -9,9 +9,9 @@ describe("TaskService", () => {
     const dirs: string[] = [];
     const memories: MemoryService[] = [];
 
-    afterEach(() => {
+    afterEach(async () => {
         for (const memory of memories.splice(0)) {
-            memory.close();
+            await memory.close();
         }
         for (const dir of dirs.splice(0)) {
             rmSync(dir, { recursive: true, force: true });
@@ -26,36 +26,36 @@ describe("TaskService", () => {
         return new TaskService(memory.getDatabase());
     }
 
-    it("replaces per-source task snapshots and returns the active running task", () => {
+    it("replaces per-source task snapshots and returns the active running task", async () => {
         const service = createService();
 
-        service.setSourceTasks("ws1", undefined, "plan", [
+        await service.setSourceTasks("ws1", undefined, "plan", [
             { id: "P1", text: "write checkpoint", status: "completed" },
             { id: "P2", text: "verify goal", status: "running" },
         ]);
-        service.setSourceTasks("ws1", undefined, "goal", [
+        await service.setSourceTasks("ws1", undefined, "goal", [
             { id: "G1", text: "finish migration", status: "running" },
         ]);
 
-        expect(service.list({ workspaceId: "ws1" })).toEqual([
+        expect(await service.list({ workspaceId: "ws1" })).toEqual([
             expect.objectContaining({ id: "G1", source: "goal", ordinal: 0 }),
             expect.objectContaining({ id: "P1", source: "plan", ordinal: 0 }),
             expect.objectContaining({ id: "P2", source: "plan", ordinal: 1 }),
         ]);
-        expect(service.getActive({ workspaceId: "ws1" })).toEqual(
+        expect(await service.getActive({ workspaceId: "ws1" })).toEqual(
             expect.objectContaining({ id: "G1", source: "goal", status: "running" }),
         );
     });
 
-    it("clears the previous snapshot when a source is updated with an empty list", () => {
+    it("clears the previous snapshot when a source is updated with an empty list", async () => {
         const service = createService();
-        service.setSourceTasks("ws1", "agent-1", "plan", [
+        await service.setSourceTasks("ws1", "agent-1", "plan", [
             { id: "P1", text: "temporary step", status: "running" },
         ]);
 
-        service.setSourceTasks("ws1", "agent-1", "plan", []);
+        await service.setSourceTasks("ws1", "agent-1", "plan", []);
 
-        expect(service.list({ workspaceId: "ws1", agentId: "agent-1" })).toEqual([]);
-        expect(service.getActive({ workspaceId: "ws1", agentId: "agent-1" })).toBeNull();
+        expect(await service.list({ workspaceId: "ws1", agentId: "agent-1" })).toEqual([]);
+        expect(await service.getActive({ workspaceId: "ws1", agentId: "agent-1" })).toBeNull();
     });
 });

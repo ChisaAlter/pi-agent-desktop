@@ -2,6 +2,7 @@
 // 管理 Pi Agent 的 Provider 与模型, 含新增/编辑/删除/设默认/测试连接.
 
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslateIpcError } from '../../../i18n';
 import { isIpcError, type ManagedModelEntry, type ManagedModelsResult, type ManagedModelSaveInput } from '@shared';
 import { SectionTitle } from '../_shared';
@@ -12,7 +13,7 @@ type ModelFormState = {
     providerId: string;
     providerName: string;
     baseUrl: string;
-    apiType: 'openai' | 'responses';
+    api: string;
     apiKey: string;
     modelId: string;
     modelName: string;
@@ -26,7 +27,7 @@ const emptyModelForm: ModelFormState = {
     providerId: '',
     providerName: '',
     baseUrl: '',
-    apiType: 'openai',
+    api: 'openai-completions',
     apiKey: '',
     modelId: '',
     modelName: '',
@@ -36,6 +37,28 @@ const emptyModelForm: ModelFormState = {
     setDefault: false,
 };
 
+const providerApiOptions = [
+    { value: 'openai-completions', label: 'OpenAI Chat Completions' },
+    { value: 'openai-responses', label: 'OpenAI Responses' },
+    { value: 'openai-codex-responses', label: 'OpenAI Codex Responses' },
+    { value: 'anthropic-messages', label: 'Anthropic Messages' },
+    { value: 'google-generative-ai', label: 'Google Generative AI' },
+    { value: 'mistral-conversations', label: 'Mistral Conversations' },
+];
+
+function apiFromApiType(apiType?: string): string | undefined {
+    if (!apiType?.trim()) return undefined;
+    if (apiType === 'openai' || apiType === 'openai-chat-completions' || apiType === 'openai-completions') return 'openai-completions';
+    if (apiType === 'responses' || apiType === 'openai-responses') return 'openai-responses';
+    if (apiType === 'anthropic' || apiType === 'anthropic-messages') return 'anthropic-messages';
+    return apiType;
+}
+
+function labelForApi(api?: string): string {
+    const value = apiFromApiType(api) ?? 'openai-completions';
+    return providerApiOptions.find((option) => option.value === value)?.label ?? value;
+}
+
 function modelToForm(model: ManagedModelEntry): ModelFormState {
     return {
         originalProviderId: model.providerId,
@@ -43,7 +66,7 @@ function modelToForm(model: ManagedModelEntry): ModelFormState {
         providerId: model.providerId,
         providerName: model.providerName,
         baseUrl: model.baseUrl ?? '',
-        apiType: model.apiType ?? 'openai',
+        api: apiFromApiType(model.api ?? model.apiType) ?? 'openai-completions',
         apiKey: '',
         modelId: model.modelId,
         modelName: model.modelName,
@@ -127,7 +150,7 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                 apiKey,
                 modelId: model.modelId,
                 apiType: model.apiType,
-                api: model.api,
+                api: apiFromApiType(model.api ?? model.apiType),
                 headers: model.headers,
             });
             if (isIpcError(response)) {
@@ -150,7 +173,7 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
             providerId: form.providerId.trim(),
             providerName: form.providerName.trim(),
             baseUrl: form.baseUrl.trim(),
-            apiType: form.apiType,
+            api: form.api,
             apiKey: form.apiKey.trim() || undefined,
             modelId: form.modelId.trim(),
             modelName: form.modelName.trim(),
@@ -185,7 +208,96 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
         await onPiConfigChanged();
     };
 
+    const formDialog = form ? (
+        <div className="settings-subdialog-backdrop fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 p-6">
+            <div className="settings-subdialog flex max-h-[calc(100vh-48px)] w-[min(680px,calc(100vw-48px))] flex-col overflow-hidden rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-2xl" role="dialog" aria-modal="true" aria-label="模型编辑">
+                <div className="flex shrink-0 items-center justify-between border-b border-[var(--mm-border)] px-5 py-4">
+                    <div className="text-sm font-semibold text-[var(--mm-text-primary)]">{form.originalModelId ? '编辑模型' : '新增模型'}</div>
+                    <button type="button" onClick={() => setForm(null)} className="settings-pressable rounded-md px-2 py-1 text-sm transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)]">关闭</button>
+                </div>
+                <div className="grid min-h-0 grid-cols-2 gap-4 overflow-y-auto p-5">
+                    <FormInput inputRef={providerIdInputRef} label="Provider ID" value={form.providerId} onChange={(providerId) => setForm({ ...form, providerId })} />
+                    <FormInput label="Provider 名称" value={form.providerName} onChange={(providerName) => setForm({ ...form, providerName })} />
+                    <FormInput className="col-span-2" label="Base URL" value={form.baseUrl} onChange={(baseUrl) => setForm({ ...form, baseUrl })} />
+                    <label className="block text-xs font-medium text-[var(--mm-text-secondary)]">
+                        API 类型
+                        <select
+                            value={form.api}
+                            onChange={(event) => setForm({ ...form, api: event.target.value })}
+                            className="mt-1 w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-primary)]"
+                        >
+                            {providerApiOptions.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <FormInput label="API Key" value={form.apiKey} onChange={(apiKey) => setForm({ ...form, apiKey })} placeholder={form.originalModelId ? '留空表示不修改' : ''} />
+                    <FormInput label="模型 ID" value={form.modelId} onChange={(modelId) => setForm({ ...form, modelId })} />
+                    <FormInput label="模型名称" value={form.modelName} onChange={(modelName) => setForm({ ...form, modelName })} />
+                    <FormInput label="上下文窗口" value={form.contextWindow} onChange={(contextWindow) => setForm({ ...form, contextWindow })} />
+                    <FormInput label="最大输出 Token" value={form.maxTokens} onChange={(maxTokens) => setForm({ ...form, maxTokens })} />
+                    <label className="flex items-center gap-2 text-sm text-[var(--mm-text-secondary)]">
+                        <input type="checkbox" checked={form.reasoning} onChange={(event) => setForm({ ...form, reasoning: event.target.checked })} />
+                        推理模型
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-[var(--mm-text-secondary)]">
+                        <input type="checkbox" checked={form.setDefault} onChange={(event) => setForm({ ...form, setDefault: event.target.checked })} />
+                        保存后设为默认
+                    </label>
+                </div>
+                <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--mm-border)] px-5 py-4">
+                    <button type="button" onClick={() => setForm(null)} className="settings-pressable rounded-lg px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)]">取消</button>
+                    <button type="button" onClick={() => void saveModel()} className="settings-pressable rounded-lg bg-[var(--mm-accent-blue)] px-3 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:opacity-90">保存模型</button>
+                </div>
+            </div>
+        </div>
+    ) : null;
+
+    const deleteDialog = pendingDeleteModel ? (
+        <div className="settings-subdialog-backdrop fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 p-6 backdrop-blur-[1px]">
+            <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="删除模型确认"
+                className="settings-subdialog flex max-h-[calc(100vh-48px)] w-[min(440px,calc(100vw-48px))] flex-col overflow-hidden rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-[0_24px_80px_rgba(0,0,0,0.22)]"
+            >
+                <div className="shrink-0 border-b border-[var(--mm-border)] px-5 py-4">
+                    <div className="text-[15px] font-semibold text-[var(--mm-text-primary)]">删除模型</div>
+                    <div className="mt-1 text-xs leading-5 text-[var(--mm-text-tertiary)]">
+                        此操作会更新 Pi Agent 配置。删除默认模型时会自动切换到下一个可用模型。
+                    </div>
+                </div>
+                <div className="min-h-0 overflow-y-auto px-5 py-4">
+                    <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2">
+                        <div className="truncate text-sm font-medium text-red-700">{pendingDeleteModel.modelName}</div>
+                        <div className="mt-1 truncate font-mono text-xs text-red-500">
+                            {pendingDeleteModel.providerId}/{pendingDeleteModel.modelId}
+                        </div>
+                    </div>
+                </div>
+                <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-5 py-4">
+                    <button
+                        type="button"
+                        onClick={() => setPendingDeleteModel(null)}
+                        className="settings-pressable rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]"
+                    >
+                        取消
+                    </button>
+                    <button
+                        ref={deleteConfirmButtonRef}
+                        type="button"
+                        onClick={() => void deleteModel(pendingDeleteModel)}
+                        className="settings-pressable rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:bg-red-700"
+                    >
+                        确认删除
+                    </button>
+                </div>
+            </div>
+        </div>
+    ) : null;
+
     return (
+        <>
         <div className="space-y-0 pt-[5px]">
             <div className="flex items-center justify-between gap-2">
                 <SectionTitle title="Provider 管理" />
@@ -214,7 +326,7 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                     <div className="divide-y divide-[var(--settings-border-soft)]">
                         {modelRows.map((model) => {
                             const key = `${model.providerId}:${model.modelId}`;
-                            const apiType = model.apiType ?? model.api ?? 'openai';
+                            const apiLabel = labelForApi(model.api ?? model.apiType);
                             const contextLabel = model.contextWindow ? `${model.contextWindow.toLocaleString()} tokens` : '未设置';
                             const keyLabel = model.hasApiKey ? (model.apiKeyPreview ? `Key ${model.apiKeyPreview}` : 'Key 已配置') : '缺少 Key';
                             const stateLabel = model.isDefault ? '默认' : model.hasApiKey ? '已配置' : '需配置';
@@ -234,7 +346,7 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                                             <span>API Base:</span>
                                             <span className="truncate text-[var(--settings-text-secondary)]" title={model.baseUrl ?? ''}>{model.baseUrl ?? '未设置'}</span>
                                             <span>能力:</span>
-                                            <span className="truncate">{apiType} / {contextLabel} / {keyLabel}</span>
+                                            <span className="truncate">{apiLabel} / {contextLabel} / {keyLabel}</span>
                                         </div>
                                     </div>
                                     <div className="flex w-[100px] shrink-0 flex-col items-end pt-0">
@@ -262,94 +374,10 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                     </div>
                 )}
             </div>
-
-            {form && (
-                <div className="settings-subdialog-backdrop fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-6">
-                    <div className="settings-subdialog w-[min(680px,calc(100vw-48px))] rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-2xl" role="dialog" aria-modal="true" aria-label="模型编辑">
-                        <div className="flex items-center justify-between border-b border-[var(--mm-border)] px-5 py-4">
-                            <div className="text-sm font-semibold text-[var(--mm-text-primary)]">{form.originalModelId ? '编辑模型' : '新增模型'}</div>
-                            <button type="button" onClick={() => setForm(null)} className="settings-pressable rounded-md px-2 py-1 text-sm transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)]">关闭</button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 p-5">
-                            <FormInput inputRef={providerIdInputRef} label="Provider ID" value={form.providerId} onChange={(providerId) => setForm({ ...form, providerId })} />
-                            <FormInput label="Provider 名称" value={form.providerName} onChange={(providerName) => setForm({ ...form, providerName })} />
-                            <FormInput className="col-span-2" label="Base URL" value={form.baseUrl} onChange={(baseUrl) => setForm({ ...form, baseUrl })} />
-                            <label className="block text-xs font-medium text-[var(--mm-text-secondary)]">
-                                API 类型
-                                <select
-                                    value={form.apiType}
-                                    onChange={(event) => setForm({ ...form, apiType: event.target.value as ModelFormState['apiType'] })}
-                                    className="mt-1 w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-primary)]"
-                                >
-                                    <option value="openai">OpenAI Chat Completions</option>
-                                    <option value="responses">OpenAI Responses</option>
-                                </select>
-                            </label>
-                            <FormInput label="API Key" value={form.apiKey} onChange={(apiKey) => setForm({ ...form, apiKey })} placeholder={form.originalModelId ? '留空表示不修改' : ''} />
-                            <FormInput label="模型 ID" value={form.modelId} onChange={(modelId) => setForm({ ...form, modelId })} />
-                            <FormInput label="模型名称" value={form.modelName} onChange={(modelName) => setForm({ ...form, modelName })} />
-                            <FormInput label="上下文窗口" value={form.contextWindow} onChange={(contextWindow) => setForm({ ...form, contextWindow })} />
-                            <FormInput label="最大输出 Token" value={form.maxTokens} onChange={(maxTokens) => setForm({ ...form, maxTokens })} />
-                            <label className="flex items-center gap-2 text-sm text-[var(--mm-text-secondary)]">
-                                <input type="checkbox" checked={form.reasoning} onChange={(event) => setForm({ ...form, reasoning: event.target.checked })} />
-                                推理模型
-                            </label>
-                            <label className="flex items-center gap-2 text-sm text-[var(--mm-text-secondary)]">
-                                <input type="checkbox" checked={form.setDefault} onChange={(event) => setForm({ ...form, setDefault: event.target.checked })} />
-                                保存后设为默认
-                            </label>
-                        </div>
-                        <div className="flex justify-end gap-2 border-t border-[var(--mm-border)] px-5 py-4">
-                            <button type="button" onClick={() => setForm(null)} className="settings-pressable rounded-lg px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)]">取消</button>
-                            <button type="button" onClick={() => void saveModel()} className="settings-pressable rounded-lg bg-[var(--mm-accent-blue)] px-3 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:opacity-90">保存模型</button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {pendingDeleteModel && (
-                <div className="settings-subdialog-backdrop fixed inset-0 z-[70] flex items-center justify-center bg-black/30 p-6 backdrop-blur-[1px]">
-                    <div
-                        role="dialog"
-                        aria-modal="true"
-                        aria-label="删除模型确认"
-                        className="settings-subdialog w-[min(440px,calc(100vw-48px))] overflow-hidden rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-[0_24px_80px_rgba(0,0,0,0.22)]"
-                    >
-                        <div className="border-b border-[var(--mm-border)] px-5 py-4">
-                            <div className="text-[15px] font-semibold text-[var(--mm-text-primary)]">删除模型</div>
-                            <div className="mt-1 text-xs leading-5 text-[var(--mm-text-tertiary)]">
-                                此操作会更新 Pi Agent 配置。删除默认模型时会自动切换到下一个可用模型。
-                            </div>
-                        </div>
-                        <div className="px-5 py-4">
-                            <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2">
-                                <div className="truncate text-sm font-medium text-red-700">{pendingDeleteModel.modelName}</div>
-                                <div className="mt-1 truncate font-mono text-xs text-red-500">
-                                    {pendingDeleteModel.providerId}/{pendingDeleteModel.modelId}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex justify-end gap-2 border-t border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-5 py-4">
-                            <button
-                                type="button"
-                                onClick={() => setPendingDeleteModel(null)}
-                                className="settings-pressable rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]"
-                            >
-                                取消
-                            </button>
-                            <button
-                                ref={deleteConfirmButtonRef}
-                                type="button"
-                                onClick={() => void deleteModel(pendingDeleteModel)}
-                                className="settings-pressable rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:bg-red-700"
-                            >
-                                确认删除
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
+        {formDialog && typeof document !== 'undefined' ? createPortal(formDialog, document.body) : formDialog}
+        {deleteDialog && typeof document !== 'undefined' ? createPortal(deleteDialog, document.body) : deleteDialog}
+        </>
     );
 }
 

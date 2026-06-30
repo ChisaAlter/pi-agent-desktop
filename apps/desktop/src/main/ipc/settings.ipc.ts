@@ -1,14 +1,16 @@
 import { BrowserWindow, ipcMain } from 'electron';
-import { join } from 'path';
-import { existsSync, readFileSync, readdirSync } from 'fs';
 import log from 'electron-log/main';
 import { ipcError } from '@shared';
-import type { AppSettings } from '@shared';
+import type { AppSettings, Workspace } from '@shared';
 import type { PiAgentConfig } from '../types';
 import { settingsSetSchema } from './schemas';
+import { listLocalSkills } from '../services/skills/list-local-skills';
 
 export function setupSettingsIpc(opts: {
-  store: { get: (key: 'settings') => AppSettings; set: (key: 'settings', value: AppSettings) => void };
+  store: {
+    get: ((key: 'settings') => AppSettings) & ((key: 'workspaces') => Workspace[]);
+    set: (key: 'settings', value: AppSettings) => void;
+  };
   getPiAgentConfig: () => PiAgentConfig | null;
   piAgentDir: string;
   onSettingsChanged?: (next: AppSettings, previous: AppSettings) => void;
@@ -38,9 +40,9 @@ export function setupSettingsIpc(opts: {
       );
     }
     const current = store.get('settings');
-    const previous = typeof structuredClone === "function"
-      ? structuredClone(current)
-      : JSON.parse(JSON.stringify(current)) as AppSettings;
+    // SubTask 40.6: shallow copy is sufficient — the spread below only replaces
+    // top-level keys, so we never mutate nested fields of `previous`.
+    const previous = { ...current };
     const updated = { ...current, ...settings };
     store.set('settings', updated);
     onSettingsChanged?.(updated, previous);
@@ -103,50 +105,18 @@ export function setupSettingsIpc(opts: {
         name: p.name,
         baseUrl: p.baseUrl,
         modelCount: p.models.length,
-        hasApiKey: false
+        hasApiKey: Boolean(p.apiKey)
       }))
     };
   });
 
-  ipcMain.handle('pi:list-skills', async () => {
+  ipcMain.handle('pi:list-skills', async (_, args?: { workspaceId?: string }) => {
     try {
-      const skillsDir = join(process.cwd(), '.agents', 'skills');
-      if (!existsSync(skillsDir)) return [];
-
-      const entries = readdirSync(skillsDir, { withFileTypes: true });
-      const skills = [];
-
-      for (const entry of entries) {
-        if (entry.isDirectory()) {
-          const skillPath = join(skillsDir, entry.name);
-          let description = '';
-
-          const skillMdPath = join(skillPath, 'SKILL.md');
-          if (existsSync(skillMdPath)) {
-            try {
-              const content = readFileSync(skillMdPath, 'utf-8');
-              const lines = content.split('\n').filter((l: string) => l.trim());
-              for (const line of lines) {
-                if (!line.startsWith('#') && line.trim().length > 0) {
-                  description = line.trim().substring(0, 100);
-                  break;
-                }
-              }
-            } catch {
-              // ignore read errors
-            }
-          }
-
-          skills.push({
-            name: entry.name,
-            description,
-            path: skillPath,
-            enabled: true
-          });
-        }
-      }
-
-      return skills;
+      const workspaceId = args?.workspaceId;
+      const workspaces = store.get('workspaces');
+      const ws = workspaces.find(w => w.id === workspaceId);
+      if (!ws) return ipcError("ipcErrors.settings.workspaceNotFound", "工作区不存在");
+      return await listLocalSkills(ws.path);
     } catch (error) {
       log.error('Failed to list skills:', error);
       return [];

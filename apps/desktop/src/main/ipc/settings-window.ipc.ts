@@ -13,10 +13,10 @@ export function setupSettingsWindowIpc(getMainWindow?: () => BrowserWindow | nul
     }
 
     settingsWindow = new BrowserWindow({
-      width: 606,
-      height: 389,
-      minWidth: 606,
-      minHeight: 389,
+      width: 800,
+      height: 600,
+      minWidth: 720,
+      minHeight: 520,
       resizable: true,
       title: '系统设置',
       modal: false,
@@ -40,8 +40,8 @@ export function setupSettingsWindowIpc(getMainWindow?: () => BrowserWindow | nul
       settingsWindow.setBounds({
         x: mainBounds.x + 534,
         y: mainBounds.y + 388,
-        width: 606,
-        height: 389,
+        width: 800,
+        height: 600,
       });
     }
     settingsWindow.webContents.setZoomFactor(1.5);

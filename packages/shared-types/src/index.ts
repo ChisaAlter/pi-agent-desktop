@@ -1,6 +1,7 @@
 // Shared Types for Pi Desktop
 // 集中定义 IPC 边界 + 跨进程数据结构 + Window 全局类型.
 // 任何新 IPC 通道必须先在这里加类型, 再在 preload + main + renderer 里实现.
+// TODO: split into domain files (workspace/session/agent/...)
 
 export * from "./events";
 export * from "./command-risk";
@@ -443,7 +444,7 @@ export interface PiModelItem {
 export interface PiProviderConfig {
     name?: string;
     baseUrl?: string;
-    apiType?: "openai" | "responses";
+    apiType?: string;
     api?: string;
     apiKey?: string;
     models?: PiModelItem[];
@@ -484,7 +485,7 @@ export interface ManagedModelEntry {
     modelId: string;
     modelName: string;
     baseUrl?: string;
-    apiType?: "openai" | "responses";
+    apiType?: string;
     api?: string;
     contextWindow?: number;
     maxTokens?: number;
@@ -510,7 +511,7 @@ export interface ManagedModelSaveInput {
     providerId: string;
     providerName?: string;
     baseUrl?: string;
-    apiType?: "openai" | "responses";
+    apiType?: string;
     api?: string;
     apiKey?: string;
     clearApiKey?: boolean;
@@ -557,6 +558,7 @@ export interface AppSettings {
     runtimeChannel?: "stable" | "latest";
     autoCompactionEnabled?: boolean;
     workspaceToolDefaults?: Record<string, ToolPermissions>;
+    sidebarGroupMode?: "date" | "workspace";
     /** 识图功能: 视觉模型提供商 */
     visionProvider?: string;
     /** 识图功能: 视觉模型名称 */
@@ -565,8 +567,15 @@ export interface AppSettings {
     showThinking?: boolean;
     /** 思考级别: none / low / medium / high */
     thinkingLevel?: "none" | "low" | "medium" | "high";
+    /** 用户自定义快捷键覆盖。 */
+    shortcutOverrides?: ShortcutOverride[];
     /** 长程能力：MiMoCode 风格 mode/goal/memory/checkpoint/task/max 适配层 */
     longHorizon?: LongHorizonSettings;
+}
+
+export interface ShortcutOverride {
+    id: string;
+    keys: string;
 }
 
 export type ToolPermissionKey =
@@ -644,6 +653,26 @@ export interface ExtensionUiResponse {
     requestId: string;
     value?: string | boolean;
     decision?: PermissionDecision;
+}
+
+/**
+ * v1.0.5 (Task 24.2): payload shape for the `permission:update` IPC channel.
+ * 主进程 extension-ui-bridge 通过此通道下发 4 种更新:
+ *  - mode 更新: `{ mode }`
+ *  - notify: `{ message, type, workspaceId, agentId }`
+ *  - setStatus: `{ key, text, workspaceId, agentId }`
+ *  - setTitle: `{ title, workspaceId, agentId }`
+ * 各字段可选, 由发送端按调用点填充. 渲染层订阅时按需 narrow.
+ */
+export interface PermissionUpdatePayload {
+    mode?: PermissionMode;
+    message?: string;
+    type?: "info" | "warning" | "error";
+    key?: string;
+    text?: string;
+    title?: string;
+    workspaceId?: string;
+    agentId?: string;
 }
 
 export interface PlanCard {
@@ -742,6 +771,12 @@ export type { PiEvent, PiEventType };
 // 主进程 IPC handler 失败时返回 IpcError 形状, 渲染层根据 code 走 t() 翻译.
 // 不要 throw 中文 Error: 用户切到 en-US 看到的还是中文.
 export interface IpcError {
+    /**
+     * 品牌标记 (discriminated union brand): 强制 IpcError 只能经 ipcError() 工厂构造,
+     * 避免普通 { code, fallback } 形状被误判为 IpcError. 编译期 nominal 类型,
+     * 运行期由 isIpcError() 优先识别.
+     */
+    __brand: "IpcError";
     /** 稳定错误码, 给 t() 查 i18n 词条 (e.g. "ipcErrors.files.scanFailed") */
     code: string;
     /** t() 插值参数 (e.g. { path: "/tmp/foo", reason: "EACCES" }) */
@@ -756,13 +791,19 @@ export function ipcError(
     fallback: string,
     params?: Record<string, string | number | boolean>,
 ): IpcError {
-    return { code, fallback, params };
+    return { __brand: "IpcError", code, fallback, params };
 }
 
-/** 类型守卫: 判断 unknown 是否是 IpcError (供渲染层 .catch 用) */
+/**
+ * 类型守卫: 判断 unknown 是否是 IpcError (供渲染层 .catch 用).
+ * 优先匹配 `__brand === "IpcError"` (ipcError() 工厂产物);
+ * 兼容回退到 `code+fallback` 形状, 以识别旧 test mock / 序列化数据 / 未走工厂的构造.
+ * 迁移完成 (全部改用 ipcError() 工厂) 后可移除回退分支, 收紧为纯品牌判等.
+ */
 export function isIpcError(value: unknown): value is IpcError {
     if (value === null || typeof value !== "object") return false;
-    const v = value as { code?: unknown; fallback?: unknown };
+    const v = value as { __brand?: unknown; code?: unknown; fallback?: unknown };
+    if (v.__brand === "IpcError") return true;
     return typeof v.code === "string" && typeof v.fallback === "string";
 }
 
@@ -1032,9 +1073,9 @@ export interface PiAPI {
 
     // Extension UI bridge
     permissionSetMode(mode: PermissionMode): Promise<void>;
-    permissionRespond(requestId: string, response: ExtensionUiResponse | PermissionDecision | boolean | string): void;
+    permissionRespond(requestId: string, response: ExtensionUiResponse | PermissionDecision): void;
     onPermissionRequest(cb: (req: ExtensionUiRequest) => void): Unsubscribe;
-    onPermissionUpdate(cb: (payload: unknown) => void): Unsubscribe;
+    onPermissionUpdate(cb: (payload: PermissionUpdatePayload) => void): Unsubscribe;
 
     planSetEnabled(workspaceId: string, enabled: boolean): Promise<void>;
     planMaterialize(input: InlinePlanMaterializeInput): Promise<InlinePlanMaterializeResult | IpcError>;
@@ -1069,6 +1110,7 @@ export interface PiAPI {
     getSettings(): Promise<AppSettings>;
     setSettings(settings: Partial<AppSettings>): Promise<AppSettings>;
     onSettingsChanged(cb: (settings: AppSettings) => void): Unsubscribe;
+    onPiConfigChanged(cb: () => void): Unsubscribe;
     loadPiConfig(): Promise<unknown>;
     getFullConfig(): Promise<PiAgentFullConfig>;
 
@@ -1176,6 +1218,8 @@ export interface PiAPI {
 
     // v2.0: Generic invoke for low-frequency channels (converged from 60+ direct methods)
     invoke(channel: string, ...args: unknown[]): Promise<unknown>;
+    // v2.1: Generic send for fire-and-forget channels (ipcMain.on). Never await, never hang.
+    send(channel: string, ...args: unknown[]): void;
 }
 
 export interface NodeAPI {

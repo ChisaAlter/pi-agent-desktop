@@ -3,12 +3,21 @@ import type { ConfigValidationResult, ManagedModelDeleteInput, ManagedModelSaveI
 import type { ConfigManager } from "../../services/config/config-manager";
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
+const webContentsSend = vi.fn();
 
 vi.mock("electron", () => ({
     ipcMain: {
         handle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
             handlers.set(channel, handler);
         }),
+    },
+    BrowserWindow: {
+        getAllWindows: vi.fn(() => [
+            {
+                isDestroyed: () => false,
+                webContents: { send: webContentsSend },
+            },
+        ]),
     },
 }));
 
@@ -62,7 +71,10 @@ function createManagerStub(): ConfigManagerStub {
 }
 
 describe("setupConfigIpc", () => {
-    beforeEach(() => handlers.clear());
+    beforeEach(() => {
+        handlers.clear();
+        webContentsSend.mockClear();
+    });
 
     it("registers managed model handlers against ConfigManager", async () => {
         const manager = createManagerStub();
@@ -98,6 +110,17 @@ describe("setupConfigIpc", () => {
         await handlers.get("config:import")?.({}, '{"files":{"models.json":{"providers":{}}}}');
 
         expect(onManagedModelsChanged).toHaveBeenCalledTimes(5);
+    });
+
+    it("broadcasts Pi config changes to renderer windows after managed model edits", async () => {
+        const manager = createManagerStub();
+        const deleteInput: ManagedModelDeleteInput = { providerId: "mimo", modelId: "mimo-v2.5" };
+
+        setupConfigIpc(manager as ConfigManager);
+
+        await handlers.get("config:delete-managed-model")?.({}, deleteInput);
+
+        expect(webContentsSend).toHaveBeenCalledWith("pi-config:changed");
     });
 
     it("returns IpcError for unsafe fetch-models URLs", async () => {

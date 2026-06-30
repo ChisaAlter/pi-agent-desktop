@@ -5,7 +5,7 @@ import { create } from "zustand";
 import type { Attachment } from "../types/attachments";
 
 interface AttachmentsState {
-    byWorkspace: Map<string, Attachment[]>;
+    byWorkspace: Record<string, Attachment[]>;
     add: (workspaceId: string, attachment: Attachment) => void;
     remove: (workspaceId: string, id: string) => void;
     clear: (workspaceId: string) => void;
@@ -13,29 +13,29 @@ interface AttachmentsState {
 }
 
 export const useAttachmentsStore = create<AttachmentsState>((set, get) => ({
-    byWorkspace: new Map(),
+    byWorkspace: {},
     add: (workspaceId, attachment) => {
-        set((s) => {
-            const next = new Map(s.byWorkspace);
-            const list = [...(next.get(workspaceId) ?? []), attachment];
-            next.set(workspaceId, list);
-            return { byWorkspace: next };
-        });
+        set((s) => ({
+            byWorkspace: {
+                ...s.byWorkspace,
+                [workspaceId]: [...(s.byWorkspace[workspaceId] ?? []), attachment],
+            },
+        }));
     },
     remove: (workspaceId, id) => {
-        set((s) => {
-            const next = new Map(s.byWorkspace);
-            const list = (next.get(workspaceId) ?? []).filter((a) => a.id !== id);
-            next.set(workspaceId, list);
-            return { byWorkspace: next };
-        });
+        set((s) => ({
+            byWorkspace: {
+                ...s.byWorkspace,
+                [workspaceId]: (s.byWorkspace[workspaceId] ?? []).filter((a) => a.id !== id),
+            },
+        }));
     },
     clear: (workspaceId) => {
         set((s) => {
-            const next = new Map(s.byWorkspace);
-            next.set(workspaceId, []);
+            const next = { ...s.byWorkspace };
+            delete next[workspaceId];
             return { byWorkspace: next };
         });
     },
-    list: (workspaceId) => get().byWorkspace.get(workspaceId) ?? [],
+    list: (workspaceId) => get().byWorkspace[workspaceId] ?? [],
 }));

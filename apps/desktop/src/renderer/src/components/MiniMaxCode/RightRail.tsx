@@ -3,10 +3,13 @@ import { isIpcError, type GitStatus, type ProjectInfo } from "@shared";
 import { usePlanStore } from "../../stores/plan-store";
 import { useSessionStore } from "../../stores/session-store";
 import { useQueueStore, type QueueTaskStatus } from "../../stores/queue-store";
+import { useSettingsStore } from "../../stores/settings-store";
 import { ToolPermissionsPanel } from "../ToolPermissions/ToolPermissionsPanel";
 import { UsageStatsPanel } from "../UsageStats/UsageStatsPanel";
+import { useI18n } from "../../i18n";
 import { classifyTerminalCommand } from "../../utils/terminal-command";
 import { projectScriptCommand } from "../../utils/project-scripts";
+import { useTransientState } from "./hooks/useTransientState";
 import type { TaskProgressItem } from "./TaskProgressPanel";
 
 interface RightRailProps {
@@ -137,23 +140,17 @@ function ProgressStatusIcon({ status }: { status: string }): React.JSX.Element {
   );
 }
 
-const GOAL_STATUS_LABELS: Record<string, string> = {
-  running: "执行中",
-  checking: "judge 检查中",
-  satisfied: "已满足",
-  impossible: "不可完成",
-  cleared: "已清除",
-};
-
 export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailProps): React.JSX.Element {
+  const { t } = useI18n();
   const [git, setGit] = useState<GitStatus | null>(null);
   const [project, setProject] = useState<ProjectInfo | null>(null);
   const [projectError, setProjectError] = useState<string | null>(null);
-  const [fileActionStatus, setFileActionStatus] = useState<{ path: string; message: string; tone: "success" | "error" } | null>(null);
-  const [railActionStatus, setRailActionStatus] = useState<{ message: string; tone: "success" | "error" } | null>(null);
+  const [fileActionStatus, setFileActionStatus] = useTransientState<{ path: string; message: string; tone: "success" | "error" }>(1800);
+  const [railActionStatus, setRailActionStatus] = useTransientState<{ message: string; tone: "success" | "error" }>(1800);
   const [diffStats, setDiffStats] = useState<DiffStats>({ additions: 0, deletions: 0 });
   const [filesExpanded, setFilesExpanded] = useState(false);
-  const [copiedPath, setCopiedPath] = useState<string | null>(null);
+  const [copiedPath, setCopiedPath] = useTransientState<string>(1600);
+  const rightRailCollapsed = useSettingsStore((state) => state.rightRailCollapsed);
   const { steps, goal } = usePlanStore();
   const queue = useQueueStore();
   const currentSession = useSessionStore((state) =>
@@ -181,16 +178,33 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
   useEffect(() => {
     if (!workspacePath || !window.piAPI?.getGitStatus) return;
     let disposed = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
     const load = async (): Promise<void> => {
       if (!disposed) await loadGitSnapshot();
     };
+    const start = (): void => {
+      if (intervalId || disposed) return;
+      intervalId = setInterval(() => void load(), 15000);
+    };
+    const stop = (): void => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+    const onVisibilityChange = (): void => {
+      if (document.visibilityState === "visible" && !rightRailCollapsed) start();
+      else stop();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
     void load();
-    const id = setInterval(() => void load(), 15000);
+    if (document.visibilityState === "visible" && !rightRailCollapsed) start();
     return () => {
       disposed = true;
-      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      stop();
     };
-  }, [loadGitSnapshot, workspacePath]);
+  }, [loadGitSnapshot, workspacePath, rightRailCollapsed]);
 
   useEffect(() => {
     if (!workspacePath || !window.piAPI?.detectProject) return;
@@ -249,10 +263,10 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
       if (!normalized || byPath.has(normalized)) return;
       byPath.set(normalized, { path: normalized, name: basename(normalized), source });
     };
-    currentSession?.lastOutputPaths?.forEach((path) => add(path, "任务输出"));
+    currentSession?.lastOutputPaths?.forEach((path) => add(path, t("rightRail.source.taskOutput")));
     currentSession?.messages.forEach((message) => {
       if (message.role === "assistant") {
-        extractPathsFromValue(message.content).forEach((path) => add(path, "回复"));
+        extractPathsFromValue(message.content).forEach((path) => add(path, t("rightRail.source.reply")));
       }
       message.toolCalls?.forEach((toolCall) => {
         const values: unknown[] = [toolCall.output, toolCall.result];
@@ -260,29 +274,33 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
           values.push(toolCall.input ?? toolCall.args);
         }
         values.forEach((value) => {
-          extractPathsFromValue(value).forEach((path) => add(path, toolCall.name || "工具"));
+          extractPathsFromValue(value).forEach((path) => add(path, toolCall.name || t("rightRail.source.tool")));
         });
         if (toolCall.status === "completed" && /^(?:bash|shell|powershell|command)$/i.test(toolCall.name || "")) {
           const command = getCommandText(toolCall.input ?? toolCall.args);
           if (command) {
-            extractOutputPathsFromCommand(command).forEach((path) => add(path, toolCall.name || "工具"));
+            extractOutputPathsFromCommand(command).forEach((path) => add(path, toolCall.name || t("rightRail.source.tool")));
           }
         }
       });
     });
     return [...byPath.values()].slice(0, 10);
-  }, [currentSession?.lastOutputPaths, currentSession?.messages, workspacePath]);
+  }, [currentSession?.lastOutputPaths, currentSession?.messages, t, workspacePath]);
 
   const copyPath = async (path: string): Promise<void> => {
     try {
       await navigator.clipboard.writeText(path);
       setCopiedPath(path);
-      setFileActionStatus({ path, message: "已复制路径", tone: "success" });
+      setFileActionStatus({ path, message: t("rightRail.status.copiedPath"), tone: "success" });
       setTimeout(() => setCopiedPath(null), 1600);
       setTimeout(() => setFileActionStatus(null), 1600);
     } catch (err) {
       setCopiedPath(null);
-      setFileActionStatus({ path, message: `复制路径失败: ${err instanceof Error ? err.message : String(err)}`, tone: "error" });
+      setFileActionStatus({
+        path,
+        message: t("rightRail.status.copyPathFailed", { message: err instanceof Error ? err.message : String(err) }),
+        tone: "error",
+      });
     }
   };
   const openOutputPath = async (path: string): Promise<void> => {
@@ -295,10 +313,14 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
         return;
       }
     } catch (err) {
-      setFileActionStatus({ path, message: `系统打开失败: ${err instanceof Error ? err.message : String(err)}`, tone: "error" });
+      setFileActionStatus({
+        path,
+        message: t("rightRail.status.systemOpenFailed", { message: err instanceof Error ? err.message : String(err) }),
+        tone: "error",
+      });
       return;
     }
-    setFileActionStatus({ path, message: "已请求系统打开", tone: "success" });
+    setFileActionStatus({ path, message: t("rightRail.status.openRequested"), tone: "success" });
     window.setTimeout(() => setFileActionStatus(null), 1800);
   };
   const revealOutputPath = async (path: string): Promise<void> => {
@@ -311,10 +333,14 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
         return;
       }
     } catch (err) {
-      setFileActionStatus({ path, message: `系统定位失败: ${err instanceof Error ? err.message : String(err)}`, tone: "error" });
+      setFileActionStatus({
+        path,
+        message: t("rightRail.status.systemRevealFailed", { message: err instanceof Error ? err.message : String(err) }),
+        tone: "error",
+      });
       return;
     }
-    setFileActionStatus({ path, message: "已请求系统定位", tone: "success" });
+    setFileActionStatus({ path, message: t("rightRail.status.revealRequested"), tone: "success" });
     window.setTimeout(() => setFileActionStatus(null), 1800);
   };
   const openWorkspaceFile = (path: string, mode?: "edit" | "diff"): void => {
@@ -324,19 +350,19 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
         detail: { path: normalized, mode },
       }),
     );
-    setRailActionStatus({ message: `已打开文件 ${basename(normalized)}`, tone: "success" });
+    setRailActionStatus({ message: t("rightRail.status.fileOpened", { name: basename(normalized) }), tone: "success" });
     window.setTimeout(() => setRailActionStatus(null), 1800);
   };
   const referenceOutputPath = (path: string): void => {
     const normalized = normalizeOutputPath(path, workspacePath);
     window.dispatchEvent(new CustomEvent("chatpanel:prefill", { detail: { text: `@${normalized} ` } }));
     window.dispatchEvent(new CustomEvent("app:switch-section", { detail: { section: "chat" } }));
-    setFileActionStatus({ path: normalized, message: "已引用到聊天", tone: "success" });
+    setFileActionStatus({ path: normalized, message: t("rightRail.status.quotedToChat"), tone: "success" });
     window.setTimeout(() => setFileActionStatus(null), 1800);
   };
   const openGitDiff = (file: string): void => {
     window.dispatchEvent(new CustomEvent("workspace:open-git-diff", { detail: { file } }));
-    setRailActionStatus({ message: `已打开 diff ${file}`, tone: "success" });
+    setRailActionStatus({ message: t("rightRail.status.diffOpened", { file }), tone: "success" });
     window.setTimeout(() => setRailActionStatus(null), 1800);
   };
   const runCommandInTerminal = (command: string): void => {
@@ -345,27 +371,50 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
       detail: { command, mode },
     }));
     setRailActionStatus({
-      message: mode === "draft" ? "高风险命令已填入终端，请确认后手动执行" : "已发送命令到终端",
+      message: mode === "draft" ? t("rightRail.status.highRiskCommandDrafted") : t("rightRail.status.commandSent"),
       tone: "success",
     });
     window.setTimeout(() => setRailActionStatus(null), 1800);
   };
+  const localizeQueueText = useCallback((text: string): string => {
+    const exact: Record<string, string> = {
+      "Agent 已开始": t("rightRail.queueActivity.agentStarted"),
+      "Turn 已开始": t("rightRail.queueActivity.turnStarted"),
+      "Agent 已结束": t("rightRail.queueActivity.agentEnded"),
+      "Turn 已结束": t("rightRail.queueActivity.turnEnded"),
+      "自动重试中": t("rightRail.queueActivity.autoRetrying"),
+      "自动重试结束": t("rightRail.queueActivity.autoRetryEnded"),
+      "扩展错误": t("rightRail.queueActivity.extensionError"),
+      "队列已更新": t("rightRail.queueActivity.queueUpdated"),
+      "当前任务运行中": t("rightRail.queueActivity.taskRunning"),
+      "当前任务已完成": t("rightRail.queueActivity.taskCompleted"),
+    };
+    if (exact[text]) return exact[text];
+    const toolMatch = text.match(/^(.+?) (运行中|失败|完成)$/);
+    if (toolMatch) {
+      const [, name, status] = toolMatch;
+      if (status === "运行中") return t("rightRail.queueActivity.toolRunning", { name });
+      if (status === "失败") return t("rightRail.queueActivity.toolFailed", { name });
+      if (status === "完成") return t("rightRail.queueActivity.toolCompleted", { name });
+    }
+    return text;
+  }, [t]);
   const queueItems = useMemo<QueueRailItem[]>(() => {
     const sessionId = currentSession?.id;
     return queue.items.slice(0, 8).map((item) => ({
       id: item.id,
       label: (item.id === "queue:running" || item.id === "queue:auto-retry") && item.status === "running"
-        ? currentSession?.title || item.label
-        : item.label,
+        ? currentSession?.title || localizeQueueText(item.label)
+        : localizeQueueText(item.label),
       meta: item.id === "queue:auto-retry" && item.status === "running"
-        ? "自动重试"
+        ? t("rightRail.autoRetry")
         : item.id === "queue:running" && item.status === "running"
-        ? queue.autoRetrying ? "自动重试" : "当前会话"
+        ? queue.autoRetrying ? t("rightRail.autoRetry") : t("rightRail.currentSession")
         : item.meta,
       status: item.status,
       sessionId,
     }));
-  }, [currentSession?.id, currentSession?.title, queue.autoRetrying, queue.items]);
+  }, [currentSession?.id, currentSession?.title, localizeQueueText, queue.autoRetrying, queue.items, t]);
   const taskItems = useMemo<QueueRailItem[]>(() => {
     return tasks.slice(0, 5).map((task) => ({
       id: `task:${task.id}`,
@@ -400,7 +449,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
   };
 
   return (
-    <aside className="flex h-full w-full flex-col gap-3 overflow-y-auto px-1 py-1 text-[var(--mm-text-primary)]">
+    <aside className="h-full w-full space-y-3 overflow-y-auto px-1 py-1 pb-2 text-[var(--mm-text-primary)]">
       {railActionStatus && (
         <div
           className={`rounded-[14px] border px-3 py-2 text-xs ${
@@ -415,16 +464,16 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
       )}
       <section className="rounded-[16px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5 shadow-[0_14px_34px_rgba(15,23,42,0.12)]">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="m-0 text-[13px] font-medium">环境信息</h2>
+          <h2 className="m-0 text-[13px] font-medium">{t("rightRail.environment")}</h2>
         </div>
         <p className="mb-3 truncate font-mono text-[11px] leading-none text-[var(--mm-text-tertiary)]">
-          {git?.branch ?? "无 Git"}
+          {git?.branch ?? t("rightRail.noGit")}
         </p>
         <div className="space-y-3 text-xs">
           <div className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2.5 py-2">
             <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
               <span className="min-w-0 truncate font-medium" title={project?.name ?? workspacePath}>
-                {project?.name ?? "未知项目"}
+                {project?.name ?? t("rightRail.unknownProject")}
               </span>
               <span className="shrink-0 rounded bg-[var(--mm-bg-panel)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--mm-text-secondary)]">
                 {project?.type ?? "unknown"}
@@ -435,11 +484,11 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
             ) : (
               <div className="space-y-1.5 text-[11px] text-[var(--mm-text-secondary)]">
                 <div className="flex justify-between gap-3">
-                  <span>包管理器</span>
+                  <span>{t("rightRail.packageManager")}</span>
                   <span className="font-mono">{project?.packageManager ?? "-"}</span>
                 </div>
                 <div className="flex justify-between gap-3">
-                  <span>配置文件</span>
+                  <span>{t("rightRail.configFiles")}</span>
                   <span className="max-w-[150px] truncate text-right font-mono" title={project?.configFiles.join(", ")}>
                     {project?.configFiles.length ? project.configFiles.slice(0, 3).join(", ") : "-"}
                   </span>
@@ -447,7 +496,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
                 {project?.scripts && Object.keys(project.scripts).length > 0 && (
                   <div className="space-y-1">
                     <div className="flex justify-between gap-3">
-                      <span>脚本</span>
+                      <span>{t("rightRail.scripts")}</span>
                       <span className="max-w-[150px] truncate text-right font-mono" title={Object.keys(project.scripts).join(", ")}>
                         {Object.keys(project.scripts).slice(0, 3).join(", ")}
                       </span>
@@ -459,7 +508,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
                           type="button"
                           onClick={() => runCommandInTerminal(script.command)}
                           className="rounded border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)]"
-                          title={`在终端运行 ${script.command}`}
+                          title={t("rightRail.runInTerminal", { command: script.command })}
                         >
                           {script.name}
                         </button>
@@ -477,7 +526,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M12 5v14m-7-7h14" />
                 </svg>
               </RowIcon>
-              <span>变更</span>
+              <span>{t("rightRail.changes")}</span>
             </div>
             <div className="flex shrink-0 items-center gap-2 font-mono text-[11px]">
               <span className="text-[var(--color-success)]">+{diffStats.additions}</span>
@@ -489,14 +538,14 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
               type="button"
               onClick={openGitPanel}
               className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-[var(--mm-bg-hover)]"
-              aria-label="提交或推送，打开 Git 面板"
+              aria-label={t("rightRail.commitOrPushAria")}
             >
               <RowIcon>
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M4 12h13m0 0-4-4m4 4-4 4" />
                 </svg>
               </RowIcon>
-              <span>提交或推送</span>
+              <span>{t("rightRail.commitOrPush")}</span>
             </button>
             <span className="shrink-0 font-mono text-[11px] text-[var(--mm-text-secondary)]">
               {git ? `${git.ahead}/${git.behind}` : "-"}
@@ -508,14 +557,14 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
               </svg>
             </RowIcon>
-            <span>项目文件</span>
+            <span>{t("rightRail.projectFiles")}</span>
             <div className="ml-auto flex items-center gap-2">
               <button
                 type="button"
                 onClick={openFilesPanel}
                 className="rounded-md px-1.5 py-0.5 text-[10px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)]"
               >
-                浏览全部文件
+                {t("rightRail.browseAllFiles")}
               </button>
               <span className="text-[11px] text-[var(--mm-text-tertiary)]">{changeCount}</span>
             </div>
@@ -529,7 +578,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
                     type="button"
                     onClick={() => openWorkspaceFile(item.path)}
                     className="min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left font-mono text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)]"
-                    title={`在文件工作区打开 ${item.path}`}
+                    title={t("rightRail.openFile", { path: item.path })}
                   >
                     {item.path}
                   </button>
@@ -537,7 +586,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
                     type="button"
                     onClick={() => openGitDiff(item.path)}
                     className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-[var(--mm-text-tertiary)] hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)]"
-                    title={`查看 ${item.path} 的 Git diff`}
+                    title={t("rightRail.viewDiff", { path: item.path })}
                   >
                     Diff
                   </button>
@@ -549,7 +598,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
                   onClick={() => setFilesExpanded((value) => !value)}
                   className="mt-1 rounded-md px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)]"
                 >
-                  {filesExpanded ? "收起文件" : `展开其余 ${hiddenChangedCount} 个文件`}
+                  {filesExpanded ? t("rightRail.collapseFiles") : t("rightRail.expandRemainingFiles", { count: hiddenChangedCount })}
                 </button>
               )}
             </div>
@@ -563,9 +612,9 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
 
       <section className="min-h-0 rounded-[16px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5 shadow-[0_14px_34px_rgba(15,23,42,0.12)]">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="m-0 text-[13px] font-medium">进度</h2>
+          <h2 className="m-0 text-[13px] font-medium">{t("rightRail.progress")}</h2>
           <span className="rounded-full bg-[var(--mm-bg-sidebar)] px-2 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">
-            {taskFlowItems.length > 0 ? `${taskFlowItems.length} 项` : "idle"}
+            {taskFlowItems.length > 0 ? t("rightRail.itemCount", { count: taskFlowItems.length }) : t("rightRail.idle")}
           </span>
         </div>
         {queue.lastError && (
@@ -575,22 +624,22 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
         )}
         {!queue.lastError && queue.lastCompletedAt && (
           <div className="mb-3 rounded-lg border border-[#dcfce7] bg-[#f0fdf4] px-3 py-2 text-xs leading-5 text-[var(--color-success)]" role="status">
-            最近任务已完成
+            {t("rightRail.recentTaskCompleted")}
           </div>
         )}
         {queue.lastActivity && (
           <div className="mb-3 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-xs leading-5 text-[var(--mm-text-secondary)]" role="status">
-            {queue.lastActivity}
+            {localizeQueueText(queue.lastActivity)}
           </div>
         )}
         {goal && (
           <div className="mb-3 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-xs leading-5" role="status">
             <div className="flex min-w-0 items-center justify-between gap-2">
               <span className="min-w-0 truncate font-medium" title={goal.condition}>
-                任务目标：{goal.condition}
+                {t("rightRail.goal", { condition: goal.condition })}
               </span>
               <span className="shrink-0 rounded-full bg-[var(--mm-bg-sidebar)] px-2 py-0.5 text-[10px] text-[var(--mm-text-secondary)]">
-                {GOAL_STATUS_LABELS[goal.status] ?? goal.status}
+                {t(`rightRail.goalStatus.${goal.status}`)}
               </span>
             </div>
             {goal.reason && (
@@ -604,8 +653,8 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
         {taskFlowItems.length > 0 && (
           <div className="mb-3 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-2">
             <div className="mb-2 flex items-center justify-between text-[11px] text-[var(--mm-text-tertiary)]">
-              <span>运行队列</span>
-              <span>{queue.autoRetrying ? "自动重试" : queue.running ? "运行中" : "排队"}</span>
+              <span>{t("rightRail.queue")}</span>
+              <span>{queue.autoRetrying ? t("rightRail.autoRetry") : queue.running ? t("rightRail.running") : t("rightRail.queued")}</span>
             </div>
             <ul className="m-0 list-none space-y-1.5 p-0">
               {taskFlowItems.map((item) => (
@@ -650,14 +699,14 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
           </ul>
         ) : (
           <p className="m-0 rounded-lg border border-dashed border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-3 text-xs leading-5 text-[var(--mm-text-secondary)]">
-            开始对话或执行工具后，这里会显示计划步骤、工具调用和长任务进度。
+            {t("rightRail.emptyProgress")}
           </p>
         )}
       </section>
 
       <section className="min-h-0 rounded-[16px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5 shadow-[0_14px_34px_rgba(15,23,42,0.12)]">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="m-0 text-[13px] font-medium">文件输出</h2>
+          <h2 className="m-0 text-[13px] font-medium">{t("rightRail.fileOutput")}</h2>
         </div>
         {fileOutputs.length > 0 ? (
           <ul className="m-0 max-h-[220px] list-none space-y-2 overflow-y-auto p-0">
@@ -675,35 +724,35 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
                     onClick={() => openWorkspaceFile(item.path)}
                     className="rounded px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
                   >
-                    预览
+                    {t("rightRail.preview")}
                   </button>
                   <button
                     type="button"
                     onClick={() => void openOutputPath(item.path)}
                     className="rounded px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
                   >
-                    系统打开
+                    {t("rightRail.openInSystem")}
                   </button>
                   <button
                     type="button"
                     onClick={() => void revealOutputPath(item.path)}
                     className="rounded px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
                   >
-                    定位
+                    {t("rightRail.reveal")}
                   </button>
                   <button
                     type="button"
                     onClick={() => void copyPath(item.path)}
                     className="rounded px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
                   >
-                    {copiedPath === item.path ? "已复制" : "复制路径"}
+                    {copiedPath === item.path ? t("rightRail.copied") : t("rightRail.copyPath")}
                   </button>
                   <button
                     type="button"
                     onClick={() => referenceOutputPath(item.path)}
                     className="rounded px-1.5 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
                   >
-                    引用
+                    {t("rightRail.quote")}
                   </button>
                 </div>
                 {fileActionStatus?.path === item.path && (
@@ -721,7 +770,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
           </ul>
         ) : (
           <p className="m-0 rounded-lg border border-dashed border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-3 text-xs leading-5 text-[var(--mm-text-secondary)]">
-            本轮生成、修改或引用的文件会在这里汇总，方便打开、定位和复制路径。
+            {t("rightRail.emptyFileOutput")}
           </p>
         )}
       </section>

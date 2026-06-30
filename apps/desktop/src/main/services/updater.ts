@@ -27,6 +27,7 @@ export interface AppUpdaterLike {
             | "error",
         handler: (...args: unknown[]) => void,
     ): void;
+    removeAllListeners(event?: string): void;
     checkForUpdates(): Promise<unknown>;
     downloadUpdate(): Promise<unknown>;
     quitAndInstall(isSilent?: boolean, isForceRunAfter?: boolean): void;
@@ -37,6 +38,8 @@ export interface AppUpdaterService {
     checkForUpdates(): Promise<AppUpdaterState>;
     downloadUpdate(): Promise<AppUpdaterState>;
     installUpdate(): Promise<AppUpdaterState>;
+    /** SubTask 40.10: cancel scheduled timers and detach listeners. */
+    dispose(): void;
 }
 
 export interface SetupAutoUpdaterOptions {
@@ -144,6 +147,7 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpda
             checkForUpdates: async () => ({ ...state }),
             downloadUpdate: async () => ({ ...state }),
             installUpdate: async () => ({ ...state }),
+            dispose: () => {},
         };
     }
 
@@ -157,6 +161,7 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpda
             checkForUpdates: async () => ({ ...state }),
             downloadUpdate: async () => ({ ...state }),
             installUpdate: async () => ({ ...state }),
+            dispose: () => {},
         };
     }
 
@@ -238,8 +243,12 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpda
         });
     });
 
+    // SubTask 40.10: retain timer handles so dispose() can cancel them.
+    let startupTimer: ReturnType<typeof setTimeout> | null = null;
+    let periodicTimer: ReturnType<typeof setInterval> | null = null;
+
     if (options.scheduleChecks !== false) {
-        setTimeout(() => {
+        startupTimer = setTimeout(() => {
             void updater.checkForUpdates().catch((error) => {
                 const message = normalizeErrorMessage(error);
                 log.error("[AutoUpdater] startup check failed:", error);
@@ -247,7 +256,7 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpda
             });
         }, STARTUP_CHECK_DELAY_MS);
 
-        setInterval(() => {
+        periodicTimer = setInterval(() => {
             void updater.checkForUpdates().catch((error) => {
                 const message = normalizeErrorMessage(error);
                 log.error("[AutoUpdater] periodic check failed:", error);
@@ -282,6 +291,17 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpda
                 updater.quitAndInstall(false, true);
             }
             return { ...state };
+        },
+        dispose: () => {
+            if (startupTimer) {
+                clearTimeout(startupTimer);
+                startupTimer = null;
+            }
+            if (periodicTimer) {
+                clearInterval(periodicTimer);
+                periodicTimer = null;
+            }
+            updater.removeAllListeners();
         },
     };
 }

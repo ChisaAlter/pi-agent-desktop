@@ -76,6 +76,11 @@ describe("preload surface audit", () => {
         }
     });
 
+    it("exposes Pi config change subscription for model list refreshes", () => {
+        expect(piAPI).toHaveProperty("onPiConfigChanged");
+        expect(typeof piAPI.onPiConfigChanged).toBe("function");
+    });
+
     it("no method name contains internal or debug", () => {
         const keys = Object.keys(piAPI);
         for (const key of keys) {
@@ -90,7 +95,6 @@ describe("preload surface audit", () => {
             "config:save-raw",
             "config:export",
             "config:import",
-            "pi:describe-images",
             "log:write",
             "workbench:set-active-file",
             "approval:respond",
@@ -98,9 +102,12 @@ describe("preload surface audit", () => {
             "plan:respond",
             "permission:respond",
         ];
-        expect(INVOKE_ONLY_CHANNELS.length).toBe(12);
+        expect(INVOKE_ONLY_CHANNELS.length).toBe(11);
         expect(INVOKE_ONLY_CHANNELS).not.toContain("pi:send");
         expect(INVOKE_ONLY_CHANNELS).not.toContain("session:list");
         expect(INVOKE_ONLY_CHANNELS).not.toContain("git:status");
+        // Task 24.4: pi:describe-images now has a dedicated describeImages method,
+        // so it must NOT be routed through the generic send allowlist.
+        expect(INVOKE_ONLY_CHANNELS).not.toContain("pi:describe-images");
     });
 });

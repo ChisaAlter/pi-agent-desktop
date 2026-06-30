@@ -2,21 +2,30 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { I18nProvider } from "../../i18n";
+import { TopTabBar } from "../TopTabBar/TopTabBar";
+import { MINIMAX_CHROME_ICON_BUTTON_CLASSNAME } from "./chromeButton";
 import { MiniMaxCodeLayout } from "./MiniMaxCodeLayout";
 import { MiniMaxCodeTitleBar } from "./MiniMaxCodeTitleBar";
 
 describe("MiniMaxCode window chrome interactivity", () => {
-    it("marks titlebar navigation slot as no-drag so tabs receive clicks in Electron", () => {
+    it("keeps titlebar blank space draggable while top tabs stay clickable in Electron", () => {
         render(
-            <MiniMaxCodeTitleBar
-                title="Pi Agent"
-                navigationSlot={<button type="button">对话</button>}
-            />,
+            <I18nProvider>
+                <MiniMaxCodeTitleBar
+                    title="Pi Agent"
+                    navigationSlot={<TopTabBar activeTab="chat" onTabChange={() => undefined} />}
+                />
+            </I18nProvider>,
         );
 
-        const titlebarCenter = screen.getByRole("button", { name: "对话" }).closest('[data-mmcode-region="titlebar-center"]');
+        const chatTab = screen.getByRole("tab", { name: "对话" });
+        const tablist = screen.getByRole("tablist", { name: "顶部标签栏" });
+        const titlebarCenter = chatTab.closest('[data-mmcode-region="titlebar-center"]');
 
-        expect(titlebarCenter?.className ?? "").toContain("app-region-no-drag");
+        expect(titlebarCenter?.className ?? "").not.toContain("app-region-no-drag");
+        expect(tablist.className).toContain("app-region-drag");
+        expect(chatTab.className).toContain("app-region-no-drag");
     });
 
     it("keeps the global composer root scoped to the center workspace", () => {
@@ -35,7 +44,7 @@ describe("MiniMaxCode window chrome interactivity", () => {
         expect(document.querySelector('[data-mmcode-region="center"]')?.querySelector("#pi-global-composer-root")).toBeTruthy();
     });
 
-    it("pins sidebar collapse controls to the window edges and aligns them with the compact 42px header controls", () => {
+    it("keeps only the right collapse control floating and stops reserving a fake left gutter when the sidebar is expanded", () => {
         render(
             <MiniMaxCodeLayout
                 leftSlot={<div>对话</div>}
@@ -47,25 +56,24 @@ describe("MiniMaxCode window chrome interactivity", () => {
             />,
         );
 
-        expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).toContain("top-[calc((42px-1.75rem)/2)]");
-        expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).toContain("top-[calc((42px-1.75rem)/2)]");
-        expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).not.toContain("top-4");
-        expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).not.toContain("top-4");
-        expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).toContain("h-7");
-        expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).toContain("h-7");
-        expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).toContain("w-7");
-        expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).toContain("w-7");
-        expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).not.toContain("h-8");
-        expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).not.toContain("h-8");
-        expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).toContain("left-3");
-        expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).toContain("right-3");
-        expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).toContain("z-[80]");
-        expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).toContain("z-[80]");
-        expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).not.toContain("top-1/2");
-        expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).not.toContain("top-1/2");
-        expect(screen.getByRole("button", { name: "折叠左侧栏" }).className).not.toContain("-translate-y-1/2");
-        expect(screen.getByRole("button", { name: "折叠右侧栏" }).className).not.toContain("-translate-y-1/2");
-        expect(document.querySelector('[data-mmcode-region="left"]')?.firstElementChild?.className ?? "").toContain("pl-10");
+        const rightToggleClassName = screen.getByRole("button", { name: "折叠右侧栏" }).className;
+
+        expect(rightToggleClassName).toContain("top-[calc((42px-1.75rem)/2)]");
+        expect(rightToggleClassName).not.toContain("top-4");
+        expect(rightToggleClassName).toContain("h-7");
+        expect(rightToggleClassName).toContain("w-7");
+        expect(rightToggleClassName).not.toContain("h-8");
+        expect(rightToggleClassName).toContain("right-3");
+        expect(rightToggleClassName).toContain("z-[80]");
+        expect(rightToggleClassName).not.toContain("top-1/2");
+        expect(rightToggleClassName).not.toContain("-translate-y-1/2");
+        for (const className of MINIMAX_CHROME_ICON_BUTTON_CLASSNAME.split(" ")) {
+            expect(rightToggleClassName).toContain(className);
+        }
+        expect(rightToggleClassName).not.toContain("rounded-md");
+        expect(rightToggleClassName).not.toContain("bg-[var(--mm-bg-main)]");
+        expect(screen.queryByRole("button", { name: "折叠左侧栏" })).toBeNull();
+        expect(document.querySelector('[data-mmcode-region="left"]')?.firstElementChild?.className ?? "").not.toContain("pl-10");
         expect(document.querySelector('[data-mmcode-region="right-floating"]')?.className ?? "").toContain("absolute");
     });
 

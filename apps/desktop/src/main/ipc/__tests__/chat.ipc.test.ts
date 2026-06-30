@@ -328,6 +328,8 @@ describe("setupChatIpc", () => {
         execFileSyncMock.mockImplementationOnce(() => {
             throw new Error("not tracked");
         });
+        // git status --porcelain returns untracked marker so the new safety guard allows deletion.
+        execFileSyncMock.mockReturnValueOnce("?? src/new.ts\n");
 
         setupChatIpc({
             registry: { get: vi.fn(), has: vi.fn() } as any,

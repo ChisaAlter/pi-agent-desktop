@@ -1,149 +1,215 @@
-// v1.0.10 (smoke): 真正 runtime 验证 C1 修复 — patch out/ 干掉 node:sqlite 阻塞,
-// stub electron + electron-log, 跑 setupIPC 看会不会抛 "second handler".
+// v1.0.10 (smoke): runtime-verify C1 fix — patch a TEMP COPY of out/main to
+// neutralize the node:sqlite blocker, stub electron + electron-log, then run
+// setupIPC and watch for "second handler" throws.
 //
-// 一次性脚本, 跑完即弃. 不入 git.
+// Patches a copy in a temp dir so the built artifact (out/main/index.js) stays
+// pristine. Temp dir is removed in a finally block on every exit path.
 
 const Module = require('module');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const OUT_DIR = path.resolve(__dirname, '..', 'apps', 'desktop', 'out', 'main');
-const MAIN = path.join(OUT_DIR, 'index.js');
+const MAIN_SRC = path.join(OUT_DIR, 'index.js');
+const CHUNKS_SRC = path.join(OUT_DIR, 'chunks');
 
-// 1) Patch 所有 chunk 和 main: 把 `require("node:sqlite")` 换成字面量 `{}`
-//    (rollup 把 type-only import 编译成 runtime require, 实际没用到, stub 即可)
-//    保留 `const x = ` 前缀, 否则会成 `const x = ;` 语法错.
-let patchedCount = 0;
-const patchFile = (p) => {
-    const c = fs.readFileSync(p, 'utf-8');
-    const next = c.replace(/require\("node:sqlite"\)/g, '{}');
-    if (next !== c) {
-        fs.writeFileSync(p, next);
-        patchedCount++;
-    }
-};
-patchFile(MAIN);
-for (const f of fs.readdirSync(path.join(OUT_DIR, 'chunks'))) {
-    patchFile(path.join(OUT_DIR, 'chunks', f));
-}
-console.log(`[smoke] patched node:sqlite in ${patchedCount} files`);
+// Create a temp dir for the patched copies — never mutate out/main/index.js.
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-smoke-'));
+const MAIN = path.join(tmpDir, 'index.js');
+const CHUNKS_DIR = path.join(tmpDir, 'chunks');
 
-// 2) Stub electron — 跟踪所有 ipcMain.handle / on 调用, 重复就抛
-const calls = { handle: [], on: [] };
-const stubElectron = {
-    ipcMain: {
-        handle: (ch, _fn) => {
-            if (calls.handle.includes(ch)) {
-                throw new Error(`Attempted to register a second handler for "${ch}"`);
-            }
-            calls.handle.push(ch);
-        },
-        on: (ch, _fn) => {
-            if (calls.on.includes(ch)) {
-                throw new Error(`Attempted to register a second handler for "${ch}" (on)`);
-            }
-            calls.on.push(ch);
-        },
-    },
-    app: {
-        whenReady: () => ({ then: () => { } }),
-        on: () => { },
-        quit: () => { },
-        getPath: () => '/tmp',
-    },
-    BrowserWindow: class {
-        constructor() { }
-        on() { return this; }
-        show() { }
-        loadURL() { }
-        loadFile() { }
-        webContents = { send: () => { } };
-        isDestroyed() { return false; }
-        static getAllWindows() { return []; }
-    },
-    dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
-};
-
-// 3) Stub electron-log main 入口 — 避免它跑去创建 log 文件 IO
-// 4) Stub electron-store — 避免真实写盘
-// 5) Stub node-pty — native 模块, Node 跑不动
-const noopStub = new Proxy(function () { }, {
-    get: () => noopStub,
-    apply: () => noopStub,
-    construct: () => ({}),
-});
-
-const origLoad = Module._load;
-Module._load = function (request, parent, ...rest) {
-    if (request === 'electron') return stubElectron;
-    if (request === 'node:sqlite') return {};
-    if (request === 'electron-log/main' || request === 'electron-log') return { info: () => { }, warn: () => { }, error: () => { }, debug: () => { } };
-    if (request === 'electron-store') return class { constructor() { } get() { return {}; } set() { } };
-    if (request === 'node-pty') return { spawn: () => ({ onData: () => { }, onExit: () => { } }) };
-    return origLoad.call(this, request, parent, ...rest);
-};
-
-// 6) 跑 main bundle
-console.log('[smoke] requiring main bundle...');
 try {
-    require(MAIN);
-} catch (e) {
-    console.error('[smoke] FAILED during require:', e.message);
-    if (e.stack) console.error(e.stack.split('\n').slice(0, 8).join('\n'));
-    process.exit(1);
+    runSmoke();
+} finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
 }
 
-// 7) 但 setupIPC 是注册在 app.whenReady().then() 里的 — 我们 stub 的 whenReady
-//    不会自动调 then. 直接从 ipcMain.handle 列表来算.
-// 上面的 stub whenReady 没调 .then, 所以 setupIPC 没跑.
-// 用更直接的方式: 我们已经 require 完 main.js, 它顶层只是定义了函数.
-// setupIPC 是当 app.whenReady() 时跑的. 我们 stub 的 whenReady 啥也不做.
-//
-// 改: 替换 whenReady 让 .then 立即同步执行.
-console.log('[smoke] app.whenReady() chain did not run in stub. Re-requiring with sync chain...');
-
-// 改方案: 用一个能在 require 时同步触发 then 的 stub.
-// 重新做一遍: 删 require cache, 重做 stub 触发 then
-delete require.cache[MAIN];
-
-let syncTrigger = null;
-stubElectron.app.whenReady = () => {
-    const promise = {
-        then: (cb) => {
-            syncTrigger = cb;
-            return promise;
-        },
-    };
-    return promise;
-};
-
-console.log('[smoke] re-requiring main with sync whenReady...');
-require(MAIN);
-if (syncTrigger) {
-    console.log('[smoke] firing whenReady.then() to trigger setupIPC...');
-    try {
-        syncTrigger();
-    } catch (e) {
-        console.error('[smoke] setupIPC FAILED:', e.message);
-        if (e.stack) console.error(e.stack.split('\n').slice(0, 15).join('\n'));
-        process.exit(1);
+function runSmoke() {
+    // 1) Copy main bundle (and chunks, if present) into the temp dir so we can
+    //    patch without touching the built artifact.
+    fs.copyFileSync(MAIN_SRC, MAIN);
+    const hasChunks = fs.existsSync(CHUNKS_SRC);
+    if (hasChunks) {
+        fs.mkdirSync(CHUNKS_DIR, { recursive: true });
+        for (const f of fs.readdirSync(CHUNKS_SRC)) {
+            fs.copyFileSync(path.join(CHUNKS_SRC, f), path.join(CHUNKS_DIR, f));
+        }
     }
+
+    // 2) Patch all chunk and main copies: replace `require("node:sqlite")` with
+    //    a stub literal. The original v1.0.10 script used `{}` because rollup
+    //    emitted node:sqlite as a type-only import that wasn't used at runtime.
+    //    The long-horizon runtime (added after the smoke script was committed)
+    //    now instantiates `DatabaseSync` at startup, so the stub must expose it.
+    //    Keep the `const x = ` prefix, otherwise we get `const x = ;` (syntax error).
+    const NODE_SQLITE_STUB =
+        '{DatabaseSync:class{constructor(){}exec(){}close(){}' +
+        'prepare(){return{get:()=>null,all:()=>[],run:()=>({changes:0,lastInsertRowid:0}),finalize:()=>{}}}}}';
+    let patchedCount = 0;
+    const patchFile = (p) => {
+        const c = fs.readFileSync(p, 'utf-8');
+        const next = c.replace(/require\("node:sqlite"\)/g, NODE_SQLITE_STUB);
+        if (next !== c) {
+            fs.writeFileSync(p, next);
+            patchedCount++;
+        }
+    };
+    patchFile(MAIN);
+    if (hasChunks) {
+        for (const f of fs.readdirSync(CHUNKS_DIR)) {
+            patchFile(path.join(CHUNKS_DIR, f));
+        }
+    }
+    console.log(`[smoke] patched node:sqlite in ${patchedCount} files`);
+
+    // 3) Stub electron — track all ipcMain.handle / on calls, throw on dupes
+    const calls = { handle: [], on: [] };
+    const stubElectron = {
+        ipcMain: {
+            handle: (ch, _fn) => {
+                if (calls.handle.includes(ch)) {
+                    throw new Error(`Attempted to register a second handler for "${ch}"`);
+                }
+                calls.handle.push(ch);
+            },
+            on: (ch, _fn) => {
+                if (calls.on.includes(ch)) {
+                    throw new Error(`Attempted to register a second handler for "${ch}" (on)`);
+                }
+                calls.on.push(ch);
+            },
+        },
+        app: {
+            whenReady: () => ({ then: () => { } }),
+            on: () => { },
+            quit: () => { },
+            getPath: () => '/tmp',
+            getVersion: () => '0.0.0-smoke',
+            isPackaged: false,
+        },
+        BrowserWindow: class {
+            constructor() { }
+            on() { return this; }
+            show() { }
+            loadURL() { }
+            loadFile() { }
+            // Bundle calls webContents.send, .setZoomFactor, .openDevTools, etc.
+            // Proxy returns a noop for any property so registration can't throw.
+            webContents = new Proxy({}, { get: () => () => { } });
+            isDestroyed() { return false; }
+            static getAllWindows() { return []; }
+        },
+        dialog: { showOpenDialog: async () => ({ canceled: true, filePaths: [] }) },
+        // protocol.handle is invoked by registerLocalFileProtocol() inside
+        // app.whenReady().then(); stub it so registration doesn't throw.
+        protocol: { handle: () => { } },
+        net: { fetch: async () => new Response('', { status: 404 }) },
+    };
+
+    // 4) Stub electron-log main entry — keep it from creating log file IO
+    // 5) Stub electron-store — keep it from writing to disk
+    // 6) Stub node-pty — native module, Node can't load it
+    const noopStub = new Proxy(function () { }, {
+        get: () => noopStub,
+        apply: () => noopStub,
+        construct: () => ({}),
+    });
+
+    const origLoad = Module._load;
+    Module._load = function (request, parent, ...rest) {
+        if (request === 'electron') return stubElectron;
+        if (request === 'node:sqlite') return { DatabaseSync: class { constructor() { } exec() { } close() { } prepare() { return { get: () => null, all: () => [], run: () => ({ changes: 0, lastInsertRowid: 0 }), finalize: () => { } }; } } };
+        if (request === 'electron-log/main' || request === 'electron-log') return { info: () => { }, warn: () => { }, error: () => { }, debug: () => { } };
+        if (request === 'electron-store') return class { constructor() { } get() { return {}; } set() { } };
+        if (request === 'node-pty') return { spawn: () => ({ onData: () => { }, onExit: () => { } }) };
+        // electron-updater's autoUpdater getter loads native bits and reads
+        // electron.app.getVersion(); stub it so setupAutoUpdater's `??` fallback
+        // doesn't trigger the real loader.
+        if (request === 'electron-updater' || request === 'electron-updater/main') return { autoUpdater: {} };
+        try {
+            return origLoad.call(this, request, parent, ...rest);
+        } catch (e) {
+            // The patched copy lives in os.tmpdir(), so Node can't walk up to
+            // the project's node_modules. When a bare specifier fails to
+            // resolve from the temp copy, re-resolve it from the original
+            // out/main location (which is what the original in-place script
+            // effectively did).
+            if (
+                e &&
+                e.code === 'MODULE_NOT_FOUND' &&
+                parent &&
+                parent.filename &&
+                parent.filename.startsWith(tmpDir)
+            ) {
+                const resolved = require.resolve(request, { paths: [OUT_DIR] });
+                return origLoad.call(this, resolved, parent, ...rest);
+            }
+            throw e;
+        }
+    };
+
+    // 7) Run main bundle
+    console.log('[smoke] requiring main bundle...');
+    try {
+        require(MAIN);
+    } catch (e) {
+        console.error('[smoke] FAILED during require:', e.message);
+        if (e.stack) console.error(e.stack.split('\n').slice(0, 8).join('\n'));
+        process.exitCode = 1;
+        return;
+    }
+
+    // 8) setupIPC is registered inside app.whenReady().then() — our stub whenReady
+    //    doesn't auto-invoke .then. Pull from ipcMain.handle list directly.
+    //    The stub whenReady above didn't call .then, so setupIPC didn't run.
+    //    Fix: replace whenReady so .then fires synchronously, then re-require.
+    console.log('[smoke] app.whenReady() chain did not run in stub. Re-requiring with sync chain...');
+
+    // Redo: drop the require cache and re-stub whenReady so .then fires sync.
+    delete require.cache[MAIN];
+
+    let syncTrigger = null;
+    stubElectron.app.whenReady = () => {
+        const promise = {
+            then: (cb) => {
+                syncTrigger = cb;
+                return promise;
+            },
+        };
+        return promise;
+    };
+
+    console.log('[smoke] re-requiring main with sync whenReady...');
+    require(MAIN);
+    if (syncTrigger) {
+        console.log('[smoke] firing whenReady.then() to trigger setupIPC...');
+        try {
+            syncTrigger();
+        } catch (e) {
+            console.error('[smoke] setupIPC FAILED:', e.message);
+            if (e.stack) console.error(e.stack.split('\n').slice(0, 15).join('\n'));
+            process.exitCode = 1;
+            return;
+        }
+    }
+
+    // 9) Report
+    const handleDupes = calls.handle.filter((ch, i) => calls.handle.indexOf(ch) !== i);
+    const onDupes = calls.on.filter((ch, i) => calls.on.indexOf(ch) !== i);
+
+    console.log('\n[smoke] === 结果 ===');
+    console.log(`  ipcMain.handle 调用次数: ${calls.handle.length}, unique: ${new Set(calls.handle).size}`);
+    console.log(`  ipcMain.on 调用次数:    ${calls.on.length}, unique: ${new Set(calls.on).size}`);
+
+    if (handleDupes.length || onDupes.length) {
+        console.error('[smoke] ❌ 发现重复:');
+        if (handleDupes.length) console.error('  handle:', handleDupes);
+        if (onDupes.length) console.error('  on:', onDupes);
+        process.exitCode = 1;
+        return;
+    }
+    console.log('[smoke] ✅ C1 修复 runtime 验证通过 — 无重复 IPC 通道');
+    console.log('[smoke]    (handle channels:', calls.handle.join(', '), ')');
+    console.log('[smoke]    (on channels:', calls.on.join(', '), ')');
 }
-
-// 8) 报告
-const handleDupes = calls.handle.filter((ch, i) => calls.handle.indexOf(ch) !== i);
-const onDupes = calls.on.filter((ch, i) => calls.on.indexOf(ch) !== i);
-
-console.log('\n[smoke] === 结果 ===');
-console.log(`  ipcMain.handle 调用次数: ${calls.handle.length}, unique: ${new Set(calls.handle).size}`);
-console.log(`  ipcMain.on 调用次数:    ${calls.on.length}, unique: ${new Set(calls.on).size}`);
-
-if (handleDupes.length || onDupes.length) {
-    console.error('[smoke] ❌ 发现重复:');
-    if (handleDupes.length) console.error('  handle:', handleDupes);
-    if (onDupes.length) console.error('  on:', onDupes);
-    process.exit(1);
-}
-console.log('[smoke] ✅ C1 修复 runtime 验证通过 — 无重复 IPC 通道');
-console.log('[smoke]    (handle channels:', calls.handle.join(', '), ')');
-console.log('[smoke]    (on channels:', calls.on.join(', '), ')');

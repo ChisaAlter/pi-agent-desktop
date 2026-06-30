@@ -36,6 +36,13 @@ export interface ShortcutDef {
     ignoreInEditable?: boolean;
 }
 
+interface ShortcutOverride {
+    id: string;
+    keys: string;
+}
+
+const SHORTCUT_OVERRIDE_STORAGE_KEY = "pi-desktop-shortcut-overrides";
+
 export const SHORTCUTS: readonly ShortcutDef[] = Object.freeze([
     {
         id: "open-command-palette",
@@ -105,6 +112,82 @@ export const SHORTCUTS: readonly ShortcutDef[] = Object.freeze([
     },
 ]);
 
+function readShortcutOverrides(): Map<string, string> {
+    const overrides = new Map<string, string>();
+    if (typeof window === "undefined") return overrides;
+    try {
+        const raw = window.localStorage?.getItem(SHORTCUT_OVERRIDE_STORAGE_KEY);
+        if (!raw) return overrides;
+        const parsed: unknown = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return overrides;
+        for (const item of parsed) {
+            if (!item || typeof item !== "object") continue;
+            const override = item as Partial<ShortcutOverride>;
+            if (typeof override.id === "string" && typeof override.keys === "string") {
+                overrides.set(override.id, override.keys);
+            }
+        }
+    } catch {
+        return new Map<string, string>();
+    }
+    return overrides;
+}
+
+function normalizeDisplayKey(key: string): string {
+    const trimmed = key.trim();
+    const lower = trimmed.toLowerCase();
+    if (lower === "esc") return "escape";
+    if (lower === "space") return " ";
+    return trimmed.length === 1 ? trimmed.toLowerCase() : lower;
+}
+
+function parseShortcutKeys(keys: string): ShortcutCombo | null {
+    const parts = keys.split("+").map((part) => part.trim()).filter(Boolean);
+    const combo: ShortcutCombo = { key: "" };
+    const keyParts: string[] = [];
+
+    for (const part of parts) {
+        const lower = part.toLowerCase();
+        if (lower === "ctrl" || lower === "control" || lower === "cmd" || lower === "meta" || lower === "mod") {
+            combo.mod = true;
+        } else if (lower === "shift") {
+            combo.shift = true;
+        } else if (lower === "alt" || lower === "option") {
+            combo.alt = true;
+        } else {
+            keyParts.push(part);
+        }
+    }
+
+    if (keyParts.length !== 1) return null;
+    const key = normalizeDisplayKey(keyParts[0]);
+    if (!key) return null;
+    combo.key = key;
+    if (key === "?" && combo.shift !== true) {
+        combo.shift = true;
+    }
+    return combo;
+}
+
+/** Returns shortcuts with persisted key overrides applied for runtime matching/display. */
+export function getEffectiveShortcuts(
+    shortcuts: readonly ShortcutDef[] = SHORTCUTS,
+): ShortcutDef[] {
+    const overrides = readShortcutOverrides();
+    if (overrides.size === 0) return [...shortcuts];
+    return shortcuts.map((shortcut) => {
+        const overrideKeys = overrides.get(shortcut.id);
+        if (!overrideKeys) return shortcut;
+        const combo = parseShortcutKeys(overrideKeys);
+        if (!combo) return shortcut;
+        return {
+            ...shortcut,
+            keys: overrideKeys,
+            combo,
+        };
+    });
+}
+
 /** 按 category 分组, 顺序按固定枚举顺序稳定 */
 export function groupByCategory(
     shortcuts: readonly ShortcutDef[],
@@ -156,7 +239,7 @@ function isEditableTarget(target: EventTarget | null): boolean {
 /** 在 SHORTCUTS 里找第一个命中当前事件的 shortcut (若有 ignoreInEditable 限制则跳过) */
 export function findMatchingShortcut(e: KeyboardEvent): ShortcutDef | null {
     const editable = isEditableTarget(e.target);
-    for (const s of SHORTCUTS) {
+    for (const s of getEffectiveShortcuts()) {
         if (s.ignoreInEditable && editable) continue;
         if (matchesCombo(e, s.combo)) return s;
     }
@@ -165,7 +248,7 @@ export function findMatchingShortcut(e: KeyboardEvent): ShortcutDef | null {
 
 /** 按 id 查 shortcut (用于 UI 显示) */
 export function getShortcutById(id: string): ShortcutDef | undefined {
-    return SHORTCUTS.find((s) => s.id === id);
+    return getEffectiveShortcuts().find((s) => s.id === id);
 }
 
 // ---- handler 注册 (模块级单例) -------------------------------------------

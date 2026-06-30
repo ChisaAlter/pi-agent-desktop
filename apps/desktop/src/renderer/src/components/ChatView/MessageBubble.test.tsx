@@ -3,7 +3,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
-import { Message, ToolCall } from "../../stores/session-store";
+import type { Message, ToolCall } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { MessageBubble } from "./MessageBubble";
 

@@ -265,6 +265,7 @@ describe("SessionCenter", () => {
 
   it("emits a visible workspace notice when opening a session cannot select its workspace", async () => {
     window.piAPI!.selectWorkspace = vi.fn(async () => ({
+      __brand: "IpcError" as const,
       code: "ipcErrors.workspace.selectFailed",
       fallback: "切换 workspace 失败: path missing",
     }));
@@ -292,6 +293,7 @@ describe("SessionCenter", () => {
 
   it("shows an inline error when continuing succeeds but workspace selection fails", async () => {
     window.piAPI!.selectWorkspace = vi.fn(async () => ({
+      __brand: "IpcError" as const,
       code: "ipcErrors.workspace.selectFailed",
       fallback: "切换 workspace 失败: path missing",
     }));

@@ -1,10 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { SHORTCUTS, type ShortcutDef, groupByCategory } from "../../../shortcuts/registry";
-
-interface ShortcutOverride {
-  id: string;
-  keys: string;
-}
+import { useSettingsStore } from "../../../stores/settings-store";
 
 function KeyBadge({ keys }: { keys: string }): React.JSX.Element {
   return (
@@ -79,14 +75,8 @@ function ShortcutRecorder({
 
 export function ShortcutsSettings(): React.JSX.Element {
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [overrides, setOverrides] = useState<ShortcutOverride[]>(() => {
-    try {
-      const stored = localStorage.getItem("pi-desktop-shortcut-overrides");
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
+  const overrides = useSettingsStore((state) => state.settings.shortcutOverrides ?? []);
+  const updateSettings = useSettingsStore((state) => state.updateSettings);
 
   const categories = groupByCategory(SHORTCUTS);
 
@@ -102,26 +92,23 @@ export function ShortcutsSettings(): React.JSX.Element {
     (shortcutId: string, newKeys: string) => {
       const newOverrides = overrides.filter((o) => o.id !== shortcutId);
       newOverrides.push({ id: shortcutId, keys: newKeys });
-      setOverrides(newOverrides);
-      localStorage.setItem("pi-desktop-shortcut-overrides", JSON.stringify(newOverrides));
+      updateSettings({ shortcutOverrides: newOverrides });
       setEditingId(null);
     },
-    [overrides],
+    [overrides, updateSettings],
   );
 
   const handleReset = useCallback(
     (shortcutId: string) => {
       const newOverrides = overrides.filter((o) => o.id !== shortcutId);
-      setOverrides(newOverrides);
-      localStorage.setItem("pi-desktop-shortcut-overrides", JSON.stringify(newOverrides));
+      updateSettings({ shortcutOverrides: newOverrides });
     },
-    [overrides],
+    [overrides, updateSettings],
   );
 
   const handleResetAll = useCallback(() => {
-    setOverrides([]);
-    localStorage.removeItem("pi-desktop-shortcut-overrides");
-  }, []);
+    updateSettings({ shortcutOverrides: [] });
+  }, [updateSettings]);
 
   return (
     <div>

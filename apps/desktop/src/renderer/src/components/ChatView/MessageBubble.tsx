@@ -2,8 +2,8 @@
 // AI 消息: 白底圆角卡片 + 底部复制/时间戳
 // 用户消息: 浅色 pill + normal 字重
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Message } from '../../stores/session-store';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import type { Message } from '../../stores/session-store';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { CommandCard } from './CommandCard';
 import { CustomMessageCard } from './CustomMessageCard';
@@ -140,6 +140,7 @@ function ToolActivity({
 }): React.JSX.Element {
   const [isExpanded, setIsExpanded] = useState(false);
   const running = toolCalls.some((tc) => tc.status === "running");
+  const summary = useMemo(() => toolSummary(toolCalls), [toolCalls]);
 
   return (
     <div className="mt-1">
@@ -150,7 +151,7 @@ function ToolActivity({
       >
         <span className="flex min-w-0 items-center gap-1.5 truncate">
           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${running ? "bg-[#f59e0b]" : "bg-[var(--color-success)]"}`} aria-hidden />
-          <span className="truncate">{running ? "处理中" : toolSummary(toolCalls)}</span>
+          <span className="truncate">{running ? "处理中" : summary}</span>
         </span>
         <svg
           className={`ml-2 h-3 w-3 shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`}
@@ -174,7 +175,7 @@ function ToolActivity({
   );
 }
 
-export const MessageBubble = React.memo(function MessageBubble({
+function MessageBubbleImpl({
   message,
   isStreaming = false,
   isSearchTarget = false,
@@ -185,7 +186,10 @@ export const MessageBubble = React.memo(function MessageBubble({
   const timeIso = formatIso(message.timestamp);
   const articleLabel = `${isUser ? '你' : 'Pi'} · ${timeText}`;
   const userCommand = isUser ? splitUserInternalCommand(message.content) : { badge: null, content: message.content };
-  const inlineThinking = !isUser ? splitInlineThinking(message.content) : { thinking: "", content: userCommand.content, count: 0 };
+  const inlineThinking = useMemo(
+    () => !isUser ? splitInlineThinking(message.content) : { thinking: "", content: userCommand.content, count: 0 },
+    [isUser, message.content, userCommand.content],
+  );
   const thinkingParts = [message.thinking?.trim(), inlineThinking.thinking]
     .filter((part): part is string => Boolean(part))
   const thinkingContent = thinkingParts.join("\n\n");
@@ -196,10 +200,20 @@ export const MessageBubble = React.memo(function MessageBubble({
   const visibleContent = inlineThinking.content;
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
-  const planAction = !isUser ? (message.planAction ?? inferInlinePlanAction(message, visibleContent)) : undefined;
+  const planAction = useMemo(
+    () => !isUser ? (message.planAction ?? inferInlinePlanAction(message, visibleContent)) : undefined,
+    [isUser, message.id, message.planAction, visibleContent],
+  );
   const planStatus = planAction?.status ?? "pending";
   const showPlanPanel = Boolean(planAction);
-  const planSteps = usePlanStore((state) => state.steps);
+  // Narrow subscription: only re-render when the steps for THIS message's plan change.
+  // The store tracks steps for the single active plan; return undefined when this
+  // message's plan isn't the active one so other plans' step updates don't re-render us.
+  const planSteps = usePlanStore((state) => {
+    if (!planAction?.id) return undefined;
+    const active = state.activeExecution;
+    return active && active.activePlanId === planAction.id ? state.steps : undefined;
+  });
   const effectiveMessage = planAction && !message.planAction
     ? { ...message, planAction }
     : message;
@@ -351,4 +365,23 @@ export const MessageBubble = React.memo(function MessageBubble({
       </div>
     </article>
   );
-});
+}
+
+function areEqual(prev: MessageBubbleProps, next: MessageBubbleProps): boolean {
+  // Only re-render when this message's identity/data or streaming/search state changes.
+  // Avoids re-rendering when unrelated parent state (other sessions, sidebar, etc.) changes.
+  return (
+    prev.message.id === next.message.id &&
+    prev.message.content === next.message.content &&
+    prev.message.thinking === next.message.thinking &&
+    prev.message.thinkingCount === next.message.thinkingCount &&
+    prev.message.toolCalls === next.message.toolCalls &&
+    prev.message.customCard === next.message.customCard &&
+    prev.message.planAction === next.message.planAction &&
+    prev.isStreaming === next.isStreaming &&
+    prev.isSearchTarget === next.isSearchTarget &&
+    prev.onPlanAction === next.onPlanAction
+  );
+}
+
+export const MessageBubble = React.memo(MessageBubbleImpl, areEqual);

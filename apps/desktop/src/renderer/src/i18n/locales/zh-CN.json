@@ -76,6 +76,8 @@
     "subtitle": "桌面工作台",
     "workspaceNone": "未选择工作区",
     "newConversation": "新建对话",
+    "quickNewConversation": "快速新建对话",
+    "groupModeAria": "会话分组方式",
     "groupByDate": "按时间分组",
     "groupByWorkspace": "按工作区分组",
     "status": {
@@ -84,12 +86,19 @@
       "offline": "pi-agent 不在线"
     },
     "sessions": {
+      "listAria": "会话列表",
       "unnamed": "未命名会话",
+      "pinned": "置顶",
+      "pin": "置顶",
+      "unpin": "取消置顶",
+      "rename": "重命名",
+      "renameSession": "重命名会话",
       "archive": "归档",
       "restore": "恢复",
       "delete": "删除",
       "archived": "已归档",
       "empty": "还没有会话。",
+      "emptyHint": "发送第一条消息后会出现在这里。",
       "deleteConfirm": "确定删除「{{name}}」？此操作不可恢复。",
       "dateGroup": {
         "today": "今天",
@@ -211,23 +220,182 @@
       "title": "发送失败",
       "retry": "重试"
     },
+    "empty": {
+      "title": "新对话",
+      "subtitle": "输入消息后，Pi Agent 会在当前工作区开始运行。",
+      "workspace": "工作区",
+      "model": "模型",
+      "permission": "权限",
+      "thinking": "思考"
+    },
+    "permissionPrefix": "权限:",
+    "status": {
+      "running": "运行中",
+      "connected": "已连接",
+      "disconnected": "未连接"
+    },
+    "session": {
+      "untitled": "未命名会话",
+      "renameAria": "重命名当前会话",
+      "renameTitle": "重命名会话",
+      "switchAria": "切换会话"
+    },
+    "plan": {
+      "execute": "执行计划",
+      "executeNamed": "执行计划：{{name}}",
+      "supplement": "补充: {{text}}"
+    },
+    "errors": {
+      "readOnlyHistory": "当前会话是只读历史，请先从此会话继续。",
+      "continueFailed": "继续会话失败: {{message}}"
+    },
     "streamIndicator": "Pi 正在思考...",
     "stopGeneration": "停止生成",
     "stop": "停止",
+    "rightRail": {
+      "expand": "展开右侧栏",
+      "collapse": "收起右侧栏"
+    },
+    "scrollTop": "回到顶部",
+    "readOnly": {
+      "label": "当前为只读历史会话",
+      "continue": "从此会话继续"
+    },
     "messagesAria": "对话消息",
     "messageAria": "{{author}} 的消息"
+  },
+  "planCard": {
+    "status": {
+      "pending": "等待确认",
+      "refining": "等待补充",
+      "executing": "执行中",
+      "pausing": "正在暂停",
+      "paused": "已暂停",
+      "executed": "已完成",
+      "cancelled": "已取消",
+      "failed": "执行失败"
+    },
+    "progressSuffix": " ({{completed}}/{{total}})",
+    "expandDetails": "展开计划详情 ↓",
+    "collapse": "收起 ↑",
+    "stepsLabel": "计划步骤",
+    "optionAria": "选项 {{label}} {{value}}",
+    "feedbackPlaceholder": "有补充就写在这里",
+    "feedbackPlaceholderWithOptions": "选好后可补充说明（可选）",
+    "executePlan": "执行计划",
+    "confirmAndExecute": "确认并执行",
+    "selectOptionPrompt": "请选择选项",
+    "sendSupplement": "发送补充",
+    "cancel": "取消",
+    "selectFirstHint": "先选一个选项再执行",
+    "pauseExecution": "暂停执行",
+    "pausing": "正在暂停...",
+    "resumeExecution": "继续执行",
+    "progressLabel": "进度 {{completed}}/{{total}}",
+    "completedLabel": "完成 {{completed}}/{{total}}",
+    "terminalExecuted": "计划已执行完毕",
+    "terminalCancelled": "计划已取消",
+    "terminalFailed": "计划执行失败"
   },
   "chatInput": {
     "placeholder": {
       "ready": "输入消息...（输入 / 唤起命令）",
-      "noConnection": "Pi CLI 未连接，请确认 pi 已安装并添加到系统路径"
+      "noConnection": "Pi CLI 未连接，请确认 pi 已安装并添加到系统路径",
+      "reference": "输入消息，使用 / 调用命令、@ 引用文件...",
+      "planRunning": "正在执行计划，输入内容会作为补充指令发送",
+      "taskRunning": "任务运行中，输入内容会作为追加指令发送"
     },
     "send": "发送",
+    "sendFollowUp": "发送追加指令",
     "stop": "停止",
+    "pauseExecution": "暂停执行",
+    "resizeComposer": "调整输入框高度",
     "addAttachment": "添加附件",
+    "addAttachmentAndTools": "添加附件和工具",
+    "addFileOrImage": "添加文件或图片",
+    "openSlashCommands": "打开 Slash 命令",
+    "openTools": "打开工具面板",
+    "tools": "工具",
+    "open": "打开",
     "attachment": "附件",
+    "removeAttachment": "移除附件 {{name}}",
+    "attachmentsSelected": "已选附件",
+    "fileCandidates": "文件候选",
+    "commandCandidates": "Pi 命令候选",
     "permission": "权限设置",
     "permissionLabel": "完全访问权限",
+    "permissionAria": "权限: {{label}}",
+    "permissions": {
+      "ask": {
+        "label": "主动询问",
+        "desc": "写入和命令默认询问"
+      },
+      "smart": {
+        "label": "智能授权",
+        "desc": "只读自动放行，写入询问"
+      },
+      "always": {
+        "label": "始终授权",
+        "desc": "尽量自动允许，保留审计"
+      }
+    },
+    "agentMode": {
+      "aria": "选择 Agent 模式",
+      "menu": "Agent 模式",
+      "enabled": "{{mode}} 模式已启用",
+      "build": {
+        "label": "Build",
+        "desc": "正常实现模式，可按权限读写和执行工具"
+      },
+      "plan": {
+        "label": "Plan",
+        "desc": "只制定计划，仅允许写入 .pi/plans/*.md"
+      },
+      "compose": {
+        "label": "Compose",
+        "desc": "按 MiMo 风格编排工作流和技能"
+      }
+    },
+    "thinking": {
+      "aria": "思考强度: {{label}}",
+      "menu": "思考强度",
+      "heading": "推理",
+      "none": "关闭",
+      "low": "低",
+      "medium": "中",
+      "high": "高"
+    },
+    "model": {
+      "current": "当前模型: {{model}}",
+      "notConfigured": "未配置模型",
+      "notSelected": "未选择模型",
+      "select": "选择模型",
+      "empty": "暂无可用模型 (Pi CLI 未配置)"
+    },
+    "workspace": {
+      "current": "当前工作目录: {{name}}",
+      "select": "选择工作目录",
+      "recent": "最近",
+      "chooseNew": "选择新项目"
+    },
+    "running": {
+      "plan": "正在执行计划 · 新输入会作为补充指令进入当前执行",
+      "task": "任务运行中 · 新输入会作为追加指令进入当前会话"
+    },
+    "errors": {
+      "unknown": "未知错误",
+      "slashWithAttachment": "Slash 命令不能和附件一起发送",
+      "sendFailed": "发送失败: {{message}}",
+      "visionNotConfigured": "请先在设置中选择识图模型",
+      "visionUnavailable": "识图服务不可用 (preload 未注入)",
+      "visionFailed": "识图失败: {{message}}",
+      "filePickerUnavailable": "文件选择不可用 (preload 未注入)",
+      "workspaceRequired": "请先选择 workspace",
+      "filePickerFailed": "打开文件选择器失败: {{message}}",
+      "switchWorkspaceFailed": "切换 workspace 失败: {{message}}",
+      "directoryPickerUnavailable": "目录选择不可用 (preload 未注入)",
+      "createWorkspaceFailed": "创建 workspace 失败: {{message}}"
+    },
     "shortcuts": {
       "send": "发送",
       "newline": "换行"
@@ -308,6 +476,262 @@
     "expand": "展开",
     "collapse": "折叠"
   },
+  "editor": {
+    "loading": "加载编辑器...",
+    "saveFile": "保存文件"
+  },
+  "workspaceSwitcher": {
+    "switchAria": "切换工作区：{{name}}",
+    "prefix": "工作区:",
+    "search": "搜索项目",
+    "noMatches": "没有匹配的项目",
+    "newBlankProject": "新增空白项目",
+    "useExistingFolder": "使用现有文件夹",
+    "promptName": "请输入新项目名称"
+  },
+  "fileWorkspace": {
+    "region": "文件工作区",
+    "title": "Files",
+    "refreshTree": "刷新文件树",
+    "refresh": "刷新",
+    "searchFiles": "搜索文件",
+    "truncated": "截断",
+    "emptyDirectory": "目录为空",
+    "selectFile": "从左侧文件树或搜索结果中选择文件。",
+    "selectPrompt": "选择一个文件开始预览",
+    "previewAria": "文件只读预览",
+    "lineNumbersAria": "文件行号",
+    "statusBarAria": "文件状态栏",
+    "tree": {
+      "loading": "正在读取文件树...",
+      "errorTitle": "文件树加载失败",
+      "loadFailed": "加载文件树失败: {{message}}"
+    },
+    "search": {
+      "loading": "正在搜索文件...",
+      "errorTitle": "文件搜索失败",
+      "empty": "没有匹配文件"
+    },
+    "status": {
+      "browse": "{{count}} 个文件可浏览",
+      "reading": "正在读取文件",
+      "readFailed": "读取失败",
+      "conflict": "保存冲突",
+      "diffLoading": "正在读取 diff",
+      "diffView": "Git diff 视图",
+      "saveFailed": "保存失败",
+      "dirty": "有未保存修改",
+      "loadingTree": "loading tree",
+      "treeError": "tree error",
+      "ready": "ready",
+      "loading": "loading",
+      "readError": "read error",
+      "gitClean": "git clean",
+      "saving": "saving",
+      "saved": "saved"
+    },
+    "mode": {
+      "preview": {
+        "label": "只读预览",
+        "description": "只读"
+      },
+      "edit": {
+        "label": "编辑",
+        "description": "可编辑"
+      },
+      "diff": {
+        "label": "Diff",
+        "description": "差异视图"
+      },
+      "conflict": {
+        "label": "冲突",
+        "description": "冲突视图"
+      }
+    },
+    "readonly": {
+      "binary": "二进制文件不可直接编辑",
+      "truncated": "文件过大且已截断，暂不允许保存"
+    },
+    "actions": {
+      "edit": "编辑",
+      "readOnly": "只读",
+      "discard": "丢弃修改",
+      "saving": "保存中",
+      "save": "保存",
+      "viewDiff": "查看 Diff",
+      "backToPreview": "返回预览",
+      "continueEditing": "继续编辑",
+      "viewConflict": "查看冲突",
+      "open": "打开",
+      "reveal": "定位",
+      "copyPath": "复制路径",
+      "copyRelativePath": "复制相对路径",
+      "copied": "已复制",
+      "quoteToChat": "引用到聊天",
+      "retrySave": "重试保存",
+      "useDiskVersion": "采用磁盘版本",
+      "copyError": "复制错误",
+      "copyDraft": "复制草稿",
+      "reloadFile": "重新读取文件",
+      "quote": "引用"
+    },
+    "messages": {
+      "discardConfirmFile": "当前文件有未保存修改，切换文件将丢弃这些修改。继续？",
+      "discardConfirmDirectory": "当前文件有未保存修改，切换目录将丢弃这些修改。继续？",
+      "discarded": "已丢弃未保存修改",
+      "saved": "已保存",
+      "selectedDirectory": "已选中目录",
+      "copiedAbsolute": "已复制绝对路径",
+      "copiedRelative": "已复制相对路径",
+      "openRequested": "已请求系统打开",
+      "revealRequested": "已请求系统定位",
+      "copiedError": "已复制错误信息",
+      "copiedDraft": "已复制当前草稿",
+      "reloaded": "已重新读取磁盘文件",
+      "usedDiskVersion": "已采用磁盘版本",
+      "readFileFailed": "读取文件失败: {{message}}",
+      "saveFailed": "保存失败: {{message}}",
+      "copyPathFailed": "复制路径失败: {{message}}",
+      "copyRelativeFailed": "复制相对路径失败: {{message}}",
+      "openFailed": "系统打开失败: {{message}}",
+      "revealFailed": "系统定位失败: {{message}}",
+      "copyErrorFailed": "复制错误信息失败: {{message}}",
+      "copyDraftFailed": "复制草稿失败: {{message}}"
+    },
+    "emptyStates": {
+      "noDiff": "当前文件没有可显示的工作区 diff。",
+      "binary": "二进制文件暂不预览，可使用“打开”或“定位”查看。",
+      "truncated": "文件过大，当前只显示前 512KB。为避免误保存，截断文件暂不可编辑。"
+    },
+    "conflict": {
+      "warning": "磁盘文件已在外部发生变化。下面显示“磁盘版本”到“当前草稿”的差异，草稿仍保留在编辑器中。",
+      "continueDraft": "继续编辑草稿"
+    },
+    "details": {
+      "heading": "文件信息",
+      "name": "名称",
+      "size": "大小",
+      "status": "状态",
+      "limit": "限制",
+      "mode": "模式",
+      "gitUnchanged": "未变更",
+      "saveStatus": "保存状态",
+      "recentAction": "最近操作",
+      "conflictHandling": "冲突处理",
+      "recovery": "恢复",
+      "actions": "操作"
+    }
+  },
+  "rightRail": {
+    "environment": "环境信息",
+    "noGit": "无 Git",
+    "unknownProject": "未知项目",
+    "packageManager": "包管理器",
+    "configFiles": "配置文件",
+    "scripts": "脚本",
+    "runInTerminal": "在终端运行 {{command}}",
+    "changes": "变更",
+    "commitOrPush": "提交或推送",
+    "commitOrPushAria": "提交或推送，打开 Git 面板",
+    "projectFiles": "项目文件",
+    "browseAllFiles": "浏览全部文件",
+    "openFile": "在文件工作区打开 {{path}}",
+    "viewDiff": "查看 {{path}} 的 Git diff",
+    "collapseFiles": "收起文件",
+    "expandRemainingFiles": "展开其余 {{count}} 个文件",
+    "progress": "进度",
+    "itemCount": "{{count}} 项",
+    "idle": "idle",
+    "recentTaskCompleted": "最近任务已完成",
+    "goal": "任务目标：{{condition}}",
+    "goalStatus": {
+      "running": "执行中",
+      "checking": "judge 检查中",
+      "satisfied": "已满足",
+      "impossible": "不可完成",
+      "cleared": "已清除"
+    },
+    "queue": "运行队列",
+    "autoRetry": "自动重试",
+    "running": "运行中",
+    "queued": "排队",
+    "currentSession": "当前会话",
+    "emptyProgress": "开始对话或执行工具后，这里会显示计划步骤、工具调用和长任务进度。",
+    "fileOutput": "文件输出",
+    "preview": "预览",
+    "openInSystem": "系统打开",
+    "reveal": "定位",
+    "copyPath": "复制路径",
+    "copied": "已复制",
+    "quote": "引用",
+    "emptyFileOutput": "本轮生成、修改或引用的文件会在这里汇总，方便打开、定位和复制路径。",
+    "source": {
+      "taskOutput": "任务输出",
+      "reply": "回复",
+      "tool": "工具"
+    },
+    "status": {
+      "copiedPath": "已复制路径",
+      "copyPathFailed": "复制路径失败: {{message}}",
+      "systemOpenFailed": "系统打开失败: {{message}}",
+      "systemRevealFailed": "系统定位失败: {{message}}",
+      "openRequested": "已请求系统打开",
+      "revealRequested": "已请求系统定位",
+      "quotedToChat": "已引用到聊天",
+      "fileOpened": "已打开文件 {{name}}",
+      "diffOpened": "已打开 diff {{file}}",
+      "highRiskCommandDrafted": "高风险命令已填入终端，请确认后手动执行",
+      "commandSent": "已发送命令到终端"
+    },
+    "queueActivity": {
+      "agentStarted": "Agent 已开始",
+      "turnStarted": "Turn 已开始",
+      "agentEnded": "Agent 已结束",
+      "turnEnded": "Turn 已结束",
+      "autoRetrying": "自动重试中",
+      "autoRetryEnded": "自动重试结束",
+      "extensionError": "扩展错误",
+      "queueUpdated": "队列已更新",
+      "taskRunning": "当前任务运行中",
+      "taskCompleted": "当前任务已完成",
+      "toolRunning": "{{name}} 运行中",
+      "toolFailed": "{{name}} 失败",
+      "toolCompleted": "{{name}} 完成"
+    }
+  },
+  "toolPermissions": {
+    "title": "工具权限",
+    "preset": {
+      "minimal": "最小权限",
+      "development": "开发常用",
+      "all": "全部开启"
+    },
+    "tool": {
+      "fileRead": "文件读取",
+      "fileWrite": "文件写入",
+      "shell": "Bash / PowerShell",
+      "git": "Git",
+      "network": "网络",
+      "extensions": "扩展工具"
+    },
+    "status": {
+      "saveFailed": "工具权限保存失败：{{message}}",
+      "sessionPersistFailed": "工具权限已应用到当前会话，但保存失败：{{message}}",
+      "noTarget": "请先选择工作区或打开会话后再修改工具权限。",
+      "sessionApplied": "已应用到当前会话，正在后台保存。",
+      "workspaceUpdated": "已更新工作区默认权限。",
+      "workspaceUnavailable": "选择工作区后可配置默认工具权限。"
+    }
+  },
+  "usageStats": {
+    "title": "Token 使用统计",
+    "totalTokens": "总 Token",
+    "sessions": "会话数",
+    "inputTokens": "输入 Token",
+    "outputTokens": "输出 Token",
+    "modelBreakdown": "按模型分布",
+    "footer": "{{count}} 个会话 · 数据来自当前工作区"
+  },
   "settings": {
     "title": "设置",
     "tabsAria": "设置分类",
@@ -341,7 +765,23 @@
     },
     "general": {
       "heading": "通用设置",
-      "description": "控制语言、保存行为和编辑器显示偏好。"
+      "description": "控制语言、保存行为和编辑器显示偏好。",
+      "notifications": {
+        "heading": "通知",
+        "description": "控制系统通知和声音提示",
+        "system": {
+          "label": "系统通知",
+          "description": "任务完成和错误时发送系统通知"
+        },
+        "sound": {
+          "label": "提示音",
+          "description": "消息接收和任务完成时播放声音"
+        },
+        "volume": {
+          "label": "音量: {{value}}%",
+          "aria": "音量"
+        }
+      }
     },
     "longHorizon": {
       "heading": "长程能力",

@@ -75,18 +75,24 @@ export interface PiMessageUpdateSdk {
 }
 
 // Legacy flattened shape kept for older adapters/tests.
+// 以下扁平事件类型为 pre-v1.0 形状 (PiMessageUpdateSdk 出现前), 仅旧适配器/测试在用.
+// 新代码请走 PiMessageUpdateSdk + PiAssistantMessageEvent (见上方).
+
+/** @deprecated since v1.0, removed in v1.3. 用 PiMessageUpdateSdk + PiAssistantMessageEvent (type:"text_delta") 替代. */
 export interface PiMessageUpdateTextDelta {
     type: "message_update";
     subtype: "text_delta";
     delta: string;
 }
 
+/** @deprecated since v1.0, removed in v1.3. 用 PiMessageUpdateSdk + PiAssistantMessageEvent (type:"thinking_delta") 替代. */
 export interface PiMessageUpdateThinkingDelta {
     type: "message_update";
     subtype: "thinking_delta";
     delta: string;
 }
 
+/** @deprecated since v1.0, removed in v1.3. 用 PiMessageUpdateSdk + PiAssistantMessageEvent (type:"toolcall_start") 替代. */
 export interface PiMessageUpdateToolStart {
     type: "message_update";
     subtype: "toolcall_start";
@@ -95,6 +101,7 @@ export interface PiMessageUpdateToolStart {
     args: Record<string, unknown>;
 }
 
+/** @deprecated since v1.0, removed in v1.3. 用 PiMessageUpdateSdk + PiAssistantMessageEvent (type:"toolcall_end") 替代. */
 export interface PiMessageUpdateToolEnd {
     type: "message_update";
     subtype: "toolcall_end";
@@ -103,9 +110,13 @@ export interface PiMessageUpdateToolEnd {
     result?: unknown;
 }
 
+/** @deprecated since v1.0, removed in v1.3. 见 PiMessageUpdateTextDelta. */
 export type PiTextDeltaEvent = PiMessageUpdateTextDelta;
+/** @deprecated since v1.0, removed in v1.3. 见 PiMessageUpdateThinkingDelta. */
 export type PiThinkingDeltaEvent = PiMessageUpdateThinkingDelta;
+/** @deprecated since v1.0, removed in v1.3. 见 PiMessageUpdateToolStart. */
 export type PiToolStartEvent = PiMessageUpdateToolStart;
+/** @deprecated since v1.0, removed in v1.3. 见 PiMessageUpdateToolEnd. */
 export type PiToolEndEvent = PiMessageUpdateToolEnd;
 
 export interface PiToolExecutionStart {

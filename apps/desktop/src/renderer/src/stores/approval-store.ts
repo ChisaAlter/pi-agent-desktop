@@ -3,6 +3,9 @@
 
 import { create } from 'zustand';
 
+/** 等待中的审批 Promise resolve 回调 (非序列化, 离开 zustand state) */
+const pendingResolves = new Map<string, (approved: boolean) => void>();
+
 export interface PendingChange {
   id: string;
   toolCallId: string;
@@ -25,8 +28,6 @@ export interface PendingChange {
 interface ApprovalState {
   changes: PendingChange[];
   autoApprove: boolean;
-  /** 等待中的审批 Promise resolve 回调 */
-  _pendingResolves: Map<string, (approved: boolean) => void>;
   // Actions
   addChange: (change: Omit<PendingChange, 'id' | 'status' | 'timestamp'>) => string;
   approveChange: (id: string) => void;
@@ -36,14 +37,13 @@ interface ApprovalState {
   clearChanges: () => void;
   toggleAutoApprove: () => void;
   setAutoApprove: (value: boolean) => void;
-  /** 注册一个等待审批的 Promise */
-  waitForApproval: (changeId: string) => Promise<boolean>;
+  /** 注册一个等待审批的 Promise; 超时默认 5 分钟, 超时返回 false */
+  waitForApproval: (changeId: string, timeoutMs?: number) => Promise<boolean>;
 }
 
 export const useApprovalStore = create<ApprovalState>((set, get) => ({
   changes: [],
   autoApprove: false,
-  _pendingResolves: new Map(),
 
   addChange: (change) => {
     const id = `change_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -64,12 +64,10 @@ export const useApprovalStore = create<ApprovalState>((set, get) => ({
       ),
     }));
     // resolve pending promise
-    const resolve = get()._pendingResolves.get(id);
+    const resolve = pendingResolves.get(id);
     if (resolve) {
       resolve(true);
-      const newResolves = new Map(get()._pendingResolves);
-      newResolves.delete(id);
-      set({ _pendingResolves: newResolves });
+      pendingResolves.delete(id);
     }
   },
 
@@ -80,12 +78,10 @@ export const useApprovalStore = create<ApprovalState>((set, get) => ({
       ),
     }));
     // resolve pending promise
-    const resolve = get()._pendingResolves.get(id);
+    const resolve = pendingResolves.get(id);
     if (resolve) {
       resolve(false);
-      const newResolves = new Map(get()._pendingResolves);
-      newResolves.delete(id);
-      set({ _pendingResolves: newResolves });
+      pendingResolves.delete(id);
     }
   },
 
@@ -102,15 +98,13 @@ export const useApprovalStore = create<ApprovalState>((set, get) => ({
     }));
 
     // resolve all pending promises
-    const newResolves = new Map(state._pendingResolves);
     for (const id of pendingIds) {
-      const resolve = newResolves.get(id);
+      const resolve = pendingResolves.get(id);
       if (resolve) {
         resolve(true);
-        newResolves.delete(id);
+        pendingResolves.delete(id);
       }
     }
-    set({ _pendingResolves: newResolves });
   },
 
   rejectAll: () => {
@@ -126,25 +120,22 @@ export const useApprovalStore = create<ApprovalState>((set, get) => ({
     }));
 
     // resolve all pending promises
-    const newResolves = new Map(state._pendingResolves);
     for (const id of pendingIds) {
-      const resolve = newResolves.get(id);
+      const resolve = pendingResolves.get(id);
       if (resolve) {
         resolve(false);
-        newResolves.delete(id);
+        pendingResolves.delete(id);
       }
     }
-    set({ _pendingResolves: newResolves });
   },
 
   clearChanges: () => {
     // reject any remaining pending
-    const state = get();
-    const newResolves = new Map(state._pendingResolves);
-    for (const [, resolve] of newResolves) {
+    for (const [, resolve] of pendingResolves) {
       resolve(false);
     }
-    set({ changes: [], _pendingResolves: new Map() });
+    pendingResolves.clear();
+    set({ changes: [] });
   },
 
   toggleAutoApprove: () => {
@@ -155,7 +146,7 @@ export const useApprovalStore = create<ApprovalState>((set, get) => ({
     set({ autoApprove: value });
   },
 
-  waitForApproval: (changeId) => {
+  waitForApproval: (changeId, timeoutMs = 5 * 60 * 1000) => {
     return new Promise<boolean>((resolve) => {
       const state = get();
 
@@ -184,9 +175,15 @@ export const useApprovalStore = create<ApprovalState>((set, get) => ({
       }
 
       // 否则注册等待回调
-      const newResolves = new Map(state._pendingResolves);
-      newResolves.set(changeId, resolve);
-      set({ _pendingResolves: newResolves });
+      pendingResolves.set(changeId, resolve);
+      if (timeoutMs > 0) {
+        setTimeout(() => {
+          if (pendingResolves.has(changeId)) {
+            pendingResolves.delete(changeId);
+            resolve(false);
+          }
+        }, timeoutMs);
+      }
     });
   },
 }));

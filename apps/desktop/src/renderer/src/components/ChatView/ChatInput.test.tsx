@@ -45,7 +45,7 @@ describe("ChatInput", () => {
       },
       configurable: true,
     });
-    useAttachmentsStore.setState({ byWorkspace: new Map() });
+    useAttachmentsStore.setState({ byWorkspace: {} });
     useAgentModeStore.setState({ byWorkspace: {} });
     usePlanStore.setState({
       enabled: false,

@@ -25,6 +25,7 @@ const mockApi = {
     setSettings: vi.fn(),
     loadPiConfig: vi.fn(),
     configSetDefaultModel: vi.fn(),
+    onPiConfigChanged: vi.fn(),
 };
 
 async function flushPendingSettingsWrite(): Promise<void> {
@@ -264,6 +265,53 @@ describe("settings-store: updateSettings 走 IPC 错误路径", () => {
         expect(window.localStorage.setItem).toHaveBeenCalledWith("pi-desktop-theme", "system");
         expect(document.documentElement.setAttribute).toHaveBeenCalledWith("data-theme", "dark");
     });
+
+    it("setSidebarGroupMode persists the selected sidebar grouping mode", async () => {
+        vi.useFakeTimers();
+        mockApi.setSettings.mockResolvedValue({});
+        useSettingsStore.setState({
+            settings: {
+                theme: "light", fontSize: 14, model: "", provider: "",
+                temperature: 0.7, maxTokens: 4096, autoSave: true,
+                showLineNumbers: true, wordWrap: true,
+                sidebarGroupMode: "date",
+            },
+            sidebarGroupMode: "date",
+            lastWriteError: null,
+        });
+
+        useSettingsStore.getState().setSidebarGroupMode("workspace");
+        await flushPendingSettingsWrite();
+
+        expect(useSettingsStore.getState().sidebarGroupMode).toBe("workspace");
+        expect(useSettingsStore.getState().settings.sidebarGroupMode).toBe("workspace");
+        expect(mockApi.setSettings).toHaveBeenCalledWith({ sidebarGroupMode: "workspace" });
+    });
+
+    it("persists shortcut overrides and updates runtime cache", async () => {
+        vi.useFakeTimers();
+        mockApi.setSettings.mockResolvedValue({});
+        useSettingsStore.setState({
+            settings: {
+                theme: "light", fontSize: 14, model: "", provider: "",
+                temperature: 0.7, maxTokens: 4096, autoSave: true,
+                showLineNumbers: true, wordWrap: true,
+                shortcutOverrides: [],
+            },
+            lastWriteError: null,
+        });
+
+        const shortcutOverrides = [{ id: "open-command-palette", keys: "Ctrl+Shift+Y" }];
+        useSettingsStore.getState().updateSettings({ shortcutOverrides });
+        await flushPendingSettingsWrite();
+
+        expect(useSettingsStore.getState().settings.shortcutOverrides).toEqual(shortcutOverrides);
+        expect(mockApi.setSettings).toHaveBeenCalledWith({ shortcutOverrides });
+        expect(window.localStorage.setItem).toHaveBeenCalledWith(
+            "pi-desktop-shortcut-overrides",
+            JSON.stringify(shortcutOverrides),
+        );
+    });
 });
 
 describe("settings-store: resetSettings 走 IPC 错误路径", () => {
@@ -294,5 +342,80 @@ describe("settings-store: clearWriteError", () => {
         useSettingsStore.setState({ lastWriteError: "stale error" });
         useSettingsStore.getState().clearWriteError();
         expect(useSettingsStore.getState().lastWriteError).toBeNull();
+    });
+});
+
+describe("settings-store: Pi 配置变更同步", () => {
+    it("收到 Pi 配置变更事件后重新加载模型并替换旧缓存", async () => {
+        vi.resetModules();
+        const localStorage = createLocalStorageMock();
+        let onChanged: (() => void) | undefined;
+        const eventApi = {
+            ...mockApi,
+            getSettings: vi.fn(async () => ({})),
+            setSettings: vi.fn(async () => ({})),
+            loadPiConfig: vi.fn(async () => ({
+                models: [
+                    {
+                        id: "longcat-preview",
+                        name: "LongCat 2.0 Preview",
+                        provider: "longcat",
+                        providerName: "LongCat",
+                        description: "LongCat · 通用 · 128K上下文",
+                    },
+                ],
+                currentModel: { model: "longcat-preview", provider: "longcat" },
+            })),
+            onSettingsChanged: vi.fn(),
+            onPiConfigChanged: vi.fn((cb: () => void) => {
+                onChanged = cb;
+                return vi.fn();
+            }),
+        };
+        (globalThis as { window: unknown }).window = {
+            piAPI: eventApi,
+            localStorage,
+            matchMedia: vi.fn(() => ({
+                matches: false,
+                addEventListener: vi.fn(),
+                removeEventListener: vi.fn(),
+            })),
+        };
+        (globalThis as { localStorage: Storage }).localStorage = localStorage;
+
+        const { useSettingsStore: freshStore } = await import("../settings-store");
+        freshStore.setState({
+            settings: {
+                theme: "light", fontSize: 14, model: "mimo-v2.5", provider: "mimo",
+                temperature: 0.7, maxTokens: 4096, autoSave: true,
+                showLineNumbers: true, wordWrap: true,
+            },
+            piModels: [
+                {
+                    id: "mimo-v2.5",
+                    name: "MiMo v2.5",
+                    provider: "mimo",
+                    providerName: "MiMo",
+                    description: "stale",
+                },
+            ],
+            lastWriteError: null,
+        });
+
+        expect(eventApi.onPiConfigChanged).toHaveBeenCalledTimes(1);
+        await onChanged?.();
+        await Promise.resolve();
+
+        expect(freshStore.getState().piModels).toEqual([
+            expect.objectContaining({
+                id: "longcat-preview",
+                provider: "longcat",
+                name: "LongCat 2.0 Preview",
+            }),
+        ]);
+        expect(freshStore.getState().settings).toMatchObject({
+            model: "longcat-preview",
+            provider: "longcat",
+        });
     });
 });

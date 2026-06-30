@@ -11,6 +11,7 @@ import { create } from 'zustand';
 import { logger } from '../utils/logger';
 import { isIpcError, type Message, type SessionUsageSnapshot, type ToolCall, type ToolPermissions } from '@shared';
 import { addToast } from './toast-store';
+import { getPiAPI } from '../utils/pi-api';
 
 // 2026-06-06 hotfix: 用 @shared 提供的 Message/ToolCall 类型,不再本地 duplicate
 // 主进程 store 里的 timestamp/startTime/endTime 是 string(JSON 反序列化后), 内存里
@@ -117,6 +118,7 @@ interface SessionState {
     opts?: { persist?: boolean },
   ) => void;
   loadSessions: () => Promise<void>;
+  init: () => void;
   getCurrentSession: () => Session | null;
   getSessionMessages: (sessionId: string) => Message[];
   /** 2026-06-06 hotfix: 清掉错误计数(banner 关闭) */
@@ -201,10 +203,6 @@ function observePersistResult(promise: Promise<unknown>): void {
       }
     })
     .catch(recordPersistFailure);
-}
-
-function getPiAPI(): Window["piAPI"] | undefined {
-  return typeof window !== "undefined" ? window.piAPI : undefined;
 }
 
 function getSessionActivityTime(session: Session): number {
@@ -312,7 +310,6 @@ export const useSessionStore = create<SessionState>((set, get) => {
       set({ sessionsLoading: false });
     }
   };
-  loadSessions();
 
   return {
   sessions: [],
@@ -321,6 +318,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
   persistErrorCount: 0,
   lastPersistError: null,
   loadSessions,
+  init: () => { void loadSessions(); },
 
   createSession: async (workspaceId: string) => {
     const id = `s_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -717,3 +715,8 @@ export const useSessionStore = create<SessionState>((set, get) => {
   }
   };
 });
+
+// Trigger initial load at module load time (preserves original behavior:
+// in tests window.piAPI is not yet set up, so getPiAPI() returns undefined
+// and loadSessions() is a no-op; in production it loads from main process).
+useSessionStore.getState().init();

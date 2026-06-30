@@ -55,6 +55,11 @@ const longHorizonSchema = z
     })
     .strict();
 
+const shortcutOverrideSchema = z.object({
+    id: z.string().min(1).max(128),
+    keys: z.string().min(1).max(64),
+}).strict();
+
 const appSettingsSchema = z
     .object({
         theme: z.enum(["light", "dark", "system"]),
@@ -73,10 +78,12 @@ const appSettingsSchema = z
         managedRuntimePath: z.string().optional(),
         runtimeChannel: z.enum(["stable", "latest"]).optional(),
         autoCompactionEnabled: z.boolean().optional(),
+        sidebarGroupMode: z.enum(["date", "workspace"]).optional(),
         visionProvider: z.string().optional(),
         visionModel: z.string().optional(),
         showThinking: z.boolean().optional(),
         thinkingLevel: z.enum(["none", "low", "medium", "high"]).optional(),
+        shortcutOverrides: z.array(shortcutOverrideSchema).max(200).optional(),
         workspaceToolDefaults: z.record(z.string(), z.record(z.enum([
             "fileRead",
             "fileWrite",
@@ -105,7 +112,7 @@ export const gitCommitSchema = z.tuple([
 // git:add — 验证 workspacePath 是 string, files 是 string[] (允许空数组走 "no-op" 分支)
 export const gitAddSchema = z.tuple([
     z.string().min(1, "workspacePath must be a non-empty string"),
-    z.array(z.string()),
+    z.array(z.string()).max(10000, "files array is too large"),
 ]);
 
 export const gitDiffSchema = z.union([
@@ -145,6 +152,22 @@ export const gitChangedFilesSchema = z.tuple([
     z.string().min(1, "workspacePath must be a non-empty string"),
 ]);
 
+// git:status — (workspacePath: string) git working tree status
+export const gitStatusSchema = z.tuple([
+    z.string().min(1, "workspacePath must be a non-empty string"),
+]);
+
+// git:log — (workspacePath: string, count?: number = 20) commit history
+export const gitLogSchema = z.tuple([
+    z.string().min(1, "workspacePath must be a non-empty string"),
+    z.number().int().min(1, "count must be a positive integer").max(1000, "count is too large").optional(),
+]);
+
+// git:branches — (workspacePath: string) list local + remote branches
+export const gitBranchesSchema = z.tuple([
+    z.string().min(1, "workspacePath must be a non-empty string"),
+]);
+
 // terminal:input — 验证 id 和 data 都是 string (ptyManager.write 需要这两个)
 export const terminalCreateSchema = z.tuple([
     z
@@ -168,6 +191,19 @@ export const terminalResizeSchema = z.tuple([
     z.number().int().min(4).max(200),
 ]);
 
+// ── Tool call schema ──────────────────────────────────────
+// Validates tool call entries embedded in session messages.
+const toolCallSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    input: z.unknown().optional(),
+    output: z.unknown().optional(),
+    // Allow the union of all status values used across ToolCall variants in shared-types
+    // (pending/running/completed/error/success/failed/refining/executing/pausing/paused/executed/cancelled/waiting/blocked).
+    // Keeping this permissive avoids rejecting persisted tool calls during appendMessage.
+    status: z.string().optional(),
+});
+
 // ── Session messages persistence schemas ──────────────────
 // Session CRUD schemas are defined above (string[]/string).
 // Below are the 3 message persistence schemas.
@@ -182,7 +218,7 @@ export const appendMessageSchema = z.tuple([
             content: z.string(),
             timestamp: z.union([z.string(), z.date(), z.number()]),
             thinking: z.string().optional(),
-            toolCalls: z.array(z.unknown()).optional(),
+            toolCalls: z.array(toolCallSchema).max(1000).optional(),
         })
         .passthrough(), // 允许额外字段,真值由 services/session-store 决定
 ]);
@@ -198,7 +234,7 @@ export const updateMessageSchema = z.tuple([
             content: z.string().optional(),
             timestamp: z.union([z.string(), z.date(), z.number()]).optional(),
             thinking: z.string().optional(),
-            toolCalls: z.array(z.unknown()).optional(),
+            toolCalls: z.array(toolCallSchema).max(1000).optional(),
         })
         .passthrough(),
 ]);
@@ -231,12 +267,12 @@ export const updateSessionMetadataSchema = z.tuple([
     z
         .object({
             summary: z.string().optional(),
-            lastOutputPaths: z.array(z.string()).optional(),
+            lastOutputPaths: z.array(z.string()).max(1000, "lastOutputPaths array is too large").optional(),
             favorite: z.boolean().optional(),
-            tags: z.array(z.string()).optional(),
+            tags: z.array(z.string()).max(1000, "tags array is too large").optional(),
             archived: z.boolean().optional(),
             readOnly: z.boolean().optional(),
-            lastOpenedAt: z.number().optional(),
+            lastOpenedAt: z.number().nonnegative("lastOpenedAt must be non-negative").optional(),
             usage: z
                 .object({
                     provider: z.string().optional(),
@@ -285,7 +321,7 @@ const packageSourceValueSchema = z
 export const packageSourceSchema = z.tuple([packageSourceValueSchema]);
 
 export const packageSearchSchema = z.tuple([
-    z.string(),
+    z.string().max(256, "search query is too long"),
 ]);
 
 const fileTreeOptionsSchema = z
@@ -320,11 +356,11 @@ export const readTextFileSchema = z.union([
 export const searchFilesSchema = z.union([
     z.tuple([
         z.string().min(1, "workspacePath must be a non-empty string"),
-        z.string().min(1, "query must be a non-empty string"),
+        z.string().min(1, "query must be a non-empty string").max(256, "query is too long"),
     ]),
     z.tuple([
         z.string().min(1, "workspacePath must be a non-empty string"),
-        z.string().min(1, "query must be a non-empty string"),
+        z.string().min(1, "query must be a non-empty string").max(256, "query is too long"),
         fileSearchOptionsSchema,
     ]),
 ]);
@@ -394,7 +430,7 @@ export const codexScanSchema = z.tuple([
 
 export const codexImportSchema = z.tuple([
     z.string().min(1, "workspacePath must be a non-empty string"),
-    z.array(z.string().min(1), { message: "sourcePaths must be an array of non-empty strings" }),
+    z.array(z.string().min(1), { message: "sourcePaths must be an array of non-empty strings" }).max(100, "sourcePaths array is too large"),
 ]);
 
 export const claudeScanSchema = z.tuple([
@@ -403,7 +439,7 @@ export const claudeScanSchema = z.tuple([
 
 export const claudeImportSchema = z.tuple([
     z.string().min(1, "workspacePath must be a non-empty string"),
-    z.array(z.string().min(1), { message: "sourcePaths must be an array of non-empty strings" }),
+    z.array(z.string().min(1), { message: "sourcePaths must be an array of non-empty strings" }).max(100, "sourcePaths array is too large"),
 ]);
 
 // ── Workbench context schema ───────────────────────────────

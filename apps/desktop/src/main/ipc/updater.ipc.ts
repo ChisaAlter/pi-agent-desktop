@@ -1,7 +1,6 @@
 import { ipcMain } from "electron";
-import log from "electron-log/main";
-import { ipcError } from "@shared";
 import type { AppUpdaterService } from "../services/updater";
+import { withUpdaterAction } from "./helpers";
 
 export function setupUpdaterIpc(service: AppUpdaterService): void {
     ipcMain.handle("updater:get-state", () => {
@@ -9,38 +8,26 @@ export function setupUpdaterIpc(service: AppUpdaterService): void {
     });
 
     ipcMain.handle("updater:check", async () => {
-        try {
-            return await service.checkForUpdates();
-        } catch (error) {
-            log.error("[updater.ipc] updater:check failed:", error);
-            return ipcError(
-                "ipcErrors.updater.checkFailed",
-                `检查应用更新失败: ${error instanceof Error ? error.message : String(error)}`,
-            );
-        }
+        return withUpdaterAction(() => service.checkForUpdates(), {
+            errorKey: "ipcErrors.updater.checkFailed",
+            label: "检查应用更新失败",
+            logTag: "[updater.ipc] updater:check failed:",
+        });
     });
 
     ipcMain.handle("updater:download", async () => {
-        try {
-            return await service.downloadUpdate();
-        } catch (error) {
-            log.error("[updater.ipc] updater:download failed:", error);
-            return ipcError(
-                "ipcErrors.updater.downloadFailed",
-                `下载应用更新失败: ${error instanceof Error ? error.message : String(error)}`,
-            );
-        }
+        return withUpdaterAction(() => service.downloadUpdate(), {
+            errorKey: "ipcErrors.updater.downloadFailed",
+            label: "下载应用更新失败",
+            logTag: "[updater.ipc] updater:download failed:",
+        });
     });
 
     ipcMain.handle("updater:install", async () => {
-        try {
-            return await service.installUpdate();
-        } catch (error) {
-            log.error("[updater.ipc] updater:install failed:", error);
-            return ipcError(
-                "ipcErrors.updater.installFailed",
-                `安装应用更新失败: ${error instanceof Error ? error.message : String(error)}`,
-            );
-        }
+        return withUpdaterAction(() => service.installUpdate(), {
+            errorKey: "ipcErrors.updater.installFailed",
+            label: "安装应用更新失败",
+            logTag: "[updater.ipc] updater:install failed:",
+        });
     });
 }

@@ -1,7 +1,7 @@
 // 聊天主区域 - 空态 + 消息列表 + 输入框
 // v1.0.4: 用户可见文案走 t()
 
-import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useMemo, useState, useCallback, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { usePiStream } from '../../hooks/usePiStream';
 import { useSessionStore } from '../../stores/session-store';
@@ -18,6 +18,18 @@ import { WorkspaceSwitcher } from '../TopTabBar/WorkspaceSwitcher';
 import { SEARCH_FOCUS_CLEAR_DELAY_MS } from './search-focus';
 import type { Message } from '../../stores/session-store';
 import { isIpcError, type AgentMessage } from '@shared';
+import { stripPlanFrontmatter } from './plan-utils';
+import { usePlanSyncEffect } from './hooks/usePlanSyncEffect';
+import { MINIMAX_CHROME_ICON_BUTTON_CLASSNAME } from '../MiniMaxCode/chromeButton';
+
+// Ref-based callback that always sees the latest state but has stable identity.
+// Used to avoid stale closures (e.g. handleStop reading an outdated messages array).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- intentional generic callback pattern
+function useEventCallback<T extends (...args: any[]) => any>(fn: T): T {
+  const ref = useRef(fn);
+  useLayoutEffect(() => { ref.current = fn; });
+  return useCallback((...args: any[]) => ref.current(...args), []) as T;
+}
 
 interface ChatViewProps {
     /** v1.0.14: 外部注入的预填文本(由 App.tsx 监听 'chatpanel:prefill' 事件传来,用于跨组件切到 chat 时把 prompt 灌进 ChatInput) */
@@ -91,10 +103,6 @@ function visibleText(message: Message): string {
   return stripThinking(message.content);
 }
 
-function stripPlanFrontmatter(content: string): string {
-  return content.replace(/^\s*---\r?\n[\s\S]*?\r?\n---\r?\n*/u, "").trim();
-}
-
 function buildPlanExecutionPrompt(input: {
   title: string;
   filename?: string;
@@ -118,86 +126,42 @@ function buildPlanExecutionPrompt(input: {
   ].filter((line): line is string => Boolean(line)).join("\n");
 }
 
-type PlanIdentity = {
-  title?: string;
-  filename?: string;
-};
-
-type PlanMessageLike = {
-  id: string;
-  planAction?: Message["planAction"];
-};
-
-function normalizePlanIdentity(value?: string): string {
-  return (value ?? "").trim().toLowerCase();
-}
-
-function samePlanIdentity(left: PlanIdentity, right: PlanIdentity): boolean {
-  const leftFilename = normalizePlanIdentity(left.filename);
-  const rightFilename = normalizePlanIdentity(right.filename);
-  if (leftFilename && rightFilename) {
-    return leftFilename === rightFilename;
-  }
-  const leftTitle = normalizePlanIdentity(left.title);
-  const rightTitle = normalizePlanIdentity(right.title);
-  return Boolean(leftTitle && rightTitle && leftTitle === rightTitle);
-}
-
-function isLockedPlanPhase(phase?: string): boolean {
-  return phase === "executing" || phase === "pausing" || phase === "paused" || phase === "completed";
-}
-
-function isReusablePlanStatus(status?: NonNullable<Message["planAction"]>["status"]): boolean {
-  return status !== "executed" && status !== "cancelled" && status !== "failed";
-}
-
-function findReusablePlanMessage<T extends PlanMessageLike>(
-  messages: T[],
-  target: PlanIdentity,
-  preferredMessageId?: string | null,
-): T | undefined {
-  if (preferredMessageId) {
-    const preferred = messages.find((message) => (
-      message.id === preferredMessageId
-      && message.planAction
-      && isReusablePlanStatus(message.planAction.status)
-      && samePlanIdentity(message.planAction, target)
-    ));
-    if (preferred) return preferred;
-  }
-  return [...messages]
-    .reverse()
-    .find((message) => (
-      message.planAction
-      && isReusablePlanStatus(message.planAction.status)
-      && samePlanIdentity(message.planAction, target)
-    ));
-}
-
 function EmptyConversationIntro({
   workspaceControl,
   modelSummary,
   permissionLabel,
   thinkingLabel,
+  title,
+  subtitle,
+  workspaceFieldLabel,
+  modelFieldLabel,
+  permissionFieldLabel,
+  thinkingFieldLabel,
 }: {
   workspaceControl: React.ReactNode;
   modelSummary: string;
   permissionLabel: string;
   thinkingLabel: string;
+  title: string;
+  subtitle: string;
+  workspaceFieldLabel: string;
+  modelFieldLabel: string;
+  permissionFieldLabel: string;
+  thinkingFieldLabel: string;
 }): React.JSX.Element {
   return (
     <div className="mx-auto flex w-full max-w-[520px] flex-1 flex-col px-6 pb-2 pt-8 text-left">
       <div className="w-full rounded-[6px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.025)]">
-        <div className="text-[14px] font-medium leading-5 text-[var(--mm-text-primary)]">新对话</div>
-        <div className="mt-1 text-[12px] text-[#8a939c]">输入消息后，Pi Agent 会在当前工作区开始运行。</div>
+        <div className="text-[14px] font-medium leading-5 text-[var(--mm-text-primary)]">{title}</div>
+        <div className="mt-1 text-[12px] text-[#8a939c]">{subtitle}</div>
         <div className="mt-4 grid grid-cols-[72px_minmax(0,1fr)] items-center gap-x-3 gap-y-2 text-[11px] leading-4">
-          <span className="text-[var(--mm-text-tertiary)]">工作区</span>
+          <span className="text-[var(--mm-text-tertiary)]">{workspaceFieldLabel}</span>
           {workspaceControl}
-          <span className="text-[var(--mm-text-tertiary)]">模型</span>
+          <span className="text-[var(--mm-text-tertiary)]">{modelFieldLabel}</span>
           <span className="truncate text-[var(--mm-text-secondary)]">{modelSummary}</span>
-          <span className="text-[var(--mm-text-tertiary)]">权限</span>
+          <span className="text-[var(--mm-text-tertiary)]">{permissionFieldLabel}</span>
           <span className="text-[var(--mm-text-secondary)]">{permissionLabel}</span>
-          <span className="text-[var(--mm-text-tertiary)]">思考</span>
+          <span className="text-[var(--mm-text-tertiary)]">{thinkingFieldLabel}</span>
           <span className="text-[var(--mm-text-secondary)]">{thinkingLabel}</span>
         </div>
       </div>
@@ -343,8 +307,6 @@ export function ChatView({
   const [titleDraft, setTitleDraft] = useState("");
   const [composerFocusKey, setComposerFocusKey] = useState(0);
   const [globalComposerRoot, setGlobalComposerRoot] = useState<HTMLElement | null>(null);
-  const activePlanCard = usePlanStore((state) => state.activeCard);
-  const renderedPlanCardIds = usePlanStore((state) => state.renderedPlanCardIds);
   const activePlanExecution = usePlanStore((state) => state.activeExecution);
   const animatedTokenFrameRef = useRef<number | null>(null);
   const animatedTokenSessionIdRef = useRef<string | null>(currentSession?.id ?? null);
@@ -370,112 +332,14 @@ export function ChatView({
     setSessionActionError(null);
   }, [currentSession?.id, clearError]);
 
-  useEffect(() => {
-    if (
-      !activePlanCard
-      || renderedPlanCardIds.includes(activePlanCard.id)
-      || isStreaming
-    ) return;
-    const cleanContent = stripPlanFrontmatter(
-      activePlanCard.content
-        .replace(/<think>[\s\S]*?<\/think>/gi, "")
-        .replace(/<think>[\s\S]*$/gi, "")
-        .trim(),
-    );
-    const planAction = {
-      id: `plan_action_${activePlanCard.id}`,
-      title: activePlanCard.title,
-      filename: activePlanCard.filename,
-      status: "pending" as const,
-    };
-    const shouldKeepCurrentExecution = Boolean(
-      activePlanExecution
-      && isLockedPlanPhase(activePlanExecution.phase)
-      && samePlanIdentity(activePlanExecution, activePlanCard),
-    );
-    if (!shouldUseSessionMessages && hasAgent && currentAgent) {
-      const reusableAgentMessage = findReusablePlanMessage(
-        agentMessages,
-        activePlanCard,
-        activePlanExecution?.sourceMessageId,
-      );
-      const messageId = reusableAgentMessage?.id ?? `pm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      if (reusableAgentMessage) {
-        useAgentStore.getState().updateStreamMessage(currentAgent.id, messageId, {
-          content: cleanContent,
-          planAction: {
-            ...(reusableAgentMessage.planAction ?? {}),
-            ...planAction,
-            title: activePlanCard.title,
-            filename: activePlanCard.filename ?? reusableAgentMessage.planAction?.filename,
-            status: reusableAgentMessage.planAction?.status ?? planAction.status,
-          },
-        });
-      } else {
-        useAgentStore.getState().appendStreamMessage(currentAgent.id, {
-          id: messageId,
-          agentId: currentAgent.id,
-          role: "assistant",
-          content: cleanContent,
-          createdAt: Date.now(),
-          planAction,
-        });
-      }
-      usePlanStore.getState().markPlanCardRendered(activePlanCard.id);
-      if (!shouldKeepCurrentExecution) {
-        usePlanStore.getState().setAwaitingConfirmation({
-          activePlanId: activePlanCard.id,
-          title: activePlanCard.title,
-          filename: activePlanCard.filename,
-          sourceMessageId: messageId,
-        });
-      }
-      return;
-    }
-    if (currentSession) {
-      const reusableSessionMessage = findReusablePlanMessage(
-        currentSession.messages,
-        activePlanCard,
-        activePlanExecution?.sourceMessageId,
-      );
-      const messageId = reusableSessionMessage?.id ?? `pm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      if (reusableSessionMessage) {
-        useSessionStore.getState().updateMessage(currentSession.id, messageId, {
-          content: cleanContent,
-          planAction: {
-            ...(reusableSessionMessage.planAction ?? {}),
-            ...planAction,
-            title: activePlanCard.title,
-            filename: activePlanCard.filename ?? reusableSessionMessage.planAction?.filename,
-            status: reusableSessionMessage.planAction?.status ?? planAction.status,
-          },
-        });
-      } else {
-        useSessionStore.getState().addMessage(currentSession.id, {
-          id: messageId,
-          role: "assistant",
-          content: cleanContent,
-          timestamp: new Date(),
-          planAction,
-        });
-      }
-      usePlanStore.getState().markPlanCardRendered(activePlanCard.id);
-      if (!shouldKeepCurrentExecution) {
-        usePlanStore.getState().setAwaitingConfirmation({
-          activePlanId: activePlanCard.id,
-          title: activePlanCard.title,
-          filename: activePlanCard.filename,
-          sourceMessageId: messageId,
-        });
-      }
-    }
-  }, [activePlanCard, activePlanExecution, agentMessages, currentAgent, currentSession, hasAgent, isStreaming, renderedPlanCardIds, shouldUseSessionMessages]);
+  // SubTask 7.2: plan card → conversation sync extracted into usePlanSyncEffect.
+  usePlanSyncEffect(currentSession?.id ?? null, isStreaming);
 
   const handleSend = async (message: string, options?: { visibleContent?: string; waitForAgentIdle?: boolean }) => {
     if (!currentWorkspace) return;
     try {
       if (getCurrentSession()?.readOnly) {
-        setSendError("当前会话是只读历史，请先从此会话继续。");
+        setSendError(t("chatView.errors.readOnlyHistory"));
         return;
       }
       let sessionForSend = getCurrentSession();
@@ -488,7 +352,7 @@ export function ChatView({
         ? currentAgent.id
         : agents.find((agent) => agent.workspaceId === currentWorkspace.id && agent.sessionId === sessionForSend!.id)?.id;
       if (!agentIdForSend) {
-        const agent = await createAgent(currentWorkspace.id, `${sessionForSend.title || "未命名会话"} Agent`, undefined, sessionForSend.id);
+        const agent = await createAgent(currentWorkspace.id, `${sessionForSend.title || t("chatView.session.untitled")} Agent`, undefined, sessionForSend.id);
         agentIdForSend = agent.id;
       }
       if (agentIdForSend && !isStreaming) {
@@ -508,7 +372,10 @@ export function ChatView({
       setSendError(err instanceof Error ? err.message : String(err));
     }
   };
-  const handleStop = () => {
+  // SubTask 7.1: useEventCallback keeps identity stable (so ChatInput's onStop
+  // prop doesn't churn) while always reading the latest `messages` via the ref,
+  // avoiding the stale-closure bug where stop operated on an outdated array.
+  const handleStop = useEventCallback(() => {
     if (currentWorkspace) {
       let sourceMessage: Message | undefined;
       if (activePlanExecution?.phase === "executing") {
@@ -523,7 +390,7 @@ export function ChatView({
         updatePlanActionStatus(sourceMessage, "paused");
       }
     }
-  };
+  });
   const handleContinueReadOnly = async (): Promise<void> => {
     if (!currentSession) return;
     try {
@@ -531,7 +398,7 @@ export function ChatView({
       const next = await continueSession(currentSession.id);
       setCurrentSession(next.id);
     } catch (error) {
-      setSessionActionError(`继续会话失败: ${error instanceof Error ? error.message : String(error)}`);
+      setSessionActionError(t("chatView.errors.continueFailed", { message: error instanceof Error ? error.message : String(error) }));
     }
   };
   const rawMessages = useMemo(() => shouldUseSessionMessages
@@ -591,22 +458,27 @@ export function ChatView({
     .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
   const permissionLabel =
     settings.permissionLevel === "always"
-      ? "始终授权"
+      ? t("chatInput.permissions.always.label")
       : settings.permissionLevel === "ask"
-        ? "主动询问"
-        : "智能授权";
+        ? t("chatInput.permissions.ask.label")
+        : t("chatInput.permissions.smart.label");
   const thinkingLabel =
     settings.thinkingLevel === "high"
-      ? "高"
+      ? t("chatInput.thinking.high")
       : settings.thinkingLevel === "low"
-        ? "低"
+        ? t("chatInput.thinking.low")
         : settings.thinkingLevel === "none"
-          ? "关闭"
-          : "中";
-  const modelSummary = [settings.provider, settings.model].filter(Boolean).join(" / ") || "未配置模型";
+          ? t("chatInput.thinking.none")
+          : t("chatInput.thinking.medium");
+  const modelSummary = [settings.provider, settings.model].filter(Boolean).join(" / ") || t("chatInput.model.notConfigured");
   const workspaceControl = <WorkspaceSwitcher variant="inline" />;
   const totalTokens = resolveTotalTokens(currentSession?.usage);
-  const toggleRightRailLabel = rightRailCollapsed ? "展开右侧栏" : "收起右侧栏";
+  const toggleRightRailLabel = rightRailCollapsed ? t("chatView.rightRail.expand") : t("chatView.rightRail.collapse");
+  const connectionLabel = isStreaming
+    ? t("chatView.status.running")
+    : isConnected
+      ? t("chatView.status.connected")
+      : t("chatView.status.disconnected");
   const shouldUseGlobalComposer = !currentSession?.readOnly;
 
   useEffect(() => {
@@ -748,7 +620,7 @@ export function ChatView({
       filename,
       content: message.content,
     });
-    const visibleContent = name ? `执行计划：${name}` : "执行计划";
+    const visibleContent = name ? t("chatView.plan.executeNamed", { name }) : t("chatView.plan.execute");
     const nextMessage = filename && filename !== message.planAction.filename
       ? {
           ...message,
@@ -784,7 +656,7 @@ export function ChatView({
       usePlanStore.getState().setDecisionRequest(null);
       if (text?.trim()) {
         // v2.0: 选项选择后自动发送补充文本
-        await handleSend(text.trim(), { visibleContent: `补充: ${text.trim()}` });
+        await handleSend(text.trim(), { visibleContent: t("chatView.plan.supplement", { text: text.trim() }) });
       }
       setComposerFocusKey((value) => value + 1);
       return;
@@ -839,24 +711,26 @@ export function ChatView({
         <div className="flex min-w-0 items-center gap-4 overflow-hidden whitespace-nowrap text-[var(--mm-text-secondary)]">
           <WorkspaceSwitcher variant="strip" />
           <span className="inline-flex h-7 shrink-0 items-center gap-1 leading-none">
-            <span>权限:</span>
+            <span>{t("chatView.permissionPrefix")}</span>
             <span className="text-[var(--mm-text-primary)]">{permissionLabel}</span>
           </span>
           <span className={`inline-flex h-7 shrink-0 items-center font-mono tabular-nums leading-none text-[var(--mm-text-primary)] ${isStreaming ? "animate-pulse" : ""}`}>{usageSummary}</span>
         </div>
         <div className="flex h-7 shrink-0 items-center justify-end gap-2 text-[var(--mm-text-secondary)]">
           <span className={`h-1.5 w-1.5 rounded-full ${isStreaming ? "bg-[var(--color-success)]" : isConnected ? "bg-[var(--color-success)]" : "bg-[var(--color-error)]"}`} aria-hidden="true" />
-          <span className="inline-flex h-7 items-center leading-none" role="status" aria-label={isStreaming ? "运行中" : isConnected ? "已连接" : "未连接"}>{isStreaming ? "运行中" : isConnected ? "已连接" : "未连接"}</span>
+          <span className="inline-flex h-7 items-center leading-none" role="status" aria-label={connectionLabel}>{connectionLabel}</span>
           {onToggleRightRail ? (
-            <button
-              type="button"
-              onClick={onToggleRightRail}
-              aria-label={toggleRightRailLabel}
-              title={toggleRightRailLabel}
-              className="flex h-7 w-7 items-center justify-center rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-main)] text-[var(--mm-text-tertiary)] shadow-[0_2px_8px_rgba(15,23,42,0.08)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
-            >
-              <RightRailToggleIcon collapsed={rightRailCollapsed} />
-            </button>
+            <span className="inline-flex translate-y-[0.5px]">
+              <button
+                type="button"
+                onClick={onToggleRightRail}
+                aria-label={toggleRightRailLabel}
+                title={toggleRightRailLabel}
+                className={MINIMAX_CHROME_ICON_BUTTON_CLASSNAME}
+              >
+                <RightRailToggleIcon collapsed={rightRailCollapsed} />
+              </button>
+            </span>
           ) : null}
         </div>
       </div>
@@ -877,19 +751,19 @@ export function ChatView({
                 }}
                 autoFocus
                 className="min-w-0 flex-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-2 py-1 text-sm font-medium text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-bg-active)]"
-                aria-label="重命名当前会话"
+                aria-label={t("chatView.session.renameAria")}
               />
             ) : (
               <button
                 type="button"
                 onClick={() => {
-                  setTitleDraft(currentSession?.title || "未命名会话");
+                  setTitleDraft(currentSession?.title || t("chatView.session.untitled"));
                   setEditingTitle(true);
                 }}
                 className="min-w-0 truncate rounded-md px-1 py-1 text-left font-medium hover:bg-[var(--mm-bg-hover)]"
-                title="重命名会话"
+                title={t("chatView.session.renameTitle")}
               >
-                {currentSession?.title || "未命名会话"}
+                {currentSession?.title || t("chatView.session.untitled")}
               </button>
             )}
             <select
@@ -898,11 +772,11 @@ export function ChatView({
                 if (event.target.value) setCurrentSession(event.target.value);
               }}
               className="max-w-[220px] rounded-md border border-transparent bg-transparent px-1 py-1 text-xs text-[var(--mm-text-secondary)] hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-hover)]"
-              aria-label="切换会话"
+              aria-label={t("chatView.session.switchAria")}
             >
               {workspaceSessions.map((session) => (
                 <option key={session.id} value={session.id}>
-                  {session.title || "未命名会话"}
+                  {session.title || t("chatView.session.untitled")}
                 </option>
               ))}
             </select>
@@ -922,6 +796,12 @@ export function ChatView({
               modelSummary={modelSummary}
               permissionLabel={permissionLabel}
               thinkingLabel={thinkingLabel}
+              title={t("chatView.empty.title")}
+              subtitle={t("chatView.empty.subtitle")}
+              workspaceFieldLabel={t("chatView.empty.workspace")}
+              modelFieldLabel={t("chatView.empty.model")}
+              permissionFieldLabel={t("chatView.empty.permission")}
+              thinkingFieldLabel={t("chatView.empty.thinking")}
             />
             {/* Chat send 失败的错误 — 重试按钮 */}
             {isConnected && (streamError || sendError || sessionActionError) && (
@@ -999,9 +879,9 @@ export function ChatView({
                         type="button"
                         onClick={handleStop}
                         className="ml-3 text-xs text-[var(--mm-text-secondary)] hover:text-[var(--mm-text-primary)] transition-colors"
-                        aria-label={activePlanExecution?.phase === "executing" ? "暂停执行" : t('chatView.stopGeneration')}
+                        aria-label={activePlanExecution?.phase === "executing" ? t("chatInput.pauseExecution") : t('chatView.stopGeneration')}
                       >
-                        {activePlanExecution?.phase === "executing" ? "暂停执行" : t('chatView.stop')}
+                        {activePlanExecution?.phase === "executing" ? t("chatInput.pauseExecution") : t('chatView.stop')}
                       </button>
                     </div>
                   </div>
@@ -1040,7 +920,7 @@ export function ChatView({
                   scrollRegionRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
                 className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] shadow-sm text-[var(--mm-text-secondary)] hover:text-[var(--mm-text-primary)] transition-all"
-                aria-label="回到顶部"
+                aria-label={t("chatView.scrollTop")}
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
@@ -1057,13 +937,13 @@ export function ChatView({
       {messages.length > 0 && currentSession?.readOnly && (
           <div className="border-t border-[var(--mm-border-subtle)] bg-[var(--mm-bg-main)] px-4 py-3">
             <div className="mx-auto flex max-w-[770px] items-center justify-between gap-3 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-xs">
-              <span className="text-[var(--mm-text-secondary)]">当前为只读历史会话</span>
+              <span className="text-[var(--mm-text-secondary)]">{t("chatView.readOnly.label")}</span>
               <button
                 type="button"
                 onClick={() => void handleContinueReadOnly()}
                 className="rounded-md bg-[var(--mm-bg-active)] px-2.5 py-1.5 text-[var(--mm-text-on-active)]"
               >
-                从此会话继续
+                {t("chatView.readOnly.continue")}
               </button>
             </div>
           </div>

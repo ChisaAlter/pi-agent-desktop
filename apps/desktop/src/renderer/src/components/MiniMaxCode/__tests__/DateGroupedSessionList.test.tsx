@@ -233,9 +233,10 @@ describe("DateGroupedSessionList", () => {
         expect(screen.queryByText(/分钟前|刚刚|小时前/)).toBeNull();
     });
 
-    it("点击归档和删除悬浮按钮不会触发会话选择", () => {
+    it("点击置顶和归档悬浮按钮不会触发会话选择", () => {
         const onSelect = vi.fn();
         const onArchive = vi.fn();
+        const onToggleFavorite = vi.fn();
         useSessionStore.setState({
             sessions: [makeSession({ id: "s1", title: "长标题会话", updatedAt: new Date() })],
         });
@@ -245,13 +246,15 @@ describe("DateGroupedSessionList", () => {
                 currentSessionId={null}
                 onSelectSession={onSelect}
                 onArchiveSession={onArchive}
+                onToggleFavorite={onToggleFavorite}
                 onDeleteSession={() => undefined}
             />,
         );
 
+        fireEvent.click(screen.getByRole("button", { name: "置顶 长标题会话" }));
         fireEvent.click(screen.getByRole("button", { name: "归档 长标题会话" }));
-        fireEvent.click(screen.getByRole("button", { name: "删除 长标题会话" }));
 
+        expect(onToggleFavorite).toHaveBeenCalledWith("s1");
         expect(onArchive).toHaveBeenCalledWith("s1", true);
         expect(onSelect).not.toHaveBeenCalled();
     });

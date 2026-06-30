@@ -63,7 +63,7 @@ const AGENT_WATCHDOG_MS = 5 * 60 * 1000;
 
 export class AgentRuntimeRegistry {
     private readonly runtimes = new Map<string, AgentRuntime>();
-    private suppressEventForwarding = false;
+    private suppressedAgentIds = new Set<string>();
 
     constructor(private readonly deps: AgentRuntimeRegistryDeps) {}
 
@@ -126,11 +126,11 @@ export class AgentRuntimeRegistry {
         const runtime = this.requireRuntime(agentId);
         const text = message.trim();
         if (!text) return;
-        this.suppressEventForwarding = true;
+        this.suppressedAgentIds.add(agentId);
         try {
             await this.promptRuntime(runtime, text);
         } finally {
-            this.suppressEventForwarding = false;
+            this.suppressedAgentIds.delete(agentId);
         }
     }
 
@@ -287,7 +287,7 @@ export class AgentRuntimeRegistry {
             runtime.isStreaming = false;
             this.disarmWatchdog(runtime);
         }
-        if (!this.suppressEventForwarding) {
+        if (!this.suppressedAgentIds.has(runtime.tab.id)) {
             this.deps.send("agents:event", {
                 agentId: runtime.tab.id,
                 workspaceId: runtime.workspace.id,
@@ -310,7 +310,7 @@ export class AgentRuntimeRegistry {
                 "error",
                 "会话运行超时未结束，可能已崩溃。请重新发起对话。",
             );
-            if (!this.suppressEventForwarding) {
+            if (!this.suppressedAgentIds.has(runtime.tab.id)) {
                 this.deps.send("agents:event", {
                     agentId: runtime.tab.id,
                     workspaceId: runtime.workspace.id,
@@ -454,7 +454,7 @@ export class AgentRuntimeRegistry {
             await runtime.session.session.prompt(command);
         };
 
-        this.suppressEventForwarding = true;
+        this.suppressedAgentIds.add(runtime.tab.id);
         try {
             if (runtime.sessionMode === "plan") {
                 await sendModePrompt("/plan");
@@ -470,7 +470,7 @@ export class AgentRuntimeRegistry {
             }
             runtime.sessionMode = nextMode;
         } finally {
-            this.suppressEventForwarding = false;
+            this.suppressedAgentIds.delete(runtime.tab.id);
         }
     }
 

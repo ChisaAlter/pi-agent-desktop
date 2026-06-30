@@ -33,6 +33,51 @@ beforeEach(() => {
 });
 
 describe("ProjectGroupedSessionList", () => {
+  it("keeps workspace group order stable when switching workspaces", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "w1", name: "repo", path: "C:/repo", createdAt: new Date(0), lastActiveAt: new Date("2026-06-02T00:00:00.000Z") },
+        { id: "w2", name: "docs", path: "C:/docs", createdAt: new Date(1), lastActiveAt: new Date("2026-06-01T00:00:00.000Z") },
+      ],
+      currentWorkspaceId: "w1",
+    });
+    useSessionStore.setState({
+      sessions: [
+        makeSession({ id: "s1", title: "repo 会话", workspaceId: "w1" }),
+        makeSession({ id: "s2", title: "docs 会话", workspaceId: "w2" }),
+      ],
+    });
+
+    function Harness(): React.JSX.Element {
+      const currentWorkspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
+      return (
+        <ProjectGroupedSessionList
+          currentWorkspaceId={currentWorkspaceId}
+          currentSessionId={null}
+          onSelectSession={() => undefined}
+          onArchiveSession={() => undefined}
+          onDeleteSession={() => undefined}
+          onSwitchWorkspace={(workspaceId) => useWorkspaceStore.getState().setCurrentWorkspace(workspaceId)}
+        />
+      );
+    }
+
+    const { container } = renderWithI18n(<Harness />);
+
+    const workspaceButtons = (): string[] =>
+      Array.from(container.querySelectorAll<HTMLButtonElement>('button[title="C:/repo"], button[title="C:/docs"]'))
+        .map((button) => (button.textContent ?? "").replace(/[▾▸\d\s]/g, ""));
+
+    const beforeSwitch = workspaceButtons();
+    expect(beforeSwitch).toEqual(["repo", "docs"]);
+
+    fireEvent.click(screen.getByText("docs"));
+
+    const afterSwitch = workspaceButtons();
+    expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("w2");
+    expect(afterSwitch).toEqual(["repo", "docs"]);
+  });
+
   it("keeps hidden project actions from intercepting clicks until hover or focus", () => {
     const longTitle = "了解一下这个项目并检查所有关键入口";
     useSessionStore.setState({

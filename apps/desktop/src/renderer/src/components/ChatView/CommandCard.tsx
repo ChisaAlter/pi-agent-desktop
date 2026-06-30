@@ -3,7 +3,7 @@
 // v1.0.15: 删 commandCount prop — 之前 MessageBubble 没传,chip 永远不显示
 
 import React, { useState } from 'react';
-import { ToolCall } from '../../stores/session-store';
+import type { ToolCall } from '../../stores/session-store';
 import { DiffViewer, extractDiffFromOutput } from '../DiffView';
 import { formatTime, formatDuration } from '../../utils/format';
 import { classifyTerminalCommand } from '../../utils/terminal-command';

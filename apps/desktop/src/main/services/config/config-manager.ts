@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "fs";
-import { mkdir, readFile, writeFile } from "fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "fs/promises";
 import { join } from "path";
 import { homedir } from "os";
 import yaml from "js-yaml";
@@ -20,9 +20,15 @@ import type {
 } from "@shared";
 import type { PiAgentConfig, PiAgentModel } from "../../types";
 
+const DEFAULT_PROVIDER_API = "openai-completions";
+
 export class ConfigManager {
     constructor(private readonly configDir = join(homedir(), ".pi", "agent")) {}
 
+    private jsonCache = new Map<string, { mtime: number; raw: string; parsed: unknown }>();
+
+    // TODO: convert to async — currently uses sync existsSync/readFileSync.
+    // Only called at app startup (index.ts app.whenReady) and on managed-models-changed callbacks, so not hot.
     loadPiAgentConfig(): PiAgentConfig | null {
         try {
             if (!existsSync(this.configDir)) return null;
@@ -70,7 +76,7 @@ export class ConfigManager {
                             baseUrl: pd.baseUrl,
                             apiKey: pd.apiKey,
                             apiType: pd.apiType,
-                            api: pd.api,
+                            api: this.apiFromApiType(pd.api ?? pd.apiType),
                             _piDesktopDeletedModels: Array.isArray(pd._piDesktopDeletedModels) ? pd._piDesktopDeletedModels : undefined,
                             models,
                         });
@@ -144,7 +150,7 @@ export class ConfigManager {
                 baseUrl: typeof pd.baseUrl === "string" ? pd.baseUrl : undefined,
                 apiKey: typeof pd.apiKey === "string" ? pd.apiKey : undefined,
                 apiType: typeof pd.apiType === "string" ? pd.apiType : undefined,
-                api: typeof pd.api === "string" ? pd.api : undefined,
+                api: this.apiFromApiType(typeof pd.api === "string" ? pd.api : typeof pd.apiType === "string" ? pd.apiType : undefined),
                 _piDesktopDeletedModels: Array.isArray(pd._piDesktopDeletedModels)
                     ? pd._piDesktopDeletedModels.filter((id): id is string => typeof id === "string")
                     : undefined,
@@ -267,7 +273,7 @@ export class ConfigManager {
             models: [...(existingProvider.models ?? [])],
         };
         if (input.apiType) nextProvider.apiType = input.apiType;
-        const api = input.api?.trim() || this.apiFromApiType(input.apiType) || existingProvider.api;
+        const api = this.apiFromApiType(input.api?.trim() || input.apiType) || this.apiFromApiType(existingProvider.api ?? existingProvider.apiType);
         if (api) nextProvider.api = api;
         if (input.headers) nextProvider.headers = input.headers;
 
@@ -420,19 +426,35 @@ export class ConfigManager {
         return this.saveSettingsConfig(settingsInput);
     }
 
-    async fetchModels(baseUrl: string, apiKey?: string, _apiType?: string): Promise<PiModelItem[]> {
+    async fetchModels(baseUrl: string, apiKey?: string, apiType?: string): Promise<PiModelItem[]> {
         if (!baseUrl || baseUrl.trim().length === 0) throw new Error("缺少 baseUrl，请在 models.json 中配置 provider 的 baseUrl");
-        const url = `${this.trimBaseUrl(baseUrl)}/models`;
+        const resolvedApi = this.apiFromApiType(apiType) ?? DEFAULT_PROVIDER_API;
+        const base = this.trimBaseUrl(baseUrl);
+        const url = resolvedApi === "google-generative-ai" && apiKey
+            ? `${base}/models?key=${encodeURIComponent(apiKey)}`
+            : `${base}/models`;
         const response = await fetch(url, {
             headers: {
-                ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+                "content-type": "application/json",
+                ...(resolvedApi === "anthropic-messages" && apiKey ? { "x-api-key": apiKey, "anthropic-version": "2023-06-01" } : {}),
+                ...(resolvedApi !== "anthropic-messages" && resolvedApi !== "google-generative-ai" && apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
             },
         });
         if (!response.ok) throw new Error(`模型列表请求失败: HTTP ${response.status}`);
-        const data = (await response.json()) as { data?: Array<{ id?: string; name?: string }> };
-        return (data.data ?? [])
-            .filter((model) => typeof model.id === "string")
-            .map((model) => ({ id: String(model.id), name: model.name }));
+        const data = (await response.json()) as { data?: Array<{ id?: string; name?: string; displayName?: string }>; models?: Array<{ id?: string; name?: string; displayName?: string }> };
+        const rawModels = Array.isArray(data.data) ? data.data : Array.isArray(data.models) ? data.models : [];
+        return rawModels
+            .map((model) => {
+                const rawId = typeof model.id === "string" ? model.id : typeof model.name === "string" ? model.name : "";
+                const id = resolvedApi === "google-generative-ai" ? rawId.replace(/^models\//, "") : rawId;
+                const name = typeof model.displayName === "string"
+                    ? model.displayName
+                    : typeof model.name === "string"
+                        ? model.name.replace(/^models\//, "")
+                        : id;
+                return { id, name };
+            })
+            .filter((model) => model.id.length > 0);
     }
 
     async testProviderConnection(
@@ -444,19 +466,23 @@ export class ConfigManager {
         options?: { providerId?: string; api?: string },
     ): Promise<ProviderTestResult> {
         if (!baseUrl) return { ok: false, message: "缺少 baseUrl" };
-        const resolvedApiType = apiType ?? this.apiTypeFromApi(options?.api);
+        const resolvedApiType = this.apiFromApiType(apiType ?? options?.api) ?? DEFAULT_PROVIDER_API;
         const resolvedApiKey = apiKey ?? await this.resolveProviderApiKey(options?.providerId);
-        const useResponses = resolvedApiType === "responses";
-        const url = `${this.trimBaseUrl(baseUrl)}/${useResponses ? "responses" : "chat/completions"}`;
-        const body = useResponses
-            ? { model: modelId || "test", input: "ping", max_output_tokens: 1 }
-            : { model: modelId || "test", messages: [{ role: "user", content: "ping" }], max_tokens: 1 };
+        const model = modelId || "test";
+        const base = this.trimBaseUrl(baseUrl);
+        const isResponses = resolvedApiType === "openai-responses" || resolvedApiType === "openai-codex-responses";
+        const isAnthropic = resolvedApiType === "anthropic-messages";
+        const url = `${base}/${isResponses ? "responses" : isAnthropic ? "messages" : "chat/completions"}`;
+        const body = isResponses
+            ? { model, input: "ping", max_output_tokens: 1 }
+            : { model, messages: [{ role: "user", content: "ping" }], max_tokens: 1 };
         try {
             const response = await fetch(url, {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
-                    ...(resolvedApiKey ? { Authorization: `Bearer ${resolvedApiKey}` } : {}),
+                    ...(isAnthropic && resolvedApiKey ? { "x-api-key": resolvedApiKey, "anthropic-version": "2023-06-01" } : {}),
+                    ...(!isAnthropic && resolvedApiKey ? { Authorization: `Bearer ${resolvedApiKey}` } : {}),
                     ...(headers ?? {}),
                 },
                 body: JSON.stringify(body),
@@ -489,9 +515,17 @@ export class ConfigManager {
     }
 
     private async readJsonFile<T>(fileName: string, fallback: T): Promise<{ raw: string; parsed: T }> {
+        const filePath = join(this.configDir, fileName);
         try {
-            const raw = await readFile(join(this.configDir, fileName), "utf8");
-            return { raw, parsed: JSON.parse(raw) as T };
+            const stats = await stat(filePath);
+            const cached = this.jsonCache.get(fileName);
+            if (cached && cached.mtime === stats.mtimeMs) {
+                return { raw: cached.raw, parsed: cached.parsed as T };
+            }
+            const raw = await readFile(filePath, "utf8");
+            const parsed = JSON.parse(raw) as T;
+            this.jsonCache.set(fileName, { mtime: stats.mtimeMs, raw, parsed });
+            return { raw, parsed };
         } catch {
             return { raw: JSON.stringify(fallback, null, 2), parsed: fallback };
         }
@@ -519,8 +553,8 @@ export class ConfigManager {
             ...rawProvider,
             name: typeof rawProvider.name === "string" ? rawProvider.name : providerId,
             baseUrl: typeof rawProvider.baseUrl === "string" ? rawProvider.baseUrl : undefined,
-            apiType: rawProvider.apiType === "responses" || rawProvider.apiType === "openai" ? rawProvider.apiType : undefined,
-            api: typeof rawProvider.api === "string" ? rawProvider.api : undefined,
+            apiType: typeof rawProvider.apiType === "string" ? rawProvider.apiType : undefined,
+            api: this.apiFromApiType(typeof rawProvider.api === "string" ? rawProvider.api : typeof rawProvider.apiType === "string" ? rawProvider.apiType : undefined),
             headers: this.stringRecord(rawProvider.headers),
             models: rawModels
                 .filter((model): model is Record<string, unknown> => this.isPlainObject(model) && typeof model.id === "string")
@@ -586,16 +620,19 @@ export class ConfigManager {
         };
     }
 
-    private apiTypeFromApi(api?: string): "openai" | "responses" | undefined {
-        if (api === "openai-responses") return "responses";
-        if (api === "openai-completions") return "openai";
-        return undefined;
+    private apiTypeFromApi(api?: string): string | undefined {
+        return this.apiFromApiType(api);
     }
 
     private apiFromApiType(apiType?: string): string | undefined {
-        if (apiType === "responses") return "openai-responses";
-        if (apiType === "openai") return "openai-completions";
-        return undefined;
+        const trimmed = apiType?.trim();
+        if (!trimmed) return undefined;
+        if (trimmed === "openai" || trimmed === "openai-chat-completions" || trimmed === "openai-completions") {
+            return "openai-completions";
+        }
+        if (trimmed === "responses" || trimmed === "openai-responses") return "openai-responses";
+        if (trimmed === "anthropic" || trimmed === "anthropic-messages") return "anthropic-messages";
+        return trimmed;
     }
 
     private getAuthValue(item?: PiAuthItem): string | undefined {
@@ -621,7 +658,14 @@ export class ConfigManager {
 
     private async writeJsonFile(fileName: string, data: unknown): Promise<void> {
         await mkdir(this.configDir, { recursive: true });
-        await writeFile(join(this.configDir, fileName), JSON.stringify(data, null, 2), "utf8");
+        const filePath = join(this.configDir, fileName);
+        const tmpPath = join(this.configDir, `${fileName}.tmp`);
+        const raw = JSON.stringify(data, null, 2);
+        await writeFile(tmpPath, raw, "utf8");
+        await rename(tmpPath, filePath);
+        // Update cache after write so subsequent reads skip the disk
+        const stats = await stat(filePath);
+        this.jsonCache.set(fileName, { mtime: stats.mtimeMs, raw, parsed: data });
     }
 
     private isPlainObject(value: unknown): value is Record<string, unknown> {

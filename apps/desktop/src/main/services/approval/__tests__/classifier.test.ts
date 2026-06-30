@@ -105,7 +105,7 @@ describe("classifyToolCall", () => {
             ["grep foo bar | xargs rm", "edit"],
             ["grep foo | tee /etc/hosts", "edit"],
             ["awk '{system(\"rm x\")}' file", "edit"],
-            ["cat file | xargs chmod 777", "edit"],
+            ["cat file | xargs chmod 777", "high"],
         ])("classifies %s as %s (not read)", (cmd, expected) => {
             const result = classifyToolCall(t("bash", { command: cmd }));
             expect(result.risk).toBe(expected);

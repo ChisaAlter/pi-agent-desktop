@@ -7,11 +7,12 @@
 
 import React from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MiniMaxCodeSidebar } from "./MiniMaxCodeSidebar";
 import { useSessionStore } from "../../stores/session-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { I18nProvider } from "../../i18n";
+import { MINIMAX_CHROME_ICON_BUTTON_CLASSNAME } from "./chromeButton";
 
 const renderWithI18n = (ui: React.ReactElement) => render(<I18nProvider>{ui}</I18nProvider>);
 
@@ -23,6 +24,7 @@ beforeEach(() => {
             deleteSession: async () => undefined,
             renameSession: async () => undefined,
             archiveSession: async () => undefined,
+            updateSessionMetadata: async () => undefined,
         },
         configurable: true,
     });
@@ -73,6 +75,51 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
         expect(selected).toBe("new-task");
     });
 
+    it("提供按时间/按工作区分组切换控件", () => {
+        const onGroupModeChange = vi.fn();
+        renderWithI18n(
+            <MiniMaxCodeSidebar
+                currentSection="chat"
+                onSectionChange={() => undefined}
+                groupMode="date"
+                onGroupModeChange={onGroupModeChange}
+            />,
+        );
+
+        expect(screen.getByRole("button", { name: "按时间分组" }).getAttribute("aria-pressed")).toBe("true");
+        fireEvent.click(screen.getByRole("button", { name: "按工作区分组" }));
+
+        expect(onGroupModeChange).toHaveBeenCalledWith("workspace");
+    });
+
+    it("将置顶区放在分组切换上方，并使用软分段切换样式", () => {
+        useWorkspaceStore.setState({
+            workspaces: [
+                { id: "w1", name: "项目一", path: "/p1", createdAt: new Date(), lastActiveAt: new Date("2026-06-06T12:00:00Z") },
+            ],
+            currentWorkspaceId: "w1",
+            lastError: null,
+        });
+        useSessionStore.setState({
+            sessions: [
+                { id: "s_pin", title: "置顶任务", workspaceId: "w1", createdAt: new Date(), updatedAt: new Date(), messages: [], favorite: true },
+                { id: "s_plain", title: "普通任务", workspaceId: "w1", createdAt: new Date(), updatedAt: new Date(), messages: [] },
+            ],
+            currentSessionId: "s_pin",
+        });
+
+        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="date" />);
+
+        const pinnedRegion = screen.getByRole("region", { name: "置顶" });
+        const groupSwitch = screen.getByRole("group", { name: "会话分组方式" });
+        const dateButton = screen.getByRole("button", { name: "按时间分组" });
+
+        expect(groupSwitch.getAttribute("data-mmcode-group-switch")).toBe("soft-segmented");
+        expect(pinnedRegion.compareDocumentPosition(groupSwitch) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(dateButton.className).toContain("rounded-lg");
+        expect(dateButton.className).toContain("shadow-");
+    });
+
     it("reserves a 42px top strip so the sidebar header aligns with the workspace strip", () => {
         renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" onSectionChange={() => undefined} />);
 
@@ -87,6 +134,31 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
         expect(newTaskRow?.className ?? "").toContain("h-7");
         expect(quickCreate.className).toContain("h-7");
         expect(screen.getByRole("button", { name: "新建对话" }).className).toContain("h-7");
+    });
+
+    it("merges the collapse button into the sidebar header so it shares the list's left edge", () => {
+        renderWithI18n(
+            <MiniMaxCodeSidebar
+                {...({
+                    currentSection: "chat",
+                    onSectionChange: () => undefined,
+                    onToggleCollapse: () => undefined,
+                } as unknown as React.ComponentProps<typeof MiniMaxCodeSidebar>)}
+            />,
+        );
+
+        const nav = screen.getByRole("navigation", { name: "会话列表" });
+        const headerStrip = nav.firstElementChild as HTMLElement | null;
+        const headerRow = headerStrip?.firstElementChild as HTMLElement | null;
+        const collapseButton = screen.getByRole("button", { name: "折叠左侧栏" });
+        const quickCreateButton = screen.getByRole("button", { name: "快速新建对话" });
+
+        expect(headerRow?.className ?? "").not.toContain("mx-[11px]");
+        expect(collapseButton.className).toContain("h-7");
+        expect(collapseButton.className).toContain("w-7");
+        expect(collapseButton.className).toContain("shrink-0");
+        expect(collapseButton.className).toBe(MINIMAX_CHROME_ICON_BUTTON_CLASSNAME);
+        expect(quickCreateButton.className).toBe(MINIMAX_CHROME_ICON_BUTTON_CLASSNAME);
     });
 
     it("不在会话侧栏展示 pi-agent 在线状态", () => {
@@ -220,11 +292,58 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
         expect(screen.queryByRole("button", { name: "设置" })).toBeNull();
     });
 
-    it("点击删除 → 显示确认对话框，取消后不删除", () => {
+    it("置顶会话显示在独立置顶区，并且不会在日期列表重复出现", () => {
+        useWorkspaceStore.setState({
+            workspaces: [
+                { id: "w1", name: "项目一", path: "/p1", createdAt: new Date(), lastActiveAt: new Date("2026-06-06T12:00:00Z") },
+            ],
+            currentWorkspaceId: "w1",
+            lastError: null,
+        });
+        useSessionStore.setState({
+            sessions: [
+                { id: "s_pin", title: "置顶任务", workspaceId: "w1", createdAt: new Date(), updatedAt: new Date(), messages: [], favorite: true },
+                { id: "s_plain", title: "普通任务", workspaceId: "w1", createdAt: new Date(), updatedAt: new Date(), messages: [] },
+            ],
+            currentSessionId: "s_pin",
+        });
+
+        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="date" />);
+
+        const pinnedRegion = screen.getByRole("region", { name: "置顶" });
+        expect(within(pinnedRegion).getByRole("button", { name: "置顶任务" })).toBeTruthy();
+        expect(screen.getAllByRole("button", { name: "置顶任务" })).toHaveLength(1);
+        expect(screen.getByRole("button", { name: "普通任务" })).toBeTruthy();
+    });
+
+    it("hover 行动区只提供置顶和归档，不再提供删除", () => {
         seedWorkspaceAndSessions();
         renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="workspace" />);
 
-        fireEvent.click(screen.getByRole("button", { name: "删除 了解项目" }));
+        expect(screen.getByRole("button", { name: "置顶 了解项目" })).toBeTruthy();
+        expect(screen.getByRole("button", { name: "归档 了解项目" })).toBeTruthy();
+        expect(screen.queryByRole("button", { name: "删除 了解项目" })).toBeNull();
+    });
+
+    it("右键菜单可以重命名会话", () => {
+        seedWorkspaceAndSessions();
+        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="workspace" />);
+
+        fireEvent.contextMenu(screen.getByRole("button", { name: "了解项目" }));
+        fireEvent.click(screen.getByRole("menuitem", { name: "重命名 了解项目" }));
+        const input = screen.getByRole("textbox", { name: "重命名会话 了解项目" });
+        fireEvent.change(input, { target: { value: "已重命名项目" } });
+        fireEvent.keyDown(input, { key: "Enter" });
+
+        expect(useSessionStore.getState().sessions.find((s) => s.id === "s_new")?.title).toBe("已重命名项目");
+    });
+
+    it("右键删除 → 显示确认对话框，取消后不删除", () => {
+        seedWorkspaceAndSessions();
+        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="workspace" />);
+
+        fireEvent.contextMenu(screen.getByRole("button", { name: "了解项目" }));
+        fireEvent.click(screen.getByRole("menuitem", { name: "删除 了解项目" }));
 
         const dialog = screen.getByRole("dialog");
         expect(dialog).toBeTruthy();
@@ -235,11 +354,12 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
         expect(useSessionStore.getState().sessions.find((s) => s.id === "s_new")).toBeTruthy();
     });
 
-    it("点击删除 → 确认后真正删除", () => {
+    it("右键删除 → 确认后真正删除", () => {
         seedWorkspaceAndSessions();
         renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="workspace" />);
 
-        fireEvent.click(screen.getByRole("button", { name: "删除 了解项目" }));
+        fireEvent.contextMenu(screen.getByRole("button", { name: "了解项目" }));
+        fireEvent.click(screen.getByRole("menuitem", { name: "删除 了解项目" }));
 
         const dialog = screen.getByRole("dialog");
         fireEvent.click(within(dialog).getByText("确认"));

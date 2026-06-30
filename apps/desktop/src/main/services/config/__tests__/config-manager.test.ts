@@ -241,6 +241,42 @@ describe("ConfigManager", () => {
         );
     });
 
+    it("tests Anthropic message providers with Anthropic headers and endpoint", async () => {
+        const fetchMock = vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({}),
+        }));
+        vi.stubGlobal("fetch", fetchMock);
+
+        const result = await manager.testProviderConnection(
+            "https://api.anthropic.com/v1",
+            "sk-ant-test",
+            "claude-sonnet-4-20250514",
+            undefined,
+            undefined,
+            { providerId: "anthropic", api: "anthropic-messages" },
+        );
+
+        expect(result.ok).toBe(true);
+        expect(fetchMock).toHaveBeenCalledWith(
+            "https://api.anthropic.com/v1/messages",
+            expect.objectContaining({
+                method: "POST",
+                headers: expect.objectContaining({
+                    "x-api-key": "sk-ant-test",
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json",
+                }),
+                body: JSON.stringify({
+                    model: "claude-sonnet-4-20250514",
+                    messages: [{ role: "user", content: "ping" }],
+                    max_tokens: 1,
+                }),
+            }),
+        );
+    });
+
     describe("loadPiAgentConfig", () => {
         it("returns null when config dir does not exist", () => {
             const mgr = new ConfigManager(join(tmpdir(), "nonexistent-dir-" + Date.now()));

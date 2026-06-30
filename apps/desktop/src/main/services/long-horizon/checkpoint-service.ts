@@ -21,7 +21,7 @@ export interface RebuildContextInput {
 export class CheckpointService {
     constructor(private readonly memory: MemoryService) {}
 
-    writeCheckpoint(input: CheckpointInput): MemoryRecord {
+    async writeCheckpoint(input: CheckpointInput): Promise<MemoryRecord> {
         const text = [
             `Summary: ${input.summary}`,
             ...(input.decisions?.length ? ["Decisions:", ...input.decisions.map((item) => `- ${item}`)] : []),
@@ -37,8 +37,8 @@ export class CheckpointService {
         });
     }
 
-    rebuildContext(input: RebuildContextInput): string {
-        const memories = this.memory.search(input.query || input.goal || "", {
+    async rebuildContext(input: RebuildContextInput): Promise<string> {
+        const memories = await this.memory.search(input.query || input.goal || "", {
             workspaceId: input.workspaceId,
             sessionId: input.sessionId,
             limit: 5,

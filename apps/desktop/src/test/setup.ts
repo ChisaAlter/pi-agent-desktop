@@ -11,3 +11,10 @@ try {
 } catch {
     // localStorage 不可用时 (隐私模式) 静默, 测试 fallback 到 DEFAULT_LOCALE = zh-CN
 }
+
+if (typeof document !== "undefined" && typeof document.queryCommandSupported !== "function") {
+    Object.defineProperty(document, "queryCommandSupported", {
+        configurable: true,
+        value: () => false,
+    });
+}

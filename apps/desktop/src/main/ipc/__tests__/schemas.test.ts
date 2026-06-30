@@ -90,6 +90,17 @@ describe("settingsSetSchema", () => {
         }])).not.toThrow();
     });
 
+    it("accepts persisted sidebar grouping mode", () => {
+        expect(() => settingsSetSchema.parse([{ sidebarGroupMode: "workspace" }])).not.toThrow();
+        expect(() => settingsSetSchema.parse([{ sidebarGroupMode: "date" }])).not.toThrow();
+    });
+
+    it("accepts persisted shortcut overrides", () => {
+        expect(() => settingsSetSchema.parse([{
+            shortcutOverrides: [{ id: "open-command-palette", keys: "Ctrl+Shift+Y" }],
+        }])).not.toThrow();
+    });
+
     it("rejects invalid long-horizon budgets and unknown feature fields", () => {
         expect(() => settingsSetSchema.parse([{
             longHorizon: {
@@ -127,6 +138,7 @@ describe("settingsSetSchema", () => {
 
     it("rejects invalid enum and numeric ranges", () => {
         expect(() => settingsSetSchema.parse([{ theme: "solarized" }])).toThrow(ZodError);
+        expect(() => settingsSetSchema.parse([{ sidebarGroupMode: "recent" }])).toThrow(ZodError);
         expect(() => settingsSetSchema.parse([{ temperature: 3 }])).toThrow(ZodError);
         expect(() => settingsSetSchema.parse([{ maxTokens: 0 }])).toThrow(ZodError);
     });

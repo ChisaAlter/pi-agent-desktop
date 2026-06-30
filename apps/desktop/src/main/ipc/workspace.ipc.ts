@@ -5,6 +5,7 @@ import { isAbsolute, relative, resolve, join } from 'path';
 import log from 'electron-log/main';
 import { ipcError } from '@shared';
 import { workspaceCreateSchema } from './schemas';
+import { getProtectedPathReason } from '../services/protected-paths';
 
 interface Workspace {
   id: string;
@@ -14,12 +15,37 @@ interface Workspace {
   lastActiveAt?: number;
 }
 
+type WorkspaceStore = {
+  get: (key: 'workspaces') => Workspace[];
+  set: (key: 'workspaces', value: Workspace[]) => void;
+};
+
 function normalizeWorkspacePath(path: string): string {
   return path.trim().replace(/[\\/]+/g, "\\").replace(/\\+$/, "").toLowerCase();
 }
 
+let workspaceMutationChain: Promise<unknown> = Promise.resolve();
+
+async function mutateWorkspaces(
+  store: WorkspaceStore,
+  fn: (current: Workspace[]) => Workspace[],
+): Promise<Workspace[]> {
+  return new Promise((resolve, reject) => {
+    workspaceMutationChain = workspaceMutationChain.then(async () => {
+      try {
+        const current = store.get('workspaces') ?? [];
+        const next = fn(current);
+        store.set('workspaces', next);
+        resolve(next);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  });
+}
+
 export function setupWorkspaceIpc(opts: {
-  store: { get: (key: 'workspaces') => Workspace[]; set: (key: 'workspaces', value: Workspace[]) => void };
+  store: WorkspaceStore;
   getMainWindow: () => BrowserWindow | null;
   /** 删除 workspace 时同步释放对应 in-process Pi session (避免资源/句柄泄漏) */
   disposeWorkspaceSession?: (workspaceId: string) => void;
@@ -27,18 +53,16 @@ export function setupWorkspaceIpc(opts: {
   const { store, getMainWindow, disposeWorkspaceSession } = opts;
 
   ipcMain.handle('workspace:list', async () => {
-    let workspaces = store.get('workspaces');
-    if (workspaces.length === 0) {
-      workspaces = [{
-        id: 'default',
-        name: 'Default',
-        path: process.cwd(),
-        createdAt: Date.now(),
-        lastActiveAt: Date.now()
-      }];
-      store.set('workspaces', workspaces);
-    }
-    return workspaces;
+    const existing = store.get('workspaces');
+    if (existing.length > 0) return existing;
+    const seeded: Workspace[] = [{
+      id: 'default',
+      name: 'Default',
+      path: process.cwd(),
+      createdAt: Date.now(),
+      lastActiveAt: Date.now()
+    }];
+    return mutateWorkspaces(store, () => seeded);
   });
 
   ipcMain.handle('workspace:create', async (_, name: string, path: string) => {
@@ -52,15 +76,22 @@ export function setupWorkspaceIpc(opts: {
         { name, path },
       );
     }
-    const workspace = {
+    const protectedReason = getProtectedPathReason(path);
+    if (protectedReason) {
+      return ipcError(
+        "ipcErrors.workspace.protectedPath",
+        `路径受保护: ${protectedReason}`,
+        { name, path },
+      );
+    }
+    const workspace: Workspace = {
       id: randomUUID(),
       name,
       path,
       createdAt: Date.now(),
       lastActiveAt: Date.now()
     };
-    const workspaces = store.get('workspaces');
-    store.set('workspaces', [...workspaces, workspace]);
+    await mutateWorkspaces(store, (current) => [...current, workspace]);
     return workspace;
   });
 
@@ -96,6 +127,14 @@ export function setupWorkspaceIpc(opts: {
           { name: trimmedName, path: parentPath },
         );
       }
+      const protectedReason = getProtectedPathReason(workspacePath);
+      if (protectedReason) {
+        return ipcError(
+          "ipcErrors.workspace.protectedPath",
+          `路径受保护: ${protectedReason}`,
+          { name: trimmedName, path: workspacePath },
+        );
+      }
       if (existsSync(workspacePath)) {
         return ipcError(
           "ipcErrors.workspace.createFailed",
@@ -105,15 +144,14 @@ export function setupWorkspaceIpc(opts: {
       }
 
       mkdirSync(workspacePath, { recursive: false });
-      const workspace = {
+      const workspace: Workspace = {
         id: randomUUID(),
         name: trimmedName,
         path: workspacePath,
         createdAt: Date.now(),
         lastActiveAt: Date.now(),
       };
-      const workspaces = store.get('workspaces');
-      store.set('workspaces', [...workspaces, workspace]);
+      await mutateWorkspaces(store, (current) => [...current, workspace]);
       return workspace;
     } catch (err) {
       log.error("[workspace.ipc] workspace:create-empty failed:", err);
@@ -126,13 +164,13 @@ export function setupWorkspaceIpc(opts: {
   });
 
   ipcMain.handle('workspace:delete', async (_, id: string) => {
-    const workspaces = store.get('workspaces').filter(w => w.id !== id);
-    store.set('workspaces', workspaces);
+    await mutateWorkspaces(store, (current) => current.filter(w => w.id !== id));
     try {
       disposeWorkspaceSession?.(id);
     } catch (err) {
       log.warn("[workspace.ipc] dispose workspace session failed:", err);
     }
+    return { success: true };
   });
 
   ipcMain.handle('workspace:select', async (_, path: string) => {
@@ -145,11 +183,19 @@ export function setupWorkspaceIpc(opts: {
       );
     }
     try {
-      const workspaces = store.get('workspaces');
-      const targetIndex = workspaces.findIndex((workspace) =>
-        normalizeWorkspacePath(workspace.path) === normalizeWorkspacePath(normalizedPath),
-      );
-      if (targetIndex < 0) {
+      const now = Date.now();
+      let found = false;
+      await mutateWorkspaces(store, (current) => {
+        const targetIndex = current.findIndex((workspace) =>
+          normalizeWorkspacePath(workspace.path) === normalizeWorkspacePath(normalizedPath),
+        );
+        if (targetIndex < 0) return current;
+        found = true;
+        return current.map((workspace, index) =>
+          index === targetIndex ? { ...workspace, lastActiveAt: now } : workspace,
+        );
+      });
+      if (!found) {
         log.warn("[workspace.ipc] workspace:select unknown path:", path);
         return ipcError(
           "ipcErrors.workspace.selectFailed",
@@ -157,10 +203,6 @@ export function setupWorkspaceIpc(opts: {
           { path },
         );
       }
-      const now = Date.now();
-      store.set('workspaces', workspaces.map((workspace, index) =>
-        index === targetIndex ? { ...workspace, lastActiveAt: now } : workspace,
-      ));
       log.info('Workspace selected:', path);
       return undefined;
     } catch (err) {
@@ -187,30 +229,6 @@ export function setupWorkspaceIpc(opts: {
       return ipcError(
         "ipcErrors.workspace.selectDirectoryFailed",
         `打开目录选择器失败: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  });
-
-  ipcMain.handle('files:select', async (
-    _,
-    opts?: { multiSelections?: boolean; filters?: { name: string; extensions: string[] }[] },
-  ) => {
-    const mainWindow = getMainWindow();
-    if (!mainWindow) return [];
-    try {
-      const properties: Array<'openFile' | 'multiSelections'> = ['openFile'];
-      if (opts?.multiSelections !== false) properties.push('multiSelections');
-      const result = await dialog.showOpenDialog(mainWindow, {
-        properties,
-        title: '选择附件',
-        filters: opts?.filters,
-      });
-      return result.canceled ? [] : result.filePaths;
-    } catch (err) {
-      log.error("[workspace.ipc] files:select failed:", err);
-      return ipcError(
-        "ipcErrors.files.selectFailed",
-        `打开文件选择器失败: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   });

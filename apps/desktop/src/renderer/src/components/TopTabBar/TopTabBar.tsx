@@ -25,12 +25,12 @@ export function TopTabBar({ activeTab, onTabChange, rightSlot }: TopTabBarProps)
 
     return (
         <div
-            className="flex h-full min-w-0 flex-1 items-center bg-transparent"
+            className="app-region-drag flex h-full min-w-0 flex-1 items-center bg-transparent"
             data-mmcode-component="top-tabbar"
             role="tablist"
             aria-label={t("topbar.ariaLabel")}
         >
-            <div className="flex h-full items-center gap-5 pl-[28px]">
+            <div className="app-region-drag flex h-full items-center gap-5 pl-[28px]">
                 {TAB_DEFS.map((tab) => {
                     const isActive = activeTab === tab.id;
                     return (
@@ -41,7 +41,7 @@ export function TopTabBar({ activeTab, onTabChange, rightSlot }: TopTabBarProps)
                             aria-selected={isActive}
                             aria-label={t(tab.labelKey)}
                             onClick={() => onTabChange(tab.id)}
-                            className={`relative flex h-full items-center gap-1 rounded-none px-0 text-[14px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mm-accent-blue)] ${
+                            className={`app-region-no-drag relative flex h-full items-center gap-1 rounded-none px-0 text-[14px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mm-accent-blue)] ${
                                 isActive
                                     ? "bg-transparent font-normal text-[var(--mm-text-primary)]"
                                     : "font-normal text-[var(--mm-text-tertiary)] hover:text-[var(--mm-text-primary)]"
@@ -59,7 +59,7 @@ export function TopTabBar({ activeTab, onTabChange, rightSlot }: TopTabBarProps)
                     );
                 })}
             </div>
-            {rightSlot && <div className="sr-only">{rightSlot}</div>}
+            {rightSlot && <div className="app-region-no-drag ml-auto flex items-center gap-2 pr-2">{rightSlot}</div>}
         </div>
     );
 }

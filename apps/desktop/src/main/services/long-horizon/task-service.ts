@@ -4,20 +4,20 @@ import type { LongHorizonDatabase } from "./database";
 export class TaskService {
     constructor(private readonly database: LongHorizonDatabase) {}
 
-    setSourceTasks(
+    async setSourceTasks(
         workspaceId: string,
         agentId: string | undefined,
         source: "goal" | "plan",
         items: Array<Pick<LongHorizonTaskRecord, "id" | "text" | "status">>,
-    ): void {
-        this.database.setSourceTasks(workspaceId, agentId, source, items);
+    ): Promise<void> {
+        await this.database.setSourceTasks(workspaceId, agentId, source, items);
     }
 
-    list(input: LongHorizonTaskListInput): LongHorizonTaskRecord[] {
+    async list(input: LongHorizonTaskListInput): Promise<LongHorizonTaskRecord[]> {
         return this.database.listTasks(input);
     }
 
-    getActive(input: LongHorizonTaskListInput): LongHorizonTaskRecord | null {
+    async getActive(input: LongHorizonTaskListInput): Promise<LongHorizonTaskRecord | null> {
         return this.database.getActiveTask(input);
     }
 }

@@ -1,11 +1,13 @@
 // Chat IPC Handler
 // AgentSession long-lived connection + ApprovalInterceptor + EventBridge
 // Errors return IpcError (code/params/fallback), no thrown exceptions
+// TODO(Phase 2 Task 19.1): split into chat-slash.ipc.ts / chat-plan.ipc.ts / chat-runtime.ipc.ts / chat-prompt.ipc.ts / chat-git.ipc.ts (deferred — high import-update risk)
 
 import { clipboard, ipcMain, BrowserWindow, type BrowserWindow as BrowserWindowType } from "electron";
 import { execFileSync } from "child_process";
-import { mkdirSync, rmSync, writeFileSync } from "fs";
-import { isAbsolute, join, relative, resolve } from "path";
+import { rmSync } from "fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { isAbsolute, join, relative, resolve, sep } from "path";
 import log from "electron-log/main";
 import { ipcError, normalizeLongHorizonSettings } from "@shared";
 import { WorkspaceRegistry } from "../services/pi-session/registry";
@@ -257,15 +259,15 @@ function buildExecutableInlinePlan(body: string, title: string): {
     };
 }
 
-function materializeInlinePlan(
+async function materializeInlinePlan(
     workspacePath: string,
     title: string,
     content: string,
     preferredFilename?: string,
-): { filename: string; path: string } {
+): Promise<{ filename: string; path: string }> {
     const safeTitle = title.trim() || "plan";
     const plansDir = join(workspacePath, ".pi", "plans");
-    mkdirSync(plansDir, { recursive: true });
+    await mkdir(plansDir, { recursive: true });
     const preferredBaseName = sanitizePlanFilename(preferredFilename ?? "");
     const baseName = preferredBaseName || sanitizePlanFilename(safeTitle) || "plan";
     const filename = preferredBaseName ? `${baseName}.md` : `${baseName}-${Date.now()}.md`;
@@ -283,7 +285,7 @@ function materializeInlinePlan(
         normalizedPlan.content,
         "",
     ].join("\n");
-    writeFileSync(planPath, fileContent, "utf8");
+    await writeFile(planPath, fileContent, "utf-8");
     return { filename, path: planPath };
 }
 
@@ -462,6 +464,26 @@ function modeOptions(settings?: AppSettings): {
     };
 }
 
+// Module-level memo: bundled extension paths don't change at runtime, so resolve once.
+interface BundledExtensionFeatures {
+    planModeSupported: boolean;
+    composeModeSupported: boolean;
+    workflowSupported: boolean;
+}
+let cachedExtensionFeatures: BundledExtensionFeatures | null = null;
+function getBundledExtensionFeatures(): BundledExtensionFeatures {
+    if (cachedExtensionFeatures) return cachedExtensionFeatures;
+    cachedExtensionFeatures = {
+        planModeSupported: resolveBundledDesktopExtensionPaths({ planModeEnabled: true }).length > 0,
+        composeModeSupported: resolveBundledDesktopExtensionPaths({ composeModeEnabled: true }).length > 0,
+        workflowSupported: resolveBundledDesktopExtensionPaths({
+            workflowEnabled: true,
+            composeWorkflowEnabled: true,
+        }).length > 0,
+    };
+    return cachedExtensionFeatures;
+}
+
 export function setupChatIpc(deps: ChatIpcDeps): void {
     const agentModeByWorkspace = new Map<string, AgentMode>();
     const send: IpcSender = (channel, _workspaceId, payload) => {
@@ -547,7 +569,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             );
         }
         try {
-            return materializeInlinePlan(ws.path, title, content, preferredFilename);
+            return await materializeInlinePlan(ws.path, title, content, preferredFilename);
         } catch (err) {
             log.error("[chat.ipc] materialize inline plan failed:", err);
             return ipcError(
@@ -595,16 +617,14 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         return deps.goalService?.get(ws.id, agentId) ?? null;
     });
 
-    ipcMain.handle("pi:runtime-feature-state", async () => (
-        buildMiMoCodeRuntimePort(longHorizonSettings(deps.getSettings?.()), {
-            planModeSupported: resolveBundledDesktopExtensionPaths({ planModeEnabled: true }).length > 0,
-            composeModeSupported: resolveBundledDesktopExtensionPaths({ composeModeEnabled: true }).length > 0,
-            workflowSupported: resolveBundledDesktopExtensionPaths({
-                workflowEnabled: true,
-                composeWorkflowEnabled: true,
-            }).length > 0,
-        })
-    ));
+    ipcMain.handle("pi:runtime-feature-state", async () => {
+        const extensionFeatures = getBundledExtensionFeatures();
+        return buildMiMoCodeRuntimePort(longHorizonSettings(deps.getSettings?.()), {
+            planModeSupported: extensionFeatures.planModeSupported,
+            composeModeSupported: extensionFeatures.composeModeSupported,
+            workflowSupported: extensionFeatures.workflowSupported,
+        });
+    });
 
     ipcMain.handle("pi:memory-search", async (_event, input: {
         workspaceId?: string;
@@ -671,7 +691,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         resolveExtensionUiRequest(requestId, { requestId, value: decision === "execute" ? true : text ?? "" });
     });
 
-    ipcMain.handle("pi:list-slash-commands", async (_event, workspaceId: string, agentId?: string, rawMode?: AgentMode) => {
+    ipcMain.handle("pi:list-slash-commands", async (_event, workspaceId: string, agentId?: string, _rawMode?: AgentMode) => {
         const ws = workspaceId ? deps.getWorkspace(workspaceId) : undefined;
         if (!ws) {
             return ipcError(
@@ -683,11 +703,9 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         try {
             const session = await getSlashSession(ws, agentId);
             const longHorizon = longHorizonSettings(deps.getSettings?.());
-            const mode = normalizeAgentMode(rawMode, modeOptions(deps.getSettings?.()));
             const goalCommands = longHorizon.enabled && longHorizon.goal.enabled && deps.goalService
                 ? goalSlashCommands()
                 : [];
-            void mode;
             return uniqueSlashCommands([...builtinSlashCommands(), ...goalCommands, ...collectDynamicSlashCommands(session)]);
         } catch (err) {
             log.error("[chat.ipc] list slash commands failed:", err);
@@ -714,7 +732,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         const longHorizon = longHorizonSettings(deps.getSettings?.());
         if (command === "goal" && longHorizon.enabled && longHorizon.goal.enabled && deps.goalService) {
             if (args.toLowerCase() === "clear") {
-                deps.goalService.clear(ws.id, input.agentId);
+                await deps.goalService.clear(ws.id, input.agentId);
                 return slashInfo(command, "已清除任务目标");
             }
             if (!args) {
@@ -723,7 +741,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
                     keepInput: true,
                 });
             }
-            deps.goalService.set({ workspaceId: ws.id, agentId: input.agentId, condition: args });
+            await deps.goalService.set({ workspaceId: ws.id, agentId: input.agentId, condition: args });
             return slashInfo(command, `任务目标已设置：${args}`);
         }
         if (!BUILTIN_SLASH_COMMANDS.some((item) => item.name === command)) {
@@ -828,9 +846,12 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         const longHorizon = longHorizonSettings(settings);
         const currentModeOptions = modeOptions(settings);
         const mode = normalizeAgentMode(options?.mode, currentModeOptions);
-        const activeGoal = deps.goalService?.get(ws.id);
+        // Set the workspace's active mode BEFORE any await so concurrent prompts / event-bridge
+        // reads don't observe a stale value during the async window below.
+        agentModeByWorkspace.set(ws.id, mode);
+        const activeGoal = await deps.goalService?.get(ws.id);
         const contextBlock = longHorizon.enabled && longHorizon.checkpoint.enabled
-            ? deps.checkpointService?.rebuildContext({
+            ? await deps.checkpointService?.rebuildContext({
                 workspaceId: ws.id,
                 goal: activeGoal?.condition,
                 recentTail: [text.trim()].filter(Boolean),
@@ -848,7 +869,6 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         }
         const promptWithContext = contextBlock ? `${contextBlock}\n\n${prompt}` : prompt;
         const outbound = buildAgentModePrompt(mode, promptWithContext, currentModeOptions);
-        agentModeByWorkspace.set(ws.id, mode);
 
         try {
             if (deps.agentRegistry) {
@@ -925,12 +945,26 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         }
         const gitPath = relative(workspaceRoot, targetPath).replace(/\\/g, "/");
 
+        // Defense-in-depth: reject any relative path that escapes the workspace.
+        if (gitPath.startsWith("../") || gitPath === ".." || isAbsolute(gitPath)) {
+            return ipcError("ipcErrors.chat.gitUndoInvalid", "目标路径超出工作区");
+        }
+        const resolved = resolve(workspaceRoot, gitPath);
+        if (!resolved.startsWith(workspaceRoot + sep) && resolved !== workspaceRoot) {
+            return ipcError("ipcErrors.chat.gitUndoInvalid", "目标路径超出工作区");
+        }
+
         try {
             // 先试 git checkout (tracked file)
             execFileSync("git", ["checkout", "--", gitPath], { cwd: workspaceRoot, stdio: "ignore" });
         } catch {
             // fallback: remove an untracked new file using Node APIs under the same workspace guard.
             try {
+                const status = execFileSync("git", ["status", "--porcelain", "--", gitPath], { cwd: workspaceRoot, encoding: "utf-8" }).trim();
+                if (!status.startsWith("?? ")) {
+                    log.warn(`git:undo refused to delete tracked/modified file: ${gitPath} (status=${status})`);
+                    return ipcError("ipcErrors.chat.gitUndoNotUntracked", "目标文件不是 untracked,已拒绝删除");
+                }
                 rmSync(join(workspaceRoot, gitPath), { force: true });
             } catch (err) {
                 log.error("[chat.ipc] git:undo failed:", err);

@@ -4,8 +4,12 @@
  */
 
 import { create } from 'zustand';
-import { isIpcError, type IpcError } from '@shared';
+import { type IpcError } from '@shared';
 import type { PiDriverStatus, PiInstallProgress } from '../types';
+import { partition } from '../utils/ipc';
+
+/** setupListeners 的 cleanup 函数 (非序列化, 离开 zustand state) */
+let cleanupFn: (() => void) | null = null;
 
 interface PiStatusState {
   // 状态
@@ -29,15 +33,8 @@ interface PiStatusState {
   // 内部
   _setStatus: (status: PiDriverStatus) => void;
   _setProgress: (progress: PiInstallProgress) => void;
-  _cleanup: (() => void) | null;
   setupListeners: () => void;
   cleanupListeners: () => void;
-}
-
-/** IPC 返的值拆成 (data | err), 用 IpcError 判别 */
-function partition<T>(result: T | IpcError): { ok: true; data: T } | { ok: false; err: IpcError | string } {
-  if (isIpcError(result)) return { ok: false, err: result };
-  return { ok: true, data: result };
 }
 
 export const usePiStatusStore = create<PiStatusState>((set, get) => ({
@@ -46,7 +43,6 @@ export const usePiStatusStore = create<PiStatusState>((set, get) => ({
   error: null,
   progress: null,
   isOperating: false,
-  _cleanup: null,
 
   _setStatus: (status) => set({ status, loading: false, error: null }),
 
@@ -62,6 +58,7 @@ export const usePiStatusStore = create<PiStatusState>((set, get) => ({
   },
 
   setupListeners: () => {
+    if (cleanupFn) return; // 幂等: 已注册过则跳过
     const api = window.piAPI;
     if (!api) return;
 
@@ -73,19 +70,17 @@ export const usePiStatusStore = create<PiStatusState>((set, get) => ({
       get()._setProgress(progress);
     });
 
-    set({
-      _cleanup: () => {
-        cleanup1?.();
-        cleanup2?.();
-      }
-    });
+    cleanupFn = () => {
+      cleanup1?.();
+      cleanup2?.();
+    };
   },
 
   cleanupListeners: () => {
-    const cleanup = get()._cleanup;
+    const cleanup = cleanupFn;
     if (cleanup) {
       cleanup();
-      set({ _cleanup: null });
+      cleanupFn = null;
     }
   },
 

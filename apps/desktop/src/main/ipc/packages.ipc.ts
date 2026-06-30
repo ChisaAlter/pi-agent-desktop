@@ -1,6 +1,4 @@
 import { ipcMain } from "electron";
-import log from "electron-log/main";
-import { ipcError } from "@shared";
 import {
     fetchPackageCatalog,
     installPackage,
@@ -10,97 +8,66 @@ import {
     updatePackage,
 } from "../services/pi-packages/pi-package-adapter";
 import { packageSearchSchema, packageSourceSchema } from "./schemas";
+import { withAction, withValidation } from "./helpers";
 
 export function setupPackagesIpc(): void {
     ipcMain.handle("packages:search", async (_event, query: string) => {
-        const parsed = packageSearchSchema.safeParse([query]);
-        if (!parsed.success) {
-            return ipcError("ipcErrors.packages.searchInvalid", "搜索插件参数无效");
-        }
-        try {
-            return await searchPackages(query);
-        } catch (err) {
-            log.error("[packages.ipc] search failed:", err);
-            return ipcError(
-                "ipcErrors.packages.searchFailed",
-                `搜索 Pi 插件失败: ${err instanceof Error ? err.message : String(err)}`,
-                { query },
-            );
-        }
+        return withValidation(packageSearchSchema, [query], {
+            invalidErrorKey: "ipcErrors.packages.searchInvalid",
+            invalidFallback: "搜索插件参数无效",
+            failedErrorKey: "ipcErrors.packages.searchFailed",
+            failedLabel: "搜索 Pi 插件失败",
+            logTag: "[packages.ipc] search failed:",
+            context: { query },
+        }, () => searchPackages(query));
     });
 
     ipcMain.handle("packages:refresh-catalog", async () => {
-        try {
-            return await fetchPackageCatalog();
-        } catch (err) {
-            log.error("[packages.ipc] refresh catalog failed:", err);
-            return ipcError(
-                "ipcErrors.packages.refreshFailed",
-                `刷新 Pi 插件市场失败: ${err instanceof Error ? err.message : String(err)}`,
-            );
-        }
+        return withAction(() => fetchPackageCatalog(), {
+            failedErrorKey: "ipcErrors.packages.refreshFailed",
+            failedLabel: "刷新 Pi 插件市场失败",
+            logTag: "[packages.ipc] refresh catalog failed:",
+        });
     });
 
     ipcMain.handle("packages:list-installed", async () => {
-        try {
-            return await listInstalledPackages();
-        } catch (err) {
-            log.error("[packages.ipc] list installed failed:", err);
-            return ipcError(
-                "ipcErrors.packages.listFailed",
-                `列出 Pi 插件失败: ${err instanceof Error ? err.message : String(err)}`,
-            );
-        }
+        return withAction(() => listInstalledPackages(), {
+            failedErrorKey: "ipcErrors.packages.listFailed",
+            failedLabel: "列出 Pi 插件失败",
+            logTag: "[packages.ipc] list installed failed:",
+        });
     });
 
     ipcMain.handle("packages:install", async (_event, source: string) => {
-        const parsed = packageSourceSchema.safeParse([source]);
-        if (!parsed.success) {
-            return ipcError("ipcErrors.packages.installInvalid", "安装插件参数无效");
-        }
-        try {
-            return await installPackage(source);
-        } catch (err) {
-            log.error("[packages.ipc] install failed:", err);
-            return ipcError(
-                "ipcErrors.packages.installFailed",
-                `安装 Pi 插件失败: ${err instanceof Error ? err.message : String(err)}`,
-                { source },
-            );
-        }
+        return withValidation(packageSourceSchema, [source], {
+            invalidErrorKey: "ipcErrors.packages.installInvalid",
+            invalidFallback: "安装插件参数无效",
+            failedErrorKey: "ipcErrors.packages.installFailed",
+            failedLabel: "安装 Pi 插件失败",
+            logTag: "[packages.ipc] install failed:",
+            context: { source },
+        }, () => installPackage(source));
     });
 
     ipcMain.handle("packages:remove", async (_event, source: string) => {
-        const parsed = packageSourceSchema.safeParse([source]);
-        if (!parsed.success) {
-            return ipcError("ipcErrors.packages.removeInvalid", "卸载插件参数无效");
-        }
-        try {
-            return await removePackage(source);
-        } catch (err) {
-            log.error("[packages.ipc] remove failed:", err);
-            return ipcError(
-                "ipcErrors.packages.removeFailed",
-                `卸载 Pi 插件失败: ${err instanceof Error ? err.message : String(err)}`,
-                { source },
-            );
-        }
+        return withValidation(packageSourceSchema, [source], {
+            invalidErrorKey: "ipcErrors.packages.removeInvalid",
+            invalidFallback: "卸载插件参数无效",
+            failedErrorKey: "ipcErrors.packages.removeFailed",
+            failedLabel: "卸载 Pi 插件失败",
+            logTag: "[packages.ipc] remove failed:",
+            context: { source },
+        }, () => removePackage(source));
     });
 
     ipcMain.handle("packages:update", async (_event, source: string) => {
-        const parsed = packageSourceSchema.safeParse([source]);
-        if (!parsed.success) {
-            return ipcError("ipcErrors.packages.updateInvalid", "更新插件参数无效");
-        }
-        try {
-            return await updatePackage(source);
-        } catch (err) {
-            log.error("[packages.ipc] update failed:", err);
-            return ipcError(
-                "ipcErrors.packages.updateFailed",
-                `更新 Pi 插件失败: ${err instanceof Error ? err.message : String(err)}`,
-                { source },
-            );
-        }
+        return withValidation(packageSourceSchema, [source], {
+            invalidErrorKey: "ipcErrors.packages.updateInvalid",
+            invalidFallback: "更新插件参数无效",
+            failedErrorKey: "ipcErrors.packages.updateFailed",
+            failedLabel: "更新 Pi 插件失败",
+            logTag: "[packages.ipc] update failed:",
+            context: { source },
+        }, () => updatePackage(source));
     });
 }

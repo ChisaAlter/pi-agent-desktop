@@ -10,6 +10,7 @@ import type {
     ExtensionUiRequest,
     ExtensionUiResponse,
     PermissionDecision,
+    PermissionMode,
     PlanCard,
     PlanProgressItem,
 } from "@shared";
@@ -34,16 +35,54 @@ interface ExtensionUiBridgeObservers {
     }) => void;
 }
 
-const pendingRequests = new Map<string, PendingRequest>();
-let currentPermissionMode: "ask" | "smart" | "always" = "smart";
+interface ExtensionUiBridgeOpts {
+    /**
+     * Returns the BrowserWindow that should receive IPC events for this workspace.
+     * If omitted, falls back to the first non-destroyed window (legacy behavior).
+     */
+    getTargetWindow?: () => BrowserWindow | null;
+}
+
+// Per-workspaceId state (Phase 2 Task 17.1):
+// Replaces the previous module-level singletons that were shared across all
+// windows/workspaces, causing cross-workspace state corruption.
+const pendingRequestsByWorkspace = new Map<string, Map<string, PendingRequest>>();
+const permissionModeByWorkspace = new Map<string, PermissionMode | null>();
+// Fallback used when no workspace-specific mode has been set. Preserves the
+// legacy `setDesktopPermissionMode(mode)` behavior (which had no workspaceId
+// parameter) by acting as the implicit default for new workspaces.
+let defaultPermissionMode: PermissionMode | null = "smart";
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
-function getWindow(): BrowserWindow | null {
+function getWorkspaceRequests(workspaceId: string): Map<string, PendingRequest> {
+    let m = pendingRequestsByWorkspace.get(workspaceId);
+    if (!m) {
+        m = new Map();
+        pendingRequestsByWorkspace.set(workspaceId, m);
+    }
+    return m;
+}
+
+function getWorkspacePermissionMode(workspaceId: string): PermissionMode | null {
+    return permissionModeByWorkspace.has(workspaceId)
+        ? (permissionModeByWorkspace.get(workspaceId) as PermissionMode | null)
+        : defaultPermissionMode;
+}
+
+/** Renderer only sends `requestId` (no workspaceId), so we scan all workspaces. */
+function findPendingRequest(requestId: string): { pending: PendingRequest; map: Map<string, PendingRequest> } | null {
+    for (const map of pendingRequestsByWorkspace.values()) {
+        const pending = map.get(requestId);
+        if (pending) return { pending, map };
+    }
+    return null;
+}
+
+function getDefaultWindow(): BrowserWindow | null {
     return BrowserWindow.getAllWindows().find((win) => !win.isDestroyed()) ?? null;
 }
 
-function send(channel: string, payload: unknown): void {
-    const win = getWindow();
+function sendToWindow(win: BrowserWindow | null, channel: string, payload: unknown): void {
     if (!win) return;
     win.webContents.send(channel, payload);
 }
@@ -91,9 +130,10 @@ export function resolveExtensionUiRequest(
     requestId: string,
     response: ExtensionUiResponse | PermissionDecision | boolean | string,
 ): void {
-    const pending = pendingRequests.get(requestId);
-    if (!pending) return;
-    pendingRequests.delete(requestId);
+    const found = findPendingRequest(requestId);
+    if (!found) return;
+    const { pending, map } = found;
+    map.delete(requestId);
     clearTimeout(pending.timer);
     pending.resolve(coerceDecisionValue(response, pending));
 }
@@ -103,19 +143,35 @@ function timeoutValue(kind: ExtensionUiRequest["kind"]): string | boolean | unde
 }
 
 export function clearPendingExtensionUiRequests(): void {
-    for (const [requestId, pending] of pendingRequests) {
-        clearTimeout(pending.timer);
-        pendingRequests.delete(requestId);
-        pending.resolve(timeoutValue(pending.kind));
+    for (const map of pendingRequestsByWorkspace.values()) {
+        for (const [requestId, pending] of map) {
+            clearTimeout(pending.timer);
+            map.delete(requestId);
+            pending.resolve(timeoutValue(pending.kind));
+        }
     }
+    pendingRequestsByWorkspace.clear();
 }
 
 export function _pendingExtensionUiRequestCount(): number {
-    return pendingRequests.size;
+    let total = 0;
+    for (const map of pendingRequestsByWorkspace.values()) {
+        total += map.size;
+    }
+    return total;
 }
 
-export function setDesktopPermissionMode(mode: "ask" | "smart" | "always"): void {
-    currentPermissionMode = mode;
+export function setDesktopPermissionMode(mode: PermissionMode, workspaceId?: string): void {
+    if (workspaceId) {
+        permissionModeByWorkspace.set(workspaceId, mode);
+    } else {
+        // Backward-compat: no workspaceId — propagate to all known workspaces
+        // and update the default so future workspaces inherit this mode.
+        defaultPermissionMode = mode;
+        for (const key of permissionModeByWorkspace.keys()) {
+            permissionModeByWorkspace.set(key, mode);
+        }
+    }
     const globalScope = globalThis as {
         __piPermissionSystem?: {
             setYoloMode?: (enabled: boolean, options?: { persist?: boolean; source?: string }) => unknown;
@@ -129,7 +185,7 @@ export function setDesktopPermissionMode(mode: "ask" | "smart" | "always"): void
     } catch (err) {
         log.warn("[extension-ui] failed to update pi-permission-system yolo mode:", err);
     }
-    send("permission:update", { mode });
+    sendToWindow(getDefaultWindow(), "permission:update", { mode });
 }
 
 function parsePlanWidgetLines(lines: string[]): PlanProgressItem[] {
@@ -151,8 +207,9 @@ function parsePlanWidgetLines(lines: string[]): PlanProgressItem[] {
 }
 
 export function emitPlanCard(card: PlanCard, workspaceId?: string): void {
-    send("plan:card", card);
-    send("plan:decision-request", {
+    const win = getDefaultWindow();
+    sendToWindow(win, "plan:card", card);
+    sendToWindow(win, "plan:decision-request", {
         requestId: newRequestId("plan_decision"),
         card,
         workspaceId,
@@ -163,7 +220,11 @@ export function createExtensionUiBridge(
     workspaceId: string,
     scope: ExtensionUiBridgeScope = {},
     observers: ExtensionUiBridgeObservers = {},
+    bridgeOpts: ExtensionUiBridgeOpts = {},
 ): ExtensionUIContext {
+    const getTargetWindow = bridgeOpts.getTargetWindow ?? getDefaultWindow;
+    const requests = getWorkspaceRequests(workspaceId);
+
     const request = async (
         kind: ExtensionUiRequest["kind"],
         rawTitle: string,
@@ -192,25 +253,25 @@ export function createExtensionUiBridge(
 
         return new Promise((resolve) => {
             const timer = setTimeout(() => {
-                const pending = pendingRequests.get(requestId);
+                const pending = requests.get(requestId);
                 if (!pending) return;
-                pendingRequests.delete(requestId);
+                requests.delete(requestId);
                 pending.resolve(timeoutValue(pending.kind));
             }, DEFAULT_REQUEST_TIMEOUT_MS);
-            pendingRequests.set(requestId, { kind, source, options: opts?.options, resolve, timer });
-            send(source === "plan" ? "plan:decision-request" : "permission:request", payload);
+            requests.set(requestId, { kind, source, options: opts?.options, resolve, timer });
+            sendToWindow(getTargetWindow(), source === "plan" ? "plan:decision-request" : "permission:request", payload);
         });
     };
 
     return {
         async select(title: string, options: string[]) {
-            if (currentPermissionMode === "always" && classifySource(title, options) === "permission") {
+            if (getWorkspacePermissionMode(workspaceId) === "always" && classifySource(title, options) === "permission") {
                 return options.find((opt) => /^yes$/i.test(opt)) ?? options[0];
             }
             return request("select", title, { options }) as Promise<string | undefined>;
         },
         async confirm(title: string, message: string) {
-            if (currentPermissionMode === "always" && classifySource(`${title}\n${message}`) === "permission") {
+            if (getWorkspacePermissionMode(workspaceId) === "always" && classifySource(`${title}\n${message}`) === "permission") {
                 return true;
             }
             return Boolean(await request("confirm", title, { message }));
@@ -222,13 +283,13 @@ export function createExtensionUiBridge(
             return request("editor", title, { message: prefill }) as Promise<string | undefined>;
         },
         notify(message: string, type?: "info" | "warning" | "error") {
-            send("permission:update", { message, type, workspaceId, agentId: scope.agentId });
+            sendToWindow(getTargetWindow(), "permission:update", { message, type, workspaceId, agentId: scope.agentId });
         },
         onTerminalInput() {
             return () => undefined;
         },
         setStatus(key: string, text: string | undefined) {
-            send("permission:update", { key, text, workspaceId, agentId: scope.agentId });
+            sendToWindow(getTargetWindow(), "permission:update", { key, text, workspaceId, agentId: scope.agentId });
         },
         setWorkingMessage() {},
         setWorkingVisible() {},
@@ -248,13 +309,13 @@ export function createExtensionUiBridge(
                     agentId: scope.agentId,
                     items: payload.items,
                 });
-                send("plan:progress", payload);
+                sendToWindow(getTargetWindow(), "plan:progress", payload);
             }
         },
         setFooter() {},
         setHeader() {},
         setTitle(title: string) {
-            send("permission:update", { title, workspaceId, agentId: scope.agentId });
+            sendToWindow(getTargetWindow(), "permission:update", { title, workspaceId, agentId: scope.agentId });
         },
         async custom(_factory: unknown) {
             return undefined as never;

@@ -26,17 +26,22 @@ interface DatabaseTreeNode {
 
 export class MemoryService {
     private readonly database: LongHorizonDatabase;
+    private readonly migrationPromise: Promise<void>;
 
     constructor(opts: { rootDir: string }) {
         this.database = new LongHorizonDatabase(opts.rootDir);
-        this.database.migrateLegacyMemoryJsonl(join(opts.rootDir, "memory.jsonl"));
+        this.migrationPromise = this.database.migrateLegacyMemoryJsonl(join(opts.rootDir, "memory.jsonl"));
     }
 
-    put(input: MemoryInput): MemoryRecord {
+    async ready(): Promise<void> {
+        await this.migrationPromise;
+    }
+
+    async put(input: MemoryInput): Promise<MemoryRecord> {
         return this.database.insertMemory(input);
     }
 
-    putHistory(input: { workspaceId?: string; sessionId?: string; text: string; tags?: string[] }): MemoryRecord {
+    async putHistory(input: { workspaceId?: string; sessionId?: string; text: string; tags?: string[] }): Promise<MemoryRecord> {
         return this.put({
             scope: input.sessionId ? "session" : "project",
             workspaceId: input.workspaceId,
@@ -47,23 +52,24 @@ export class MemoryService {
         });
     }
 
-    indexHistoryMessage(input: HistoryMessageInput): MemoryRecord | null {
+    async indexHistoryMessage(input: HistoryMessageInput): Promise<MemoryRecord | null> {
         return this.database.upsertHistoryMessage(input);
     }
 
-    search(query: string, options: MemorySearchOptions = {}): MemorySearchResult[] {
-        return this.database.searchMemories(query, options).map((record) => ({
+    async search(query: string, options: MemorySearchOptions = {}): Promise<MemorySearchResult[]> {
+        const records = await this.database.searchMemories(query, options);
+        return records.map((record) => ({
             ...record,
             score: record.score ?? 0,
         }));
     }
 
-    listRecent(options: RecentMemoryOptions = {}): MemoryRecord[] {
+    async listRecent(options: RecentMemoryOptions = {}): Promise<MemoryRecord[]> {
         return this.database.listRecentMemories(options);
     }
 
-    getTree(rootId: string): MemoryTreeNode | null {
-        const tree = this.database.getMemoryTree(rootId) as DatabaseTreeNode | null;
+    async getTree(rootId: string): Promise<MemoryTreeNode | null> {
+        const tree = await this.database.getMemoryTree(rootId) as DatabaseTreeNode | null;
         return tree ? normalizeTree(tree) : null;
     }
 
@@ -71,8 +77,8 @@ export class MemoryService {
         return this.database;
     }
 
-    close(): void {
-        this.database.close();
+    async close(): Promise<void> {
+        await this.database.close();
     }
 }
 

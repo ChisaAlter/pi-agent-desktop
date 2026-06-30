@@ -21,6 +21,8 @@ export class PendingEdits {
     private static MAX_ENTRIES = 200;
     /** v1.1: 自动审批开关 (renderer 同步过来) */
     private _autoApprove = false;
+    /** SubTask 40.8: cached sorted list, invalidated on every mutation */
+    private listCache: TrackedEdit[] | null = null;
 
     get autoApprove(): boolean {
         return this._autoApprove;
@@ -28,6 +30,10 @@ export class PendingEdits {
 
     set autoApprove(value: boolean) {
         this._autoApprove = value;
+    }
+
+    private invalidateCache(): void {
+        this.listCache = null;
     }
 
     track(
@@ -48,6 +54,7 @@ export class PendingEdits {
             timestamp: Date.now(),
         });
         this.evictIfFull();
+        this.invalidateCache();
         return id;
     }
 
@@ -59,6 +66,7 @@ export class PendingEdits {
         for (let i = 0; i < excess; i++) {
             this.map.delete(sorted[i].id);
         }
+        this.invalidateCache();
     }
 
     review(id: string, diff: string, finalContent: string): void {
@@ -66,31 +74,46 @@ export class PendingEdits {
         if (change) {
             change.diff = diff;
             change.newContent = finalContent;
+            this.invalidateCache();
         }
     }
 
     approve(id: string): void {
         this.map.delete(id);
+        this.invalidateCache();
     }
 
     reject(id: string): void {
         this.map.delete(id);
+        this.invalidateCache();
     }
 
     remove(id: string): void {
         this.map.delete(id);
+        this.invalidateCache();
     }
 
     get(id: string): TrackedEdit | undefined {
         return this.map.get(id);
     }
 
+    /** SubTask 40.8: linear scan by toolCallId (bounded at MAX_ENTRIES=200). */
+    getByToolCallId(toolCallId: string): TrackedEdit | undefined {
+        for (const edit of this.map.values()) {
+            if (edit.toolCallId === toolCallId) return edit;
+        }
+        return undefined;
+    }
+
     list(): TrackedEdit[] {
-        return [...this.map.values()].sort((a, b) => b.timestamp - a.timestamp);
+        if (this.listCache) return this.listCache;
+        this.listCache = [...this.map.values()].sort((a, b) => b.timestamp - a.timestamp);
+        return this.listCache;
     }
 
     clear(): void {
         this.map.clear();
+        this.invalidateCache();
     }
 
     size(): number {

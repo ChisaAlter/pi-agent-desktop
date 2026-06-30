@@ -2,18 +2,24 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { isIpcError, type FileEntry, type FileTreeNode, type GitStatus, type TextFileContent } from "@shared";
 import { DiffViewer } from "../DiffView/DiffViewer";
 import { MonacoEditor, getLanguageFromFilename } from "../Editor/MonacoEditor";
+import { useSettingsStore } from "../../stores/settings-store";
+import { useI18n } from "../../i18n";
 import {
   type LoadState, type ViewMode, type GitMark, type SaveConflict,
   basename, formatBytes, flattenTree, makeConflictDiff, lineRows,
-  modeLabel, modeDescription, nonEditableReason, shellActionFailure,
+  shellActionFailure,
   normalizePath, relativeToWorkspace, resolveWorkspacePath, makeGitMarks,
 } from "./file-workspace-utils";
+import { useLatestRequest } from "./hooks/useLatestRequest";
+import { useDebouncedSave } from "./hooks/useDebouncedSave";
 
 interface FileWorkspaceProps {
   workspacePath: string;
   workspaceId?: string;
   initialTarget?: { path: string; mode?: "edit" | "diff"; nonce: number } | null;
 }
+
+const AUTO_SAVE_DELAY_MS = 700;
 
 function FileTreeRow({
   node,
@@ -22,6 +28,7 @@ function FileTreeRow({
   expanded,
   gitMarks,
   workspacePath,
+  truncatedLabel,
   onSelect,
   onToggle,
 }: {
@@ -31,6 +38,7 @@ function FileTreeRow({
   expanded: Set<string>;
   gitMarks: Map<string, GitMark>;
   workspacePath: string;
+  truncatedLabel: string;
   onSelect: (node: FileTreeNode) => void;
   onToggle: (node: FileTreeNode) => void;
 }): React.JSX.Element {
@@ -68,7 +76,7 @@ function FileTreeRow({
             {gitMark.label}
           </span>
         )}
-        {node.truncated && <span className="shrink-0 text-[10px] text-[#b45309]">截断</span>}
+        {node.truncated && <span className="shrink-0 text-[10px] text-[#b45309]">{truncatedLabel}</span>}
       </button>
       {isDirectory && isExpanded && node.children && node.children.length > 0 && (
         <ul className="m-0 list-none p-0">
@@ -81,6 +89,7 @@ function FileTreeRow({
               expanded={expanded}
               gitMarks={gitMarks}
               workspacePath={workspacePath}
+              truncatedLabel={truncatedLabel}
               onSelect={onSelect}
               onToggle={onToggle}
             />
@@ -150,10 +159,19 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
   const [viewMode, setViewMode] = useState<ViewMode>("preview");
   const [diffState, setDiffState] = useState<LoadState>("idle");
   const [diffContent, setDiffContent] = useState("");
-  const treeLoadSeq = useRef(0);
-  const gitStatusSeq = useRef(0);
-  const fileReadSeq = useRef(0);
-  const diffReadSeq = useRef(0);
+  // TODO: consolidate state into useReducer slices (Phase 2 SubTask 27.3 deferred).
+  const treeLoadReq = useLatestRequest();
+  const gitStatusReq = useLatestRequest();
+  const fileReadReq = useLatestRequest();
+  const diffReadReq = useLatestRequest();
+  const lastAutoSaveAttemptRef = useRef<{ path: string | null; draft: string } | null>(null);
+  const isDirtyRef = useRef(false);
+  const autoSave = useSettingsStore((state) => state.settings.autoSave);
+  const showLineNumbers = useSettingsStore((state) => state.settings.showLineNumbers);
+  const wordWrap = useSettingsStore((state) => state.settings.wordWrap);
+  const { t } = useI18n();
+  const modeLabelText = useCallback((mode: ViewMode) => t(`fileWorkspace.mode.${mode}.label`), [t]);
+  const modeDescriptionText = useCallback((mode: ViewMode) => t(`fileWorkspace.mode.${mode}.description`), [t]);
 
   // Sync currently-viewed file to main process (workbench context)
   useEffect(() => {
@@ -164,13 +182,12 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
 
   const loadTree = useCallback(async () => {
     if (!window.piAPI?.filesGetTree) return;
-    const requestId = treeLoadSeq.current + 1;
-    treeLoadSeq.current = requestId;
+    const requestId = treeLoadReq.begin();
     setTreeState("loading");
     setError(null);
     try {
       const result = await window.piAPI.filesGetTree(workspacePath, { maxDepth: 5, maxEntries: 1600 });
-      if (requestId !== treeLoadSeq.current) return;
+      if (!treeLoadReq.isLatest(requestId)) return;
       if (isIpcError(result)) {
         setTreeState("error");
         setError(result.fallback);
@@ -180,31 +197,30 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
       setExpanded(new Set(flattenTree(result).filter((node) => node.type === "directory").map((node) => node.path)));
       setTreeState("ready");
     } catch (err) {
-      if (requestId !== treeLoadSeq.current) return;
+      if (!treeLoadReq.isLatest(requestId)) return;
       setTreeState("error");
-      setError(`加载文件树失败: ${err instanceof Error ? err.message : String(err)}`);
+      setError(t("fileWorkspace.tree.loadFailed", { message: err instanceof Error ? err.message : String(err) }));
     }
-  }, [workspacePath]);
+  }, [t, treeLoadReq, workspacePath]);
 
   const loadGitStatus = useCallback(async () => {
     if (!window.piAPI?.getGitStatus) return;
-    const requestId = gitStatusSeq.current + 1;
-    gitStatusSeq.current = requestId;
+    const requestId = gitStatusReq.begin();
     try {
       const result = await window.piAPI.getGitStatus(workspacePath);
-      if (requestId !== gitStatusSeq.current) return;
+      if (!gitStatusReq.isLatest(requestId)) return;
       setGitStatus(isIpcError(result) ? null : result);
     } catch {
-      if (requestId !== gitStatusSeq.current) return;
+      if (!gitStatusReq.isLatest(requestId)) return;
       setGitStatus(null);
     }
-  }, [workspacePath]);
+  }, [gitStatusReq, workspacePath]);
 
   useEffect(() => {
-    treeLoadSeq.current += 1;
-    gitStatusSeq.current += 1;
-    fileReadSeq.current += 1;
-    diffReadSeq.current += 1;
+    treeLoadReq.cancel();
+    gitStatusReq.cancel();
+    fileReadReq.cancel();
+    diffReadReq.cancel();
     setSelectedPath(null);
     setContent(null);
     setDraft("");
@@ -272,46 +288,52 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
   );
 
   const isDirty = content != null && !content.binary && draft !== content.content;
+  useEffect(() => {
+    isDirtyRef.current = isDirty;
+  }, [isDirty]);
   const canEdit = content != null && !content.binary && !content.truncated;
-  const readonlyReason = nonEditableReason(content);
+  const readonlyReason = content?.binary
+    ? t("fileWorkspace.readonly.binary")
+    : content?.truncated
+      ? t("fileWorkspace.readonly.truncated")
+      : null;
   const statusLine = useMemo(() => {
-    if (!selectedPath) return `${allFiles.length} 个文件可浏览`;
-    if (contentState === "loading") return "正在读取文件";
-    if (contentState === "error") return error ?? "读取失败";
-    if (saveConflict) return "保存冲突";
-    if (viewMode === "diff") return diffState === "loading" ? "正在读取 diff" : "Git diff 视图";
-    if (saveState === "error" && saveError) return "保存失败";
-    if (isDirty) return "有未保存修改";
-    return readonlyReason ?? modeLabel(viewMode);
-  }, [allFiles.length, contentState, diffState, error, isDirty, readonlyReason, saveConflict, saveError, saveState, selectedPath, viewMode]);
+    if (!selectedPath) return t("fileWorkspace.status.browse", { count: allFiles.length });
+    if (contentState === "loading") return t("fileWorkspace.status.reading");
+    if (contentState === "error") return error ?? t("fileWorkspace.status.readFailed");
+    if (saveConflict) return t("fileWorkspace.status.conflict");
+    if (viewMode === "diff") return diffState === "loading" ? t("fileWorkspace.status.diffLoading") : t("fileWorkspace.status.diffView");
+    if (saveState === "error" && saveError) return t("fileWorkspace.status.saveFailed");
+    if (isDirty) return t("fileWorkspace.status.dirty");
+    return readonlyReason ?? modeLabelText(viewMode);
+  }, [allFiles.length, contentState, diffState, error, isDirty, modeLabelText, readonlyReason, saveConflict, saveError, saveState, selectedPath, t, viewMode]);
   const selectedFileSize = content?.size ?? selectedNode?.size;
   const statusItems = useMemo(() => {
     if (!selectedPath) {
       return [
         { label: `${allFiles.length} files`, tone: "neutral" as const },
-        { label: treeState === "loading" ? "loading tree" : treeState === "error" ? "tree error" : "ready", tone: treeState === "error" ? "danger" as const : "neutral" as const },
+        { label: treeState === "loading" ? t("fileWorkspace.status.loadingTree") : treeState === "error" ? t("fileWorkspace.status.treeError") : t("fileWorkspace.status.ready"), tone: treeState === "error" ? "danger" as const : "neutral" as const },
       ];
     }
     return [
-      { label: modeDescription(viewMode), tone: viewMode === "edit" ? "active" as const : "neutral" as const },
-      { label: contentState === "loading" ? "loading" : contentState === "error" ? "read error" : formatBytes(selectedFileSize), tone: contentState === "error" ? "danger" as const : "neutral" as const },
-      { label: selectedGitMark ? `git ${selectedGitMark.label}` : "git clean", tone: selectedGitMark ? "active" as const : "neutral" as const },
+      { label: modeDescriptionText(viewMode), tone: viewMode === "edit" ? "active" as const : "neutral" as const },
+      { label: contentState === "loading" ? t("fileWorkspace.status.loading") : contentState === "error" ? t("fileWorkspace.status.readError") : formatBytes(selectedFileSize), tone: contentState === "error" ? "danger" as const : "neutral" as const },
+      { label: selectedGitMark ? `git ${selectedGitMark.label}` : t("fileWorkspace.status.gitClean"), tone: selectedGitMark ? "active" as const : "neutral" as const },
       {
-        label: saveConflict ? "conflict" : saveState === "loading" ? "saving" : saveState === "error" ? "save failed" : isDirty ? "dirty" : "saved",
+        label: saveConflict ? t("fileWorkspace.status.conflict") : saveState === "loading" ? t("fileWorkspace.status.saving") : saveState === "error" ? t("fileWorkspace.status.saveFailed") : isDirty ? t("fileWorkspace.status.dirty") : t("fileWorkspace.status.saved"),
         tone: saveState === "error" ? "danger" as const : isDirty ? "warning" as const : "neutral" as const,
       },
     ];
-  }, [allFiles.length, contentState, isDirty, saveConflict, saveState, selectedFileSize, selectedGitMark, selectedPath, treeState, viewMode]);
+  }, [allFiles.length, contentState, isDirty, modeDescriptionText, saveConflict, saveState, selectedFileSize, selectedGitMark, selectedPath, t, treeState, viewMode]);
 
   const openFile = useCallback(async (path: string, opts?: { force?: boolean }) => {
     if (!window.piAPI?.filesReadTextFile) return;
-    if (!opts?.force && isDirty) {
-      const shouldDiscard = window.confirm("当前文件有未保存修改，切换文件将丢弃这些修改。继续？");
+    if (!opts?.force && isDirtyRef.current) {
+      const shouldDiscard = window.confirm(t("fileWorkspace.messages.discardConfirmFile"));
       if (!shouldDiscard) return;
     }
-    const requestId = fileReadSeq.current + 1;
-    fileReadSeq.current = requestId;
-    diffReadSeq.current += 1;
+    const requestId = fileReadReq.begin();
+    diffReadReq.cancel();
     setSelectedPath(path);
     setSaveMessage(null);
     setSaveError(null);
@@ -322,7 +344,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
     setContentState("loading");
     try {
       const result = await window.piAPI.filesReadTextFile(path, workspacePath);
-      if (requestId !== fileReadSeq.current) return;
+      if (!fileReadReq.isLatest(requestId)) return;
       if (isIpcError(result)) {
         setContent(null);
         setDraft("");
@@ -334,27 +356,29 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
       setActionError(null);
       setContent(result);
       setDraft(result.content);
+      lastAutoSaveAttemptRef.current = null;
       setViewMode("preview");
       setContentState("ready");
     } catch (err) {
-      if (requestId !== fileReadSeq.current) return;
+      if (!fileReadReq.isLatest(requestId)) return;
       setContent(null);
       setDraft("");
-      setError(`读取文件失败: ${err instanceof Error ? err.message : String(err)}`);
+      setError(t("fileWorkspace.messages.readFileFailed", { message: err instanceof Error ? err.message : String(err) }));
       setContentState("error");
     }
-  }, [isDirty, workspacePath]);
+  }, [diffReadReq, fileReadReq, t, workspacePath]);
 
   const discardDraft = (): void => {
     if (!content) return;
     setDraft(content.content);
+    lastAutoSaveAttemptRef.current = null;
     setSaveState("idle");
     setSaveError(null);
-    setSaveMessage("已丢弃未保存修改");
+    setSaveMessage(t("fileWorkspace.messages.discarded"));
     window.setTimeout(() => setSaveMessage(null), 1600);
   };
 
-  const saveDraft = async (): Promise<void> => {
+  const saveDraft = useCallback(async (): Promise<void> => {
     if (!content || !selectedPath || !window.piAPI?.filesWriteTextFile || !canEdit || viewMode !== "edit") return;
     setSaveState("loading");
     setSaveMessage(null);
@@ -364,7 +388,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
     try {
       result = await window.piAPI.filesWriteTextFile(selectedPath, draft, workspacePath, { expectedMtimeMs: content.mtimeMs });
     } catch (err) {
-      const message = `保存失败: ${err instanceof Error ? err.message : String(err)}`;
+      const message = t("fileWorkspace.messages.saveFailed", { message: err instanceof Error ? err.message : String(err) });
       setError(message);
       setSaveMessage(message);
       setSaveError(message);
@@ -398,10 +422,11 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
       binary: false,
     };
     setContent(nextContent);
+    lastAutoSaveAttemptRef.current = null;
     setSaveState("ready");
     setSaveError(null);
     setSaveConflict(null);
-    setSaveMessage("已保存");
+    setSaveMessage(t("fileWorkspace.messages.saved"));
     window.setTimeout(() => setSaveMessage(null), 1600);
     window.dispatchEvent(
       new CustomEvent("workspace:file-saved", {
@@ -415,18 +440,27 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
     );
     void loadTree();
     void loadGitStatus();
-  };
+  }, [canEdit, content, draft, loadGitStatus, loadTree, selectedPath, selectedRelativePath, t, viewMode, workspacePath]);
+
+  const handleAutoSave = useCallback((path: string, content: string) => {
+    const lastAttempt = lastAutoSaveAttemptRef.current;
+    if (lastAttempt?.path === path && lastAttempt.draft === content) return;
+    lastAutoSaveAttemptRef.current = { path, draft: content };
+    void saveDraft();
+  }, [saveDraft]);
+
+  const autoSaveFilePath = (autoSave && isDirty && canEdit && viewMode === "edit" && saveState !== "loading" && !saveConflict) ? selectedPath : null;
+  useDebouncedSave(autoSaveFilePath, draft, handleAutoSave, AUTO_SAVE_DELAY_MS);
 
   const openSelectedDiff = useCallback(async (): Promise<void> => {
     if (!selectedPath || !selectedRelativePath || !window.piAPI?.gitDiff) return;
-    const requestId = diffReadSeq.current + 1;
-    diffReadSeq.current = requestId;
+    const requestId = diffReadReq.begin();
     setViewMode("diff");
     setDiffState("loading");
     setDiffContent("");
     try {
       const diff = await window.piAPI.gitDiff(workspacePath, selectedRelativePath);
-      if (requestId !== diffReadSeq.current) return;
+      if (!diffReadReq.isLatest(requestId)) return;
       if (isIpcError(diff)) {
         setDiffContent("");
         setError(diff.fallback);
@@ -436,12 +470,12 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
       setDiffContent(diff);
       setDiffState("ready");
     } catch (err) {
-      if (requestId !== diffReadSeq.current) return;
+      if (!diffReadReq.isLatest(requestId)) return;
       setDiffContent("");
       setError(err instanceof Error ? err.message : String(err));
       setDiffState("error");
     }
-  }, [selectedPath, selectedRelativePath, workspacePath]);
+  }, [diffReadReq, selectedPath, selectedRelativePath, workspacePath]);
 
   useEffect(() => {
     const onGitChanged = (event: Event): void => {
@@ -471,11 +505,10 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
         setViewMode("diff");
         setDiffState("loading");
         setDiffContent("");
-        const requestId = diffReadSeq.current + 1;
-        diffReadSeq.current = requestId;
+        const requestId = diffReadReq.begin();
         try {
           const diff = await window.piAPI.gitDiff(workspacePath, relativePath);
-          if (requestId !== diffReadSeq.current) return;
+          if (!diffReadReq.isLatest(requestId)) return;
           if (isIpcError(diff)) {
             setDiffContent("");
             setError(diff.fallback);
@@ -485,7 +518,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
           setDiffContent(diff);
           setDiffState("ready");
         } catch (err) {
-          if (requestId !== diffReadSeq.current) return;
+          if (!diffReadReq.isLatest(requestId)) return;
           setDiffContent("");
           setError(err instanceof Error ? err.message : String(err));
           setDiffState("error");
@@ -506,7 +539,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
       return;
     }
     if (isDirty) {
-      const shouldDiscard = window.confirm("当前文件有未保存修改，切换目录将丢弃这些修改。继续？");
+      const shouldDiscard = window.confirm(t("fileWorkspace.messages.discardConfirmDirectory"));
       if (!shouldDiscard) return;
     }
     setSelectedPath(resolvedPath);
@@ -520,7 +553,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
     setDiffState("idle");
     setContentState("idle");
     setActionError(null);
-    setActionMessage("已选中目录");
+    setActionMessage(t("fileWorkspace.messages.selectedDirectory"));
     setExpanded((current) => new Set([...current, resolvedPath]));
     window.setTimeout(() => setActionMessage(null), 1600);
   };
@@ -541,13 +574,13 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
       await navigator.clipboard?.writeText(selectedPath);
       setCopied(true);
       setActionError(null);
-      setActionMessage("已复制绝对路径");
+      setActionMessage(t("fileWorkspace.messages.copiedAbsolute"));
       window.setTimeout(() => setCopied(false), 1400);
       window.setTimeout(() => setActionMessage(null), 1600);
     } catch (err) {
       setCopied(false);
       setActionMessage(null);
-      setActionError(`复制路径失败: ${err instanceof Error ? err.message : String(err)}`);
+      setActionError(t("fileWorkspace.messages.copyPathFailed", { message: err instanceof Error ? err.message : String(err) }));
     }
   };
 
@@ -557,11 +590,11 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
     try {
       await navigator.clipboard?.writeText(relativePath);
       setActionError(null);
-      setActionMessage("已复制相对路径");
+      setActionMessage(t("fileWorkspace.messages.copiedRelative"));
       window.setTimeout(() => setActionMessage(null), 1600);
     } catch (err) {
       setActionMessage(null);
-      setActionError(`复制相对路径失败: ${err instanceof Error ? err.message : String(err)}`);
+      setActionError(t("fileWorkspace.messages.copyRelativeFailed", { message: err instanceof Error ? err.message : String(err) }));
     }
   };
 
@@ -577,11 +610,11 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
       }
     } catch (err) {
       setActionMessage(null);
-      setActionError(`系统打开失败: ${err instanceof Error ? err.message : String(err)}`);
+      setActionError(t("fileWorkspace.messages.openFailed", { message: err instanceof Error ? err.message : String(err) }));
       return;
     }
     setActionError(null);
-    setActionMessage("已请求系统打开");
+    setActionMessage(t("fileWorkspace.messages.openRequested"));
     window.setTimeout(() => setActionMessage(null), 1600);
   };
 
@@ -597,11 +630,11 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
       }
     } catch (err) {
       setActionMessage(null);
-      setActionError(`系统定位失败: ${err instanceof Error ? err.message : String(err)}`);
+      setActionError(t("fileWorkspace.messages.revealFailed", { message: err instanceof Error ? err.message : String(err) }));
       return;
     }
     setActionError(null);
-    setActionMessage("已请求系统定位");
+    setActionMessage(t("fileWorkspace.messages.revealRequested"));
     window.setTimeout(() => setActionMessage(null), 1600);
   };
 
@@ -611,11 +644,11 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
       await navigator.clipboard?.writeText(saveError);
     } catch (err) {
       setActionMessage(null);
-      setActionError(`复制错误信息失败: ${err instanceof Error ? err.message : String(err)}`);
+      setActionError(t("fileWorkspace.messages.copyErrorFailed", { message: err instanceof Error ? err.message : String(err) }));
       return;
     }
     setActionError(null);
-    setSaveMessage("已复制错误信息");
+    setSaveMessage(t("fileWorkspace.messages.copiedError"));
     window.setTimeout(() => {
       setSaveMessage(saveError);
     }, 1400);
@@ -626,11 +659,11 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
       await navigator.clipboard?.writeText(draft);
     } catch (err) {
       setActionMessage(null);
-      setActionError(`复制草稿失败: ${err instanceof Error ? err.message : String(err)}`);
+      setActionError(t("fileWorkspace.messages.copyDraftFailed", { message: err instanceof Error ? err.message : String(err) }));
       return;
     }
     setActionError(null);
-    setSaveMessage("已复制当前草稿");
+    setSaveMessage(t("fileWorkspace.messages.copiedDraft"));
     window.setTimeout(() => {
       if (saveError) setSaveMessage(saveError);
       else setSaveMessage(null);
@@ -640,7 +673,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
   const reloadSelectedFile = async (): Promise<void> => {
     if (!selectedPath) return;
     await openFile(selectedPath, { force: true });
-    setSaveMessage("已重新读取磁盘文件");
+    setSaveMessage(t("fileWorkspace.messages.reloaded"));
     window.setTimeout(() => setSaveMessage(null), 1600);
   };
 
@@ -651,7 +684,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
     setSaveConflict(null);
     setSaveError(null);
     setSaveState("idle");
-    setSaveMessage("已采用磁盘版本");
+    setSaveMessage(t("fileWorkspace.messages.usedDiskVersion"));
     setViewMode("preview");
     window.setTimeout(() => setSaveMessage(null), 1600);
   };
@@ -678,12 +711,12 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
   };
 
   return (
-    <div className="flex h-full min-h-0 bg-[var(--mm-bg-main)] text-[var(--mm-text-primary)]" role="region" aria-label="文件工作区">
+    <div className="flex h-full min-h-0 bg-[var(--mm-bg-main)] text-[var(--mm-text-primary)]" role="region" aria-label={t("fileWorkspace.region")}>
       <aside className="flex h-full w-[300px] shrink-0 flex-col border-r border-[var(--mm-border)] bg-[var(--mm-bg-panel)]">
         <div className="border-b border-[var(--mm-border)] px-4 py-3">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
-              <h1 className="m-0 text-sm font-semibold">Files</h1>
+              <h1 className="m-0 text-sm font-semibold">{t("fileWorkspace.title")}</h1>
               <p className="m-0 mt-1 truncate font-mono text-[11px] text-[var(--mm-text-tertiary)]" title={workspacePath}>
                 {workspacePath}
               </p>
@@ -692,8 +725,8 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
               type="button"
               onClick={() => void loadTree()}
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
-              aria-label="刷新文件树"
-              title="刷新"
+              aria-label={t("fileWorkspace.refreshTree")}
+              title={t("fileWorkspace.refresh")}
             >
               ↻
             </button>
@@ -702,26 +735,26 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             className="mt-3 h-8 w-full rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 text-xs outline-none focus:border-[#999]"
-            placeholder="搜索文件"
-            aria-label="搜索文件"
+            placeholder={t("fileWorkspace.searchFiles")}
+            aria-label={t("fileWorkspace.searchFiles")}
           />
         </div>
         <div className="min-h-0 flex-1 overflow-auto">
           {query.trim() ? (
             <ul className="m-0 list-none p-2">
               {searchState === "loading" && (
-                <li className="px-2 py-6 text-center text-xs text-[var(--mm-text-secondary)]">正在搜索文件...</li>
+                <li className="px-2 py-6 text-center text-xs text-[var(--mm-text-secondary)]">{t("fileWorkspace.search.loading")}</li>
               )}
               {searchState === "error" && (
                 <li className="rounded-md border border-[#fecaca] bg-[#fef2f2] px-3 py-3 text-xs text-[var(--color-error)]" role="alert">
-                  <div className="font-medium">文件搜索失败</div>
+                  <div className="font-medium">{t("fileWorkspace.search.errorTitle")}</div>
                   <div className="mt-1 break-all font-mono text-[11px]">{searchError}</div>
                   <button
                     type="button"
                     onClick={() => setSearchReloadKey((key) => key + 1)}
                     className="mt-2 rounded-md bg-[#b91c1c] px-2 py-1 text-[11px] text-white hover:bg-[#991b1b]"
                   >
-                    重试
+                    {t("common.retry")}
                   </button>
                 </li>
               )}
@@ -729,26 +762,26 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
                 <SearchResultRow key={file.path} file={file} gitMark={gitMarkForPath(file.path)} onOpen={openSearchResult} />
               ))}
               {searchState !== "loading" && searchState !== "error" && searchResults.length === 0 && (
-                <li className="px-2 py-6 text-center text-xs text-[var(--mm-text-secondary)]">没有匹配文件</li>
+                <li className="px-2 py-6 text-center text-xs text-[var(--mm-text-secondary)]">{t("fileWorkspace.search.empty")}</li>
               )}
             </ul>
           ) : treeState === "loading" ? (
-            <div className="px-4 py-6 text-xs text-[var(--mm-text-secondary)]">正在读取文件树...</div>
+            <div className="px-4 py-6 text-xs text-[var(--mm-text-secondary)]">{t("fileWorkspace.tree.loading")}</div>
           ) : treeState === "error" ? (
             <div className="m-3 rounded-md border border-[#fecaca] bg-[#fef2f2] px-3 py-3 text-xs text-[var(--color-error)]" role="alert">
-              <div className="font-medium">文件树加载失败</div>
+              <div className="font-medium">{t("fileWorkspace.tree.errorTitle")}</div>
               <div className="mt-1 break-all font-mono text-[11px]">{error}</div>
               <button
                 type="button"
                 onClick={() => void loadTree()}
                 className="mt-2 rounded-md bg-[#b91c1c] px-2 py-1 text-[11px] text-white hover:bg-[#991b1b]"
               >
-                重试
+                {t("common.retry")}
               </button>
             </div>
           ) : tree ? (
             allFiles.length === 0 ? (
-              <div className="px-4 py-8 text-center text-xs text-[var(--mm-text-secondary)]">目录为空</div>
+              <div className="px-4 py-8 text-center text-xs text-[var(--mm-text-secondary)]">{t("fileWorkspace.emptyDirectory")}</div>
             ) : (
             <ul className="m-0 list-none p-2">
               <FileTreeRow
@@ -760,6 +793,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
                 onToggle={toggleDirectory}
                 gitMarks={gitMarks}
                 workspacePath={workspacePath}
+                truncatedLabel={t("fileWorkspace.truncated")}
               />
             </ul>
             )
@@ -771,10 +805,10 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
         <div className="flex h-12 items-center justify-between gap-3 border-b border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
-              <div className="truncate font-mono text-sm">{selectedNode?.name ?? content?.name ?? "选择一个文件开始预览"}</div>
-              {isDirty && <span className="shrink-0 rounded bg-[#fff7ed] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-warn)]">未保存</span>}
-              {saveState === "error" && <span className="shrink-0 rounded bg-[#fef2f2] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-error)]">{saveConflict ? "保存冲突" : "保存失败"}</span>}
-              {selectedPath && <span className="shrink-0 rounded bg-[var(--mm-bg-sidebar)] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-secondary)]">{modeLabel(viewMode)}</span>}
+              <div className="truncate font-mono text-sm">{selectedNode?.name ?? content?.name ?? t("fileWorkspace.selectPrompt")}</div>
+              {isDirty && <span className="shrink-0 rounded bg-[#fff7ed] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-warn)]">{t("fileWorkspace.status.dirty")}</span>}
+              {saveState === "error" && <span className="shrink-0 rounded bg-[#fef2f2] px-1.5 py-0.5 text-[10px] font-medium text-[var(--color-error)]">{saveConflict ? t("fileWorkspace.status.conflict") : t("fileWorkspace.status.saveFailed")}</span>}
+              {selectedPath && <span className="shrink-0 rounded bg-[var(--mm-bg-sidebar)] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-secondary)]">{modeLabelText(viewMode)}</span>}
               {selectedGitMark && <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${selectedGitMark.className}`}>{selectedGitMark.label}</span>}
             </div>
             <div className="truncate text-[11px] text-[var(--mm-text-tertiary)]">
@@ -786,95 +820,98 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
               {canEdit && viewMode !== "diff" && viewMode !== "conflict" && (
                 <>
                   {viewMode === "preview" ? (
-                    <button type="button" onClick={() => setViewMode("edit")} className="rounded-md bg-[#1f1f1f] px-2 py-1 text-xs text-white hover:bg-[#333]">编辑</button>
+                    <button type="button" onClick={() => setViewMode("edit")} className="rounded-md bg-[#1f1f1f] px-2 py-1 text-xs text-white hover:bg-[#333]">{t("fileWorkspace.actions.edit")}</button>
                   ) : (
                     <>
-                      <button type="button" onClick={() => setViewMode("preview")} disabled={isDirty} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-40">只读</button>
-                      <button type="button" onClick={discardDraft} disabled={!isDirty} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-40">丢弃修改</button>
+                      <button type="button" onClick={() => setViewMode("preview")} disabled={isDirty} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-40">{t("fileWorkspace.actions.readOnly")}</button>
+                      <button type="button" onClick={discardDraft} disabled={!isDirty} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-40">{t("fileWorkspace.actions.discard")}</button>
                       <button type="button" onClick={() => void saveDraft()} disabled={!isDirty || saveState === "loading"} className="rounded-md bg-[#1f1f1f] px-2 py-1 text-xs text-white hover:bg-[#333] disabled:opacity-40">
-                        {saveState === "loading" ? "保存中" : "保存"}
+                        {saveState === "loading" ? t("fileWorkspace.actions.saving") : t("fileWorkspace.actions.save")}
                       </button>
                     </>
                   )}
                 </>
               )}
               {selectedGitMark && (
-                <button type="button" onClick={() => void openSelectedDiff()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">查看 Diff</button>
+                <button type="button" onClick={() => void openSelectedDiff()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">{t("fileWorkspace.actions.viewDiff")}</button>
               )}
               {viewMode === "diff" && (
-                <button type="button" onClick={() => setViewMode("preview")} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">返回预览</button>
+                <button type="button" onClick={() => setViewMode("preview")} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">{t("fileWorkspace.actions.backToPreview")}</button>
               )}
               {viewMode === "conflict" && saveConflict && (
-                <button type="button" onClick={continueEditingDraft} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">继续编辑</button>
+                <button type="button" onClick={continueEditingDraft} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">{t("fileWorkspace.actions.continueEditing")}</button>
               )}
               {saveConflict && viewMode !== "conflict" && (
-                <button type="button" onClick={showConflictDiff} className="rounded-md px-2 py-1 text-xs text-[var(--color-error)] hover:bg-[var(--mm-bg-hover)]">查看冲突</button>
+                <button type="button" onClick={showConflictDiff} className="rounded-md px-2 py-1 text-xs text-[var(--color-error)] hover:bg-[var(--mm-bg-hover)]">{t("fileWorkspace.actions.viewConflict")}</button>
               )}
-              <button type="button" onClick={() => void openSelectedPath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">打开</button>
-              <button type="button" onClick={() => void revealSelectedPath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">定位</button>
-              <button type="button" onClick={() => void copySelectedPath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">{copied ? "已复制" : "复制路径"}</button>
-              <button type="button" onClick={() => void copySelectedRelativePath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">复制相对路径</button>
-              <button type="button" onClick={sendToChat} className="rounded-md bg-[#1f1f1f] px-2 py-1 text-xs text-white hover:bg-[#333]">引用到聊天</button>
+              <button type="button" onClick={() => void openSelectedPath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">{t("fileWorkspace.actions.open")}</button>
+              <button type="button" onClick={() => void revealSelectedPath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">{t("fileWorkspace.actions.reveal")}</button>
+              <button type="button" onClick={() => void copySelectedPath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">{copied ? t("fileWorkspace.actions.copied") : t("fileWorkspace.actions.copyPath")}</button>
+              <button type="button" onClick={() => void copySelectedRelativePath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">{t("fileWorkspace.actions.copyRelativePath")}</button>
+              <button type="button" onClick={sendToChat} className="rounded-md bg-[#1f1f1f] px-2 py-1 text-xs text-white hover:bg-[#333]">{t("fileWorkspace.actions.quoteToChat")}</button>
             </div>
           )}
         </div>
         <div className="min-h-0 flex-1 overflow-auto bg-[var(--mm-bg-panel)]">
           {!selectedPath ? (
             <div className="flex h-full items-center justify-center text-sm text-[var(--mm-text-secondary)]">
-              从左侧文件树或搜索结果中选择文件。
+              {t("fileWorkspace.selectFile")}
             </div>
           ) : viewMode === "diff" ? (
             <div className="p-4">
               {diffState === "loading" ? (
-                <div className="text-sm text-[var(--mm-text-secondary)]">正在读取 diff...</div>
+                <div className="text-sm text-[var(--mm-text-secondary)]">{t("fileWorkspace.status.diffLoading")}...</div>
               ) : diffState === "error" ? (
                 <div className="text-sm text-[var(--color-error)]">{error}</div>
               ) : diffContent ? (
                 <DiffViewer diff={diffContent} maxHeight="calc(100vh - 160px)" />
               ) : (
                 <div className="rounded-lg border border-dashed border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-8 text-center text-sm text-[var(--mm-text-secondary)]">
-                  当前文件没有可显示的工作区 diff。
+                  {t("fileWorkspace.emptyStates.noDiff")}
                 </div>
               )}
             </div>
           ) : saveConflict && viewMode === "conflict" ? (
+            // TODO: extract SaveConflictDialog component (Phase 2 SubTask 27.4 deferred).
             <div className="flex min-h-full flex-col p-4">
               <div className="mb-3 rounded-md border border-[#fed7aa] bg-[#fff7ed] px-3 py-2 text-xs text-[#9a3412]" role="alert">
-                磁盘文件已在外部发生变化。下面显示“磁盘版本”到“当前草稿”的差异，草稿仍保留在编辑器中。
+                {t("fileWorkspace.conflict.warning")}
               </div>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <button type="button" onClick={continueEditingDraft} className="rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">
-                  继续编辑草稿
+                  {t("fileWorkspace.conflict.continueDraft")}
                 </button>
                 <button type="button" onClick={useDiskVersion} className="rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">
-                  采用磁盘版本
+                  {t("fileWorkspace.actions.useDiskVersion")}
                 </button>
                 <button type="button" onClick={() => void copyDraft()} className="rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">
-                  复制草稿
+                  {t("fileWorkspace.actions.copyDraft")}
                 </button>
               </div>
               <DiffViewer diff={saveConflict.diff} maxHeight="calc(100vh - 230px)" />
             </div>
           ) : contentState === "loading" ? (
-            <div className="p-5 text-sm text-[var(--mm-text-secondary)]">正在读取文件...</div>
+            <div className="p-5 text-sm text-[var(--mm-text-secondary)]">{t("fileWorkspace.status.reading")}...</div>
           ) : contentState === "error" ? (
             <div className="p-5 text-sm text-[var(--color-error)]">{error}</div>
           ) : content?.binary ? (
             <div className="m-5 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-4 text-sm text-[var(--mm-text-secondary)]">
-              二进制文件暂不预览，可使用“打开”或“定位”查看。
+              {t("fileWorkspace.emptyStates.binary")}
             </div>
           ) : content?.truncated ? (
             <div className="m-5 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-4 text-sm text-[var(--mm-text-secondary)]">
-              文件过大，当前只显示前 512KB。为避免误保存，截断文件暂不可编辑。
+              {t("fileWorkspace.emptyStates.truncated")}
             </div>
           ) : content && viewMode === "preview" ? (
-            <div className="grid min-h-full grid-cols-[58px_minmax(0,1fr)] overflow-auto font-mono text-[12px] leading-5 text-[var(--mm-text-primary)]">
-              <div className="select-none border-r border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] py-3 text-right text-[11px] text-[var(--mm-text-tertiary)]">
-                {previewLines.map((_, index) => (
-                  <div key={index} className="h-5 px-3">{index + 1}</div>
-                ))}
-              </div>
-              <pre className="m-0 min-h-full whitespace-pre-wrap break-words px-3 py-3 font-mono text-[12px] leading-5" aria-label="文件只读预览">
+            <div className={`${showLineNumbers ? "grid grid-cols-[58px_minmax(0,1fr)]" : ""} min-h-full overflow-auto font-mono text-[12px] leading-5 text-[var(--mm-text-primary)]`}>
+              {showLineNumbers && (
+                <div className="select-none border-r border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] py-3 text-right text-[11px] text-[var(--mm-text-tertiary)]" aria-label={t("fileWorkspace.lineNumbersAria")}>
+                  {previewLines.map((_, index) => (
+                    <div key={index} className="h-5 px-3">{index + 1}</div>
+                  ))}
+                </div>
+              )}
+              <pre className={`m-0 min-h-full px-3 py-3 font-mono text-[12px] leading-5 ${wordWrap ? "whitespace-pre-wrap break-words" : "whitespace-pre"}`} aria-label={t("fileWorkspace.previewAria")}>
                 {draft}
               </pre>
             </div>
@@ -888,12 +925,13 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
                 onSave={() => {
                   if (isDirty && viewMode === "edit") void saveDraft();
                 }}
-                className="h-full min-h-[400px]"
+                className="min-h-[400px]"
+                height="max(400px, calc(100vh - 128px))"
               />
             </div>
           ) : null}
         </div>
-        <div className="flex h-8 shrink-0 items-center justify-between gap-3 border-t border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 text-[11px] text-[var(--mm-text-tertiary)]" aria-label="文件状态栏">
+        <div className="flex h-8 shrink-0 items-center justify-between gap-3 border-t border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 text-[11px] text-[var(--mm-text-tertiary)]" aria-label={t("fileWorkspace.statusBarAria")}>
           <div className="min-w-0 truncate font-mono">
             {selectedPath ? relativeToWorkspace(selectedPath, workspacePath) || selectedPath : statusLine}
           </div>
@@ -921,43 +959,43 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
       </main>
 
       <aside className="hidden h-full w-[240px] shrink-0 border-l border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-4 text-xs lg:block">
-        <h2 className="m-0 mb-3 text-sm font-semibold">文件信息</h2>
+        <h2 className="m-0 mb-3 text-sm font-semibold">{t("fileWorkspace.details.heading")}</h2>
         <dl className="space-y-3">
           <div>
-            <dt className="text-[var(--mm-text-tertiary)]">名称</dt>
+            <dt className="text-[var(--mm-text-tertiary)]">{t("fileWorkspace.details.name")}</dt>
             <dd className="m-0 mt-1 truncate font-mono">{content?.name ?? (selectedPath ? basename(selectedPath) : "-")}</dd>
           </div>
           <div>
-            <dt className="text-[var(--mm-text-tertiary)]">大小</dt>
+            <dt className="text-[var(--mm-text-tertiary)]">{t("fileWorkspace.details.size")}</dt>
             <dd className="m-0 mt-1 font-mono">{formatBytes(content?.size ?? selectedNode?.size)}</dd>
           </div>
           <div>
-            <dt className="text-[var(--mm-text-tertiary)]">状态</dt>
+            <dt className="text-[var(--mm-text-tertiary)]">{t("fileWorkspace.details.status")}</dt>
             <dd className="m-0 mt-1">{selectedPath ? statusLine : "-"}</dd>
           </div>
           {readonlyReason && (
             <div>
-              <dt className="text-[var(--mm-text-tertiary)]">限制</dt>
+              <dt className="text-[var(--mm-text-tertiary)]">{t("fileWorkspace.details.limit")}</dt>
               <dd className="m-0 mt-1 text-[#92400e]">{readonlyReason}</dd>
             </div>
           )}
           <div>
-            <dt className="text-[var(--mm-text-tertiary)]">模式</dt>
-            <dd className="m-0 mt-1">{selectedPath ? modeLabel(viewMode) : "-"}</dd>
+            <dt className="text-[var(--mm-text-tertiary)]">{t("fileWorkspace.details.mode")}</dt>
+            <dd className="m-0 mt-1">{selectedPath ? modeLabelText(viewMode) : "-"}</dd>
           </div>
           <div>
             <dt className="text-[var(--mm-text-tertiary)]">Git</dt>
-            <dd className="m-0 mt-1">{selectedGitMark ? `${selectedGitMark.text} (${selectedGitMark.label})` : selectedPath ? "未变更" : "-"}</dd>
+            <dd className="m-0 mt-1">{selectedGitMark ? `${selectedGitMark.text} (${selectedGitMark.label})` : selectedPath ? t("fileWorkspace.details.gitUnchanged") : "-"}</dd>
           </div>
           {saveMessage && (
             <div>
-              <dt className="text-[var(--mm-text-tertiary)]">保存状态</dt>
+              <dt className="text-[var(--mm-text-tertiary)]">{t("fileWorkspace.details.saveStatus")}</dt>
               <dd className={`m-0 mt-1 ${saveState === "error" ? "text-[var(--color-error)]" : "text-[var(--color-success)]"}`}>{saveMessage}</dd>
             </div>
           )}
           {(actionMessage || actionError) && (
             <div>
-              <dt className="text-[var(--mm-text-tertiary)]">最近操作</dt>
+              <dt className="text-[var(--mm-text-tertiary)]">{t("fileWorkspace.details.recentAction")}</dt>
               <dd className={`m-0 mt-1 ${actionError ? "text-[var(--color-error)]" : "text-[var(--color-success)]"}`}>
                 {actionError ?? actionMessage}
               </dd>
@@ -965,47 +1003,47 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
           )}
           {saveError && (
             <div>
-              <dt className="text-[var(--mm-text-tertiary)]">{saveConflict ? "冲突处理" : "恢复"}</dt>
+              <dt className="text-[var(--mm-text-tertiary)]">{saveConflict ? t("fileWorkspace.details.conflictHandling") : t("fileWorkspace.details.recovery")}</dt>
               <dd className="m-0 mt-2 flex flex-wrap gap-1">
                 <button type="button" onClick={() => void saveDraft()} disabled={saveState === "loading" || !isDirty} className="rounded-md border border-[#1f1f1f] bg-[#1f1f1f] px-2 py-1 text-white disabled:opacity-40">
-                  重试保存
+                  {t("fileWorkspace.actions.retrySave")}
                 </button>
                 {saveConflict && (
                   <>
                     <button type="button" onClick={useDiskVersion} className="rounded-md border border-[var(--mm-border)] px-2 py-1">
-                      采用磁盘版本
+                      {t("fileWorkspace.actions.useDiskVersion")}
                     </button>
                     <button type="button" onClick={continueEditingDraft} className="rounded-md border border-[var(--mm-border)] px-2 py-1">
-                      继续编辑
+                      {t("fileWorkspace.actions.continueEditing")}
                     </button>
                     <button type="button" onClick={showConflictDiff} className="rounded-md border border-[var(--mm-border)] px-2 py-1">
-                      查看冲突
+                      {t("fileWorkspace.actions.viewConflict")}
                     </button>
                   </>
                 )}
                 <button type="button" onClick={() => void copySaveError()} className="rounded-md border border-[var(--mm-border)] px-2 py-1">
-                  复制错误
+                  {t("fileWorkspace.actions.copyError")}
                 </button>
                 <button type="button" onClick={() => void copyDraft()} className="rounded-md border border-[var(--mm-border)] px-2 py-1">
-                  复制草稿
+                  {t("fileWorkspace.actions.copyDraft")}
                 </button>
                 <button type="button" onClick={() => void reloadSelectedFile()} className="rounded-md border border-[var(--mm-border)] px-2 py-1">
-                  重新读取文件
+                  {t("fileWorkspace.actions.reloadFile")}
                 </button>
               </dd>
             </div>
           )}
           <div>
-            <dt className="text-[var(--mm-text-tertiary)]">操作</dt>
+            <dt className="text-[var(--mm-text-tertiary)]">{t("fileWorkspace.details.actions")}</dt>
             <dd className="m-0 mt-2 flex flex-wrap gap-1">
               <button type="button" disabled={!selectedPath} onClick={() => void copySelectedPath()} className="rounded-md border border-[var(--mm-border)] px-2 py-1 disabled:opacity-40">
-                {copied ? "已复制" : "复制路径"}
+                {copied ? t("fileWorkspace.actions.copied") : t("fileWorkspace.actions.copyPath")}
               </button>
               <button type="button" disabled={!selectedPath} onClick={() => void copySelectedRelativePath()} className="rounded-md border border-[var(--mm-border)] px-2 py-1 disabled:opacity-40">
-                复制相对路径
+                {t("fileWorkspace.actions.copyRelativePath")}
               </button>
               <button type="button" disabled={!selectedPath} onClick={sendToChat} className="rounded-md border border-[#1f1f1f] bg-[#1f1f1f] px-2 py-1 text-white disabled:opacity-40">
-                引用
+                {t("fileWorkspace.actions.quote")}
               </button>
             </dd>
           </div>

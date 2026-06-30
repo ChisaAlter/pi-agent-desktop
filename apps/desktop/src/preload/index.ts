@@ -15,6 +15,7 @@ import type {
     ExtensionUiResponse,
     PermissionDecision,
     PermissionMode,
+    PermissionUpdatePayload,
     PlanCard,
     PlanDecisionRequest,
     PlanProgressUpdate,
@@ -41,6 +42,26 @@ import type {
     Workspace,
     GoalSetInput,
     GoalState,
+    // v1.0.5 (Task 24): explicit return types for `ipcRenderer.invoke` channels
+    Session,
+    PiSlashCommand,
+    SlashCommandRunResult,
+    MiMoCodeRuntimeFeatureState,
+    LongHorizonMemoryRecord,
+    LongHorizonTaskRecord,
+    InlinePlanMaterializeResult,
+    ProjectInfo,
+    FileTreeNode,
+    AppSettings,
+    PiAgentFullConfig,
+    InstalledSkillInfo,
+    FileEntry,
+    TextFileContent,
+    WriteTextFileResult,
+    PiPackageInfo,
+    InstalledPiPackage,
+    PiPackageActionResult,
+    TerminalInfo,
 } from "@shared";
 
 // 内部 helper: 把 ipcRenderer.on 的 (_event, payload) 签名转成 (payload)
@@ -70,7 +91,7 @@ const piAPI: PiAPI = {
     installPi: () => ipcRenderer.invoke("pi:install") as Promise<PiStatus | IpcError>,
     updatePi: () => ipcRenderer.invoke("pi:update") as Promise<PiStatus | IpcError>,
     uninstallPi: () => ipcRenderer.invoke("pi:uninstall") as Promise<PiStatus | IpcError>,
-    cancelPiOperation: () => ipcRenderer.invoke("pi:cancel-operation"),
+    cancelPiOperation: () => ipcRenderer.invoke("pi:cancel-operation") as Promise<void>,
 
     onPiStatusChanged: (cb) => subscribe<PiStatus>("pi:status-changed", cb),
     onPiInstallProgress: (cb) => subscribe<PiInstallProgress>("pi:install-progress", cb),
@@ -103,24 +124,24 @@ const piAPI: PiAPI = {
     listWorkspaces: () => ipcRenderer.invoke("workspace:list") as Promise<Workspace[] | IpcError>,
     createWorkspace: (name, path) => ipcRenderer.invoke("workspace:create", name, path) as Promise<Workspace | IpcError>,
     createEmptyWorkspace: (name, parentPath) => ipcRenderer.invoke("workspace:create-empty", name, parentPath) as Promise<Workspace | IpcError>,
-    deleteWorkspace: (id) => ipcRenderer.invoke("workspace:delete", id),
+    deleteWorkspace: (id) => ipcRenderer.invoke("workspace:delete", id) as Promise<void>,
     selectWorkspace: (path) => ipcRenderer.invoke("workspace:select", path) as Promise<void | IpcError>,
     selectDirectory: () => ipcRenderer.invoke("workspace:select-directory") as Promise<string | null | IpcError>,
 
     // Session
-    listSessions: () => ipcRenderer.invoke("session:list"),
-    createSession: (workspaceId, title, id) => ipcRenderer.invoke("session:create", workspaceId, title, id),
-    renameSession: (id, title) => ipcRenderer.invoke("session:rename", id, title),
-    deleteSession: (id) => ipcRenderer.invoke("session:delete", id),
-    archiveSession: (id, archived) => ipcRenderer.invoke("session:archive", id, archived),
+    listSessions: () => ipcRenderer.invoke("session:list") as Promise<Session[]>,
+    createSession: (workspaceId, title, id) => ipcRenderer.invoke("session:create", workspaceId, title, id) as Promise<Session>,
+    renameSession: (id, title) => ipcRenderer.invoke("session:rename", id, title) as Promise<Session>,
+    deleteSession: (id) => ipcRenderer.invoke("session:delete", id) as Promise<void>,
+    archiveSession: (id, archived) => ipcRenderer.invoke("session:archive", id, archived) as Promise<Session | IpcError>,
     updateSessionMetadata: (id, updates) =>
-        ipcRenderer.invoke("session:update-metadata", id, updates),
+        ipcRenderer.invoke("session:update-metadata", id, updates) as Promise<Session | IpcError>,
     // 2026-06-06 hotfix: session messages 持久化桥接
     // fire-and-forget,失败由 caller 走 .catch + logger.error,不阻塞 UI 流式响应
     appendMessage: (sessionId, message) =>
-        ipcRenderer.invoke("session:append-message", sessionId, message),
+        ipcRenderer.invoke("session:append-message", sessionId, message) as Promise<void | IpcError>,
     updateMessage: (sessionId, messageId, updates) =>
-        ipcRenderer.invoke("session:update-message", sessionId, messageId, updates),
+        ipcRenderer.invoke("session:update-message", sessionId, messageId, updates) as Promise<void | IpcError>,
     updateToolCall: (sessionId, messageId, toolCallId, updates) =>
         ipcRenderer.invoke(
             "session:update-tool-call",
@@ -128,7 +149,7 @@ const piAPI: PiAPI = {
             messageId,
             toolCallId,
             updates,
-        ),
+        ) as Promise<void | IpcError>,
 
     // Agents workbench
     agentsList: () => ipcRenderer.invoke("agents:list") as Promise<AgentTab[]>,
@@ -149,32 +170,32 @@ const piAPI: PiAPI = {
         subscribe<{ agentId: string; workspaceId: string; event: PiEvent }>("agents:event", cb),
 
     listSlashCommands: (workspaceId, agentId, mode) =>
-        ipcRenderer.invoke("pi:list-slash-commands", workspaceId, agentId, mode),
+        ipcRenderer.invoke("pi:list-slash-commands", workspaceId, agentId, mode) as Promise<PiSlashCommand[] | IpcError>,
     runBuiltinSlashCommand: (input) =>
-        ipcRenderer.invoke("pi:run-builtin-slash-command", input),
+        ipcRenderer.invoke("pi:run-builtin-slash-command", input) as Promise<SlashCommandRunResult | IpcError>,
     runtimeFeatureState: () =>
-        ipcRenderer.invoke("pi:runtime-feature-state"),
+        ipcRenderer.invoke("pi:runtime-feature-state") as Promise<MiMoCodeRuntimeFeatureState | IpcError>,
     memorySearch: (input) =>
-        ipcRenderer.invoke("pi:memory-search", input),
+        ipcRenderer.invoke("pi:memory-search", input) as Promise<LongHorizonMemoryRecord[] | IpcError>,
     memoryListRecent: (input) =>
-        ipcRenderer.invoke("pi:memory-list-recent", input),
+        ipcRenderer.invoke("pi:memory-list-recent", input) as Promise<LongHorizonMemoryRecord[] | IpcError>,
     taskList: (input) =>
-        ipcRenderer.invoke("pi:task-list", input),
+        ipcRenderer.invoke("pi:task-list", input) as Promise<LongHorizonTaskRecord[] | IpcError>,
     taskGetActive: (input) =>
-        ipcRenderer.invoke("pi:task-get-active", input),
+        ipcRenderer.invoke("pi:task-get-active", input) as Promise<LongHorizonTaskRecord | null | IpcError>,
 
-    permissionSetMode: (mode: PermissionMode) => ipcRenderer.invoke("permission:set-mode", mode),
+    permissionSetMode: (mode: PermissionMode) => ipcRenderer.invoke("permission:set-mode", mode) as Promise<void>,
     permissionRespond: (
         requestId: string,
-        response: ExtensionUiResponse | PermissionDecision | boolean | string,
+        response: ExtensionUiResponse | PermissionDecision,
     ) => {
         ipcRenderer.send("permission:respond", requestId, response);
     },
     onPermissionRequest: (cb) => subscribe<ExtensionUiRequest>("permission:request", cb),
-    onPermissionUpdate: (cb) => subscribe<unknown>("permission:update", cb),
+    onPermissionUpdate: (cb) => subscribe<PermissionUpdatePayload>("permission:update", cb),
 
-    planSetEnabled: (workspaceId, enabled) => ipcRenderer.invoke("plan:set-enabled", workspaceId, enabled),
-    planMaterialize: (input) => ipcRenderer.invoke("plan:materialize-inline", input),
+    planSetEnabled: (workspaceId, enabled) => ipcRenderer.invoke("plan:set-enabled", workspaceId, enabled) as Promise<void>,
+    planMaterialize: (input) => ipcRenderer.invoke("plan:materialize-inline", input) as Promise<InlinePlanMaterializeResult | IpcError>,
     planRespond: (requestId, decision, text) => {
         ipcRenderer.send("plan:respond", requestId, decision, text);
     },
@@ -192,7 +213,7 @@ const piAPI: PiAPI = {
         ipcRenderer.invoke("git:diff", workspacePath, filePath) as Promise<string | IpcError>,
     gitDiffStaged: (workspacePath) => ipcRenderer.invoke("git:diff-staged", workspacePath) as Promise<string | IpcError>,
     gitAdd: (workspacePath, files) => ipcRenderer.invoke("git:add", workspacePath, files) as Promise<void | IpcError>,
-    gitUnstage: (workspacePath, files) => ipcRenderer.invoke("git:unstage", workspacePath, files),
+    gitUnstage: (workspacePath, files) => ipcRenderer.invoke("git:unstage", workspacePath, files) as Promise<void | IpcError>,
     gitCommit: (workspacePath, message) => ipcRenderer.invoke("git:commit", workspacePath, message) as Promise<string | IpcError>,
     gitLog: (workspacePath, count) => ipcRenderer.invoke("git:log", workspacePath, count) as Promise<GitLogEntry[] | IpcError>,
     gitBranches: (workspacePath) => ipcRenderer.invoke("git:branches", workspacePath) as Promise<GitBranch[] | IpcError>,
@@ -202,16 +223,17 @@ const piAPI: PiAPI = {
     gitChangedFiles: (workspacePath) => ipcRenderer.invoke("git:changed-files", workspacePath) as Promise<GitChangedFile[] | IpcError>,
 
     // Project detection
-    detectProject: (workspacePath) => ipcRenderer.invoke("project:detect", workspacePath),
+    detectProject: (workspacePath) => ipcRenderer.invoke("project:detect", workspacePath) as Promise<ProjectInfo | IpcError>,
     getFileTree: (workspacePath, maxDepth) =>
-        ipcRenderer.invoke("project:file-tree", workspacePath, maxDepth),
+        ipcRenderer.invoke("project:file-tree", workspacePath, maxDepth) as Promise<FileTreeNode | IpcError>,
 
     // Settings
-    getSettings: () => ipcRenderer.invoke("settings:get"),
-    setSettings: (settings) => ipcRenderer.invoke("settings:set", settings),
-    onSettingsChanged: (cb) => subscribe("settings:changed", cb),
+    getSettings: () => ipcRenderer.invoke("settings:get") as Promise<AppSettings>,
+    setSettings: (settings) => ipcRenderer.invoke("settings:set", settings) as Promise<AppSettings>,
+    onSettingsChanged: (cb) => subscribe<AppSettings>("settings:changed", cb),
+    onPiConfigChanged: (cb) => subscribe<void>("pi-config:changed", () => cb()),
     loadPiConfig: () => ipcRenderer.invoke("settings:load-pi-config"),
-    getFullConfig: () => ipcRenderer.invoke("pi:get-full-config"),
+    getFullConfig: () => ipcRenderer.invoke("pi:get-full-config") as Promise<PiAgentFullConfig>,
 
     // Pi config center
     configGetModels: () =>
@@ -257,14 +279,14 @@ const piAPI: PiAPI = {
         ipcRenderer.invoke("claude-sessions:import", workspacePath, sourcePaths) as Promise<ClaudeImportReport>,
 
     // Skills
-    listSkills: () => ipcRenderer.invoke("pi:list-skills"),
+    listSkills: () => ipcRenderer.invoke("pi:list-skills") as Promise<InstalledSkillInfo[]>,
 
     // M2: 文件搜索
-    filesList: (workspacePath, query) => ipcRenderer.invoke("files:list", workspacePath, query),
-    filesGetTree: (workspacePath, options) => ipcRenderer.invoke("files:getTree", workspacePath, options),
-    filesReadTextFile: (path, workspacePath) => ipcRenderer.invoke("files:readTextFile", path, workspacePath),
-    filesWriteTextFile: (path, content, workspacePath, options) => ipcRenderer.invoke("files:writeTextFile", path, content, workspacePath, options),
-    filesSearch: (workspacePath, query, options) => ipcRenderer.invoke("files:search", workspacePath, query, options),
+    filesList: (workspacePath, query) => ipcRenderer.invoke("files:list", workspacePath, query) as Promise<FileEntry[] | IpcError>,
+    filesGetTree: (workspacePath, options) => ipcRenderer.invoke("files:getTree", workspacePath, options) as Promise<FileTreeNode | IpcError>,
+    filesReadTextFile: (path, workspacePath) => ipcRenderer.invoke("files:readTextFile", path, workspacePath) as Promise<TextFileContent | IpcError>,
+    filesWriteTextFile: (path, content, workspacePath, options) => ipcRenderer.invoke("files:writeTextFile", path, content, workspacePath, options) as Promise<WriteTextFileResult | IpcError>,
+    filesSearch: (workspacePath, query, options) => ipcRenderer.invoke("files:search", workspacePath, query, options) as Promise<FileEntry[] | IpcError>,
 
     // v1.0.13: 多选文件,ChatInput 附件按钮
     selectFiles: (opts) => ipcRenderer.invoke("files:select", opts) as Promise<string[] | IpcError>,
@@ -279,24 +301,24 @@ const piAPI: PiAPI = {
     skillsGithubImport: (url) => ipcRenderer.invoke("skills:github-import", url),
     skillsWriteSkill: (name, content) => ipcRenderer.invoke("skills:write-skill", name, content),
 
-    packagesSearch: (query) => ipcRenderer.invoke("packages:search", query),
-    packagesListInstalled: () => ipcRenderer.invoke("packages:list-installed"),
-    packagesInstall: (source) => ipcRenderer.invoke("packages:install", source),
-    packagesRemove: (source) => ipcRenderer.invoke("packages:remove", source),
-    packagesUpdate: (source) => ipcRenderer.invoke("packages:update", source),
-    packagesRefreshCatalog: () => ipcRenderer.invoke("packages:refresh-catalog"),
+    packagesSearch: (query) => ipcRenderer.invoke("packages:search", query) as Promise<PiPackageInfo[] | IpcError>,
+    packagesListInstalled: () => ipcRenderer.invoke("packages:list-installed") as Promise<InstalledPiPackage[] | IpcError>,
+    packagesInstall: (source) => ipcRenderer.invoke("packages:install", source) as Promise<PiPackageActionResult | IpcError>,
+    packagesRemove: (source) => ipcRenderer.invoke("packages:remove", source) as Promise<PiPackageActionResult | IpcError>,
+    packagesUpdate: (source) => ipcRenderer.invoke("packages:update", source) as Promise<PiPackageActionResult | IpcError>,
+    packagesRefreshCatalog: () => ipcRenderer.invoke("packages:refresh-catalog") as Promise<PiPackageInfo[] | IpcError>,
 
-    openPath: (path) => ipcRenderer.invoke("shell:open-path", path),
-    revealPath: (path) => ipcRenderer.invoke("shell:reveal-path", path),
+    openPath: (path) => ipcRenderer.invoke("shell:open-path", path) as Promise<string | IpcError>,
+    revealPath: (path) => ipcRenderer.invoke("shell:reveal-path", path) as Promise<void | IpcError>,
 
     // M4: Terminal
-    createTerminal: (opts) => ipcRenderer.invoke("terminal:create", opts),
+    createTerminal: (opts) => ipcRenderer.invoke("terminal:create", opts) as Promise<TerminalInfo | IpcError>,
     terminalInput: (terminalId, data) =>
         ipcRenderer.invoke("terminal:input", terminalId, data) as Promise<void | IpcError>,
     terminalResize: (terminalId, cols, rows) =>
         ipcRenderer.invoke("terminal:resize", terminalId, cols, rows) as Promise<void | IpcError>,
-    closeTerminal: (terminalId) => ipcRenderer.invoke("terminal:close", terminalId),
-    listTerminals: () => ipcRenderer.invoke("terminal:list"),
+    closeTerminal: (terminalId) => ipcRenderer.invoke("terminal:close", terminalId) as Promise<void>,
+    listTerminals: () => ipcRenderer.invoke("terminal:list") as Promise<TerminalInfo[]>,
 
     onTerminalOutput: (terminalId, cb) =>
         subscribe<{ id: string; data: string }>("terminal:output", (payload) => {
@@ -313,10 +335,10 @@ const piAPI: PiAPI = {
     },
 
     // v1.1.0: 窗口控制
-    windowMinimize: () => ipcRenderer.invoke("window:minimize"),
-    windowToggleMaximize: () => ipcRenderer.invoke("window:toggle-maximize"),
+    windowMinimize: () => ipcRenderer.invoke("window:minimize") as Promise<void>,
+    windowToggleMaximize: () => ipcRenderer.invoke("window:toggle-maximize") as Promise<void>,
     windowIsMaximized: () => ipcRenderer.invoke("window:is-maximized") as Promise<boolean>,
-    windowClose: () => ipcRenderer.invoke("window:close"),
+    windowClose: () => ipcRenderer.invoke("window:close") as Promise<void>,
     onWindowMaximizeChanged: (cb) => subscribe<boolean>("window:maximize-changed", cb),
 
     // v1.2: Workbench context — renderer tells main which file user is viewing
@@ -325,32 +347,48 @@ const piAPI: PiAPI = {
     },
 
     // Settings independent window
-    openSettingsWindow: () => ipcRenderer.invoke("settings:open-window"),
-    closeSettingsWindow: () => ipcRenderer.invoke("settings:close-window"),
+    openSettingsWindow: () => ipcRenderer.invoke("settings:open-window") as Promise<void>,
+    closeSettingsWindow: () => ipcRenderer.invoke("settings:close-window") as Promise<void>,
+
+    // v1.1.0: 识图功能 (vision). 通道当前未注册 ipcMain.handle, invoke 会 reject,
+    // 由渲染层 try/catch 走 visionFailed 错误文案 — 待主进程补 handler 后自动生效.
+    describeImages: (images) =>
+        ipcRenderer.invoke("pi:describe-images", images) as Promise<{ text: string }>,
 
     // v2.0: Generic invoke for low-frequency channels without dedicated piAPI methods
     invoke: (channel: string, ...args: unknown[]) => {
-        const ALLOWED = [
+        const ALLOWED_INVOKE = [
             "settings:load-pi-config",
             "pi:get-full-config",
             "config:save-raw",
             "config:export",
             "config:import",
-            "pi:describe-images",
+            "goal:set",
+            "goal:clear",
+            "goal:get",
+        ];
+        if (!ALLOWED_INVOKE.includes(channel)) {
+            console.error(`[preload] invoke blocked: ${channel}`);
+            return Promise.reject(new Error(`Channel not allowed for invoke: ${channel}`));
+        }
+        return ipcRenderer.invoke(channel, ...args);
+    },
+
+    // v2.1: Generic send for fire-and-forget channels (ipcMain.on). Never await, never hang.
+    send: (channel: string, ...args: unknown[]) => {
+        const ALLOWED_SEND = [
             "log:write",
             "workbench:set-active-file",
             "approval:respond",
             "approval:set-auto-approve",
             "plan:respond",
-            "goal:set",
-            "goal:clear",
-            "goal:get",
             "permission:respond",
         ];
-        if (!ALLOWED.includes(channel)) {
-            throw new Error(`Channel not allowed: ${channel}`);
+        if (!ALLOWED_SEND.includes(channel)) {
+            console.error(`[preload] send blocked: ${channel}`);
+            return;
         }
-        return ipcRenderer.invoke(channel, ...args);
+        ipcRenderer.send(channel, ...args);
     },
 };
 

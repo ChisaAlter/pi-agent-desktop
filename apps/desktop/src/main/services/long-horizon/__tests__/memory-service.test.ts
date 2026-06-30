@@ -8,9 +8,9 @@ describe("MemoryService", () => {
     const dirs: string[] = [];
     const services: MemoryService[] = [];
 
-    afterEach(() => {
+    afterEach(async () => {
         for (const service of services.splice(0)) {
-            service.close();
+            await service.close();
         }
         for (const dir of dirs.splice(0)) {
             rmSync(dir, { recursive: true, force: true });
@@ -25,10 +25,10 @@ describe("MemoryService", () => {
         return service;
     }
 
-    it("persists memories and retrieves them by full-text terms", () => {
+    it("persists memories and retrieves them by full-text terms", async () => {
         const service = createService();
 
-        service.put({
+        await service.put({
             scope: "project",
             workspaceId: "ws1",
             sessionId: "s1",
@@ -36,44 +36,44 @@ describe("MemoryService", () => {
             text: "Goal 集成需要右侧栏展示任务目标和 judge reason",
             tags: ["goal", "right-rail"],
         });
-        service.put({
+        await service.put({
             scope: "global",
             kind: "note",
             text: "默认会话模式必须保持 build",
         });
 
-        expect(service.search("judge 右侧栏", { workspaceId: "ws1" })).toEqual([
+        expect(await service.search("judge 右侧栏", { workspaceId: "ws1" })).toEqual([
             expect.objectContaining({ kind: "task-progress", layer: "project_memory", score: expect.any(Number) }),
         ]);
-        expect(service.search("默认 build")).toEqual([
+        expect(await service.search("默认 build")).toEqual([
             expect.objectContaining({ scope: "global", layer: "global_memory", kind: "note" }),
         ]);
     });
 
-    it("reloads the file mirror across service instances", () => {
+    it("reloads the file mirror across service instances", async () => {
         const dir = mkdtempSync(join(tmpdir(), "pi-memory-"));
         dirs.push(dir);
         const first = new MemoryService({ rootDir: dir });
         services.push(first);
-        first.put({ scope: "session", workspaceId: "ws1", sessionId: "s1", kind: "checkpoint", text: "checkpoint 保留 plan ledger" });
+        await first.put({ scope: "session", workspaceId: "ws1", sessionId: "s1", kind: "checkpoint", text: "checkpoint 保留 plan ledger" });
 
         const second = new MemoryService({ rootDir: dir });
         services.push(second);
 
-        expect(second.search("ledger", { workspaceId: "ws1", sessionId: "s1" })).toEqual([
+        expect(await second.search("ledger", { workspaceId: "ws1", sessionId: "s1" })).toEqual([
             expect.objectContaining({ text: "checkpoint 保留 plan ledger" }),
         ]);
     });
 
-    it("stores memory as a recoverable parent-child tree", () => {
+    it("stores memory as a recoverable parent-child tree", async () => {
         const service = createService();
-        const root = service.put({
+        const root = await service.put({
             scope: "project",
             workspaceId: "ws1",
             kind: "summary",
             text: "long horizon root",
         });
-        const child = service.put({
+        const child = await service.put({
             scope: "project",
             workspaceId: "ws1",
             kind: "task-progress",
@@ -81,19 +81,19 @@ describe("MemoryService", () => {
             text: "workflow sandbox child",
         });
 
-        expect(service.getTree(root.id)).toEqual({
+        expect(await service.getTree(root.id)).toEqual({
             record: root,
             children: [{ record: child, children: [] }],
         });
     });
 
-    it("ranks full-text results with BM25-style scoring and a relative floor", () => {
+    it("ranks full-text results with BM25-style scoring and a relative floor", async () => {
         const service = createService();
-        service.put({ scope: "project", workspaceId: "ws1", kind: "note", text: "checkpoint checkpoint common" });
-        service.put({ scope: "project", workspaceId: "ws1", kind: "note", text: "workflow sandbox checkpoint" });
-        service.put({ scope: "project", workspaceId: "ws1", kind: "note", text: "unrelated checkpoint" });
+        await service.put({ scope: "project", workspaceId: "ws1", kind: "note", text: "checkpoint checkpoint common" });
+        await service.put({ scope: "project", workspaceId: "ws1", kind: "note", text: "workflow sandbox checkpoint" });
+        await service.put({ scope: "project", workspaceId: "ws1", kind: "note", text: "unrelated checkpoint" });
 
-        const results = service.search("workflow sandbox checkpoint", {
+        const results = await service.search("workflow sandbox checkpoint", {
             workspaceId: "ws1",
             searchScoreFloor: 0.4,
         });
@@ -102,15 +102,15 @@ describe("MemoryService", () => {
         expect(results).toHaveLength(1);
     });
 
-    it("falls back to raw history trajectory when memory hits are missing", () => {
+    it("falls back to raw history trajectory when memory hits are missing", async () => {
         const service = createService();
-        service.putHistory({
+        await service.putHistory({
             workspaceId: "ws1",
             sessionId: "s1",
             text: "raw trajectory contains goal judge retry evidence",
         });
 
-        expect(service.search("judge retry", {
+        expect(await service.search("judge retry", {
             workspaceId: "ws1",
             includeHistoryFallback: true,
         })).toEqual([
@@ -122,19 +122,19 @@ describe("MemoryService", () => {
         ]);
     });
 
-    it("lists recent memories for the workspace in descending time order", () => {
+    it("lists recent memories for the workspace in descending time order", async () => {
         const service = createService();
-        service.put({ scope: "project", workspaceId: "ws1", kind: "note", text: "first memory" });
-        service.put({ scope: "project", workspaceId: "ws1", kind: "checkpoint", text: "second memory" });
+        await service.put({ scope: "project", workspaceId: "ws1", kind: "note", text: "first memory" });
+        await service.put({ scope: "project", workspaceId: "ws1", kind: "checkpoint", text: "second memory" });
 
-        const recent = service.listRecent({ workspaceId: "ws1", limit: 2 });
+        const recent = await service.listRecent({ workspaceId: "ws1", limit: 2 });
 
         expect(recent).toHaveLength(2);
         expect(recent[0]).toEqual(expect.objectContaining({ text: "second memory" }));
         expect(recent[1]).toEqual(expect.objectContaining({ text: "first memory" }));
     });
 
-    it("migrates legacy memory.jsonl into long-horizon.db on first load", () => {
+    it("migrates legacy memory.jsonl into long-horizon.db on first load", async () => {
         const dir = mkdtempSync(join(tmpdir(), "pi-memory-"));
         dirs.push(dir);
         writeFileSync(join(dir, "memory.jsonl"), `${JSON.stringify({
@@ -148,8 +148,9 @@ describe("MemoryService", () => {
 
         const service = new MemoryService({ rootDir: dir });
         services.push(service);
+        await service.ready();
 
-        expect(service.search("legacy checkpoint", { workspaceId: "ws1" })).toEqual([
+        expect(await service.search("legacy checkpoint", { workspaceId: "ws1" })).toEqual([
             expect.objectContaining({ id: "legacy-1", layer: "project_memory", text: "legacy checkpoint memory" }),
         ]);
         expect(existsSync(join(dir, "memory.jsonl.migrated"))).toBe(true);

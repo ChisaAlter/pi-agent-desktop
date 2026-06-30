@@ -13,6 +13,7 @@ const workflowArgsSchema = Type.Object({
     isolateWorktrees: Type.Optional(Type.Boolean({ description: "Prefer worktree isolation when supported." })),
     commit: Type.Optional(Type.Boolean({ description: "Request a commit during Merge phase." })),
     commitMessage: Type.Optional(Type.String({ description: "Optional commit message for Merge phase." })),
+    timeoutMs: Type.Optional(Type.Number({ description: "Global deadline (ms) for the whole workflow. Defaults to 1h." })),
 });
 
 const workflowSchema = Type.Union([
@@ -60,6 +61,7 @@ function normalizeComposeArgs(args: Record<string, unknown>): ComposeWorkflowArg
         isolateWorktrees: typeof args.isolateWorktrees === "boolean" ? args.isolateWorktrees : undefined,
         commit: args.commit === true,
         commitMessage: typeof args.commitMessage === "string" ? args.commitMessage.trim() : undefined,
+        timeoutMs: typeof args.timeoutMs === "number" ? args.timeoutMs : undefined,
     };
 }
 

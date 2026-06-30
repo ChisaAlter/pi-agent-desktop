@@ -1,7 +1,24 @@
 import React, { useCallback, useRef } from "react";
-import Editor, { type OnMount, type OnChange } from "@monaco-editor/react";
+import Editor, { loader, type OnMount, type OnChange } from "@monaco-editor/react";
+import * as monaco from "monaco-editor";
 import { useSettingsStore } from "../../stores/settings-store";
 import { getEditorFontSize } from "../../utils/theme";
+import { useI18n } from "../../i18n";
+
+loader.config({ monaco });
+
+interface PiDesktopE2EMonacoHandle {
+  focus: () => void;
+  getValue: () => string;
+  replaceAll: (value: string) => void;
+  setValue: (value: string) => void;
+}
+
+declare global {
+  interface Window {
+    __PI_DESKTOP_E2E_MONACO__?: PiDesktopE2EMonacoHandle;
+  }
+}
 
 interface MonacoEditorProps {
   value: string;
@@ -10,6 +27,15 @@ interface MonacoEditorProps {
   onChange?: (value: string) => void;
   onSave?: () => void;
   className?: string;
+  height?: string;
+}
+
+function shouldExposeE2EHandle(): boolean {
+  try {
+    return window.localStorage.getItem("pi-desktop:e2e") === "true";
+  } catch {
+    return false;
+  }
 }
 
 function getLanguageFromFilename(filename: string): string {
@@ -56,20 +82,47 @@ export const MonacoEditor = React.memo(function MonacoEditor({
   onChange,
   onSave,
   className,
+  height = "400px",
 }: MonacoEditorProps): React.JSX.Element {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const fontSize = useSettingsStore((state) => state.settings.fontSize);
+  const showLineNumbers = useSettingsStore((state) => state.settings.showLineNumbers);
+  const wordWrap = useSettingsStore((state) => state.settings.wordWrap);
   const editorFontSize = getEditorFontSize(fontSize);
+  const { t } = useI18n();
 
   const handleMount: OnMount = useCallback(
     (editor, monaco) => {
       editorRef.current = editor;
+      if (shouldExposeE2EHandle()) {
+        window.__PI_DESKTOP_E2E_MONACO__ = {
+          focus: () => editor.focus(),
+          getValue: () => editor.getValue(),
+          replaceAll: (nextValue) => {
+            const model = editor.getModel();
+            if (!model) {
+              editor.setValue(nextValue);
+              return;
+            }
+            editor.executeEdits("pi-desktop-e2e", [{
+              range: model.getFullModelRange(),
+              text: nextValue,
+              forceMoveMarkers: true,
+            }]);
+            onChange?.(nextValue);
+          },
+          setValue: (nextValue) => {
+            editor.setValue(nextValue);
+            onChange?.(nextValue);
+          },
+        };
+      }
 
       // 添加保存快捷键
       if (onSave) {
         editor.addAction({
           id: "save-file",
-          label: "保存文件",
+          label: t("editor.saveFile"),
           keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
           run: () => {
             onSave();
@@ -80,7 +133,7 @@ export const MonacoEditor = React.memo(function MonacoEditor({
       // 聚焦编辑器
       editor.focus();
     },
-    [onSave],
+    [onChange, onSave, t],
   );
 
   const handleChange: OnChange = useCallback(
@@ -93,7 +146,8 @@ export const MonacoEditor = React.memo(function MonacoEditor({
   return (
     <div className={className}>
       <Editor
-        height="100%"
+        height={height}
+        width="100%"
         language={language}
         value={value}
         onChange={handleChange}
@@ -104,7 +158,9 @@ export const MonacoEditor = React.memo(function MonacoEditor({
           fontSize: editorFontSize,
           lineHeight: Math.round(editorFontSize * 1.55),
           fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
-          wordWrap: "on",
+          editContext: false,
+          lineNumbers: showLineNumbers ? "on" : "off",
+          wordWrap: wordWrap ? "on" : "off",
           automaticLayout: true,
           scrollBeyondLastLine: false,
           padding: { top: 12, bottom: 12 },
@@ -125,7 +181,7 @@ export const MonacoEditor = React.memo(function MonacoEditor({
         theme="vs-dark"
         loading={
           <div className="flex h-full items-center justify-center text-sm text-[var(--mm-text-secondary)]">
-            加载编辑器...
+            {t("editor.loading")}
           </div>
         }
       />

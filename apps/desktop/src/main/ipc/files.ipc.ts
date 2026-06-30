@@ -2,11 +2,11 @@
 // File search for @ references and CommandPalette
 // Errors return IpcError (code/params/fallback)
 
-import { ipcMain } from "electron";
+import { ipcMain, dialog, type BrowserWindow } from "electron";
 import log from "electron-log/main";
 import { ipcError } from "@shared";
 import { basename } from "path";
-import { readFileSync, statSync, writeFileSync } from "fs";
+import { open, stat, writeFile } from "fs/promises";
 import { scanFiles } from "../services/search/file-scanner";
 import { buildFileTree } from "../file-tree";
 import { getProtectedPathReason } from "../services/protected-paths";
@@ -22,7 +22,23 @@ function toFileEntry(path: string) {
     };
 }
 
-export function setupFilesIpc(): void {
+// SubTask 40.4: 30s TTL cache for files:search / files:list scan results
+const scanCache = new Map<string, { ts: number; data: unknown }>();
+const CACHE_TTL = 30_000; // 30 seconds
+
+function getCached<T>(key: string): T | undefined {
+    const entry = scanCache.get(key);
+    if (entry && Date.now() - entry.ts < CACHE_TTL) return entry.data as T;
+    return undefined;
+}
+
+function setCached(key: string, data: unknown): void {
+    scanCache.set(key, { ts: Date.now(), data });
+}
+
+export function setupFilesIpc(opts?: { getMainWindow?: () => BrowserWindow | null }): void {
+    const getMainWindow = opts?.getMainWindow ?? (() => null);
+
     ipcMain.handle("files:getTree", async (_event, workspacePath: string, options?: { maxDepth?: number; maxEntries?: number }) => {
         try {
             getFileTreeSchema.parse(options === undefined ? [workspacePath] : [workspacePath, options]);
@@ -66,19 +82,30 @@ export function setupFilesIpc(): void {
             if (reason) {
                 return ipcError("ipcErrors.files.protectedPath", reason, { path: targetPath });
             }
-            const stats = statSync(targetPath);
+            // SubTask 40.3: async + limited read (only first 512KB into memory)
             const maxBytes = 512 * 1024;
-            const buffer = readFileSync(targetPath);
-            const head = buffer.subarray(0, Math.min(buffer.length, maxBytes));
-            const binary = head.includes(0);
+            const stats = await stat(targetPath);
+            const fd = await open(targetPath, "r");
+            let binary = false;
+            let head = "";
+            let bytesRead = 0;
+            try {
+                const buffer = Buffer.alloc(Math.min(stats.size, maxBytes));
+                const result = await fd.read(buffer, 0, buffer.length, 0);
+                bytesRead = result.bytesRead;
+                binary = buffer.subarray(0, bytesRead).includes(0);
+                head = buffer.subarray(0, bytesRead).toString("utf-8");
+            } finally {
+                await fd.close();
+            }
             return {
                 path: targetPath,
                 name: basename(targetPath),
-                content: binary ? "" : head.toString("utf-8"),
+                content: binary ? "" : head,
                 size: stats.size,
                 mtimeMs: stats.mtimeMs,
                 encoding: "utf-8" as const,
-                truncated: buffer.length > maxBytes,
+                truncated: stats.size > maxBytes,
                 binary,
             };
         } catch (err) {
@@ -109,7 +136,7 @@ export function setupFilesIpc(): void {
                 return ipcError("ipcErrors.files.protectedPath", reason, { path: targetPath });
             }
             if (options?.expectedMtimeMs !== undefined) {
-                const beforeStats = statSync(targetPath);
+                const beforeStats = await stat(targetPath);
                 if (Math.abs(beforeStats.mtimeMs - options.expectedMtimeMs) > 1) {
                     return ipcError(
                         "ipcErrors.files.writeConflict",
@@ -118,8 +145,8 @@ export function setupFilesIpc(): void {
                     );
                 }
             }
-            writeFileSync(targetPath, content, "utf-8");
-            const stats = statSync(targetPath);
+            await writeFile(targetPath, content, "utf-8");
+            const stats = await stat(targetPath);
             return {
                 path: targetPath,
                 size: stats.size,
@@ -154,7 +181,12 @@ export function setupFilesIpc(): void {
             }
             const q = query.toLowerCase();
             const limit = Math.max(1, Math.min(options?.limit ?? 80, 200));
-            const files = await scanFiles(workspacePath);
+            // SubTask 40.4: 30s TTL cache keyed by workspacePath
+            let files = getCached<string[]>(workspacePath);
+            if (!files) {
+                files = await scanFiles(workspacePath);
+                setCached(workspacePath, files);
+            }
             return files
                 .filter((f) => f.toLowerCase().includes(q))
                 .slice(0, limit)
@@ -185,7 +217,12 @@ export function setupFilesIpc(): void {
             if (reason) {
                 return ipcError("ipcErrors.files.protectedPath", reason, { path: workspacePath });
             }
-            const files = await scanFiles(workspacePath);
+            // SubTask 40.4: 30s TTL cache keyed by workspacePath
+            let files = getCached<string[]>(workspacePath);
+            if (!files) {
+                files = await scanFiles(workspacePath);
+                setCached(workspacePath, files);
+            }
             if (!query) return files.slice(0, 100).map(toFileEntry);
             const q = query.toLowerCase();
             return files.filter((f) => f.toLowerCase().includes(q)).slice(0, 50).map(toFileEntry);
@@ -195,6 +232,30 @@ export function setupFilesIpc(): void {
                 "ipcErrors.files.scanFailed",
                 `文件扫描失败: ${err instanceof Error ? err.message : String(err)}`,
                 { path: workspacePath },
+            );
+        }
+    });
+
+    ipcMain.handle("files:select", async (
+        _event,
+        selectOpts?: { multiSelections?: boolean; filters?: { name: string; extensions: string[] }[] },
+    ) => {
+        const mainWindow = getMainWindow();
+        if (!mainWindow) return [];
+        try {
+            const properties: Array<"openFile" | "multiSelections"> = ["openFile"];
+            if (selectOpts?.multiSelections !== false) properties.push("multiSelections");
+            const result = await dialog.showOpenDialog(mainWindow, {
+                properties,
+                title: "选择附件",
+                filters: selectOpts?.filters,
+            });
+            return result.canceled ? [] : result.filePaths;
+        } catch (err) {
+            log.error("[files.ipc] files:select failed:", err);
+            return ipcError(
+                "ipcErrors.files.selectFailed",
+                `打开文件选择器失败: ${err instanceof Error ? err.message : String(err)}`,
             );
         }
     });

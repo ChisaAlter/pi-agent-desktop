@@ -13,6 +13,8 @@ export interface ComposeWorkflowArgs {
     isolateWorktrees?: boolean;
     commit?: boolean;
     commitMessage?: string;
+    /** Optional global deadline (ms) for the whole workflow. Defaults to 1h. */
+    timeoutMs?: number;
 }
 
 export interface ComposeWorkflowTask {

@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { I18nProvider } from "../../i18n";
 import { useSessionStore } from "../../stores/session-store";
 import { useSettingsStore } from "../../stores/settings-store";
 import { ToolPermissionsPanel } from "./ToolPermissionsPanel";
@@ -15,8 +17,13 @@ const developmentPermissions = {
   extensions: true,
 };
 
+function renderWithI18n(ui: ReactElement): ReturnType<typeof render> {
+  return render(ui, { wrapper: I18nProvider });
+}
+
 describe("ToolPermissionsPanel", () => {
   beforeEach(() => {
+    window.localStorage.setItem("pi-desktop.locale", "zh-CN");
     Object.defineProperty(window, "piAPI", {
       value: {
         setSettings: vi.fn(async () => undefined),
@@ -27,6 +34,7 @@ describe("ToolPermissionsPanel", () => {
     useSettingsStore.setState({
       settings: {
         ...useSettingsStore.getState().settings,
+        language: "zh-CN",
         workspaceToolDefaults: {},
       },
       lastWriteError: null,
@@ -55,7 +63,7 @@ describe("ToolPermissionsPanel", () => {
       ],
     });
 
-    render(<ToolPermissionsPanel workspaceId="w1" />);
+    renderWithI18n(<ToolPermissionsPanel workspaceId="w1" />);
 
     fireEvent.click(screen.getByLabelText("Bash / PowerShell"));
 
@@ -70,7 +78,7 @@ describe("ToolPermissionsPanel", () => {
   });
 
   it("updates workspace defaults and shows success feedback", async () => {
-    render(<ToolPermissionsPanel workspaceId="w1" />);
+    renderWithI18n(<ToolPermissionsPanel workspaceId="w1" />);
 
     fireEvent.click(screen.getByRole("button", { name: "最小权限" }));
 
@@ -86,7 +94,7 @@ describe("ToolPermissionsPanel", () => {
   });
 
   it("reflects workspace checkbox changes immediately and can toggle them back", () => {
-    render(<ToolPermissionsPanel workspaceId="w1" />);
+    renderWithI18n(<ToolPermissionsPanel workspaceId="w1" />);
 
     const network = screen.getByLabelText("网络") as HTMLInputElement;
     expect(network.checked).toBe(false);
@@ -100,13 +108,35 @@ describe("ToolPermissionsPanel", () => {
     expect(useSettingsStore.getState().settings.workspaceToolDefaults?.w1?.network).toBe(false);
   });
 
+  it("uses the current language for labels and feedback", () => {
+    window.localStorage.setItem("pi-desktop.locale", "en-US");
+    useSettingsStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        language: "en-US",
+      },
+    }));
+
+    renderWithI18n(<ToolPermissionsPanel workspaceId="w1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Minimal" }));
+
+    expect(screen.getByText("Tool permissions")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Development" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "All enabled" })).toBeTruthy();
+    expect(screen.getByLabelText("Network")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("Updated workspace default permissions");
+    expect(screen.queryByText("工具权限")).toBeNull();
+    expect(screen.queryByRole("button", { name: "最小权限" })).toBeNull();
+  });
+
   it("surfaces workspace permission write failures", async () => {
     window.piAPI.setSettings = vi.fn(async () => ({
       code: "ipcErrors.settings.writeFailed",
       fallback: "磁盘不可写",
     })) as unknown as Window["piAPI"]["setSettings"];
 
-    render(<ToolPermissionsPanel workspaceId="w1" />);
+    renderWithI18n(<ToolPermissionsPanel workspaceId="w1" />);
 
     fireEvent.click(screen.getByRole("button", { name: "全部开启" }));
 
@@ -116,7 +146,7 @@ describe("ToolPermissionsPanel", () => {
   });
 
   it("disables permission controls until a workspace or session is available", () => {
-    render(<ToolPermissionsPanel />);
+    renderWithI18n(<ToolPermissionsPanel />);
 
     expect(screen.getByRole("status").textContent).toContain("选择工作区后可配置默认工具权限");
     expect((screen.getByRole("button", { name: "最小权限" }) as HTMLButtonElement).disabled).toBe(true);

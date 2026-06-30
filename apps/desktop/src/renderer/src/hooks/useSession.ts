@@ -3,7 +3,7 @@
 // v1.0.10 (M1): 接受 t() 走 i18n
 
 import { useCallback } from 'react';
-import { useSessionStore, Session, Message } from '../stores/session-store';
+import { useSessionStore, type Session, type Message } from '../stores/session-store';
 import { formatRelative } from '../utils/format';
 import { useI18n } from '../i18n';
 

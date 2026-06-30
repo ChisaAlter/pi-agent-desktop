@@ -24,6 +24,7 @@ function makeKeyEvent(init: Partial<KeyboardEvent> = {}): KeyboardEvent {
 describe("shortcuts/registry", () => {
     beforeEach(() => {
         __resetShortcutHandlersForTest();
+        window.localStorage.removeItem("pi-desktop-shortcut-overrides");
     });
 
     describe("SHORTCUTS 静态数据", () => {
@@ -128,6 +129,20 @@ describe("shortcuts/registry", () => {
             const s = findMatchingShortcut(event);
             expect(s).toBeNull();
             document.body.removeChild(input);
+        });
+
+        it("honors persisted shortcut overrides at runtime", () => {
+            window.localStorage.setItem(
+                "pi-desktop-shortcut-overrides",
+                JSON.stringify([{ id: "open-command-palette", keys: "Ctrl+Shift+Y" }]),
+            );
+
+            const newShortcut = findMatchingShortcut(makeKeyEvent({ ctrlKey: true, shiftKey: true, key: "Y" }));
+            const oldShortcut = findMatchingShortcut(makeKeyEvent({ ctrlKey: true, key: "K" }));
+
+            expect(newShortcut?.id).toBe("open-command-palette");
+            expect(newShortcut?.keys).toBe("Ctrl+Shift+Y");
+            expect(oldShortcut).toBeNull();
         });
     });
 

@@ -1,11 +1,15 @@
 import { create } from "zustand";
-import { isIpcError, type AppUpdaterState, type IpcError } from "@shared";
+import { type AppUpdaterState, type IpcError } from "@shared";
+import { getPiAPI } from "../utils/pi-api";
+import { partition } from "../utils/ipc";
+
+/** setupListeners 的 cleanup 函数 (非序列化, 离开 zustand state) */
+let cleanupFn: (() => void) | null = null;
 
 interface UpdaterStoreState {
   state: AppUpdaterState | null;
   loading: boolean;
   error: IpcError | string | null;
-  _cleanup: (() => void) | null;
   hydrate: () => Promise<void>;
   checkForUpdates: () => Promise<void>;
   downloadUpdate: () => Promise<void>;
@@ -14,20 +18,10 @@ interface UpdaterStoreState {
   cleanupListeners: () => void;
 }
 
-function getPiAPI(): Window["piAPI"] | undefined {
-  return typeof window !== "undefined" ? window.piAPI : undefined;
-}
-
-function partition<T>(result: T | IpcError): { ok: true; data: T } | { ok: false; err: IpcError } {
-  if (isIpcError(result)) return { ok: false, err: result };
-  return { ok: true, data: result };
-}
-
-export const useUpdaterStore = create<UpdaterStoreState>((set, get) => ({
+export const useUpdaterStore = create<UpdaterStoreState>((set) => ({
   state: null,
   loading: false,
   error: null,
-  _cleanup: null,
 
   hydrate: async () => {
     const piAPI = getPiAPI();
@@ -100,16 +94,16 @@ export const useUpdaterStore = create<UpdaterStoreState>((set, get) => ({
   setupListeners: () => {
     const piAPI = getPiAPI();
     if (!piAPI?.onUpdaterStateChanged) return;
-    if (get()._cleanup) return;
+    if (cleanupFn) return;
     const cleanup = piAPI.onUpdaterStateChanged((state) => {
       set({ state, loading: false, error: null });
     });
-    set({ _cleanup: cleanup });
+    cleanupFn = cleanup;
   },
 
   cleanupListeners: () => {
-    const cleanup = get()._cleanup;
+    const cleanup = cleanupFn;
     cleanup?.();
-    set({ _cleanup: null });
+    cleanupFn = null;
   },
 }));

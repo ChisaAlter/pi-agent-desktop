@@ -6,11 +6,11 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { useApprovalStore, generateWriteDiff, generateEditDiff } from "../approval-store";
 
 beforeEach(() => {
-    // 重置 store 到干净状态
+    // 重置 store 到干净状态 (pendingResolves 已是模块级, clearChanges 会清)
+    useApprovalStore.getState().clearChanges();
     useApprovalStore.setState({
         changes: [],
         autoApprove: false,
-        _pendingResolves: new Map(),
     });
 });
 
@@ -109,7 +109,7 @@ describe("approval-store: autoApprove", () => {
     it("waitForApproval 调时 change 已是 approved, 直接返 true", async () => {
         const id = useApprovalStore.getState().addChange({ toolCallId: "t", toolName: "write", filePath: "/a" });
         useApprovalStore.getState().approveChange(id);
-        // 不调 waitForApproval 之前的, 直接再 wait 一次 — 但 _pendingResolves 已清
+        // 不调 waitForApproval 之前的, 直接再 wait 一次 — pendingResolves 已清
         // 模拟 UI 重新问的边界: 改手动塞回 changes
         useApprovalStore.setState({
             changes: [

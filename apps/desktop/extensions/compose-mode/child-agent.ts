@@ -87,6 +87,20 @@ function childAgentCommand(input: ChildAgentRunInput): {
 
 export async function runChildAgent(input: ChildAgentRunInput): Promise<ChildAgentRunResult> {
     const startedAt = Date.now();
+
+    if (input.signal?.aborted) {
+        return {
+            ok: false,
+            label: input.label,
+            cwd: input.cwd,
+            stdout: "",
+            stderr: "aborted before spawn",
+            exitCode: -1,
+            durationMs: Date.now() - startedAt,
+            text: "aborted before spawn",
+        };
+    }
+
     const { command, args, windowsVerbatimArguments, stdinText } = childAgentCommand(input);
 
     return new Promise<ChildAgentRunResult>((resolve) => {
@@ -94,10 +108,28 @@ export async function runChildAgent(input: ChildAgentRunInput): Promise<ChildAge
         let stderr = "";
         let finished = false;
         let timeoutId: NodeJS.Timeout | undefined;
+        let child: ReturnType<typeof spawn> | undefined;
+        let pendingKill = false;
+
+        const abort = () => {
+            pendingKill = true;
+            try { child?.kill(); } catch { /* process may already be dead */ }
+        };
+
+        if (input.signal) {
+            if (input.signal.aborted) {
+                pendingKill = true;
+            } else {
+                input.signal.addEventListener("abort", abort, { once: true });
+            }
+        }
 
         const finish = (exitCode: number | null) => {
             if (finished) return;
             finished = true;
+            if (input.signal) {
+                input.signal.removeEventListener("abort", abort);
+            }
             if (timeoutId) clearTimeout(timeoutId);
             const text = stdout.trim() || stderr.trim();
             resolve({
@@ -112,7 +144,6 @@ export async function runChildAgent(input: ChildAgentRunInput): Promise<ChildAge
             });
         };
 
-        let child;
         try {
             child = spawn(command, args, {
                 cwd: input.cwd,
@@ -126,17 +157,25 @@ export async function runChildAgent(input: ChildAgentRunInput): Promise<ChildAge
             return;
         }
 
+        if (pendingKill) {
+            try { child.kill(); } catch { /* process may already be dead */ }
+        }
+
         child.stdin?.on("error", (error) => {
-            stderr += `${error instanceof Error ? error.message : String(error)}\n`;
+            const msg = error instanceof Error ? error.message : String(error);
+            stderr += `${msg}\n`;
+            console.warn(`child-agent stdin error: ${msg}`);
+            try { child.kill(); } catch { /* process may already be dead */ }
+            finish(1);
         });
-        child.stdout.on("data", (chunk: Buffer | string) => {
+        child.stdout?.on("data", (chunk: Buffer | string) => {
             const text = chunk.toString();
             stdout += text;
             for (const line of text.split(/\r?\n/).filter(Boolean)) {
                 input.onStdoutLine?.(line);
             }
         });
-        child.stderr.on("data", (chunk: Buffer | string) => {
+        child.stderr?.on("data", (chunk: Buffer | string) => {
             stderr += chunk.toString();
         });
         child.on("error", (error) => {
@@ -145,11 +184,6 @@ export async function runChildAgent(input: ChildAgentRunInput): Promise<ChildAge
         });
         child.on("close", (exitCode) => finish(exitCode));
         child.stdin?.end(stdinText);
-
-        const abort = () => {
-            if (!finished) child.kill();
-        };
-        input.signal?.addEventListener("abort", abort, { once: true });
 
         if (input.timeoutMs && input.timeoutMs > 0) {
             timeoutId = setTimeout(() => {
