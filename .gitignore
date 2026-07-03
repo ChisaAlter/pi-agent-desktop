@@ -121,6 +121,7 @@ opencode.jsonc
 .mimocode/
 .opencode/
 .claude/
+.trae/
 
 # Dev scratch screenshots
 apps/desktop/test-sidebar-*.png
@@ -152,3 +153,12 @@ apps/desktop/dev-run/
 /tmp-latest-release.yml
 /apps/desktop/release-cert/*.cer
 /apps/desktop/release-cert/*.pfx
+/apps/desktop/release-cert/
+
+# Extracted/packaged Electron artifacts and caches
+/.electron-cache/
+/apps/desktop/${env.ELECTRON_CACHE}/
+/apps/desktop/app-*-extract/
+/apps/desktop/installer-extract/
+/apps/desktop/dist-signed/
+/apps/desktop/dist-shortcut-*/
