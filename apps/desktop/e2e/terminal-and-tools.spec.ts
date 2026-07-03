@@ -241,7 +241,7 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
         await app.close();
     });
 
-    test('tool permission checkboxes toggle in the right rail', async () => {
+    test('tool permissions live in settings instead of the right rail', async () => {
         const userDataDir = test.info().outputPath(`tool-permissions-${Date.now()}`);
         const { app, page } = await launchApp(userDataDir);
 
@@ -250,18 +250,16 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
             await expandRightRail.click();
         }
 
-        await expect(page.getByRole('heading', { name: '工具权限' })).toBeVisible({ timeout: 5000 });
+        await expect(page.getByRole('heading', { name: '工具权限' })).toHaveCount(0);
+        await page.screenshot({ path: test.info().outputPath('right-rail-without-tool-permissions.png'), fullPage: true });
 
-        const network = page.getByLabel('网络');
-        await expect(network).toBeVisible();
-        await expect(network).not.toBeChecked();
-
-        await network.click();
-        await expect(network).toBeChecked();
-        await page.screenshot({ path: test.info().outputPath('right-rail-tool-permissions-restored.png'), fullPage: true });
-
-        await network.click();
-        await expect(network).not.toBeChecked();
+        const settingsWindowPromise = app.waitForEvent('window');
+        await page.getByRole('tab', { name: '设置' }).click();
+        const settingsWindow = await settingsWindowPromise;
+        await settingsWindow.waitForLoadState('domcontentloaded');
+        await settingsWindow.getByRole('tab', { name: '权限' }).click();
+        await expect(settingsWindow.getByRole('heading', { name: '工具权限', exact: true })).toBeVisible({ timeout: 5000 });
+        await expect(settingsWindow.getByLabel('网络')).toBeVisible();
 
         await app.close();
     });

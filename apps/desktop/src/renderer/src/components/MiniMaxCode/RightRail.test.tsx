@@ -301,7 +301,7 @@ describe("RightRail", () => {
     expect(screen.getByText("普通任务")).toBeTruthy();
   });
 
-  it("renders environment, tool permissions, progress, and file output cards", async () => {
+  it("renders environment, usage, progress, and file output cards without right-rail tool permissions", async () => {
     getGitStatus.mockResolvedValue({
       branch: "master",
       modified: [],
@@ -316,12 +316,13 @@ describe("RightRail", () => {
     renderWithI18n(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
 
     expect(await screen.findByText("环境信息")).toBeTruthy();
-    expect(screen.getByText("工具权限")).toBeTruthy();
     expect(screen.getByText("Token 使用统计")).toBeTruthy();
-    expect(screen.getByText("Workspace")).toBeTruthy();
+    expect(screen.getByText("总 Token")).toBeTruthy();
+    expect(screen.getByText("会话数")).toBeTruthy();
     expect(screen.getByText("进度")).toBeTruthy();
     expect(screen.getByText("文件输出")).toBeTruthy();
-    expect((screen.getByLabelText("网络") as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByText("工具权限")).toBeNull();
+    expect(screen.queryByLabelText("网络")).toBeNull();
     expect(screen.queryByText("最近工具")).toBeNull();
   });
 
@@ -333,6 +334,7 @@ describe("RightRail", () => {
     expect(rail?.className ?? "").toContain("overflow-y-auto");
     expect(rail?.className ?? "").toContain("space-y-3");
     expect(rail?.className ?? "").not.toMatch(/\bflex-col\b/);
+    expect(container.querySelector('section[class*="shadow-"]')).toBeNull();
   });
 
   it("follows the language setting for visible right rail cards", async () => {
@@ -357,12 +359,12 @@ describe("RightRail", () => {
     renderWithI18n(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
 
     expect(await screen.findByText("Environment")).toBeTruthy();
-    expect(screen.getByText("Tool permissions")).toBeTruthy();
     expect(screen.getByText("Token usage")).toBeTruthy();
     expect(screen.getByText("Progress")).toBeTruthy();
     expect(screen.getByText("File output")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Browse all files" })).toBeTruthy();
-    expect(screen.getByLabelText("Network")).toBeTruthy();
+    expect(screen.queryByText("Tool permissions")).toBeNull();
+    expect(screen.queryByLabelText("Network")).toBeNull();
     expect(screen.queryByText("环境信息")).toBeNull();
     expect(screen.queryByText("工具权限")).toBeNull();
     expect(screen.queryByText("Token 使用统计")).toBeNull();
@@ -741,7 +743,7 @@ describe("RightRail", () => {
     window.removeEventListener("app:switch-section", switchSpy);
   });
 
-  it("puts environment controls first, keeps session tool permissions in the rail, and opens Files and Git from visible rail actions", async () => {
+  it("puts environment controls first, keeps usage stats in the rail, and opens Files and Git from visible rail actions", async () => {
     const switchSpy = vi.fn();
     window.addEventListener("app:switch-section", switchSpy);
     getGitStatus.mockResolvedValue({
@@ -794,7 +796,6 @@ describe("RightRail", () => {
     expect(screen.queryByText("claude-sonnet")).toBeNull();
     expect(screen.queryByText("anthropic")).toBeNull();
     expect(screen.queryByText("输入 1.2K")).toBeNull();
-    expect(await screen.findByText("工具权限")).toBeTruthy();
     expect(screen.getByText("Token 使用统计")).toBeTruthy();
     expect(screen.getAllByText("1.5K").length).toBeGreaterThan(0);
     expect(screen.queryByText("预估费用")).toBeNull();
@@ -802,9 +803,10 @@ describe("RightRail", () => {
     expect(screen.getByText("输入 Token")).toBeTruthy();
     expect(screen.getByText("输出 Token")).toBeTruthy();
     expect(screen.getByText("anthropic/claude-sonnet")).toBeTruthy();
-    expect(screen.getByText("Session")).toBeTruthy();
-    expect((screen.getByLabelText("文件写入") as HTMLInputElement).checked).toBe(false);
-    expect((screen.getByLabelText("网络") as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByText("会话数")).toBeTruthy();
+    expect(screen.queryByText("工具权限")).toBeNull();
+    expect(screen.queryByLabelText("文件写入")).toBeNull();
+    expect(screen.queryByLabelText("网络")).toBeNull();
     expect(screen.queryByText("最近工具")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "浏览全部文件" }));

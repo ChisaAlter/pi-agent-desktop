@@ -4,7 +4,6 @@ import { usePlanStore } from "../../stores/plan-store";
 import { useSessionStore } from "../../stores/session-store";
 import { useQueueStore, type QueueTaskStatus } from "../../stores/queue-store";
 import { useSettingsStore } from "../../stores/settings-store";
-import { ToolPermissionsPanel } from "../ToolPermissions/ToolPermissionsPanel";
 import { UsageStatsPanel } from "../UsageStats/UsageStatsPanel";
 import { useI18n } from "../../i18n";
 import { contentWithGeneratedUiText } from "../../utils/generated-ui";
@@ -465,7 +464,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
           {railActionStatus.message}
         </div>
       )}
-      <section className="rounded-[16px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5 shadow-[0_14px_34px_rgba(15,23,42,0.12)]">
+      <section className="rounded-[16px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="m-0 text-[13px] font-medium">{t("rightRail.environment")}</h2>
         </div>
@@ -609,11 +608,9 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
         </div>
       </section>
 
-      <ToolPermissionsPanel workspaceId={workspaceId} />
-
       <UsageStatsPanel workspaceId={workspaceId} />
 
-      <section className="min-h-0 rounded-[16px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5 shadow-[0_14px_34px_rgba(15,23,42,0.12)]">
+      <section className="min-h-0 rounded-[16px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="m-0 text-[13px] font-medium">{t("rightRail.progress")}</h2>
           <span className="rounded-full bg-[var(--mm-bg-sidebar)] px-2 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">
@@ -707,7 +704,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
         )}
       </section>
 
-      <section className="min-h-0 rounded-[16px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5 shadow-[0_14px_34px_rgba(15,23,42,0.12)]">
+      <section className="min-h-0 rounded-[16px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3.5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="m-0 text-[13px] font-medium">{t("rightRail.fileOutput")}</h2>
         </div>
