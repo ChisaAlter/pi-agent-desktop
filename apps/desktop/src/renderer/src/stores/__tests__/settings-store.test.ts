@@ -384,6 +384,8 @@ describe("settings-store: Pi 配置变更同步", () => {
         (globalThis as { localStorage: Storage }).localStorage = localStorage;
 
         const { useSettingsStore: freshStore } = await import("../settings-store");
+        // 监听器现在通过 init() 注册 (不再 module-top-level side effect)
+        freshStore.getState().init();
         freshStore.setState({
             settings: {
                 theme: "light", fontSize: 14, model: "mimo-v2.5", provider: "mimo",

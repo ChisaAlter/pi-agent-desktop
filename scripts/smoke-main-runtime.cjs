@@ -11,6 +11,7 @@ const os = require('os');
 const path = require('path');
 
 const OUT_DIR = path.resolve(__dirname, '..', 'apps', 'desktop', 'out', 'main');
+const DESKTOP_DIR = path.resolve(__dirname, '..', 'apps', 'desktop');
 const MAIN_SRC = path.join(OUT_DIR, 'index.js');
 const CHUNKS_SRC = path.join(OUT_DIR, 'chunks');
 
@@ -29,6 +30,7 @@ function runSmoke() {
     // 1) Copy main bundle (and chunks, if present) into the temp dir so we can
     //    patch without touching the built artifact.
     fs.copyFileSync(MAIN_SRC, MAIN);
+    fs.copyFileSync(path.join(DESKTOP_DIR, 'package.json'), path.join(tmpDir, 'package.json'));
     const hasChunks = fs.existsSync(CHUNKS_SRC);
     if (hasChunks) {
         fs.mkdirSync(CHUNKS_DIR, { recursive: true });
@@ -94,6 +96,14 @@ function runSmoke() {
             show() { }
             loadURL() { }
             loadFile() { }
+            setAlwaysOnTop() { }
+            setVisibleOnAllWorkspaces() { }
+            setSkipTaskbar() { }
+            setIgnoreMouseEvents() { }
+            setBounds() { }
+            getBounds() { return { x: 0, y: 0, width: 0, height: 0 }; }
+            hide() { }
+            close() { }
             // Bundle calls webContents.send, .setZoomFactor, .openDevTools, etc.
             // Proxy returns a noop for any property so registration can't throw.
             webContents = new Proxy({}, { get: () => () => { } });

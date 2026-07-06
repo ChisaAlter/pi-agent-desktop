@@ -4,6 +4,9 @@
 import { create } from "zustand";
 import type { Attachment } from "../types/attachments";
 
+/** 单个 workspace 允许的最大附件数. 超限时拒绝添加, 避免无界增长. */
+const MAX_ATTACHMENTS_PER_WORKSPACE = 20;
+
 interface AttachmentsState {
     byWorkspace: Record<string, Attachment[]>;
     add: (workspaceId: string, attachment: Attachment) => void;
@@ -15,6 +18,9 @@ interface AttachmentsState {
 export const useAttachmentsStore = create<AttachmentsState>((set, get) => ({
     byWorkspace: {},
     add: (workspaceId, attachment) => {
+        // 上限保护: 单 workspace 不超过 MAX_ATTACHMENTS_PER_WORKSPACE, 避免内存膨胀
+        const current = get().byWorkspace[workspaceId]?.length ?? 0;
+        if (current >= MAX_ATTACHMENTS_PER_WORKSPACE) return;
         set((s) => ({
             byWorkspace: {
                 ...s.byWorkspace,

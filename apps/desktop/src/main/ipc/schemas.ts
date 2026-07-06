@@ -82,6 +82,7 @@ const appSettingsSchema = z
         autoSave: z.boolean(),
         showLineNumbers: z.boolean(),
         wordWrap: z.boolean(),
+        schemaVersion: z.number().int().min(1),
         language: z.string().optional(),
         piConfig: piConfigSchema.optional(),
         permissionLevel: permissionModeSchema.optional(),
@@ -546,4 +547,24 @@ export const TaskRenameSchema = z.object({
 export const GoalEvaluateSchema = z.object({
     workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
     agentId: z.string().optional(),
+}).strict();
+
+// ── Subagent IPC schemas (Phase E Task 6) ───────────────
+// 3 subagent IPC handler 入参校验.
+// - list-types: workspaceId 预留字段(当前忽略, 未来按工作区过滤内置类型);
+//   接受空对象(返回全部 4 个内置类型), workspaceId 必须是 string.
+// - list-instances: agentId 必填且非空(列出该 agent 名下的 live/terminal 实例).
+// - cancel: agentId + actorId 必填且非空(幂等取消, 未知 actorId 返回 null).
+
+export const SubagentListTypesSchema = z.object({
+    workspaceId: z.string().min(1, "workspaceId must be a non-empty string").optional(),
+}).strict();
+
+export const SubagentListInstancesSchema = z.object({
+    agentId: z.string().min(1, "agentId must be a non-empty string"),
+}).strict();
+
+export const SubagentCancelSchema = z.object({
+    agentId: z.string().min(1, "agentId must be a non-empty string"),
+    actorId: z.string().min(1, "actorId must be a non-empty string"),
 }).strict();

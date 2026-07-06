@@ -4,11 +4,46 @@ import { tmpdir } from "os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_LONG_HORIZON_SETTINGS, type LongHorizonSettings } from "@shared";
 import { LongHorizonDatabase } from "../database";
-import { GoalService, MAX_GOAL_REACT, type GoalVerdict } from "../goal-service";
+import { GoalService, MAX_GOAL_REACT, buildSafeJudgeTranscript, type GoalVerdict } from "../goal-service";
 import type { JudgeModelClient, ResolvedModel, ResolvedProvider } from "../judge-model-client";
 import { TaskService } from "../task-service";
 
 describe("GoalService", () => {
+    describe("buildSafeJudgeTranscript", () => {
+        it("keeps newest messages within message and char limits", () => {
+            const transcript = Array.from({ length: 6 }, (_, index) => ({
+                id: `m${index + 1}`,
+                role: index % 2 === 0 ? "user" : "assistant",
+                content: `message-${index + 1}`,
+            }));
+
+            const safe = buildSafeJudgeTranscript(transcript, { maxMessages: 3, maxChars: 18 });
+
+            expect(safe).toHaveLength(2);
+            expect(safe.map((message) => message.content).join("")).toHaveLength(18);
+            expect(safe).toEqual([
+                { id: "m5", role: "user", content: "message-5" },
+                { id: "m6", role: "assistant", content: "message-6" },
+            ]);
+        });
+
+        it("redacts common secrets before judge model calls", () => {
+            const safe = buildSafeJudgeTranscript([
+                { id: "u1", role: "user", content: "Bearer abc.def.ghi sk-abc123456789 OPENAI_API_KEY=real-secret password=hunter2 token: abc123" },
+                { id: "a1", role: "assistant", content: "done" },
+            ]);
+
+            expect(safe[0]?.content).toContain("Bearer [REDACTED]");
+            expect(safe[0]?.content).toContain("sk-[REDACTED]");
+            expect(safe[0]?.content).toContain("OPENAI_API_KEY=[REDACTED]");
+            expect(safe[0]?.content).toContain("password=[REDACTED]");
+            expect(safe[0]?.content).toContain("token: [REDACTED]");
+            expect(safe[0]?.content).not.toContain("real-secret");
+            expect(safe[0]?.content).not.toContain("hunter2");
+            expect(safe.at(-1)).toMatchObject({ id: "a1", role: "assistant" });
+        });
+    });
+
     const dirs: string[] = [];
     const services: GoalService[] = [];
     const databases: LongHorizonDatabase[] = [];
@@ -32,6 +67,7 @@ describe("GoalService", () => {
             resolveActiveModel?: (workspaceId: string) => Promise<{ provider: ResolvedProvider; model: ResolvedModel } | null>;
             agentSessionLookup?: (workspaceId: string) => { followUp: (message: string) => Promise<void> } | null;
             getLongHorizonSettings?: (workspaceId: string) => LongHorizonSettings | undefined;
+            transcriptLookup?: (workspaceId: string, agentId?: string) => Promise<Array<{ role: string; content: string; id?: string }>>;
         },
     ) {
         const dir = mkdtempSync(join(tmpdir(), "pi-goal-"));
@@ -404,6 +440,67 @@ describe("GoalService", () => {
             expect(complete).not.toHaveBeenCalled();
         });
 
+        it("uses explicit judgeProvider and judgeModel settings before falling back to the active model", async () => {
+            const complete = vi.fn().mockResolvedValue({ ok: true, reason: "explicit judge done" });
+            const explicitProvider: ResolvedProvider = {
+                id: "judge-provider",
+                baseUrl: "https://judge.example.test",
+                api: "openai-completions",
+                models: [{ id: "judge-model" }],
+            };
+            const judgeModelClient = {
+                complete,
+                resolveProvider: vi.fn().mockResolvedValue(explicitProvider),
+            } as unknown as JudgeModelClient;
+            const resolveActiveModel = vi.fn().mockResolvedValue({ provider: fakeProvider, model: fakeModel });
+            const getLongHorizonSettings = vi.fn(() => ({
+                ...DEFAULT_LONG_HORIZON_SETTINGS,
+                goal: { enabled: true, judgeProvider: "judge-provider", judgeModel: "judge-model" },
+            }));
+            const { service } = createService(undefined, { judgeModelClient, resolveActiveModel, getLongHorizonSettings });
+
+            const verdict = await service.evaluate({
+                workspaceId: "ws1",
+                condition: "完成",
+                transcript: [],
+            });
+
+            expect(verdict).toEqual({ verdict: "satisfied", reason: "explicit judge done" });
+            expect(judgeModelClient.resolveProvider).toHaveBeenCalledWith("judge-provider");
+            expect(resolveActiveModel).not.toHaveBeenCalled();
+            expect(complete).toHaveBeenCalledWith(expect.objectContaining({
+                provider: explicitProvider,
+                model: { id: "judge-model" },
+            }));
+        });
+
+        it("falls back to the active model when judgeProvider or judgeModel is unset", async () => {
+            const complete = vi.fn().mockResolvedValue({ ok: true, reason: "active model done" });
+            const judgeModelClient = {
+                complete,
+                resolveProvider: vi.fn(),
+            } as unknown as JudgeModelClient;
+            const resolveActiveModel = vi.fn().mockResolvedValue({ provider: fakeProvider, model: fakeModel });
+            const getLongHorizonSettings = vi.fn(() => ({
+                ...DEFAULT_LONG_HORIZON_SETTINGS,
+                goal: { enabled: true, judgeProvider: "judge-provider" },
+            }));
+            const { service } = createService(undefined, { judgeModelClient, resolveActiveModel, getLongHorizonSettings });
+
+            await service.evaluate({
+                workspaceId: "ws1",
+                condition: "完成",
+                transcript: [],
+            });
+
+            expect(judgeModelClient.resolveProvider).not.toHaveBeenCalled();
+            expect(resolveActiveModel).toHaveBeenCalledWith("ws1");
+            expect(complete).toHaveBeenCalledWith(expect.objectContaining({
+                provider: fakeProvider,
+                model: fakeModel,
+            }));
+        });
+
         it("strips stray system messages from the transcript before sending to the judge", async () => {
             const complete = vi.fn().mockResolvedValue({ ok: true, reason: "done" });
             const judgeModelClient = mockJudgeClient(complete);
@@ -596,6 +693,7 @@ describe("GoalService", () => {
             complete: ReturnType<typeof vi.fn>;
             followUp?: ReturnType<typeof vi.fn>;
             getLongHorizonSettings?: (workspaceId: string) => LongHorizonSettings | undefined;
+            transcriptLookup?: (workspaceId: string, agentId?: string) => Promise<Array<{ role: string; content: string; id?: string }>>;
         }) {
             const judgeModelClient = mockJudgeClient(opts.complete);
             const resolveActiveModel = vi.fn().mockResolvedValue({ provider: fakeProvider, model: fakeModel });
@@ -606,6 +704,7 @@ describe("GoalService", () => {
                 resolveActiveModel,
                 agentSessionLookup,
                 getLongHorizonSettings: opts.getLongHorizonSettings,
+                transcriptLookup: opts.transcriptLookup,
             });
             return { service, send, complete: opts.complete, followUp, agentSessionLookup };
         }
@@ -842,6 +941,73 @@ describe("GoalService", () => {
             }));
             // Goal stays running (no applyVerdict on inconclusive-within-cap).
             expect(await service.get("ws1")).toMatchObject({ status: "running" });
+        });
+
+        it("uses evaluateInterval from settings instead of monkey-patched private state", async () => {
+            const complete = vi.fn().mockResolvedValue({ ok: false, reason: "not yet" });
+            const { service, followUp } = createJudgeService({
+                complete,
+                getLongHorizonSettings: () => ({
+                    ...DEFAULT_LONG_HORIZON_SETTINGS,
+                    enabled: true,
+                    goal: { enabled: true, evaluateInterval: 3 },
+                }),
+            });
+            await service.set({ workspaceId: "ws1", condition: "完成" });
+
+            await service.onTurnEnd("ws1", "agent-1");
+            await service.onTurnEnd("ws1", "agent-1");
+            expect(complete).not.toHaveBeenCalled();
+
+            await service.onTurnEnd("ws1", "agent-1");
+            expect(complete).toHaveBeenCalledTimes(1);
+            expect(followUp).not.toHaveBeenCalled();
+        });
+
+        it("uses maxReact from settings when bounding judge re-entry", async () => {
+            const complete = vi.fn().mockResolvedValue({ ok: false, reason: "still inconclusive" });
+            const { service, followUp } = createJudgeService({
+                complete,
+                getLongHorizonSettings: () => ({
+                    ...DEFAULT_LONG_HORIZON_SETTINGS,
+                    enabled: true,
+                    goal: { enabled: true, maxReact: 1 },
+                }),
+            });
+            await service.set({ workspaceId: "ws1", condition: "完成" });
+
+            await service.onTurnEnd("ws1", "agent-1");
+            await service.onTurnEnd("ws1", "agent-1");
+
+            expect(followUp).toHaveBeenCalledTimes(1);
+            expect(await service.get("ws1")).toMatchObject({
+                status: "impossible",
+                reason: "exceeded MAX_GOAL_REACT (1)",
+            });
+        });
+
+        it("uses transcriptLookup for onTurnEnd evaluation and anchors the last assistant message", async () => {
+            const complete = vi.fn().mockResolvedValue({ ok: true, reason: "done" });
+            const transcriptLookup = vi.fn().mockResolvedValue([
+                { id: "u1", role: "user", content: "请完成" },
+                { id: "a1", role: "assistant", content: "处理中" },
+                { id: "a2", role: "assistant", content: "已完成" },
+            ]);
+            const { service, send } = createJudgeService({ complete, transcriptLookup });
+            await service.set({ workspaceId: "ws1", condition: "完成" });
+            send.mockClear();
+
+            await service.onTurnEnd("ws1", "agent-1");
+
+            expect(transcriptLookup).toHaveBeenCalledWith("ws1", "agent-1");
+            expect(complete).toHaveBeenCalledWith(expect.objectContaining({
+                messages: expect.arrayContaining([
+                    expect.objectContaining({ role: "assistant", content: "已完成" }),
+                ]),
+            }));
+            expect(send).toHaveBeenCalledWith("goal:evaluation", "ws1", expect.objectContaining({
+                judgedMessageId: "a2",
+            }));
         });
 
         it("evaluates when getLongHorizonSettings is not configured (default enabled)", async () => {

@@ -59,6 +59,9 @@ type ThinkingLevel = typeof THINKING_OPTIONS[number]["value"];
 const COMPOSER_MIN_HEIGHT = 95;
 const COMPOSER_MAX_HEIGHT = 240;
 
+/** 单张粘贴图片的大小上限 (5MB). 超过拒绝, 避免 dataUrl 膨胀 + vision API 超载. */
+const MAX_PASTE_BYTES = 5 * 1024 * 1024;
+
 function normalizePermissionMode(value: unknown): PermissionMode {
   if (value === "ask" || value === "read") return "ask";
   if (value === "always" || value === "full") return "always";
@@ -277,6 +280,17 @@ export function ChatInput({
           e.preventDefault();
           const file = item.getAsFile();
           if (!file) continue;
+          // 排除 SVG: dataUrl 内联 SVG 在 vision pipeline 中不可控, 暂不支持
+          if (file.type === "image/svg+xml") {
+            setAttachmentError(t("chatInput.errors.svgNotSupported"));
+            continue;
+          }
+          // 大小上限: 5MB, 超限拒绝避免 dataUrl 膨胀 + vision API 超载
+          if (file.size > MAX_PASTE_BYTES) {
+            setAttachmentError(t("chatInput.errors.imageTooLarge"));
+            continue;
+          }
+          setAttachmentError(null);
           const reader = new FileReader();
           reader.onload = () => {
             const dataUrl = reader.result as string;
@@ -293,7 +307,7 @@ export function ChatInput({
         }
       }
     },
-    [workspaceId, addAttachment],
+    [workspaceId, addAttachment, t],
   );
 
   usePrefillConsumer(prefill, prefillKey, onPrefillConsumed, textareaRef, setInputValue);

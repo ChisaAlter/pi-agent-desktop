@@ -8,7 +8,9 @@ import { logger } from '../utils/logger';
 import { isNumberOrUndefined } from '../utils/format';
 import { isIpcError } from '@shared';
 import { useSessionStore } from './session-store';
+import { useAttachmentsStore } from './attachments-store';
 import { addToast } from './toast-store';
+import { i18n } from '../i18n';
 import { getPiAPI } from '../utils/pi-api';
 
 export interface Workspace {
@@ -84,7 +86,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
     } catch (e) {
       logger.error('[workspace-store] Failed to load workspaces:', e);
       set({ lastError: e instanceof Error ? e.message : String(e), loaded: true });
-      addToast("工作区加载失败", "error");
+      addToast(i18n.t("errors.workspaceLoadFailed"), "error");
     }
   };
 
@@ -106,7 +108,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
     };
     const previousWorkspaceId = get().currentWorkspaceId;
     if (previousWorkspaceId && previousWorkspaceId !== newWorkspace.id) {
-      useSessionStore.setState({ currentSessionId: null });
+      useSessionStore.getState().clearCurrentSession();
     }
 
     set(state => ({
@@ -181,6 +183,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
       };
     });
 
+    // Cascade: 清理该 workspace 下残留的附件, 避免内存泄漏 + 串到新 workspace
+    useAttachmentsStore.getState().clear(workspaceId);
+
     // Sync to main process
     const piAPI = getPiAPI();
     if (piAPI) {
@@ -210,11 +215,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
   
   setCurrentWorkspace: (workspaceId: string) => {
     if (get().currentWorkspaceId && get().currentWorkspaceId !== workspaceId) {
-      useSessionStore.setState({ currentSessionId: null });
+      useSessionStore.getState().clearCurrentSession();
     }
     set(state => ({
       currentWorkspaceId: workspaceId,
-      workspaces: state.workspaces.map(w => 
+      workspaces: state.workspaces.map(w =>
         w.id === workspaceId ? { ...w, lastActiveAt: new Date() } : w
       )
     }));

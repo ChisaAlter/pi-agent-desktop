@@ -11,6 +11,7 @@ import { create } from 'zustand';
 import { logger } from '../utils/logger';
 import { isIpcError, type Message, type SessionUsageSnapshot, type ToolCall, type ToolPermissions } from '@shared';
 import { addToast } from './toast-store';
+import { i18n } from '../i18n';
 import { getPiAPI } from '../utils/pi-api';
 import { cloneGeneratedUiCard } from '../utils/generated-ui';
 import { normalizeToolCallsForPersistence, normalizeToolCallsForRuntime } from '../utils/tool-call';
@@ -83,6 +84,13 @@ interface SessionState {
   updateSessionToolPermissions: (sessionId: string, permissions: ToolPermissions) => void;
   setCurrentSession: (sessionId: string) => void;
   /**
+   * Set/replace the current session id without enforcing the existence
+   * invariant that {@link setCurrentSession} enforces. Accepts `null` to
+   * clear the current session. Used by app-shell navigation effects that
+   * need to pick a default session from a list they own.
+   */
+  setDefaultSession: (sessionId: string | null) => void;
+  /**
    * 2026-06-06 hotfix: actions 接受 opts.persist 跳过 fire-and-forget IPC。
    * usePiStream 高频路径传 false,自己 debounce + flush。
    */
@@ -123,6 +131,8 @@ interface SessionState {
   init: () => void;
   getCurrentSession: () => Session | null;
   getSessionMessages: (sessionId: string) => Message[];
+  /** 把 currentSessionId 置 null (供 workspace-store 跨 store 调用, 替代直接 setState) */
+  clearCurrentSession: () => void;
   /** 2026-06-06 hotfix: 清掉错误计数(banner 关闭) */
   clearPersistErrors: () => void;
 }
@@ -315,7 +325,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
       }
     } catch (e) {
       logger.error("[session-store] Failed to load sessions:", e);
-      addToast("会话加载失败", "error");
+      addToast(i18n.t("errors.sessionLoadFailed"), "error");
       set({ sessionsLoading: false });
     }
   };
@@ -328,6 +338,9 @@ export const useSessionStore = create<SessionState>((set, get) => {
   lastPersistError: null,
   loadSessions,
   init: () => { void loadSessions(); },
+  clearCurrentSession: () => {
+    set({ currentSessionId: null });
+  },
 
   createSession: async (workspaceId: string) => {
     const id = `s_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -527,6 +540,10 @@ export const useSessionStore = create<SessionState>((set, get) => {
     if (piAPI?.updateSessionMetadata) {
       observePersistResult(piAPI.updateSessionMetadata(sessionId, { readOnly: false, lastOpenedAt: openedAt.getTime() }));
     }
+  },
+
+  setDefaultSession: (sessionId: string | null) => {
+    set({ currentSessionId: sessionId });
   },
 
   addMessage: (sessionId: string, message: Message, opts?: { persist?: boolean }) => {

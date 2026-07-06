@@ -2,6 +2,7 @@
 // 转换 Pi 原生事件 → renderer 友好的简化事件
 // Pi 事件文档: node_modules/@earendil-works/pi-coding-agent/docs/rpc.md
 
+import log from "electron-log/main";
 import type { PiEvent } from "@shared/events";
 
 export type IpcSender = (channel: string, workspaceId: string, payload: unknown) => void;
@@ -49,6 +50,7 @@ export function createEventBridge(workspaceId: string, send: IpcSender, deps?: E
 
                 default:
                     // 未知事件忽略 (auto_retry_* 等暂未接入 renderer 的诊断事件)
+                    log.warn(`[event-bridge] unknown Pi event type: ${(event as { type?: string })?.type ?? "(unknown)"}`);
                     break;
             }
         },

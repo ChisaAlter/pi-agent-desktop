@@ -7,13 +7,14 @@ import { clipboard, ipcMain, BrowserWindow, type BrowserWindow as BrowserWindowT
 import { execFileSync } from "child_process";
 import { rmSync } from "fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve, sep } from "path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "path";
 import log from "electron-log/main";
 import { ipcError, normalizeLongHorizonSettings } from "@shared";
+import type { LongHorizonMemoryRecord } from "@shared";
 import { WorkspaceRegistry } from "../services/pi-session/registry";
 import type { IpcSender } from "../services/pi-session/event-bridge";
 import { PendingEdits } from "../services/approval/pending-edits";
-import { resolveApprovalRequest } from "../services/approval/approval-bridge";
+import { resolveApprovalRequest, setWorkspaceWindow } from "../services/approval/approval-bridge";
 import { getWorkbenchContext } from "./workbench.ipc";
 import {
     resolveExtensionUiRequest,
@@ -35,6 +36,9 @@ import type { GoalService } from "../services/long-horizon/goal-service";
 import type { CheckpointService } from "../services/long-horizon/checkpoint-service";
 import type { MemoryService } from "../services/long-horizon/memory-service";
 import type { TaskService } from "../services/long-horizon/task-service";
+import type { MarkdownMemoryService } from "../services/memory/markdown-memory-service";
+import type { MemorySearchHit } from "../services/memory/markdown-index";
+import { formatMemorySection } from "../services/subagent/tools/memory-tools";
 import { getProtectedPathReason } from "../services/protected-paths";
 import { gitUndoSchema, GoalEvaluateSchema } from "./schemas";
 import { buildAgentModePrompt, goalSlashCommands, normalizeAgentMode } from "../services/agent-modes";
@@ -59,7 +63,16 @@ interface ChatIpcDeps {
     agentRegistry?: AgentRuntimeRegistry;
     getSettings?: () => AppSettings;
     goalService?: GoalService;
+    transcriptLookup?: (workspaceId: string, agentId?: string) => Promise<Array<{ role: string; content: string; id?: string }>>;
     memoryService?: MemoryService;
+    /**
+     * Markdown-primary memory service (Phase 5: chat-memory markdown bridge).
+     * When provided, `pi:memory-search` consults this service instead of the
+     * legacy SQLite-backed `memoryService`, and `pi:send` writes the
+     * recent-user-intent entry directly to the project's MEMORY.md so the
+     * renderer and subagents share the same on-disk data source.
+     */
+    markdownMemoryService?: MarkdownMemoryService;
     checkpointService?: CheckpointService;
     taskService?: TaskService;
     /**
@@ -504,6 +517,76 @@ function getBundledExtensionFeatures(): BundledExtensionFeatures {
     return cachedExtensionFeatures;
 }
 
+/**
+ * Convert a markdown-memory FTS5 hit into the legacy `LongHorizonMemoryRecord`
+ * shape so the renderer-side `pi:memory-search` consumer doesn't need to know
+ * which backend produced the result.
+ *
+ * The markdown file format stores the entry's `kind` in YAML frontmatter
+ * (not in the FTS index schema), so the kind defaults to "note" — the
+ * common case for project MEMORY.md entries (dream/distill/user-intent).
+ * The snippet returned by FTS5 wraps matched tokens in `<<`/`>>` markers but
+ * the original token remains a substring, so `text.includes(queryToken)` works.
+ */
+function markdownHitToRecord(
+    hit: MemorySearchHit,
+    workspaceId?: string,
+): LongHorizonMemoryRecord & { score: number } {
+    const scope: LongHorizonMemoryRecord["scope"] =
+        hit.scope === "projects" ? "project" : hit.scope === "sessions" ? "session" : "global";
+    const kind: LongHorizonMemoryRecord["kind"] = "note";
+    const layer: LongHorizonMemoryRecord["layer"] =
+        scope === "project"
+            ? "project_memory"
+            : scope === "session"
+                ? "session_memory"
+                : "global_memory";
+    return {
+        id: hit.path,
+        scope,
+        layer,
+        kind,
+        text: hit.snippet,
+        workspaceId,
+        tags: [],
+        createdAt: Date.now(),
+        score: hit.score,
+    };
+}
+
+/**
+ * Append a recent-user-intent section to the project's MEMORY.md so the
+ * renderer-side `pi:memory-search` (and subagent `memory_search`) can recall
+ * the user's latest intent. Mirrors the subagent `memory_write` write format
+ * via `formatMemorySection` so the markdown layout stays consistent.
+ */
+async function appendRecentUserIntentToMarkdownMemory(
+    service: MarkdownMemoryService,
+    workspacePath: string,
+    prompt: string,
+): Promise<void> {
+    const projectId = service.resolveProjectId(workspacePath);
+    const targetPath = service.buildMemoryPath({
+        scope: "projects",
+        scopeId: projectId,
+        type: "memory",
+        filename: "MEMORY",
+    });
+    const section = formatMemorySection({
+        scope: "project",
+        scopeId: projectId,
+        kind: "note",
+        tags: ["recent-user-intent"],
+        origin: "main",
+        createdAt: new Date().toISOString(),
+        text: prompt.slice(0, 2000),
+    });
+    await mkdir(dirname(targetPath), { recursive: true });
+    // Append mode — multiple prompts accumulate as separate YAML-frontmatter
+    // sections in the same MEMORY.md file.
+    await writeFile(targetPath, section, { flag: "a" });
+}
+
 export function setupChatIpc(deps: ChatIpcDeps): void {
     const agentModeByWorkspace = new Map<string, AgentMode>();
     const send: IpcSender = (channel, _workspaceId, payload) => {
@@ -652,10 +735,9 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
 
     // Phase C Task 4: goal:evaluate — manually trigger the judge LLM against
     // the active goal. Returns a GoalVerdict (or IpcError on misconfiguration).
-    // The verdict is also broadcast via `goal:evaluation` event by
-    // GoalService.applyVerdict (called from onTurnEnd); this handler emits the
-    // event only when the verdict is inconclusive (so the UI still gets a
-    // marker for manual evaluations).
+    // Terminal verdicts are persisted via GoalService.applyVerdict; inconclusive
+    // verdicts are returned without changing goal status so future turn_end
+    // stop-gates can continue evaluating the running goal.
     ipcMain.handle("goal:evaluate", async (_event, raw: unknown) => {
         const parsed = GoalEvaluateSchema.safeParse(raw);
         if (!parsed.success) {
@@ -689,20 +771,23 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
                     { workspaceId: ws.id },
                 );
             }
-            // Transcript extraction is wired in Task 6; manual evaluate uses an
-            // empty transcript which makes the judge return inconclusive —
-            // still useful for surfacing the judge's reason in the UI.
-            const transcript: Array<{ role: string; content: string }> = [];
+            if (goal.status !== "running") {
+                return ipcError(
+                    "ipcErrors.goal.notRunning",
+                    "goal 当前不是运行状态，无法评估",
+                    { workspaceId: ws.id, status: goal.status },
+                );
+            }
+            const transcript = deps.transcriptLookup ? await deps.transcriptLookup(ws.id, agentId) : [];
             const verdict = await deps.goalService.evaluate({
                 workspaceId: ws.id,
                 agentId,
                 condition: goal.condition,
                 transcript,
             });
-            // Persist the verdict + broadcast goal:evaluation event so the UI
-            // gets a per-turn marker even for manual evaluations. applyVerdict
-            // handles the status mapping + event emission.
-            await deps.goalService.applyVerdict(ws.id, verdict, agentId);
+            if (verdict.verdict === "satisfied" || verdict.verdict === "failed") {
+                await deps.goalService.applyVerdict(ws.id, verdict, agentId);
+            }
             return verdict;
         } catch (err) {
             log.error("[chat.ipc] goal:evaluate failed:", err);
@@ -730,9 +815,25 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         limit?: number;
     }) => {
         const longHorizon = longHorizonSettings(deps.getSettings?.());
-        if (!longHorizon.enabled || !longHorizon.memory.enabled || !deps.memoryService) return [];
+        if (!longHorizon.enabled || !longHorizon.memory.enabled) return [];
         const query = typeof input?.query === "string" ? input.query.trim() : "";
         if (!query) return [];
+
+        // Phase 5: prefer markdown-primary search so the renderer shares the
+        // same on-disk data source as the subagent `memory_write` tool. Falls
+        // back to the legacy SQLite-backed `memoryService.search` when the
+        // markdown service isn't injected (backward compat for users who
+        // haven't enabled the new architecture).
+        if (deps.markdownMemoryService) {
+            const hits = await deps.markdownMemoryService.search(
+                query,
+                {}, // scope filter derived from session/project at spawn time, not user-controlled
+                { limit: input?.limit },
+            );
+            return hits.map((hit) => markdownHitToRecord(hit, input?.workspaceId));
+        }
+
+        if (!deps.memoryService) return [];
         return deps.memoryService.search(query, {
             workspaceId: input.workspaceId,
             sessionId: input.sessionId,
@@ -924,7 +1025,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         log.info(`[chat.ipc] autoApprove set to: ${value}`);
     });
 
-    ipcMain.handle("pi:send", async (_event, workspaceId: string, text: string, options?: SendPromptOptions) => {
+    ipcMain.handle("pi:send", async (event, workspaceId: string, text: string, options?: SendPromptOptions) => {
         const ws = workspaceId ? deps.getWorkspace(workspaceId) : undefined;
         if (!ws) {
             return ipcError(
@@ -932,6 +1033,15 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
                 `Workspace not found: ${workspaceId}`,
                 { id: workspaceId },
             );
+        }
+
+        // Register the BrowserWindow that owns this workspace so future
+        // approval requests route to it (not BrowserWindow.getAllWindows()[0]).
+        try {
+            const ownerWin = BrowserWindow.fromWebContents(event.sender);
+            if (ownerWin) setWorkspaceWindow(ws.id, ownerWin);
+        } catch {
+            // Ignore — best-effort wiring; falls back to getAllWindows().
         }
 
         // Prepend workbench context if user is viewing a file
@@ -956,13 +1066,30 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             })
             : undefined;
         if (longHorizon.enabled && longHorizon.memory.enabled) {
-            deps.memoryService?.put({
-                scope: "project",
-                workspaceId: ws.id,
-                kind: "note",
-                text: prompt.slice(0, 2000),
-                tags: ["recent-user-intent"],
-            });
+            // Phase 5: prefer markdown-primary write so the renderer-side
+            // `pi:memory-search` and subagent `memory_search` share the same
+            // on-disk data source as the user-intent put block. Falls back to
+            // the legacy SQLite-backed `memoryService.put` when the markdown
+            // service isn't injected (e.g. user hasn't enabled the new arch).
+            if (deps.markdownMemoryService) {
+                try {
+                    await appendRecentUserIntentToMarkdownMemory(
+                        deps.markdownMemoryService,
+                        ws.path,
+                        prompt,
+                    );
+                } catch (err) {
+                    log.error("[chat.ipc] markdown recent-user-intent write failed:", err);
+                }
+            } else {
+                deps.memoryService?.put({
+                    scope: "project",
+                    workspaceId: ws.id,
+                    kind: "note",
+                    text: prompt.slice(0, 2000),
+                    tags: ["recent-user-intent"],
+                });
+            }
         }
         const promptWithContext = contextBlock ? `${contextBlock}\n\n${prompt}` : prompt;
         const outbound = buildAgentModePrompt(mode, promptWithContext, currentModeOptions);

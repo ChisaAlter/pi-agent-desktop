@@ -1,5 +1,19 @@
-// MiMoCode runtime capability map.
-// Ported from XiaomiMiMo/MiMo-Code at 9c0a0c789d591730a9dc9710cb73434deba20a67.
+// UI Feature-Flag Adapter (NOT a runtime port).
+//
+// Returns a static capability manifest — agent IDs, tool IDs, and feature
+// toggles — consumed by the `pi:runtime-feature-state` IPC handler so the
+// React UI can render a capabilities list. Performs no I/O, launches no
+// runtime, and imports no MiMo-Code packages.
+//
+// The agent IDs and tool IDs are transcribed from MiMo-Code's vocabulary
+// for UI display purposes only. The actual runtime is the Pi CLI SDK
+// (`@earendil-works/pi-coding-agent`), wired in `pi-session/factory.ts`
+// and `agent-runtime/registry.ts`.
+//
+// `dream` and `distill` features are marked `unsupportedToggle(...)` because
+// their long-horizon runtime is not yet implemented in Pi Desktop.
+//
+// Vocabulary sourced from XiaomiMiMo/MiMo-Code at 9c0a0c789d591730a9dc9710cb73434deba20a67.
 // MIT License. Copyright (c) 2026 MiMo Code, Xiaomi Corporation.
 // MIT License. Copyright (c) 2025 opencode.
 

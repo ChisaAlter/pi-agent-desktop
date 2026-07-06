@@ -16,6 +16,28 @@ interface PendingRequest {
 // for callers that don't supply one.
 const pendingByWorkspace = new Map<string, Map<string, PendingRequest>>();
 
+// Per-workspaceId BrowserWindow registry. Set by IPC handlers that have an
+// `event.sender` webContents so approval requests route to the window that
+// owns the workspace. Entries are invalidated lazily when the window is
+// destroyed. Callers that don't register a window will see `requestApproval`
+// resolve to `false` (safe rejection) — they must call `setWorkspaceWindow`
+// before issuing approval requests.
+const workspaceWindows = new Map<string, BrowserWindow>();
+
+/**
+ * Register the BrowserWindow that owns `workspaceId`. Approval requests for
+ * this workspace will be sent to this window's webContents. Re-registering
+ * replaces the previous binding (safe to call on every IPC entry).
+ */
+export function setWorkspaceWindow(workspaceId: string, win: BrowserWindow): void {
+    workspaceWindows.set(workspaceId, win);
+}
+
+/** Drop the BrowserWindow binding for `workspaceId` (e.g. on window close). */
+export function clearWorkspaceWindow(workspaceId: string): void {
+    workspaceWindows.delete(workspaceId);
+}
+
 function getWorkspaceApprovals(workspaceId: string): Map<string, PendingRequest> {
     let m = pendingByWorkspace.get(workspaceId);
     if (!m) {
@@ -34,6 +56,18 @@ function findPending(requestId: string): { pending: PendingRequest; map: Map<str
     return null;
 }
 
+/**
+ * Resolve the BrowserWindow registered for `workspaceId`. Returns `null` when
+ * no binding exists or the bound window has been destroyed — callers receive
+ * a safe `false` rejection in that case.
+ */
+function resolveWindowForWorkspace(workspaceId: string): BrowserWindow | null {
+    const registered = workspaceWindows.get(workspaceId);
+    if (registered && !registered.isDestroyed()) return registered;
+    if (registered) workspaceWindows.delete(workspaceId);
+    return null;
+}
+
 export interface ApprovalRequestPayload {
     method: "confirm" | "select";
     title: string;
@@ -46,10 +80,10 @@ export interface ApprovalRequestPayload {
 /** 发送审批请求到 renderer, 等用户决策 */
 export function requestApproval(req: ApprovalRequestPayload): Promise<boolean> {
     const requestId = randomUUID();
-    const win = BrowserWindow.getAllWindows()[0];
+    const workspaceId = req.workspaceId ?? "";
+    const win = resolveWindowForWorkspace(workspaceId);
     if (!win) return Promise.resolve(false);
 
-    const workspaceId = req.workspaceId ?? "";
     const map = getWorkspaceApprovals(workspaceId);
 
     return new Promise<boolean>((resolve) => {

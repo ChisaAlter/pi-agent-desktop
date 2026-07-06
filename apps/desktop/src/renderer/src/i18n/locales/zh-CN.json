@@ -399,7 +399,9 @@
       "filePickerFailed": "打开文件选择器失败: {{message}}",
       "switchWorkspaceFailed": "切换 workspace 失败: {{message}}",
       "directoryPickerUnavailable": "目录选择不可用 (preload 未注入)",
-      "createWorkspaceFailed": "创建 workspace 失败: {{message}}"
+      "createWorkspaceFailed": "创建 workspace 失败: {{message}}",
+      "imageTooLarge": "图片大小不能超过 5MB",
+      "svgNotSupported": "暂不支持 SVG 图片"
     },
     "shortcuts": {
       "send": "发送",
@@ -447,6 +449,8 @@
     "title": "文件变更审批",
     "pendingCount": "{{count}} 个待审批",
     "pendingSummary": "{{count}} 个文件待审批",
+    "pendingSummarySuffix": "个文件待审批",
+    "listAria": "审批变更列表",
     "allProcessed": "所有变更已处理 ({{count}} 个文件)",
     "empty": "暂无待审批的变更",
     "emptyHint": "AI 修改文件时将在此处显示",
@@ -478,7 +482,7 @@
   },
   "diffView": {
     "filesChanged": "{{count}} 个文件变更",
-    "expand": "展开",
+    "expand": "展开 {{count}} 行未变更",
     "collapse": "折叠"
   },
   "editor": {
@@ -1074,6 +1078,18 @@
       "settings": "设置",
       "ariaLabel": "顶部标签栏"
     },
+  "titlebar": {
+    "minimize": "最小化窗口",
+    "maximize": "最大化",
+    "restore": "取消最大化",
+    "close": "关闭窗口"
+  },
+  "errors": {
+    "messageSaveFailed": "消息保存失败，内容可能未持久化",
+    "agentRestartFailed": "重启 Agent 失败",
+    "sessionLoadFailed": "会话加载失败",
+    "workspaceLoadFailed": "工作区加载失败"
+  },
   "app": {
     "shellAria": "Pi 桌面应用",
     "headerAria": "顶部操作栏",
@@ -1088,10 +1104,27 @@
     "openSettingsAria": "打开设置",
     "connected": "已连接",
     "disconnected": "未连接",
+    "updaterAvailable": "发现新版本 {{version}}，可在“关于”里下载更新。",
+    "updaterDownloaded": "更新 {{version}} 已下载完成，可在“关于”里重启安装。",
+    "workspaceRequired": "请先选择工作区",
+    "directoryPickerUnavailable": "目录选择器不可用",
+    "createWorkspaceFailed": "创建 workspace 失败",
+    "workspaceSwitched": "已切换到 {{name}}",
+    "panelLoadFailed": "{{name}} 加载失败",
+    "untitledSession": "未命名会话",
     "placeholder": {
       "search": "全局搜索 (Ctrl+K)",
       "automation": "自动化",
       "settings": "设置"
+    },
+    "panels": {
+      "chat": "聊天",
+      "skills": "技能",
+      "tasks": "任务",
+      "memory": "记忆",
+      "history": "会话中心",
+      "git": "Git",
+      "files": "文件"
     }
   }
 }

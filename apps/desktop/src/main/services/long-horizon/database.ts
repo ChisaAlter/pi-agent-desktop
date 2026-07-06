@@ -78,6 +78,16 @@ function sanitizeFtsQuery(raw: string): string | null {
 }
 
 function rowToMemory(row: Record<string, unknown>): LongHorizonMemoryRecord {
+    let tags: string[] | undefined;
+    if (typeof row.tags_json === "string" && row.tags_json) {
+        try {
+            tags = JSON.parse(row.tags_json) as string[];
+        } catch {
+            // Corrupt tags_json — fall back to undefined rather than throwing
+            // and dropping the rest of the record.
+            tags = undefined;
+        }
+    }
     return {
         id: String(row.id),
         scope: row.scope as MemoryScope,
@@ -87,9 +97,7 @@ function rowToMemory(row: Record<string, unknown>): LongHorizonMemoryRecord {
         parentId: typeof row.parent_id === "string" && row.parent_id ? row.parent_id : undefined,
         workspaceId: typeof row.workspace_id === "string" && row.workspace_id ? row.workspace_id : undefined,
         sessionId: typeof row.session_id === "string" && row.session_id ? row.session_id : undefined,
-        tags: typeof row.tags_json === "string" && row.tags_json
-            ? JSON.parse(row.tags_json) as string[]
-            : undefined,
+        tags,
         createdAt: Number(row.created_at),
         updatedAt: Number(row.updated_at ?? row.created_at),
         score: typeof row.score === "number" ? row.score : undefined,
@@ -151,6 +159,12 @@ export class LongHorizonDatabase {
 
     async close(): Promise<void> {
         await this.yieldToEventLoop();
+        try {
+            this.db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+        } catch {
+            // Database may be in a bad state; ignore checkpoint failure so
+            // close() still best-effort releases the handle.
+        }
         this.db.close();
     }
 
@@ -569,6 +583,9 @@ export class LongHorizonDatabase {
         // PRAGMAs that affect connection behavior — must be outside transactions.
         this.db.exec("PRAGMA journal_mode = WAL;");
         this.db.exec("PRAGMA foreign_keys = ON;");
+        // Checkpoint any pre-existing WAL so the file doesn't grow unbounded
+        // across restarts. TRUNCATE also resets the WAL file back to ~zero size.
+        this.db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
 
         // Base schema (memories / goals) — always created, idempotent.
         this.db.exec(`

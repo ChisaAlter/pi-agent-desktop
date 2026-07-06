@@ -11,6 +11,7 @@ import { isIpcError, type FileEntry, type GitStatus, type ProjectInfo } from "@s
 import { contentWithGeneratedUiText } from "../../utils/generated-ui";
 import { classifyTerminalCommand } from "../../utils/terminal-command";
 import { projectScriptCommand } from "../../utils/project-scripts";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 export type CommandMode = "file" | "history" | "cmd";
 
@@ -113,6 +114,7 @@ export function CommandPalette({
     const [actionStatus, setActionStatus] = useState<PaletteCommandStatus | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
+    useFocusTrap(dialogRef, isOpen);
     const { t } = useI18n();
     const sessions = useSessionStore((s) => s.sessions);
 

@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import { useTranslateIpcError } from '../../../i18n';
 import { isIpcError, type ManagedModelEntry, type ManagedModelsResult, type ManagedModelSaveInput } from '@shared';
 import { SectionTitle, SettingsCard, SettingsPage } from '../_shared';
+import { useFocusTrap } from '../../../hooks/useFocusTrap';
 
 type ModelFormState = {
     originalProviderId?: string;
@@ -92,6 +93,10 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
     const translateIpcError = useTranslateIpcError();
     const providerIdInputRef = useRef<HTMLInputElement>(null);
     const deleteConfirmButtonRef = useRef<HTMLButtonElement>(null);
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const deleteDialogRef = useRef<HTMLDivElement>(null);
+    useFocusTrap(dialogRef, form !== null);
+    useFocusTrap(deleteDialogRef, pendingDeleteModel !== null);
     const modelRows = result
         ? [...result.models].sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.providerName.localeCompare(b.providerName) || a.modelName.localeCompare(b.modelName))
         : [];
@@ -210,7 +215,16 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
 
     const formDialog = form ? (
         <div className="settings-subdialog-backdrop fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 p-6">
-            <div className="settings-subdialog flex max-h-[calc(100vh-48px)] w-[min(680px,calc(100vw-48px))] flex-col overflow-hidden rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-2xl" role="dialog" aria-modal="true" aria-label="模型编辑">
+            <div
+                ref={dialogRef}
+                className="settings-subdialog flex max-h-[calc(100vh-48px)] w-[min(680px,calc(100vw-48px))] flex-col overflow-hidden rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-2xl"
+                role="dialog"
+                aria-modal="true"
+                aria-label="模型编辑"
+                onKeyDown={(e) => {
+                    if (e.key === 'Escape') setForm(null);
+                }}
+            >
                 <div className="flex shrink-0 items-center justify-between border-b border-[var(--mm-border)] px-5 py-4">
                     <div className="text-sm font-semibold text-[var(--mm-text-primary)]">{form.originalModelId ? '编辑模型' : '新增模型'}</div>
                     <button type="button" onClick={() => setForm(null)} className="settings-pressable rounded-md px-2 py-1 text-sm transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)]">关闭</button>
@@ -256,10 +270,14 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
     const deleteDialog = pendingDeleteModel ? (
         <div className="settings-subdialog-backdrop fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 p-6 backdrop-blur-[1px]">
             <div
+                ref={deleteDialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-label="删除模型确认"
                 className="settings-subdialog flex max-h-[calc(100vh-48px)] w-[min(440px,calc(100vw-48px))] flex-col overflow-hidden rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-[0_24px_80px_rgba(0,0,0,0.22)]"
+                onKeyDown={(e) => {
+                    if (e.key === 'Escape') setPendingDeleteModel(null);
+                }}
             >
                 <div className="shrink-0 border-b border-[var(--mm-border)] px-5 py-4">
                     <div className="text-[15px] font-semibold text-[var(--mm-text-primary)]">删除模型</div>

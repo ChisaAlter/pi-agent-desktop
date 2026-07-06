@@ -5,7 +5,7 @@
 import { ipcMain, dialog, type BrowserWindow } from "electron";
 import log from "electron-log/main";
 import { ipcError } from "@shared";
-import { basename } from "path";
+import { basename, dirname } from "path";
 import { open, stat, writeFile } from "fs/promises";
 import { scanFiles } from "../services/search/file-scanner";
 import { buildFileTree } from "../file-tree";
@@ -147,6 +147,11 @@ export function setupFilesIpc(opts?: { getMainWindow?: () => BrowserWindow | nul
             }
             await writeFile(targetPath, content, "utf-8");
             const stats = await stat(targetPath);
+            // Invalidate the 30s scan cache for the affected directory so the
+            // next files:search / files:list sees the updated file mtime.
+            // Without this, a write immediately followed by a CommandPalette
+            // search would return a stale entry until the TTL elapsed.
+            scanCache.delete(workspacePath ?? dirname(targetPath));
             return {
                 path: targetPath,
                 size: stats.size,

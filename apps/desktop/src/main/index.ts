@@ -31,6 +31,7 @@ import { setupProjectShellIpc } from './ipc/project-shell.ipc';
 import { setupWorkbenchIpc } from './ipc/workbench.ipc';
 import { setupPlanIpc } from './ipc/plan.ipc';
 import { setupTaskIpc } from './ipc/task.ipc';
+import { setupSubagentIpc } from './ipc/subagent.ipc';
 import { PlanFileService } from './services/plan/plan-file-service';
 import { registerLocalFileProtocol } from './services/local-file-protocol';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
@@ -38,12 +39,19 @@ import { clearPendingExtensionUiRequests } from './services/extensions/extension
 import { setExtensionUiTargetResolver } from './services/extensions/extension-ui-bridge';
 import { setupAutoUpdater, type AppUpdaterService } from './services/updater';
 import { ptyManager } from './services/shell/pty-manager';
-import { DEFAULT_LONG_HORIZON_SETTINGS, type AppSettings, type Session } from '@shared';
+import { DEFAULT_LONG_HORIZON_SETTINGS, normalizeLongHorizonSettings, type AppSettings, type Session } from '@shared';
+import { SubagentManager, type SubagentSessionFactory } from './services/subagent/manager';
+import { AutoScheduler, type ScheduledSubagentType } from './services/subagent/auto-scheduler';
+import { createAutoSchedulerSpawnHandler, type SubagentSpawnHandlerDeps } from './services/subagent/spawn-handler';
+import { MarkdownMemoryService } from './services/memory/markdown-memory-service';
+import { SessionSummaryService } from './services/subagent/session-summary-service';
+import { createWorkspaceSession } from './services/pi-session/factory';
 import { AgentRuntimeRegistry } from './services/agent-runtime/registry';
 import { ConfigManager } from './services/config/config-manager';
 import { CodexSessionImporter } from './services/codex-session/importer';
 import { ClaudeSessionImporter } from './services/claude-session/importer';
-import { GoalService } from './services/long-horizon/goal-service';
+import { GoalService, buildSafeJudgeTranscript } from './services/long-horizon/goal-service';
+import { JudgeModelClient, type ResolvedProvider, type ResolvedModel } from './services/long-horizon/judge-model-client';
 import { MemoryService } from './services/long-horizon/memory-service';
 import { CheckpointService } from './services/long-horizon/checkpoint-service';
 import { TaskService } from './services/long-horizon/task-service';
@@ -117,6 +125,13 @@ interface StoreSchema {
   workspaces: Workspace[];
   sessions: Session[];
   settings: AppSettings;
+  /**
+   * AutoScheduler lastRunAt persistence (Phase 2 wire-inert-subsystems).
+   * Keyed by `${workspaceId}:${type}` where type is "dream" | "distill".
+   * Read by AutoScheduler.getLastRunAt, written by setLastRunAt — see
+   * main/index.ts `setupIPC` for the wiring.
+   */
+  subagentLastRunAt?: Record<string, number>;
 }
 
 /** 当前持久化 schema 版本; 升级字段/重命名时递增并在 migrateStore 内补迁移步骤. */
@@ -138,6 +153,7 @@ const store = new Store<StoreSchema>({
       autoSave: true,
       showLineNumbers: true,
       wordWrap: true,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       permissionLevel: 'smart',
       runtimeChannel: 'stable',
       autoCompactionEnabled: false,
@@ -262,6 +278,53 @@ async function setWorkspacePlanMode(workspaceId: string, enabled: boolean): Prom
   );
 }
 
+/**
+ * SubagentManager sessionFactory (Phase 2 wire-inert-subsystems).
+ *
+ * Adapts the manager's `SubagentSessionFactory` shape to `createWorkspaceSession`.
+ * Each spawn gets its own isolated Pi AgentSession with the subagent's
+ * toolAllowlist + customTools, the workspace's current provider/model (or the
+ * explicit `modelRef` override), and the same Pi agent dir as the primary
+ * session. The manager owns the resulting AgentSession via SubagentSession
+ * (which calls `session.dispose()` on its own teardown).
+ *
+ * Lazy closures over `piAgentConfig` / `store` are safe: the factory is only
+ * invoked at spawn time (runtime), long after `app.whenReady()` has populated
+ * `piAgentConfig`.
+ */
+const subagentSessionFactory: SubagentSessionFactory = async (opts) => {
+  const settings = store.get('settings');
+  const provider = opts.modelRef?.provider ?? settings.provider ?? piAgentConfig?.defaultProvider;
+  const modelId = opts.modelRef?.modelId ?? settings.model ?? piAgentConfig?.defaultModel;
+  const result = await createWorkspaceSession({
+    workspaceId: opts.context.workspaceId,
+    workspacePath: opts.context.workspacePath,
+    provider,
+    modelId,
+    piAgentConfig,
+    agentDir: PI_AGENT_DIR,
+    tools: opts.toolAllowlist,
+    customTools: opts.customTools,
+  });
+  return result.session;
+};
+
+/**
+ * SubagentManager singleton. Owns the per-(agentId, actorId) registry of
+ * spawned subagents and the periodic GC sweep. The `onEvent` callback
+ * broadcasts state transitions to the renderer via the `subagent:event`
+ * IPC channel (consumed by the Subagent panel + `piAPI.onSubagentEvent`).
+ *
+ * Constructed before `agentRegistry` so the latter can inject the
+ * `actor` tool via `getSubagentManager`. GC sweep is started in
+ * `app.whenReady()` (after all IPC handlers are registered) so the
+ * unref'd timer doesn't race with shutdown during early startup errors.
+ */
+const subagentManager = new SubagentManager({
+  sessionFactory: subagentSessionFactory,
+  onEvent: (event) => sendToRenderer('subagent:event', event),
+});
+
 const agentRegistry = new AgentRuntimeRegistry({
   getWorkspace: (workspaceId: string) => store.get('workspaces').find((workspace) => workspace.id === workspaceId),
   pendingEdits: piPendingEdits,
@@ -272,6 +335,8 @@ const agentRegistry = new AgentRuntimeRegistry({
   getTaskService: () => taskService,
   getMemoryService: () => memoryService,
   getModeOptions: getLongHorizonModeOptions,
+  getSubagentManager: () => subagentManager,
+  onTurnEnd: (workspaceId, agentId) => goalService?.onTurnEnd(workspaceId, agentId),
 });
 if (process.env.CI === "1" || process.env.NODE_ENV === "test") {
   (globalThis as PiDesktopTestGlobals).__PI_DESKTOP_TEST_AGENT_REGISTRY__ = agentRegistry;
@@ -280,13 +345,87 @@ const configManager = new ConfigManager(PI_AGENT_DIR);
 const codexSessionImporter = new CodexSessionImporter();
 const claudeSessionImporter = new ClaudeSessionImporter();
 let goalService: GoalService | null = null;
+let judgeModelClient: JudgeModelClient | null = null;
 let memoryService: MemoryService | null = null;
 let checkpointService: CheckpointService | null = null;
 let taskService: TaskService | null = null;
+let markdownMemoryService: MarkdownMemoryService | null = null;
+let sessionSummaryService: SessionSummaryService | null = null;
+let autoScheduler: AutoScheduler | null = null;
 
 function refreshPiAgentConfig(configManager: ConfigManager): PiAgentConfig | null {
   piAgentConfig = configManager.loadPiAgentConfig();
   return piAgentConfig;
+}
+
+function apiFromApiType(apiType?: string): string | undefined {
+  const trimmed = apiType?.trim();
+  if (!trimmed) return undefined;
+  if (trimmed === 'openai' || trimmed === 'openai-chat-completions' || trimmed === 'openai-completions') return 'openai-completions';
+  if (trimmed === 'responses' || trimmed === 'openai-responses') return 'openai-responses';
+  if (trimmed === 'anthropic' || trimmed === 'anthropic-messages') return 'anthropic-messages';
+  return trimmed;
+}
+
+async function resolveJudgeApiKey(providerId: string): Promise<string | undefined> {
+  const [authResult, modelsResult] = await Promise.all([
+    configManager.getAuthConfig(),
+    configManager.getModelsConfig(),
+  ]);
+  const authItem = authResult.parsed[providerId];
+  return authItem?.key ?? authItem?.apiKey ?? modelsResult.parsed.providers?.[providerId]?.apiKey;
+}
+
+async function resolveJudgeProvider(providerId: string): Promise<ResolvedProvider> {
+  const config = refreshPiAgentConfig(configManager);
+  const provider = config?.providers.find((candidate) => candidate.id === providerId);
+  if (!provider) throw new Error(`judge provider not found: ${providerId}`);
+  return {
+    id: provider.id,
+    baseUrl: provider.baseUrl,
+    api: apiFromApiType(provider.api ?? provider.apiType) ?? 'openai-completions',
+    apiKey: await resolveJudgeApiKey(provider.id),
+    models: provider.models.map((model) => ({ id: model.id })),
+  };
+}
+
+function resolveConfiguredModelRef(): { providerId: string; modelId: string } | null {
+  const settings = store.get('settings');
+  const longHorizon = normalizeLongHorizonSettings(settings.longHorizon ?? DEFAULT_LONG_HORIZON_SETTINGS);
+  const judgeProvider = longHorizon.goal.judgeProvider?.trim();
+  const judgeModel = longHorizon.goal.judgeModel?.trim();
+  if (judgeProvider && judgeModel) return { providerId: judgeProvider, modelId: judgeModel };
+  const providerId = settings.provider ?? piAgentConfig?.defaultProvider;
+  const modelId = settings.model ?? piAgentConfig?.defaultModel;
+  if (!providerId || !modelId) return null;
+  return { providerId, modelId };
+}
+
+async function resolveActiveModel(_workspaceId: string): Promise<{ provider: ResolvedProvider; model: ResolvedModel } | null> {
+  const modelRef = resolveConfiguredModelRef();
+  if (!modelRef) return null;
+  const provider = await resolveJudgeProvider(modelRef.providerId);
+  const model = provider.models?.find((candidate) => candidate.id === modelRef.modelId) ?? { id: modelRef.modelId };
+  return { provider, model };
+}
+
+function lookupTranscript(workspaceId: string, agentId?: string): Array<{ role: 'user' | 'assistant'; content: string; id?: string }> {
+  const sessions = store.get('sessions') ?? [];
+  const candidates = sessions
+    .filter((session) => session.workspaceId === workspaceId && (!agentId || session.id === agentId))
+    .sort((a, b) => (b.lastOpenedAt ?? b.updatedAt) - (a.lastOpenedAt ?? a.updatedAt));
+  const session = candidates[0];
+  const transcript: Array<{ role: 'user' | 'assistant'; content: string; id?: string }> = [];
+  for (const message of session?.messages ?? []) {
+    if (message.role !== 'user' && message.role !== 'assistant') continue;
+    if (message.content.trim().length === 0) continue;
+    transcript.push({
+      id: message.id,
+      role: message.role,
+      content: message.content,
+    });
+  }
+  return buildSafeJudgeTranscript(transcript);
 }
 
 function createWindow(): void {
@@ -312,7 +451,6 @@ function createWindow(): void {
       nodeIntegration: false
     }
   });
-  mainWindow.webContents.setZoomFactor(1.5);
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show();
@@ -355,6 +493,10 @@ function setupIPC(updaterService: AppUpdaterService): void {
   const longHorizonRoot = join(app.getPath('userData'), 'long-horizon');
   memoryService ??= new MemoryService({ rootDir: longHorizonRoot });
   taskService ??= new TaskService(memoryService.getDatabase());
+  judgeModelClient ??= new JudgeModelClient({
+    resolveProvider: resolveJudgeProvider,
+    resolveApiKey: resolveJudgeApiKey,
+  });
   goalService ??= new GoalService({
     database: memoryService.getDatabase(),
     legacyStateFile: join(longHorizonRoot, 'goals.json'),
@@ -364,7 +506,8 @@ function setupIPC(updaterService: AppUpdaterService): void {
     // long-horizon toggle so onTurnEnd can short-circuit when goal evaluation
     // is disabled. Task 4 will additionally consult goal.evaluateInterval /
     // goal.maxReact once that type is extended.
-    getLongHorizonSettings: () => store.get('settings').longHorizon ?? DEFAULT_LONG_HORIZON_SETTINGS,
+    getLongHorizonSettings: () => normalizeLongHorizonSettings(store.get('settings').longHorizon ?? DEFAULT_LONG_HORIZON_SETTINGS),
+    judgeModelClient,
     // Inject verdict.reason as a synthetic followUp turn on inconclusive
     // judge results. Wraps the existing Pi AgentSession.sendUserMessage
     // (already patched in factory.ts to route `deliverAs: "followUp"` through
@@ -378,13 +521,8 @@ function setupIPC(updaterService: AppUpdaterService): void {
         },
       };
     },
-    // Phase C Task 4: resolveActiveModel stub. AgentSession does not currently
-    // expose its active provider/model in a way GoalService can consume without
-    // a deeper refactor. Returning null lets GoalService.evaluate fall through
-    // to the documented "no judge model available" inconclusive verdict, which
-    // is safe (fail-open). Task 6+ will wire the real model resolution when
-    // transcript extraction lands.
-    resolveActiveModel: () => Promise.resolve(null),
+    resolveActiveModel,
+    transcriptLookup: async (workspaceId, agentId) => lookupTranscript(workspaceId, agentId),
   });
   // Wire the stop-gate hook: every `turn_end` Pi event forwarded by
   // event-bridge.ts will now trigger GoalService.onTurnEnd, which runs the
@@ -397,6 +535,15 @@ function setupIPC(updaterService: AppUpdaterService): void {
       log.warn('[Main] GoalService.onTurnEnd failed:', err);
     });
   });
+  // Thread GoalService.disposeWorkspace into the registry's dispose path so
+  // react/turn counters don't leak across workspace session recreation.
+  piRegistry.setOnDisposeWorkspace((workspaceId) => {
+    try {
+      goalService?.disposeWorkspace(workspaceId);
+    } catch (err) {
+      log.warn('[Main] GoalService.disposeWorkspace failed:', workspaceId, err);
+    }
+  });
   checkpointService ??= new CheckpointService(memoryService);
   setupChatIpc({
     registry: piRegistry,
@@ -407,6 +554,7 @@ function setupIPC(updaterService: AppUpdaterService): void {
     checkpointService,
     taskService,
     getSettings: () => store.get('settings'),
+    transcriptLookup: async (workspaceId, agentId) => lookupTranscript(workspaceId, agentId),
     getWorkspace: (id: string) => store.get('workspaces').find((w) => w.id === id),
     getDefaultWorkspace: () => {
       return getMostRecentlyActiveWorkspace(store.get('workspaces'));
@@ -416,6 +564,58 @@ function setupIPC(updaterService: AppUpdaterService): void {
   });
 
   setupAgentsIpc(agentRegistry);
+
+  // ── Subagent system (Phase 2 wire-inert-subsystems) ────────────────────
+  //  - markdownMemoryService: FTS5-backed markdown memory search (used by
+  //    dream/distill subagents via spawn-handler's buildSubagentCustomTools).
+  //  - sessionSummaryService: read-only adapter over persisted Session[] —
+  //    lets dream subagents review recent work without DB/file access.
+  //  - setupSubagentIpc: list-types / list-instances / cancel channels.
+  //  - subagentManager.start(): kick off the GC sweep (unref'd timer; won't
+  //    block process exit). Idempotent — safe even if start() is called twice.
+  //  - AutoScheduler: per-tick, scans active workspaces and spawns dream/distill
+  //    subagents when the primary agent is idle, no subagent is in-flight, and
+  //    the configured interval has elapsed since the last run.
+  markdownMemoryService ??= new MarkdownMemoryService({});
+  sessionSummaryService ??= new SessionSummaryService(() => store.get('sessions'));
+  setupSubagentIpc({ subagentManager });
+  subagentManager.start();
+
+  const subagentSpawnHandlerDeps: SubagentSpawnHandlerDeps = {
+    subagentManager,
+    agentRegistry,
+    memoryService,
+    markdownMemoryService,
+    sessionSummaryService,
+    // resourceLoader is intentionally omitted — distill's inventory tools
+    // degrade gracefully when undefined (see spawn-handler.ts buildSubagentCustomTools).
+    setLastRunAt: (workspaceId, type, ts) => {
+      const map = store.get('subagentLastRunAt') ?? {};
+      map[`${workspaceId}:${type}`] = ts;
+      store.set('subagentLastRunAt', map);
+    },
+  };
+  autoScheduler ??= new AutoScheduler({
+    subagentManager,
+    getWorkspaces: () => store.get('workspaces'),
+    getAgentForWorkspace: (workspaceId) => agentRegistry.findDefaultAgent(workspaceId),
+    getLongHorizonSettings: (_workspaceId) =>
+      normalizeLongHorizonSettings(store.get('settings').longHorizon ?? DEFAULT_LONG_HORIZON_SETTINGS),
+    spawn: createAutoSchedulerSpawnHandler(
+      subagentSpawnHandlerDeps,
+      (id) => store.get('workspaces').find((w) => w.id === id),
+    ),
+    getLastRunAt: (workspaceId, type: ScheduledSubagentType) => {
+      const map = store.get('subagentLastRunAt') ?? {};
+      return map[`${workspaceId}:${type}`];
+    },
+    setLastRunAt: (workspaceId, type: ScheduledSubagentType, ts: number) => {
+      const map = store.get('subagentLastRunAt') ?? {};
+      map[`${workspaceId}:${type}`] = ts;
+      store.set('subagentLastRunAt', map);
+    },
+  });
+  autoScheduler.start();
   setupConfigIpc(configManager, {
     onManagedModelsChanged: () => {
       refreshPiAgentConfig(configManager);
@@ -518,6 +718,75 @@ function setupIPC(updaterService: AppUpdaterService): void {
     getWorkspaceSessionId: (workspaceId: string) => workspaceId,
   });
 
+}
+
+/**
+ * Cleanup flag — ensures cleanupAllServices() is a true no-op on second call.
+ * Both `window-all-closed` (which fires on Windows/Linux when quitting) and
+ * `will-quit` (fallback for Cmd+Q / system shutdown) call this function, so
+ * without the flag the second call would attempt to close already-closed
+ * resources and log spurious errors.
+ */
+let servicesCleanedUp = false;
+
+/**
+ * Tear down all long-running services on app shutdown.
+ *
+ * Covers services NOT already handled by `window-all-closed`'s existing
+ * piDriver / piPendingEdits / piRegistry / ptyManager cleanup:
+ *  - autoScheduler: stop the periodic spawn tick (no new subagents mid-teardown).
+ *  - subagentManager: cancel running actors + dispose their AgentSessions.
+ *    Runs BEFORE primary-session cleanup so subagents don't outlive their
+ *    primary agent.
+ *  - markdownMemoryService: close its FTS5 SQLite index handle.
+ *  - memoryService: close SQLite handle (otherwise WAL stays uncheckpointed
+ *    on hard-kill). taskService and checkpointService share this database,
+ *    so closing it once covers all three.
+ *  - goalService: close its SQLite handle if it owns the database.
+ *
+ * Async close methods are fire-and-forget with .catch handlers — Electron
+ * doesn't await async work in window-all-closed / will-quit anyway, but we
+ * still need to swallow rejections to avoid "unhandled promise rejection"
+ * crashes.
+ *
+ * Idempotent via the `servicesCleanedUp` flag.
+ */
+function cleanupAllServices(): void {
+  if (servicesCleanedUp) return;
+  servicesCleanedUp = true;
+  // Subagent system teardown (Phase 2 wire-inert-subsystems):
+  //  1. Stop the AutoScheduler tick so no new subagents are spawned mid-teardown.
+  //  2. Dispose all subagents (cancels running actors + disposes their
+  //     AgentSessions) BEFORE primary sessions are torn down — subagent
+  //     sessions must not outlive their primary agent.
+  //  3. Close the markdown memory SQLite index.
+  // All three are best-effort — failures are logged but don't block the
+  // subsequent memoryService / goalService cleanup.
+  try {
+    autoScheduler?.stop();
+  } catch (e) {
+    log.error("autoScheduler stop failed:", e);
+  }
+  try {
+    subagentManager?.disposeAll();
+  } catch (e) {
+    log.error("subagentManager disposeAll failed:", e);
+  }
+  try {
+    markdownMemoryService?.close();
+  } catch (e) {
+    log.error("markdownMemoryService close failed:", e);
+  }
+  try {
+    memoryService?.close()?.catch((e: unknown) => log.error("memoryService close failed:", e));
+  } catch (e) {
+    log.error("memoryService close failed:", e);
+  }
+  try {
+    goalService?.close()?.catch((e: unknown) => log.error("goalService close failed:", e));
+  } catch (e) {
+    log.error("goalService close failed:", e);
+  }
 }
 
 // App lifecycle
@@ -650,7 +919,19 @@ app.on('window-all-closed', () => {
   // 清理所有终端进程 (M4: 走 ptyManager)
   ptyManager.closeAll();
 
+  // Close long-running services (SQLite WAL checkpoint, goal-service DB
+  // handle). Idempotent — safe to also call from will-quit.
+  cleanupAllServices();
+
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+// Fallback cleanup for Cmd+Q / system shutdown / process kill — fires even
+// when window-all-closed doesn't (e.g. tray-only quit). Idempotent: the
+// servicesCleanedUp flag inside cleanupAllServices makes this a no-op if
+// window-all-closed already ran cleanup.
+app.on('will-quit', () => {
+  cleanupAllServices();
 });

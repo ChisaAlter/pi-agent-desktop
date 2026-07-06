@@ -221,8 +221,8 @@ export interface LongHorizonSettings {
         maxLifecycleAgents?: number;
         maxDepth?: number;
     };
-    dream: LongHorizonToggle;
-    distill: LongHorizonToggle;
+    dream: LongHorizonToggle & { auto?: boolean; intervalDays?: number };
+    distill: LongHorizonToggle & { auto?: boolean; intervalDays?: number };
     composeWorkflow: LongHorizonToggle;
 }
 
@@ -609,6 +609,8 @@ export interface AppSettings {
     autoSave: boolean;
     showLineNumbers: boolean;
     wordWrap: boolean;
+    /** 设置 schema 版本号, 用于将来迁移. 当前固定为 1. */
+    schemaVersion: number;
     language?: string;
     piConfig?: PiConfig;
     /** 桌面权限模式: ask=主动询问, smart=智能授权, always=始终授权 */
@@ -1451,4 +1453,130 @@ declare global {
         piAPI: PiAPI;
         nodeAPI: NodeAPI;
     }
+}
+
+// ── Subagent (Phase E) ──────────────────────────────────────────
+// Authority source for subagent type/instance/result shapes consumed by
+// `services/subagent/*` (registry / session / manager / actor-tool /
+// auto-scheduler). Shapes are inferred from actual usage in those files —
+// do not narrow without updating the consuming switch/exhaustive checks.
+
+export type SubagentTypeID = "explore" | "dream" | "distill" | "checkpoint-writer";
+
+export type SubagentStatus = "pending" | "running" | "idle" | "cancelled" | "failed" | "timeout";
+
+/**
+ * Static definition of a subagent type. Mirrors `BUILTIN_SUBAGENTS` in
+ * `services/subagent/registry.ts` — `name` is the discriminant (used as the
+ * `SubagentTypeID` map key), `hidden` excludes a type from `listSpawnable()`
+ * (so the `actor` tool's enum refuses it), and `interactive` is informational
+ * (reserved for the Phase F+ permission engine).
+ */
+export interface SubagentType {
+    name: SubagentTypeID;
+    description: string;
+    prompt: string;
+    toolAllowlist: string[];
+    hidden?: boolean;
+    interactive?: boolean;
+}
+
+/**
+ * Live runtime snapshot of a spawned subagent, mirrored from
+ * `SubagentSessionSnapshot` (defined locally in `services/subagent/session.ts`
+ * — that interface is NOT shared). `SubagentManager` keeps a flat
+ * `Map<actorId, SubagentInstance>` for fast `status()` / `listInstances()`
+ * lookups without touching the underlying session.
+ */
+export interface SubagentInstance {
+    actorId: string;
+    agentId: string;
+    workspaceId: string;
+    subagentType: SubagentTypeID;
+    description: string;
+    status: SubagentStatus;
+    turnCount: number;
+    createdAt: number;
+    lastTurnTime?: number;
+    lastOutcome?: string;
+    terminatedAt?: number;
+}
+
+/**
+ * Terminal outcome of a subagent run. Constructed by `SubagentSession.run()`
+ * (success path) and the catch blocks of `run()` / `SubagentManager.spawn()`
+ * (failure paths). `status` is the exhaustive union consumed by
+ * `actor-tool.ts`'s `formatResult` switch — keep the literal union exact.
+ */
+export interface SubagentResult {
+    actorId: string;
+    status: "success" | "cancelled" | "timeout" | "failed";
+    lastAssistantText?: string;
+    error?: string;
+    turnCount: number;
+    startedAt: number;
+    endedAt: number;
+}
+
+// ── Permission (Phase E) ────────────────────────────────────────
+// Authority source for the 4-layer permission model consumed by
+// `services/permission/*` (types.ts re-exports these) and
+// `services/agent-modes/agent-info.ts` (`AgentInfo.permission` /
+// `hardPermission`). `PermissionAskInput` / `PermissionReplyInput` remain
+// main-process-only (defined locally in permission/types.ts).
+
+export type PermissionAction = "allow" | "deny" | "ask";
+
+export interface PermissionRule {
+    permission: string;
+    pattern: string;
+    action: PermissionAction;
+    reason?: string;
+}
+
+export type PermissionRuleset = readonly PermissionRule[];
+
+export type PermissionReply = "allow" | "deny";
+
+/**
+ * Shared subset of `PermissionAskInput` (main-process-only fields like
+ * `sessionID` / `ruleset` / `interactive` are kept optional so this type
+ * carries only the renderer-visible request shape).
+ */
+export interface PermissionRequest {
+    id: string;
+    sessionID?: string;
+    permission: string;
+    patterns: readonly string[];
+    metadata?: Record<string, unknown>;
+    always?: readonly string[];
+    tool?: {
+        messageID: string;
+        callID: string;
+    };
+    ruleset?: PermissionRuleset;
+    interactive?: boolean;
+}
+
+// ── Session Summary (Phase E) ───────────────────────────────────
+// Consumed by `services/subagent/session-summary-service.ts` and
+// `services/subagent/tools/session-summary-tools.ts`. Field names match the
+// `toSummary` / `toSessionMessage` helper output exactly (NOT the spec
+// skeleton — the actual implementation uses `text` / `createdAt` rather than
+// `content` / `timestamp`).
+
+export interface SessionMessage {
+    role: string;
+    text: string;
+    createdAt: number;
+    toolNames?: string[];
+}
+
+export interface SessionSummary {
+    sessionId: string;
+    workspaceId: string;
+    title?: string;
+    createdAt: number;
+    lastMessageAt: number;
+    messageCount: number;
 }

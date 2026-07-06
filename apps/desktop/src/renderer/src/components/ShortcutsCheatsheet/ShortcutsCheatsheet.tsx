@@ -8,6 +8,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getEffectiveShortcuts, groupByCategory, type ShortcutDef } from "../../shortcuts/registry";
 import { useI18n } from "../../i18n";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 export interface ShortcutsCheatsheetProps {
     isOpen: boolean;
@@ -20,6 +21,8 @@ export function ShortcutsCheatsheet({
 }: ShortcutsCheatsheetProps): React.ReactElement | null {
     const [activeIdx, setActiveIdx] = useState(0);
     const containerRef = useRef<HTMLDivElement>(null);
+    const dialogRef = useRef<HTMLDivElement>(null);
+    useFocusTrap(dialogRef, isOpen);
     const { t } = useI18n();
 
     const groups = useMemo(() => (isOpen ? groupByCategory(getEffectiveShortcuts()) : []), [isOpen]);
@@ -65,6 +68,7 @@ export function ShortcutsCheatsheet({
 
     return (
         <div
+            ref={dialogRef}
             className="fixed inset-0 z-50 flex items-start justify-center pt-24 bg-black/30 backdrop-blur-sm"
             onClick={onClose}
             role="dialog"

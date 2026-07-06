@@ -1051,30 +1051,112 @@ describe("setupChatIpc", () => {
             status: "running" as const,
             updatedAt: Date.now(),
         }));
+        const transcriptLookup = vi.fn(async () => [
+            { id: "u1", role: "user", content: "请实现" },
+            { id: "a1", role: "assistant", content: "已完成" },
+        ]);
         setupChatIpc({
             registry: { get: vi.fn(), has: vi.fn() } as any,
             getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
             getDefaultWorkspace: () => undefined,
             pendingEdits: { autoApprove: false } as any,
             goalService: { get: goalGet, evaluate, applyVerdict } as any,
+            transcriptLookup,
             getSettings: () => ({ longHorizon: longHorizonWithGoalEnabled() }) as any,
         });
 
         const handler = handlers.get("goal:evaluate");
         const result = await handler?.({}, { workspaceId: "ws_1" });
 
-        // evaluate was called with the active goal's condition + empty transcript
+        // evaluate was called with the active goal's condition + resolved transcript
+        expect(transcriptLookup).toHaveBeenCalledWith("ws_1", undefined);
         expect(evaluate).toHaveBeenCalledWith({
             workspaceId: "ws_1",
             agentId: undefined,
             condition: "完成测试并通过验证",
-            transcript: [],
+            transcript: [
+                { id: "u1", role: "user", content: "请实现" },
+                { id: "a1", role: "assistant", content: "已完成" },
+            ],
         });
         // applyVerdict was called to persist + broadcast the verdict
         expect(applyVerdict).toHaveBeenCalledWith("ws_1", expect.objectContaining({ verdict: "satisfied" }), undefined);
         // The handler returns the verdict shape (not an IpcError)
         expect(result).toMatchObject({ verdict: "satisfied", reason: "goal completed" });
     });
+
+    it("goal:evaluate returns inconclusive verdict without persisting checking status", async () => {
+        const evaluate = vi.fn(async () => ({
+            verdict: "inconclusive" as const,
+            reason: "needs more work",
+            confidence: 0.2,
+        }));
+        const applyVerdict = vi.fn(async () => null);
+        setupChatIpc({
+            registry: { get: vi.fn(), has: vi.fn() } as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+            goalService: {
+                get: vi.fn(async () => ({
+                    id: "g1",
+                    workspaceId: "ws_1",
+                    condition: "完成测试并通过验证",
+                    status: "running" as const,
+                    updatedAt: Date.now(),
+                })),
+                evaluate,
+                applyVerdict,
+            } as any,
+            transcriptLookup: vi.fn(async () => [{ id: "a1", role: "assistant", content: "还在处理中" }]),
+            getSettings: () => ({ longHorizon: longHorizonWithGoalEnabled() }) as any,
+        });
+
+        const handler = handlers.get("goal:evaluate");
+        const result = await handler?.({}, { workspaceId: "ws_1" });
+
+        expect(result).toMatchObject({ verdict: "inconclusive", reason: "needs more work" });
+        expect(applyVerdict).not.toHaveBeenCalled();
+    });
+
+    it.each(["satisfied", "impossible", "checking"] as const)(
+        "goal:evaluate returns ipcErrors.goal.notRunning for %s goals without evaluating",
+        async (status) => {
+            const evaluate = vi.fn();
+            const applyVerdict = vi.fn();
+            const transcriptLookup = vi.fn();
+            setupChatIpc({
+                registry: { get: vi.fn(), has: vi.fn() } as any,
+                getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+                getDefaultWorkspace: () => undefined,
+                pendingEdits: { autoApprove: false } as any,
+                goalService: {
+                    get: vi.fn(async () => ({
+                        id: "g1",
+                        workspaceId: "ws_1",
+                        condition: "完成测试并通过验证",
+                        status,
+                        updatedAt: Date.now(),
+                    })),
+                    evaluate,
+                    applyVerdict,
+                } as any,
+                transcriptLookup,
+                getSettings: () => ({ longHorizon: longHorizonWithGoalEnabled() }) as any,
+            });
+
+            const handler = handlers.get("goal:evaluate");
+            const result = await handler?.({}, { workspaceId: "ws_1" });
+
+            expect(result).toMatchObject({
+                code: "ipcErrors.goal.notRunning",
+                params: { workspaceId: "ws_1", status },
+            });
+            expect(transcriptLookup).not.toHaveBeenCalled();
+            expect(evaluate).not.toHaveBeenCalled();
+            expect(applyVerdict).not.toHaveBeenCalled();
+        },
+    );
 
     it("goal:evaluate returns ipcErrors.goal.disabled when longHorizon.goal.enabled is false", async () => {
         const evaluate = vi.fn();

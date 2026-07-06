@@ -36,32 +36,42 @@ export function useTaskProgress(agentId?: string | null): {
     const [tasks, setTasks] = useState<TaskProgressItem[]>([]);
     const refreshRevisionRef = useRef(0);
 
+    // 用 ref 跟踪当前 workspaceId, 让订阅 effect 只在 mount 时注册一次,
+    // 避免 workspaceId 切换期间 unsubscribe→resubscribe 的窗口丢失事件.
+    const workspaceIdRef = useRef(workspaceId);
+    useEffect(() => {
+        workspaceIdRef.current = workspaceId;
+    }, [workspaceId]);
+
     const refreshTasks = useCallback(async () => {
-        if (!workspaceId || !window.piAPI?.legacyTaskList) {
+        const currentWorkspaceId = workspaceIdRef.current;
+        if (!currentWorkspaceId || !window.piAPI?.legacyTaskList) {
             setTasks([]);
             return;
         }
         const revision = ++refreshRevisionRef.current;
-        const result = await window.piAPI.legacyTaskList({ workspaceId, agentId: agentId ?? undefined });
+        const result = await window.piAPI.legacyTaskList({ workspaceId: currentWorkspaceId, agentId: agentId ?? undefined });
         if (revision !== refreshRevisionRef.current) return;
         if (isIpcError(result)) {
             setTasks([]);
             return;
         }
         setTasks(result.map(toProgressItem));
-    }, [agentId, workspaceId]);
+    }, [agentId]);
 
     useEffect(() => {
         void refreshTasks();
-    }, [refreshTasks]);
+    }, [refreshTasks, workspaceId]);
 
     useEffect(() => {
         const onPlanProgress = (update: PlanProgressUpdate): void => {
-            if (!workspaceId || (update.workspaceId && update.workspaceId !== workspaceId)) return;
+            const currentWorkspaceId = workspaceIdRef.current;
+            if (!currentWorkspaceId || (update.workspaceId && update.workspaceId !== currentWorkspaceId)) return;
             void refreshTasks();
         };
         const onGoalChanged = (goal: GoalState): void => {
-            if (!workspaceId || goal.workspaceId !== workspaceId) return;
+            const currentWorkspaceId = workspaceIdRef.current;
+            if (!currentWorkspaceId || goal.workspaceId !== currentWorkspaceId) return;
             void refreshTasks();
         };
 
@@ -71,7 +81,7 @@ export function useTaskProgress(agentId?: string | null): {
             if (typeof unsubPlan === "function") unsubPlan();
             if (typeof unsubGoal === "function") unsubGoal();
         };
-    }, [refreshTasks, workspaceId]);
+    }, [refreshTasks]);
 
     const clearFinished = useCallback(() => {
         setTasks((prev) => prev.filter((task) => task.status === "running" || task.status === "pending"));

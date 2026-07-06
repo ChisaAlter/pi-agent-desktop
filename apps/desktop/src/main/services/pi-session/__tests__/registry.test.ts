@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { WorkspaceRegistry } from "../registry";
 
+const subscribe = vi.fn();
+
 vi.mock("../factory", () => ({
     createWorkspaceSession: vi.fn(async (opts: any) => ({
         workspaceId: opts.workspaceId,
-        session: { dispose: vi.fn() },
+        session: { dispose: vi.fn(), subscribe },
         dispose: vi.fn(),
     })),
 }));
@@ -13,6 +15,7 @@ describe("WorkspaceRegistry", () => {
     let reg: WorkspaceRegistry;
 
     beforeEach(() => {
+        subscribe.mockReset();
         reg = new WorkspaceRegistry();
     });
 
@@ -25,6 +28,27 @@ describe("WorkspaceRegistry", () => {
         const a = await reg.get("ws_1", "C:/tmp/a");
         const b = await reg.get("ws_1", "C:/tmp/a");
         expect(a).toBe(b);
+    });
+
+    it("invokes the latest onTurnEnd hook for sessions subscribed before hook registration", async () => {
+        const send = vi.fn();
+        const pendingEdits = { autoApprove: false } as any;
+        await reg.get("ws_1", "C:/tmp/a", pendingEdits, send);
+        const subscribedCallback = subscribe.mock.calls[0]?.[0];
+        expect(subscribedCallback).toBeTypeOf("function");
+
+        const firstHook = vi.fn();
+        const secondHook = vi.fn();
+        reg.setOnTurnEnd(firstHook);
+        await subscribedCallback({ type: "turn_end" });
+        reg.setOnTurnEnd(secondHook);
+        await subscribedCallback({ type: "turn_end" });
+        reg.setOnTurnEnd(undefined);
+        await subscribedCallback({ type: "turn_end" });
+
+        expect(firstHook).toHaveBeenCalledTimes(1);
+        expect(secondHook).toHaveBeenCalledTimes(1);
+        expect(send).toHaveBeenCalledWith("pi:event", "ws_1", { type: "turn_end" });
     });
 
     it("dispose removes session", async () => {

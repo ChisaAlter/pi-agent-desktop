@@ -4,7 +4,7 @@
 //
 // 用法: const git = useGit(workspacePath); 然后 git.refresh() 不需要参数
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isIpcError } from "@shared";
 import type { BranchInfo, CommitInfo } from "../types";
 import type { GitChangedFile } from "@shared";
@@ -60,8 +60,14 @@ export function useGit(workspacePath?: string): UseGitReturn {
 
     const path = workspacePath ?? "";
 
+    // Revision guard: increments on each refresh call. After Promise.all
+    // resolves, if the ref no longer matches our snapshot, a newer refresh
+    // has superseded us — discard the stale result to avoid clobbering state.
+    const revisionRef = useRef(0);
+
     const refresh = useCallback(async () => {
         if (!window.piAPI || !path) return;
+        const myRevision = ++revisionRef.current;
         setIsLoading(true);
         setError(null);
         try {
@@ -70,15 +76,19 @@ export function useGit(workspacePath?: string): UseGitReturn {
                 window.piAPI.gitBranches(path).catch(() => [] as BranchInfo[]),
                 window.piAPI.gitLog(path, 20).catch(() => [] as CommitInfo[]),
             ]);
+            if (revisionRef.current !== myRevision) return; // stale, discard
             if (isIpcError(s)) throw new Error(s.fallback);
             setStatus(s ?? null);
             setBranches(isIpcError(b) ? [] : b);
             setLog(isIpcError(l) ? [] : l);
         } catch (err) {
+            if (revisionRef.current !== myRevision) return; // stale, discard
             setError(err instanceof Error ? err.message : String(err));
             setStatus(null);
         } finally {
-            setIsLoading(false);
+            if (revisionRef.current === myRevision) {
+                setIsLoading(false);
+            }
         }
     }, [path]);
 

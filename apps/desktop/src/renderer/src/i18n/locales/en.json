@@ -399,7 +399,9 @@
       "filePickerFailed": "Failed to open file picker: {{message}}",
       "switchWorkspaceFailed": "Switch workspace failed: {{message}}",
       "directoryPickerUnavailable": "Directory picker unavailable (preload not injected)",
-      "createWorkspaceFailed": "Create workspace failed: {{message}}"
+      "createWorkspaceFailed": "Create workspace failed: {{message}}",
+      "imageTooLarge": "Image size cannot exceed 5MB",
+      "svgNotSupported": "SVG images are not supported"
     },
     "shortcuts": {
       "send": "Send",
@@ -447,6 +449,8 @@
     "title": "File change approval",
     "pendingCount": "{{count}} pending",
     "pendingSummary": "{{count}} file(s) pending approval",
+    "pendingSummarySuffix": "file(s) pending approval",
+    "listAria": "Approval changes list",
     "allProcessed": "All changes processed ({{count}} file(s))",
     "empty": "No pending changes",
     "emptyHint": "AI file edits will show up here",
@@ -478,10 +482,8 @@
   },
   "diffView": {
     "filesChanged": "{{count}} file(s) changed",
-    "expand": "Expand",
-    "collapse": "Collapse",
-    "oldFileLine": "Old file line",
-    "newFileLine": "New file line"
+    "expand": "Expand {{count}} unchanged rows",
+    "collapse": "Collapse"
   },
   "editor": {
     "loading": "Loading editor...",
@@ -1076,6 +1078,18 @@
       "settings": "Settings",
       "ariaLabel": "Top tab bar"
     },
+  "titlebar": {
+    "minimize": "Minimize window",
+    "maximize": "Maximize",
+    "restore": "Restore",
+    "close": "Close window"
+  },
+  "errors": {
+    "messageSaveFailed": "Message save failed; content may not be persisted.",
+    "agentRestartFailed": "Failed to restart Agent",
+    "sessionLoadFailed": "Failed to load session",
+    "workspaceLoadFailed": "Failed to load workspace"
+  },
   "app": {
     "shellAria": "Pi Desktop application",
     "headerAria": "Top action bar",
@@ -1090,10 +1104,27 @@
     "openSettingsAria": "Open settings",
     "connected": "Connected",
     "disconnected": "Disconnected",
+    "updaterAvailable": "New version {{version}} available. Download from \"About\".",
+    "updaterDownloaded": "Update {{version}} downloaded. Restart from \"About\" to install.",
+    "workspaceRequired": "Please select a workspace first",
+    "directoryPickerUnavailable": "Directory picker unavailable",
+    "createWorkspaceFailed": "Failed to create workspace",
+    "workspaceSwitched": "Switched to {{name}}",
+    "panelLoadFailed": "{{name}} failed to load",
+    "untitledSession": "Untitled session",
     "placeholder": {
       "search": "Global search (Ctrl+K)",
       "automation": "Automation",
       "settings": "Settings"
+    },
+    "panels": {
+      "chat": "Chat",
+      "skills": "Skills",
+      "tasks": "Tasks",
+      "memory": "Memory",
+      "history": "Sessions",
+      "git": "Git",
+      "files": "Files"
     }
   }
 }

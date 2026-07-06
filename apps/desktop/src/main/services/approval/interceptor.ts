@@ -10,6 +10,24 @@ import type { PiEvent, PiToolExecutionStart, PiToolExecutionEnd } from "@shared/
 import type { PendingEdits } from "./pending-edits";
 import type { AgentMode, PlanCard } from "@shared";
 import { isPlanModeToolAllowed } from "../agent-modes";
+import { assertMemoryWriteAllowed, isInsideMemoryTree } from "../memory/memory-path-guard";
+
+/**
+ * Memory guard injected by the session registries. Mirrors the deps block
+ * produced by `agent-runtime/registry.ts` and `pi-session/registry.ts`'s
+ * `buildMemoryGuard` helpers (see
+ * `approval/__tests__/interceptor-memory-guard-wiring.test.ts`). When
+ * present, edit-family tool calls targeting paths inside `memoryRoot` are
+ * routed through `assertMemoryWriteAllowed` instead of the deferred-edit
+ * flow — the guard is the single authority for in-tree writes.
+ */
+export interface MemoryGuard {
+    agentName: string;
+    memoryRoot: string;
+    projectId: string;
+    sessionId: string;
+    taskId?: string;
+}
 
 export interface InterceptorDeps {
     abort: () => void;
@@ -17,6 +35,15 @@ export interface InterceptorDeps {
     send: (channel: string, workspaceId: string, payload: unknown) => void;
     workspacePath: string;
     getMode?: () => AgentMode;
+    /**
+     * Optional memory write guard. When provided, edit-family tool calls
+     * whose target path lands inside `memoryRoot` are validated by
+     * `assertMemoryWriteAllowed`; allowed writes bypass deferred-edit
+     * tracking, denials abort the tool call and emit an `extension_error`
+     * `pi:event`. Writes outside the memory tree fall through to the
+     * existing `approval:deferred` flow unchanged.
+     */
+    memoryGuard?: MemoryGuard;
 }
 
 export interface ApprovalInterceptor {
@@ -43,6 +70,14 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
     return {
         async handleEvent(event: PiEvent) {
             if (!event || typeof event !== "object") return;
+
+            // Reset per-turn plan-card dedupe state at turn/agent boundaries.
+            // Pi reuses toolCallIds across turns, so without this a plan_write
+            // in turn N+1 with the same toolCallId as turn N would be silently
+            // suppressed by `emittedPlanCards.has(toolCallId)`.
+            if (event.type === "turn_end" || event.type === "agent_end") {
+                emittedPlanCards.clear();
+            }
 
             const announced = asToolCallArgs(event);
             if (announced) {
@@ -88,6 +123,39 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                         safeArgs.file_path ?? safeArgs.path ?? safeArgs.filePath ?? ""
                     );
                     if (!filePath) return;
+
+                    // Memory-tree writes are arbitrated by the memory-path-guard
+                    // when a guard is injected. Allowed writes bypass the
+                    // deferred-edit flow (the guard is the authority for
+                    // in-tree writes); denials abort the tool call and surface
+                    // an `extension_error` so the renderer can show the
+                    // actionable help message. Writes outside the memory tree
+                    // fall through to the existing `approval:deferred` path.
+                    if (deps.memoryGuard && isInsideMemoryTree(filePath, deps.memoryGuard.memoryRoot)) {
+                        try {
+                            assertMemoryWriteAllowed({
+                                target: filePath,
+                                agentName: deps.memoryGuard.agentName,
+                                memoryRoot: deps.memoryGuard.memoryRoot,
+                                projectId: deps.memoryGuard.projectId,
+                                sessionId: deps.memoryGuard.sessionId,
+                                taskId: deps.memoryGuard.taskId,
+                            });
+                        } catch (err) {
+                            const message = err instanceof Error ? err.message : String(err);
+                            deps.abort();
+                            deps.send("pi:event", workspaceId, {
+                                type: "extension_error",
+                                message,
+                                workspaceId,
+                                toolCallId,
+                            });
+                            return;
+                        }
+                        // Guard passed — in-tree writes are not deferred.
+                        return;
+                    }
+
                     // autoApprove 时跳过 deferred 编辑追踪 (用户已选择自动批准)
                     if (deps.pendingEdits.autoApprove) return;
                     const changeId = deps.pendingEdits.track(

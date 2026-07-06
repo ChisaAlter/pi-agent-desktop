@@ -419,6 +419,61 @@ describe("AgentRuntimeRegistry", () => {
         });
     });
 
+    it("calls onTurnEnd with workspace and agent ids when a default runtime emits turn_end", async () => {
+        const onTurnEnd = vi.fn();
+        registry = new AgentRuntimeRegistry({
+            getWorkspace: (workspaceId) =>
+                workspaceId === "ws_1"
+                    ? { id: "ws_1", name: "demo", path: "C:/demo", createdAt: 1 }
+                    : undefined,
+            pendingEdits: new PendingEdits(),
+            send: (channel, payload) => emitted.push({ channel, payload }),
+            onTurnEnd,
+        });
+        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+        const subscribed = sessions[0].subscribe.mock.calls[0][0];
+
+        await subscribed({ type: "turn_end" });
+
+        expect(onTurnEnd).toHaveBeenCalledWith("ws_1", agent.id);
+        expect(registry.getRuntimeState(agent.id)).toMatchObject({
+            status: "idle",
+            isStreaming: false,
+        });
+        expect(emitted).toContainEqual({
+            channel: "agents:event",
+            payload: { agentId: agent.id, workspaceId: "ws_1", event: { type: "turn_end" } },
+        });
+    });
+
+    it("keeps event handling alive when onTurnEnd rejects", async () => {
+        const onTurnEnd = vi.fn().mockRejectedValue(new Error("judge unavailable"));
+        registry = new AgentRuntimeRegistry({
+            getWorkspace: (workspaceId) =>
+                workspaceId === "ws_1"
+                    ? { id: "ws_1", name: "demo", path: "C:/demo", createdAt: 1 }
+                    : undefined,
+            pendingEdits: new PendingEdits(),
+            send: (channel, payload) => emitted.push({ channel, payload }),
+            onTurnEnd,
+        });
+        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+        const subscribed = sessions[0].subscribe.mock.calls[0][0];
+
+        await subscribed({ type: "turn_end" });
+        await Promise.resolve();
+
+        expect(onTurnEnd).toHaveBeenCalledWith("ws_1", agent.id);
+        expect(registry.getRuntimeState(agent.id)).toMatchObject({
+            status: "idle",
+            isStreaming: false,
+        });
+        expect(emitted).toContainEqual({
+            channel: "agents:event",
+            payload: { agentId: agent.id, workspaceId: "ws_1", event: { type: "turn_end" } },
+        });
+    });
+
     it("marks the agent as error when prompt fails", async () => {
         const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
         sessions[0].prompt.mockRejectedValueOnce(new Error("network down"));

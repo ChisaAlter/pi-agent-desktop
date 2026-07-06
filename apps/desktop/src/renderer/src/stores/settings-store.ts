@@ -49,9 +49,29 @@ interface SettingsState {
   setTheme: (theme: Theme) => void;
   toggleRightRail: () => void;
   setSidebarGroupMode: (mode: 'date' | 'workspace') => void;
+  /** 加载 settings + 注册 settings:changed / pi-config:changed 监听器 (idempotent) */
+  init: () => void;
+  /** 卸载监听器 (HMR / 测试 / unmount 清理) */
+  dispose: () => void;
 }
 
 const SHORTCUT_OVERRIDE_STORAGE_KEY = "pi-desktop-shortcut-overrides";
+
+/** 当前 settings schema 版本. 升级时递增并在 migrateSettings 中处理旧版. */
+const CURRENT_SCHEMA_VERSION = 1;
+
+/**
+ * 处理 schema 版本迁移. 当前只有 v1, 留扩展点.
+ * 后续升级时根据 persisted.schemaVersion 走对应迁移逻辑.
+ */
+function migrateSettings(persisted: Partial<AppSettings>): AppSettings {
+    const next = { ...defaultSettings, ...persisted };
+    if (next.schemaVersion !== CURRENT_SCHEMA_VERSION) {
+        // 当前只有 v1, 把任意旧数据(可能没有 schemaVersion)对齐到 CURRENT_SCHEMA_VERSION
+        next.schemaVersion = CURRENT_SCHEMA_VERSION;
+    }
+    return next;
+}
 
 function sanitizeShortcutOverrides(value: unknown): ShortcutOverride[] {
   if (!Array.isArray(value)) return [];
@@ -99,6 +119,7 @@ const defaultSettings: AppSettings = {
   autoSave: true,
   showLineNumbers: true,
   wordWrap: true,
+  schemaVersion: CURRENT_SCHEMA_VERSION,
   permissionLevel: 'smart',
   runtimeChannel: 'stable',
   autoCompactionEnabled: false,
@@ -188,6 +209,11 @@ async function syncPiDefaultModel(piAPI: Window["piAPI"], next: AppSettings): Pr
     throw new Error(result.error ?? "同步 Pi 默认模型失败");
   }
 }
+
+// 模块级 unsub 引用: init() 注册, dispose() 注销. 避免监听器泄漏 + HMR/测试可重入.
+let unsubSettings: (() => void) | undefined;
+let unsubPiConfig: (() => void) | undefined;
+let settingsInitStarted = false;
 
 export const useSettingsStore = create<SettingsState>((set, get) => {
   let pendingSettingsWriteTimer: ReturnType<typeof setTimeout> | null = null;
@@ -334,7 +360,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
       const piAPI = getPiAPI();
       if (piAPI) {
         const persisted = await piAPI.getSettings();
-        const next = { ...defaultSettings, ...persisted };
+        const next = migrateSettings(persisted);
         applyAndCacheTheme(next.theme as Theme);
         applyAndCacheFontSize(next.fontSize);
         cacheShortcutOverrides(next.shortcutOverrides);
@@ -344,29 +370,6 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
       logger.error('[settings-store] Failed to load settings:', e);
     }
   };
-  loadSettings();
-
-  getPiAPI()?.onSettingsChanged?.((settings) => {
-    const next = { ...defaultSettings, ...settings };
-    // 多窗口写竞态保护: 若本地有尚未落盘的乐观更新 (pendingSettingsUpdates),
-    // 把这些 key 重新叠加到广播值上, 避免慢窗口的编辑被另一窗口的广播静默回退.
-    const pending = pendingSettingsUpdates;
-    const reconciled = pending ? { ...next, ...pending } : next;
-    applyAndCacheTheme(reconciled.theme as Theme);
-    applyAndCacheFontSize(reconciled.fontSize);
-    cacheShortcutOverrides(reconciled.shortcutOverrides);
-    set({
-      settings: reconciled,
-      sidebarGroupMode: reconciled.sidebarGroupMode ?? 'date',
-      lastWriteError: null,
-    });
-  });
-
-  // TODO: Phase 3 SubTask 35.4 DEFER — settings-store init refactor
-  // (listener registration + 6 closure variables make this too risky to extract now)
-  getPiAPI()?.onPiConfigChanged?.(() => {
-    void get().loadPiConfig();
-  });
 
   return {
     settings: defaultSettings,
@@ -530,6 +533,48 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
     setSidebarGroupMode: (mode: 'date' | 'workspace') => {
       set({ sidebarGroupMode: mode });
       get().updateSettings({ sidebarGroupMode: mode });
+    },
+
+    init: () => {
+      if (settingsInitStarted) return;
+      settingsInitStarted = true;
+      void loadSettings();
+      const piAPI = getPiAPI();
+      if (!piAPI) return;
+      if (piAPI.onSettingsChanged) {
+        unsubSettings = piAPI.onSettingsChanged((settings) => {
+          const next = migrateSettings(settings);
+          // 多窗口写竞态保护: 若本地有尚未落盘的乐观更新 (pendingSettingsUpdates),
+          // 把这些 key 重新叠加到广播值上, 避免慢窗口的编辑被另一窗口的广播静默回退.
+          const pending = pendingSettingsUpdates;
+          const reconciled = pending ? { ...next, ...pending } : next;
+          applyAndCacheTheme(reconciled.theme as Theme);
+          applyAndCacheFontSize(reconciled.fontSize);
+          cacheShortcutOverrides(reconciled.shortcutOverrides);
+          set({
+            settings: reconciled,
+            sidebarGroupMode: reconciled.sidebarGroupMode ?? 'date',
+            lastWriteError: null,
+          });
+        });
+      }
+      if (piAPI.onPiConfigChanged) {
+        unsubPiConfig = piAPI.onPiConfigChanged(() => {
+          void get().loadPiConfig();
+        });
+      }
+    },
+
+    dispose: () => {
+      if (typeof unsubSettings === "function") {
+        unsubSettings();
+        unsubSettings = undefined;
+      }
+      if (typeof unsubPiConfig === "function") {
+        unsubPiConfig();
+        unsubPiConfig = undefined;
+      }
+      settingsInitStarted = false;
     },
   };
 });

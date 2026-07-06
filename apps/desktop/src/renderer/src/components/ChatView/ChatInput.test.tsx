@@ -72,6 +72,7 @@ describe("ChatInput", () => {
         autoSave: true,
         showLineNumbers: true,
         wordWrap: true,
+        schemaVersion: 1,
         permissionLevel: "smart",
         thinkingLevel: "medium",
       },

@@ -24,6 +24,9 @@ import type { TaskService } from "../long-horizon/task-service";
 import type { MemoryService } from "../long-horizon/memory-service";
 import type { PendingEdits } from "../approval/pending-edits";
 import type { PiAgentConfig } from "../../types";
+import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { SubagentManager } from "../subagent/manager";
+import { createActorTool } from "../subagent/actor-tool";
 import log from "electron-log/main";
 
 type Send = (channel: string, payload: unknown) => void;
@@ -52,6 +55,15 @@ interface AgentRuntimeRegistryDeps {
     /** @deprecated setSourceTasks is the legacy per-source snapshot API; migrate callers to TaskService.createTask in a future spec. */
     getTaskService?: () => Pick<TaskService, "setSourceTasks"> | null | undefined;
     getMemoryService?: () => Pick<MemoryService, "put"> | null | undefined;
+    /**
+     * Returns the process-wide SubagentManager, or null when subagents are
+     * disabled. When set, the registry injects the `actor` tool into each
+     * primary agent's `customTools` and cascades `stop` / `disposeAll` into
+     * `disposeAgent` / `disposeAll` so subagent sessions don't outlive their
+     * primary agent.
+     */
+    getSubagentManager?: () => SubagentManager | null;
+    onTurnEnd?: (workspaceId: string, agentId: string) => void | Promise<void>;
 }
 
 interface AgentRuntime {
@@ -198,6 +210,7 @@ export class AgentRuntimeRegistry {
         runtime.session.dispose();
         this.runtimes.delete(agentId);
         this.emitState();
+        this.disposeSubagentForAgent(agentId);
     }
 
     async restart(agentId: string): Promise<AgentTab> {
@@ -264,6 +277,17 @@ export class AgentRuntimeRegistry {
         for (const agentId of [...this.runtimes.keys()]) {
             this.stop(agentId);
         }
+        // Defensive sweep — `stop` already cascaded per-agent `disposeAgent`,
+        // but call `disposeAll` so the manager can release any stragglers
+        // (e.g., actors whose primary agent was never registered here).
+        const manager = this.deps.getSubagentManager?.();
+        if (manager) {
+            try {
+                manager.disposeAll();
+            } catch (error) {
+                log.error("[agent-runtime] subagent disposeAll error:", error);
+            }
+        }
     }
 
     private subscribe(runtime: AgentRuntime): void {
@@ -306,6 +330,9 @@ export class AgentRuntimeRegistry {
             runtime.tab.status = "idle";
             runtime.isStreaming = false;
             this.disarmWatchdog(runtime);
+        }
+        if (event.type === "turn_end") {
+            this.notifyTurnEnd(runtime);
         }
         if (!this.suppressedAgentIds.has(runtime.tab.id)) {
             this.deps.send("agents:event", {
@@ -360,6 +387,16 @@ export class AgentRuntimeRegistry {
         this.disarmWatchdog(runtime);
         this.addMessage(runtime, "error", `Agent prompt failed: ${message}`);
         this.emitState();
+    }
+
+    private notifyTurnEnd(runtime: AgentRuntime): void {
+        try {
+            void Promise.resolve(this.deps.onTurnEnd?.(runtime.workspace.id, runtime.tab.id)).catch((error) => {
+                log.error("[agent-runtime] onTurnEnd error:", error);
+            });
+        } catch (error) {
+            log.error("[agent-runtime] onTurnEnd error:", error);
+        }
     }
 
     private sendInterceptorPayload(
@@ -441,6 +478,7 @@ export class AgentRuntimeRegistry {
             ...this.currentModelSelection(),
             sessionPath,
             desktopExtensions: this.buildDesktopExtensions(workspace.id),
+            customTools: this.buildPrimaryCustomTools(workspace, agentId),
             uiContext: createExtensionUiBridge(
                 workspace.id,
                 { agentId },
@@ -452,6 +490,46 @@ export class AgentRuntimeRegistry {
                 },
             ),
         });
+    }
+
+    /**
+     * Build the `customTools` array for a primary agent session. When a
+     * SubagentManager is available, injects the `actor` tool so the LLM can
+     * delegate to subagents. Errors from `createActorTool` (e.g., empty
+     * subagent registry at construction time) are caught and logged — the
+     * session is still created, just without the actor tool.
+     */
+    private buildPrimaryCustomTools(
+        workspace: Workspace,
+        agentId: string,
+    ): ToolDefinition[] {
+        const manager = this.deps.getSubagentManager?.();
+        if (!manager) return [];
+        try {
+            const actorTool = createActorTool(manager, agentId, {
+                workspaceId: workspace.id,
+                workspacePath: workspace.path,
+            });
+            return [actorTool];
+        } catch (error) {
+            log.error("[agent-runtime] createActorTool failed:", error);
+            return [];
+        }
+    }
+
+    /**
+     * Cascade `stop` into the SubagentManager so subagent sessions are torn
+     * down with their primary agent. Errors are swallowed — a failing
+     * subagent dispose must not prevent the primary runtime from stopping.
+     */
+    private disposeSubagentForAgent(agentId: string): void {
+        const manager = this.deps.getSubagentManager?.();
+        if (!manager) return;
+        try {
+            manager.disposeAgent(agentId);
+        } catch (error) {
+            log.error("[agent-runtime] subagent disposeAgent error:", error);
+        }
     }
 
     private async refreshRuntimeSession(runtime: AgentRuntime): Promise<void> {

@@ -24,6 +24,8 @@ export const VirtualizedMessageList = React.memo(function VirtualizedMessageList
     onPlanAction,
 }: VirtualizedMessageListProps): React.JSX.Element {
     const parentRef = useRef<HTMLDivElement>(null);
+    // 持有 focus scroll 的 setTimeout id, unmount 或新 focus 触发时清理, 避免泄漏 / setState-after-unmount
+    const timersRef = useRef<number[]>([]);
 
     const virtualizer = useVirtualizer({
         count: messages.length,
@@ -37,14 +39,27 @@ export const VirtualizedMessageList = React.memo(function VirtualizedMessageList
         const index = messages.findIndex((message) => message.id === focusMessageId);
         if (index < 0) return;
         virtualizer.scrollToIndex(index, { align: 'center' });
-        window.setTimeout(() => {
+        // 清理上一轮未触发的 timer, 避免快速连续 focus 时残留回调错位
+        timersRef.current.forEach((id) => window.clearTimeout(id));
+        timersRef.current = [];
+        const outer = window.setTimeout(() => {
             const target = parentRef.current?.querySelector<HTMLElement>(`[data-message-id="${focusMessageId}"]`);
             target?.scrollIntoView({ block: 'center' });
-            window.setTimeout(() => {
+            const inner = window.setTimeout(() => {
                 onFocusHandled?.();
             }, SEARCH_FOCUS_CLEAR_DELAY_MS);
+            timersRef.current.push(inner);
         }, 0);
+        timersRef.current.push(outer);
     }, [focusMessageId, messages, onFocusHandled, virtualizer]);
+
+    // unmount 时清掉残留 timer, 防止 setState-after-unmount
+    useEffect(() => {
+        return () => {
+            timersRef.current.forEach((id) => window.clearTimeout(id));
+            timersRef.current = [];
+        };
+    }, []);
 
     return (
         <div ref={parentRef} className="flex-1 overflow-y-auto" style={{ maxHeight: '100%' }}>

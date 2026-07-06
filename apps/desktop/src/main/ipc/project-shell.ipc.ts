@@ -10,7 +10,25 @@ function protectedPathError(path: string, reason: string) {
 }
 
 function isExternalUrl(target: string): boolean {
-    return /^https?:\/\//i.test(target);
+    try {
+        const url = new URL(target);
+        return url.protocol === "http:" || url.protocol === "https:";
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Detect targets that look like a URL with a non-http(s) scheme (file://,
+ * javascript:, vbscript:, data:text/html, ms-msdt:, etc.) so the IPC handler
+ * can reject them before reaching shell.openPath.
+ *
+ * Requires 2+ chars before the colon (`+` quantifier) so single-letter Windows
+ * drive paths (C:\, D:\, C:/foo) are NOT classified as URL schemes and continue
+ * to open normally.
+ */
+function isUrlSchemeButNotHttp(target: string): boolean {
+    return /^[a-z][a-z0-9+.-]+:/i.test(target) && !isExternalUrl(target);
 }
 
 export function setupProjectShellIpc(): void {
@@ -31,6 +49,19 @@ export function setupProjectShellIpc(): void {
             if (isExternalUrl(targetPath)) {
                 await shell.openExternal(targetPath);
                 return "";
+            }
+            // Security: reject targets that look like a URL scheme (e.g. file://,
+            // javascript:, vbscript:, data:text/html, ms-msdt:) but aren't http(s).
+            // Without this gate they fall through to shell.openPath, which on
+            // Windows can execute arbitrary local HTML / protocol handlers.
+            // The scheme regex requires 2+ chars before the colon so single-letter
+            // Windows drive paths (C:\, D:\) still open normally.
+            if (isUrlSchemeButNotHttp(targetPath)) {
+                return ipcError(
+                    "ipcErrors.shell.invalidScheme",
+                    `不允许打开的 URL scheme: ${targetPath}`,
+                    { path: targetPath },
+                );
             }
             const reason = getProtectedPathReason(targetPath);
             if (reason) return protectedPathError(targetPath, reason);

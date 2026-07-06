@@ -28,6 +28,7 @@ import { useAgentModeStore } from "../stores/agent-mode-store";
 import { logger } from "../utils/logger";
 import { useAgentStore } from "../stores/agent-store";
 import { addToast } from "../stores/toast-store";
+import { i18n } from "../i18n";
 import { playCompleteSound } from "../utils/sounds";
 import { notifyTaskComplete, canNotify } from "../utils/notifications";
 import { normalizeGeneratedUi } from "../utils/generated-ui";
@@ -376,7 +377,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     lastPersistError: msg,
                 });
                 logger.error("[usePiStream] flush persist failed:", msg);
-                addToast("消息保存失败，内容可能未持久化", "warning");
+                addToast(i18n.t("errors.messageSaveFailed"), "warning");
             });
     }, []);
 
@@ -392,7 +393,10 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     }, [flushStreamPersist]);
 
     // Force flush if no event for 5s (prevents debounce stall)
+    // Only runs while actively streaming — keeps the timer idle when the agent
+    // is not producing content, avoiding pointless 1s wakeups.
     useEffect(() => {
+        if (!isStreaming) return;
         const id = window.setInterval(() => {
             const last = lastStreamEventAtRef.current;
             if (last !== null && Date.now() - last >= STREAM_FLUSH_HARD_TIMEOUT_MS) {
@@ -408,7 +412,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 flushTimerRef.current = null;
             }
         };
-    }, [flushStreamPersist]);
+    }, [flushStreamPersist, isStreaming]);
 
     useEffect(() => { agentIdRef.current = agentId ?? null; }, [agentId]);
     useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
@@ -501,9 +505,29 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     }, []);
 
     // ── 连接状态 ────────────────────────────────────────────────────────────
+    // Track when window.piAPI becomes available — preload injects it after the
+    // renderer's first paint, so a mount-only effect that returns early on
+    // undefined would never re-run and the heartbeat would stay silent.
+    const [piApiReady, setPiApiReady] = useState<boolean>(
+        typeof window !== "undefined" && Boolean(window.piAPI),
+    );
+    useEffect(() => {
+        if (piApiReady) return;
+        if (typeof window !== "undefined" && window.piAPI) {
+            setPiApiReady(true);
+            return;
+        }
+        const id = window.setInterval(() => {
+            if (typeof window !== "undefined" && window.piAPI) {
+                setPiApiReady(true);
+            }
+        }, 500);
+        return () => window.clearInterval(id);
+    }, [piApiReady]);
+
     // Connection status: initial check + 30s heartbeat, auto-disconnect on error
     useEffect(() => {
-        if (!window.piAPI) return;
+        if (!piApiReady || !window.piAPI) return;
 
         const check = (): void => {
             void window.piAPI.getStatus()
@@ -518,7 +542,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         check();
         const id = setInterval(check, 30000);
         return () => clearInterval(id);
-    }, []);
+    }, [piApiReady]);
 
     // ── 事件订阅 ────────────────────────────────────────────────────────────
     // mount-only: handleEvent 在后面定义, 用 ref 在 useEffect 前 hold 引用.

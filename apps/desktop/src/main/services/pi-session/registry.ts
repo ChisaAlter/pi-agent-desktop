@@ -24,6 +24,13 @@ interface WorkspaceEntry {
     createdAt: number;
 }
 
+/**
+ * Maximum number of concurrent workspace sessions kept hot in the registry.
+ * Beyond this, the least-recently-accessed entry is disposed (LRU) to bound
+ * memory consumption. 8 matches the typical user ceiling of pinned workspaces.
+ */
+const MAX_WORKSPACES = 8;
+
 export class WorkspaceRegistry {
     private entries = new Map<string, WorkspaceEntry>();
     // in-flight 创建 promise: 防止并发首次调用创建重复 session (TOCTOU)
@@ -35,15 +42,32 @@ export class WorkspaceRegistry {
      * without depending on the goal service.
      */
     private onTurnEndHook?: (workspaceId: string) => void;
+    /**
+     * Optional workspace-dispose hook invoked from {@link dispose} so that
+     * workspace-scoped in-memory state held by sibling services (e.g.
+     * GoalService's react/turn counters) can be cleared when the session is
+     * torn down. Mirrors the {@link setOnTurnEnd} threading pattern so the
+     * registry can be created early without depending on the goal service.
+     */
+    private onDisposeWorkspaceHook?: (workspaceId: string) => void;
 
     /**
      * Install a stop-gate hook invoked on every `turn_end` Pi event forwarded
-     * by {@link createEventBridge}. Safe to call at any time — only affects
-     * subscriptions established after the call (existing subscriptions keep
-     * their previously-captured hook reference).
+     * by {@link createEventBridge}. Safe to call at any time — live
+     * subscriptions resolve the latest hook dynamically.
      */
     setOnTurnEnd(hook: ((workspaceId: string) => void) | undefined): void {
         this.onTurnEndHook = hook;
+    }
+
+    /**
+     * Install a hook invoked from {@link dispose} whenever a workspace session
+     * is torn down. Use it to clear sibling services' workspace-scoped caches
+     * (e.g. GoalService's react/turn counters) so they don't leak across
+     * session recreation.
+     */
+    setOnDisposeWorkspace(hook: ((workspaceId: string) => void) | undefined): void {
+        this.onDisposeWorkspaceHook = hook;
     }
 
     /**
@@ -65,7 +89,12 @@ export class WorkspaceRegistry {
         getMode?: () => AgentMode,
     ): Promise<WorkspaceSession> {
         const existing = this.entries.get(workspaceId);
-        if (existing) return existing.session;
+        if (existing) {
+            // LRU: move to end (most recently used) so eviction picks the oldest entry.
+            this.entries.delete(workspaceId);
+            this.entries.set(workspaceId, existing);
+            return existing.session;
+        }
 
         // 复用进行中的创建 promise, 保证每个 workspaceId 只创建一次
         let creating = this.creating.get(workspaceId);
@@ -82,6 +111,15 @@ export class WorkspaceRegistry {
                     createdAt: Date.now(),
                 };
                 this.entries.set(workspaceId, entry);
+                // LRU eviction: if we exceeded the cap, dispose the oldest entry.
+                // The newly-added entry sits at the tail (most recent), so the
+                // head is guaranteed to be a different workspace.
+                if (this.entries.size > MAX_WORKSPACES) {
+                    const oldestId = this.entries.keys().next().value;
+                    if (typeof oldestId === "string" && oldestId !== workspaceId) {
+                        this.dispose(oldestId);
+                    }
+                }
                 return entry;
             })();
             this.creating.set(workspaceId, creating);
@@ -115,13 +153,12 @@ export class WorkspaceRegistry {
 
         entry.subscribing = (async () => {
             try {
-                // Capture the hook at subscription time so later setOnTurnEnd
-                // calls don't retroactively rebind a live subscription.
-                const onTurnEnd = this.onTurnEndHook;
                 const bridge = createEventBridge(
                     workspaceId,
                     send,
-                    onTurnEnd ? { onTurnEnd } : undefined,
+                    {
+                        onTurnEnd: (id) => this.onTurnEndHook?.(id),
+                    },
                 );
                 const interceptor = createApprovalInterceptor(workspaceId, {
                     abort: () => entry.session.session.abort(),
@@ -217,6 +254,14 @@ export class WorkspaceRegistry {
                 log.warn("[WorkspaceRegistry] dispose error for", workspaceId, err);
             }
             this.entries.delete(workspaceId);
+        }
+        // Notify sibling services so they can clear workspace-scoped caches
+        // (e.g. GoalService's react/turn counters). Fire even when no entry
+        // existed so services don't accumulate state for disposed workspaces.
+        try {
+            this.onDisposeWorkspaceHook?.(workspaceId);
+        } catch (err) {
+            log.warn("[WorkspaceRegistry] onDisposeWorkspace hook error for", workspaceId, err);
         }
     }
 

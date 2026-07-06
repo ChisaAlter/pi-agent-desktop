@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { AgentMessage, AgentRuntimeState, AgentTab } from "@shared";
 import { logger } from "../utils/logger";
 import { addToast } from "./toast-store";
+import { i18n } from "../i18n";
 
 interface AgentStore {
     agents: AgentTab[];
@@ -165,7 +166,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
             }));
         } catch (error) {
             logger.warn("[agent-store] failed to hydrate restarted agent", error);
-            addToast("重启 Agent 失败", "error");
+            addToast(i18n.t("errors.agentRestartFailed"), "error");
         }
         return newAgent;
     },

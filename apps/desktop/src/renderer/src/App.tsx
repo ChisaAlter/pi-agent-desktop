@@ -8,8 +8,9 @@
 //          UI 一概不动,只把链路接通
 // v1.0.16: 删 task-store(死代码) + CommandPalette 3 callback 真接通
 
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback, Suspense, lazy } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 // 2026-06-06 hotfix: 持久化失败顶部提示
 import { PersistenceBanner } from "./components/PersistenceBanner/PersistenceBanner";
@@ -19,8 +20,14 @@ import { CommandPalette } from "./components/CommandPalette/CommandPalette";
 import { ShortcutsCheatsheet } from "./components/ShortcutsCheatsheet/ShortcutsCheatsheet";
 import { SkillsPanel } from "./components/SkillsPanel/SkillsPanel";
 import { GitPanel } from "./components/GitPanel/GitPanel";
-import { FileWorkspace } from "./components/FileWorkspace/FileWorkspace";
-import { TerminalPanel } from "./components/Terminal/TerminalPanel";
+// Code-split heavy panels (Monaco/xterm pull in megabytes of vendor JS).
+// Lazy-loading keeps the initial chat-view bundle small.
+const FileWorkspace = lazy(() =>
+    import("./components/FileWorkspace/FileWorkspace").then((m) => ({ default: m.FileWorkspace })),
+);
+const TerminalPanel = lazy(() =>
+    import("./components/Terminal/TerminalPanel").then((m) => ({ default: m.TerminalPanel })),
+);
 import { ApprovalPanel } from "./components/ApprovalPanel/ApprovalPanel";
 import { Onboarding } from "./components/Onboarding/Onboarding";
 import { ChatView } from "./components/ChatView/ChatView";
@@ -167,6 +174,7 @@ function App(): React.ReactElement {
 }
 
 function AppShell(): React.ReactElement {
+    const { t } = useTranslation();
     const [activeSection, setActiveSection] = useState<SectionId>("chat");
     const [showTerminal, setShowTerminal] = useState(false);
     const [paletteOpen, setPaletteOpen] = useState(false);
@@ -179,7 +187,6 @@ function AppShell(): React.ReactElement {
     const [terminalCommandTarget, setTerminalCommandTarget] = useState<TerminalCommandTarget | null>(null);
     const [fileWorkspaceTarget, setFileWorkspaceTarget] = useState<FileWorkspaceTarget | null>(null);
     const [searchTarget, setSearchTarget] = useState<{ sessionId: string; messageId: string } | null>(null);
-    const sessions = useSessionStore((s) => s.sessions);
     const currentSessionId = useSessionStore((s) => s.currentSessionId);
     const sessionsLoading = useSessionStore((s) => s.sessionsLoading);
     const currentSession = useSessionStore((s) =>
@@ -237,6 +244,13 @@ function AppShell(): React.ReactElement {
         useSettingsStore.setState({ rightRailCollapsed: nextCollapsed });
     }, [rightRailCollapsed]);
 
+    // settings-store: 注册 settings:changed / pi-config:changed 监听器 + 拉取初始 settings.
+    // mount-only — init() idempotent, dispose() 卸载监听器 (HMR / StrictMode safe)
+    useEffect(() => {
+        useSettingsStore.getState().init();
+        return () => useSettingsStore.getState().dispose();
+    }, []);
+
     useEffect(() => {
         if (!workspaceError) return;
         emitWorkspaceNotice({ message: workspaceError, tone: "error" });
@@ -255,16 +269,16 @@ function AppShell(): React.ReactElement {
             const signature = `available:${updaterState.latestVersion}`;
             if (lastUpdaterToastRef.current === signature) return;
             lastUpdaterToastRef.current = signature;
-            addToast(`发现新版本 ${updaterState.latestVersion}，可在“关于”里下载更新。`, "info");
+            addToast(t("app.updaterAvailable", { version: updaterState.latestVersion }), "info");
             return;
         }
         if (updaterState.phase === "downloaded" && updaterState.latestVersion) {
             const signature = `downloaded:${updaterState.latestVersion}`;
             if (lastUpdaterToastRef.current === signature) return;
             lastUpdaterToastRef.current = signature;
-            addToast(`更新 ${updaterState.latestVersion} 已下载完成，可在“关于”里重启安装。`, "success");
+            addToast(t("app.updaterDownloaded", { version: updaterState.latestVersion }), "success");
         }
-    }, [updaterState]);
+    }, [updaterState, t]);
 
     useEffect(() => {
         if (!currentWorkspace || !agentsInitialized || sessionsLoading) return;
@@ -287,18 +301,23 @@ function AppShell(): React.ReactElement {
         pendingSessionAgentSessions.current.add(currentSession.id);
         void createAgent(
             currentWorkspace.id,
-            `${currentSession.title || "未命名会话"} Agent`,
+            `${currentSession.title || t("app.untitledSession")} Agent`,
             undefined,
             currentSession.id,
         ).finally(() => {
             pendingSessionAgentSessions.current.delete(currentSession.id);
         });
-    }, [agents, agentsInitialized, createAgent, currentSession, currentWorkspace, sessionsLoading]);
+    }, [agents, agentsInitialized, createAgent, currentSession, currentWorkspace, sessionsLoading, t]);
 
     useEffect(() => {
         if (!currentWorkspace) return;
+        // Read sessions from the store rather than the React-destructured
+        // `sessions` array so this effect doesn't re-run on every session
+        // mutation (the store already triggers re-renders elsewhere; this
+        // effect only needs to react to workspace / currentSessionId changes).
+        const sessionsFromStore = useSessionStore.getState().sessions;
         const selected = currentSessionId
-            ? sessions.find((session) => session.id === currentSessionId)
+            ? sessionsFromStore.find((session) => session.id === currentSessionId)
             : null;
         if (!selected && activeSection === "new-task") return;
         if (selected) {
@@ -312,14 +331,16 @@ function AppShell(): React.ReactElement {
             }
         }
 
-        const nextSession = sessions
+        const nextSession = sessionsFromStore
             .filter((session) => session.workspaceId === currentWorkspace.id && !session.archived)
             .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
-        useSessionStore.setState({ currentSessionId: nextSession?.id ?? null });
+        // Use the store action rather than direct setState so persistence /
+        // metadata side-effects stay in one place.
+        useSessionStore.getState().setDefaultSession(nextSession?.id ?? null);
         if (activeSection === "chat" || activeSection === "new-task") {
             setActiveSection(nextSession ? "chat" : "new-task");
         }
-    }, [activeSection, currentSessionId, currentWorkspace, sessions, workspaces]);
+    }, [activeSection, currentSessionId, currentWorkspace, workspaces]);
 
     useEffect(() => {
         ensurePermissionSubscriptions();
@@ -656,7 +677,7 @@ function AppShell(): React.ReactElement {
                 return;
             case "open_files":
                 if (!currentWorkspace) {
-                    emitCommandPaletteStatus({ message: "请先选择工作区", tone: "error" });
+                    emitCommandPaletteStatus({ message: t("app.workspaceRequired"), tone: "error" });
                     return false;
                 }
                 setFileWorkspaceTarget(null);
@@ -664,7 +685,7 @@ function AppShell(): React.ReactElement {
                 return;
             case "open_git":
                 if (!currentWorkspace) {
-                    emitCommandPaletteStatus({ message: "请先选择工作区", tone: "error" });
+                    emitCommandPaletteStatus({ message: t("app.workspaceRequired"), tone: "error" });
                     return false;
                 }
                 routeSection("git");
@@ -678,7 +699,7 @@ function AppShell(): React.ReactElement {
             case "switch_workspace":
                 void (async () => {
                     if (!window.piAPI?.selectDirectory) {
-                        emitCommandPaletteStatus({ message: "目录选择器不可用", tone: "error" });
+                        emitCommandPaletteStatus({ message: t("app.directoryPickerUnavailable"), tone: "error" });
                         return;
                     }
                     const path = await window.piAPI.selectDirectory();
@@ -692,7 +713,7 @@ function AppShell(): React.ReactElement {
                     try {
                         const ws = await useWorkspaceStore.getState().createWorkspace(name, path);
                         if (!ws) {
-                            const message = useWorkspaceStore.getState().lastError ?? "创建 workspace 失败";
+                            const message = useWorkspaceStore.getState().lastError ?? t("app.createWorkspaceFailed");
                             logger.error("[App] createWorkspace failed:", message);
                             emitCommandPaletteStatus({ message, tone: "error" });
                             return;
@@ -703,7 +724,7 @@ function AppShell(): React.ReactElement {
                             emitCommandPaletteStatus({ message: result.fallback, tone: "error" });
                             return;
                         }
-                        emitCommandPaletteStatus({ message: `已切换到 ${name}`, tone: "success" });
+                        emitCommandPaletteStatus({ message: t("app.workspaceSwitched", { name }), tone: "success" });
                     } catch (e) {
                         logger.error("[App] switch_workspace failed:", e);
                         emitCommandPaletteStatus({
@@ -715,7 +736,7 @@ function AppShell(): React.ReactElement {
                 return;
             case "toggle_terminal":
                 if (!currentWorkspace) {
-                    emitCommandPaletteStatus({ message: "请先选择工作区", tone: "error" });
+                    emitCommandPaletteStatus({ message: t("app.workspaceRequired"), tone: "error" });
                     return false;
                 }
                 setShowTerminal((v) => !v);
@@ -723,7 +744,7 @@ function AppShell(): React.ReactElement {
             default:
                 logger.warn("[App] unknown command palette cmd:", cmdId);
         }
-    }, [currentWorkspace, routeSection]);
+    }, [currentWorkspace, routeSection, t]);
 
     useEffect(() => {
         const onOpenSettingsTab = (event: Event): void => {
@@ -783,13 +804,13 @@ function AppShell(): React.ReactElement {
         <div className="flex items-center justify-center h-full bg-[#f5f5f5] p-4">
             <div className="bg-white rounded-xl p-6 max-w-sm shadow text-center">
                 <div className="text-3xl mb-2">⚠️</div>
-                <h2 className="text-sm font-semibold text-[#1a1a1a] mb-1">{name}加载失败</h2>
+                <h2 className="text-sm font-semibold text-[#1a1a1a] mb-1">{t("app.panelLoadFailed", { name })}</h2>
                 <p className="text-xs text-[#666] mb-3">{error.message}</p>
                 <button
                     onClick={reset}
                     className="px-3 py-1.5 bg-[#1a1a1a] text-white rounded text-xs hover:bg-[#333] transition-colors"
                 >
-                    重试
+                    {t("common.retry")}
                 </button>
             </div>
         </div>
@@ -846,7 +867,7 @@ function AppShell(): React.ReactElement {
                 centerSlot={
                     <>
                         {activePanel === "chat" && (
-                            <ErrorBoundary fallback={panelFallback("聊天")}>
+                            <ErrorBoundary fallback={panelFallback(t("app.panels.chat"))}>
                                 <ChatView
                                     prefillText={chatPrefill}
                                     onPrefillConsumed={() => setChatPrefill(null)}
@@ -858,41 +879,43 @@ function AppShell(): React.ReactElement {
                             </ErrorBoundary>
                         )}
                         {activePanel === "skills" && (
-                            <ErrorBoundary fallback={panelFallback("技能")}>
+                            <ErrorBoundary fallback={panelFallback(t("app.panels.skills"))}>
                                 <div className="flex-1 overflow-hidden">
                                     <SkillsPanel />
                                 </div>
                             </ErrorBoundary>
                         )}
                         {activePanel === "tasks" && (
-                            <ErrorBoundary fallback={panelFallback("任务")}>
+                            <ErrorBoundary fallback={panelFallback(t("app.panels.tasks"))}>
                                 <TaskOverviewPanel />
                             </ErrorBoundary>
                         )}
                         {activePanel === "memory" && (
-                            <ErrorBoundary fallback={panelFallback("记忆")}>
+                            <ErrorBoundary fallback={panelFallback(t("app.panels.memory"))}>
                                 <MemoryPanel />
                             </ErrorBoundary>
                         )}
                         {activePanel === "history" && (
-                            <ErrorBoundary fallback={panelFallback("会话中心")}>
+                            <ErrorBoundary fallback={panelFallback(t("app.panels.history"))}>
                                 <SessionCenter onOpenChat={() => setActiveSection("chat")} />
                             </ErrorBoundary>
                         )}
                         {activePanel === "git" && currentWorkspace && (
-                            <ErrorBoundary fallback={panelFallback("Git")}>
+                            <ErrorBoundary fallback={panelFallback(t("app.panels.git"))}>
                                 <GitPanel workspacePath={currentWorkspace.path} />
                             </ErrorBoundary>
                         )}
                         {activePanel === "files" && currentWorkspace && (
-                            <ErrorBoundary fallback={panelFallback("文件")}>
-                                <div className="flex-1 overflow-hidden">
-                                    <FileWorkspace
-                                        workspacePath={currentWorkspace.path}
-                                        workspaceId={currentWorkspace.id}
-                                        initialTarget={fileWorkspaceTarget}
-                                    />
-                                </div>
+                            <ErrorBoundary fallback={panelFallback(t("app.panels.files"))}>
+                                <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-[#666]">Loading…</div>}>
+                                    <div className="flex-1 overflow-hidden">
+                                        <FileWorkspace
+                                            workspacePath={currentWorkspace.path}
+                                            workspaceId={currentWorkspace.id}
+                                            initialTarget={fileWorkspaceTarget}
+                                        />
+                                    </div>
+                                </Suspense>
                             </ErrorBoundary>
                         )}
                     </>
@@ -964,12 +987,14 @@ function AppShell(): React.ReactElement {
                         borderTop: "1px solid var(--mm-border)",
                     }}
                 >
-                    <TerminalPanel
-                        isOpen={showTerminal}
-                        workspacePath={currentWorkspace.path}
-                        initialCommand={terminalCommandTarget}
-                        onClose={() => setShowTerminal(false)}
-                    />
+                    <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-[#666]">Loading…</div>}>
+                        <TerminalPanel
+                            isOpen={showTerminal}
+                            workspacePath={currentWorkspace.path}
+                            initialCommand={terminalCommandTarget}
+                            onClose={() => setShowTerminal(false)}
+                        />
+                    </Suspense>
                 </div>
             )}
 

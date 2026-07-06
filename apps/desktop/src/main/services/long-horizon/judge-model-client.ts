@@ -11,17 +11,18 @@ import type { Verdict } from "./judge-prompt";
 // `PiProviderConfig` / `PiModelItem` and a real `PiProviderConfig` value
 // satisfies them structurally.
 
+export interface ResolvedModel {
+    readonly id: string;
+    readonly headers?: Record<string, string>;
+}
+
 export interface ResolvedProvider {
     readonly id: string;
     readonly baseUrl?: string;
     readonly api?: string;
     readonly apiKey?: string;
     readonly headers?: Record<string, string>;
-}
-
-export interface ResolvedModel {
-    readonly id: string;
-    readonly headers?: Record<string, string>;
+    readonly models?: readonly ResolvedModel[];
 }
 
 export interface ModelMessage {
@@ -88,28 +89,33 @@ export class JudgeModelClient {
         const chat = stripSystem(messages);
         const headers = mergeHeaders(provider, model);
 
-        const response = await fetch(`${trimBaseUrl(baseUrl)}/messages`, {
-            method: "POST",
-            headers: {
-                "content-type": "application/json",
-                ...(provider.apiKey ? { "x-api-key": provider.apiKey, "anthropic-version": "2023-06-01" } : {}),
-                ...headers,
-            },
-            body: JSON.stringify({
-                model: model.id,
-                ...(system !== undefined ? { system } : {}),
-                messages: chat,
-                max_tokens: DEFAULT_MAX_TOKENS,
-                temperature,
-            }),
-        });
-        const data = (await response.json()) as unknown;
-        if (!response.ok) {
-            throw new Error(`judge anthropic request failed: HTTP ${response.status}: ${stringifyBody(data)}`);
+        try {
+            const response = await fetch(`${trimBaseUrl(baseUrl)}/messages`, {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    ...(provider.apiKey ? { "x-api-key": provider.apiKey, "anthropic-version": "2023-06-01" } : {}),
+                    ...headers,
+                },
+                body: JSON.stringify({
+                    model: model.id,
+                    ...(system !== undefined ? { system } : {}),
+                    messages: chat,
+                    max_tokens: DEFAULT_MAX_TOKENS,
+                    temperature,
+                }),
+                signal: AbortSignal.timeout(30_000),
+            });
+            const data = (await response.json()) as unknown;
+            if (!response.ok) {
+                throw new Error(`judge anthropic request failed: HTTP ${response.status}: ${stringifyBody(data)}`);
+            }
+            const text = readAnthropicText(data);
+            if (!text) throw new Error("judge anthropic response missing text content");
+            return parseVerdict(text, schema);
+        } catch (err) {
+            throw wrapFetchError(err, "judge anthropic request");
         }
-        const text = readAnthropicText(data);
-        if (!text) throw new Error("judge anthropic response missing text content");
-        return parseVerdict(text, schema);
     }
 
     // ---- OpenAI Responses API --------------------------------------------
@@ -122,27 +128,32 @@ export class JudgeModelClient {
         const chat = stripSystem(messages);
         const headers = mergeHeaders(provider, model);
 
-        const response = await fetch(`${trimBaseUrl(baseUrl)}/responses`, {
-            method: "POST",
-            headers: {
-                "content-type": "application/json",
-                ...(provider.apiKey ? { Authorization: `Bearer ${provider.apiKey}` } : {}),
-                ...headers,
-            },
-            body: JSON.stringify({
-                model: model.id,
-                input: chat,
-                ...(system !== undefined ? { instructions: system } : {}),
-                temperature,
-            }),
-        });
-        const data = (await response.json()) as unknown;
-        if (!response.ok) {
-            throw new Error(`judge openai-responses request failed: HTTP ${response.status}: ${stringifyBody(data)}`);
+        try {
+            const response = await fetch(`${trimBaseUrl(baseUrl)}/responses`, {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    ...(provider.apiKey ? { Authorization: `Bearer ${provider.apiKey}` } : {}),
+                    ...headers,
+                },
+                body: JSON.stringify({
+                    model: model.id,
+                    input: chat,
+                    ...(system !== undefined ? { instructions: system } : {}),
+                    temperature,
+                }),
+                signal: AbortSignal.timeout(30_000),
+            });
+            const data = (await response.json()) as unknown;
+            if (!response.ok) {
+                throw new Error(`judge openai-responses request failed: HTTP ${response.status}: ${stringifyBody(data)}`);
+            }
+            const text = readOpenAiResponsesText(data);
+            if (!text) throw new Error("judge openai-responses response missing text content");
+            return parseVerdict(text, schema);
+        } catch (err) {
+            throw wrapFetchError(err, "judge openai-responses request");
         }
-        const text = readOpenAiResponsesText(data);
-        if (!text) throw new Error("judge openai-responses response missing text content");
-        return parseVerdict(text, schema);
     }
 
     // ---- OpenAI Chat Completions API -------------------------------------
@@ -153,27 +164,32 @@ export class JudgeModelClient {
         assertSafeUrl(baseUrl);
         const headers = mergeHeaders(provider, model);
 
-        const response = await fetch(`${trimBaseUrl(baseUrl)}/chat/completions`, {
-            method: "POST",
-            headers: {
-                "content-type": "application/json",
-                ...(provider.apiKey ? { Authorization: `Bearer ${provider.apiKey}` } : {}),
-                ...headers,
-            },
-            body: JSON.stringify({
-                model: model.id,
-                messages,
-                temperature,
-                response_format: { type: "json_object" },
-            }),
-        });
-        const data = (await response.json()) as unknown;
-        if (!response.ok) {
-            throw new Error(`judge openai-completions request failed: HTTP ${response.status}: ${stringifyBody(data)}`);
+        try {
+            const response = await fetch(`${trimBaseUrl(baseUrl)}/chat/completions`, {
+                method: "POST",
+                headers: {
+                    "content-type": "application/json",
+                    ...(provider.apiKey ? { Authorization: `Bearer ${provider.apiKey}` } : {}),
+                    ...headers,
+                },
+                body: JSON.stringify({
+                    model: model.id,
+                    messages,
+                    temperature,
+                    response_format: { type: "json_object" },
+                }),
+                signal: AbortSignal.timeout(30_000),
+            });
+            const data = (await response.json()) as unknown;
+            if (!response.ok) {
+                throw new Error(`judge openai-completions request failed: HTTP ${response.status}: ${stringifyBody(data)}`);
+            }
+            const text = readOpenAiCompletionsText(data);
+            if (!text) throw new Error("judge openai-completions response missing text content");
+            return parseVerdict(text, schema);
+        } catch (err) {
+            throw wrapFetchError(err, "judge openai-completions request");
         }
-        const text = readOpenAiCompletionsText(data);
-        if (!text) throw new Error("judge openai-completions response missing text content");
-        return parseVerdict(text, schema);
     }
 }
 
@@ -181,6 +197,23 @@ export class JudgeModelClient {
 
 function trimBaseUrl(baseUrl: string): string {
     return baseUrl.replace(/\/+$/, "");
+}
+
+/**
+ * Wrap a fetch error into a readable message. Distinguishes abort/timeout
+ * errors (from `AbortSignal.timeout`) so callers see "timed out" instead of
+ * a generic `AbortError`. Non-timeout errors are re-thrown unchanged so the
+ * original message (e.g. HTTP status, malformed JSON) is preserved.
+ */
+function wrapFetchError(err: unknown, label: string): Error {
+    if (err instanceof Error) {
+        const name = err.name;
+        if (name === "AbortError" || name === "TimeoutError") {
+            return new Error(`${label} timed out after 30s`);
+        }
+        return err;
+    }
+    return new Error(`${label} failed: ${String(err)}`);
 }
 
 function requireBaseUrl(provider: ResolvedProvider): string {

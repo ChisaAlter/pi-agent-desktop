@@ -1,6 +1,7 @@
 // DiffViewer 组件 - 用于显示代码变更的 diff 视图
 
 import React, { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { parseDiff, extractDiffFromOutput, type DiffFile, type DiffLine, type DiffHunk } from './diff-parser';
 import { FileChangeItem } from './FileChangeItem';
 
@@ -103,11 +104,12 @@ function splitHunkLines(lines: DiffLine[]): Array<{ type: 'lines'; lines: DiffLi
 }
 
 function FoldRow({ count, oldStart, newStart, oldEnd, newEnd }: { count: number; oldStart: number | null; newStart: number | null; oldEnd: number | null; newEnd: number | null }): React.JSX.Element | null {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   if (expanded) {
     return null;
   }
-  const label = `展开 ${count} 行未变更`;
+  const label = t("diffView.expand", { count });
   return (
     <tr className="bg-[var(--mm-bg-sidebar)] hover:bg-[var(--mm-bg-hover)] cursor-pointer transition-colors"
         onClick={() => setExpanded(true)}>
@@ -171,6 +173,7 @@ function FileDiffView({ file }: { file: DiffFile }): React.JSX.Element {
 }
 
 export function DiffViewer({ diff, maxHeight = '500px' }: DiffViewerProps): React.JSX.Element | null {
+  const { t } = useTranslation();
   const parsedDiff = useMemo(() => {
     // 先尝试从 output 中提取 diff
     const extracted = extractDiffFromOutput(diff);
@@ -190,7 +193,7 @@ export function DiffViewer({ diff, maxHeight = '500px' }: DiffViewerProps): Reac
       {/* 总览 */}
       <div className="flex items-center gap-3 mb-2 px-1">
         <span className="text-xs text-[var(--mm-text-secondary)]">
-          {parsedDiff.files.length} 个文件变更
+          {t("diffView.filesChanged", { count: parsedDiff.files.length })}
         </span>
         <span className="text-xs text-[var(--color-success)] font-medium">
           +{totalAdditions}

@@ -4,3 +4,5 @@ export type { Locale, I18nContextValue } from './types';
 export { SUPPORTED_LOCALES, DEFAULT_LOCALE, LOCALE_STORAGE_KEY } from './config';
 // v1.0.6.1: i18n-IPC 错误本地化
 export { translateIpcError, useTranslateIpcError, isIpcError } from './IpcError';
+// v1.0.18: 暴露 i18next singleton 给非 React 上下文 (stores/hooks) 调用 t()
+export { default as i18n } from 'i18next';

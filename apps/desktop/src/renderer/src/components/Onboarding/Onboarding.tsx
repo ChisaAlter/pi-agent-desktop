@@ -10,13 +10,14 @@
 //   - a11y: role="dialog" + aria-modal + aria-labelledby
 //   - v1.0.4: 全部用户可见文案走 t()
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { usePiStatusStore } from "../../stores/pi-status-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { markFirstLaunchDone } from "../../utils/first-launch";
 import { useI18n, useTranslateIpcError } from "../../i18n";
 import { logger } from "../../utils/logger";
 import { isIpcError, type IpcError } from "@shared";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 
 export interface OnboardingProps {
     /** 关闭回调（完成时由父组件调用） */
@@ -31,6 +32,8 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
     const [step, setStep] = useState<Step>(1);
     const [installing, setInstalling] = useState(false);
     const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+    const dialogRef = useRef<HTMLDivElement>(null);
+    useFocusTrap(dialogRef);
 
     const { status, loading, error, progress, isOperating, refreshStatus, install } = usePiStatusStore();
     const { getCurrentWorkspace, createWorkspace } = useWorkspaceStore();
@@ -128,11 +131,15 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
 
     return (
         <div
+            ref={dialogRef}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
             role="dialog"
             aria-modal="true"
             aria-labelledby="onboarding-title"
             data-testid="onboarding-modal"
+            onKeyDown={(e) => {
+                if (e.key === "Escape") onComplete();
+            }}
         >
             <div className="bg-[var(--mm-bg-panel)] rounded-2xl shadow-2xl w-[560px] max-w-[92vw] p-8">
                 {/* Stepper */}

@@ -1,6 +1,7 @@
 // MiniMaxCodeTitleBar — 32px 顶部标题栏
 
 import React, { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 const MAC_TRAFFIC_LIGHT_RESERVE = 80;
 
@@ -65,6 +66,7 @@ export function MiniMaxCodeTitleBar({
     className = "",
     onClose,
 }: MiniMaxCodeTitleBarProps): React.JSX.Element {
+    const { t } = useTranslation();
     const [isMaximized, setIsMaximized] = useState(false);
     const [platform, setPlatform] = useState<NodeJS.Platform | "browser">("browser");
 
@@ -145,17 +147,17 @@ export function MiniMaxCodeTitleBar({
             >
                 {!isMac && (
                     <>
-                        <TitleBarButton ariaLabel="最小化窗口" onClick={() => void window.piAPI?.windowMinimize()}>
+                        <TitleBarButton ariaLabel={t("titlebar.minimize")} onClick={() => void window.piAPI?.windowMinimize()}>
                             <MinimizeIcon />
                         </TitleBarButton>
                         <TitleBarButton
-                            ariaLabel={isMaximized ? "取消最大化" : "最大化"}
+                            ariaLabel={isMaximized ? t("titlebar.restore") : t("titlebar.maximize")}
                             onClick={() => void window.piAPI?.windowToggleMaximize()}
                         >
                             {isMaximized ? <UnmaximizeIcon /> : <MaximizeIcon />}
                         </TitleBarButton>
                         <TitleBarButton
-                            ariaLabel="关闭窗口"
+                            ariaLabel={t("titlebar.close")}
                             onClick={() => {
                                 if (onClose) {
                                     void onClose();
