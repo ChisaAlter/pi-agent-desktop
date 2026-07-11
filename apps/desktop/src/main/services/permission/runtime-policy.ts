@@ -58,7 +58,7 @@ export function filterActiveTools(toolNames: readonly string[], policy: RuntimeT
         if (policy.immutableDeniedTools.has(normalized)) return false;
         if (category === "fileRead" && !policy.permissions.fileRead) return false;
         if (category === "fileWrite" && !policy.permissions.fileWrite) return false;
-        if (category === "shell" && (!policy.permissions.shell || !policy.permissions.git)) return false;
+        if (category === "shell" && !policy.permissions.shell) return false;
         if (category === "network" && !policy.permissions.network) return false;
         if (!policy.permissions.extensions
             && !isCoreTool(normalized)
@@ -68,15 +68,33 @@ export function filterActiveTools(toolNames: readonly string[], policy: RuntimeT
     });
 }
 
-export function checkBashCommand(_command: string, policy: RuntimeToolPolicy): BashCommandDecision {
+export function checkBashCommand(command: string, policy: RuntimeToolPolicy): BashCommandDecision {
     if (policy.immutableDeniedTools.has("bash") || policy.immutableDeniedTools.has("shell")) {
         return { allowed: false, reason: "Shell commands are disabled in Plan mode" };
     }
     if (!policy.permissions.shell) {
         return { allowed: false, reason: "Shell commands are disabled" };
     }
-    if (!policy.permissions.git) {
-        return { allowed: false, reason: "Shell is disabled because Git permission is off" };
+    if (!policy.permissions.git && containsGitCommand(command)) {
+        return { allowed: false, reason: "Git commands are disabled" };
     }
     return { allowed: true };
+}
+
+function containsGitCommand(command: string): boolean {
+    return command
+        .split(/\r?\n|&&|\|\||[;|]/)
+        .some((segment) => isGitCommandSegment(segment));
+}
+
+function isGitCommandSegment(segment: string): boolean {
+    const normalized = segment.trim().replace(/^&\s*/, "");
+    if (/^git(?:\.exe)?(?=\s|$)/i.test(normalized)) return true;
+
+    const cmdWrapped = normalized.match(/^cmd(?:\.exe)?\s+\/[ck]\s+([\s\S]+)$/i);
+    if (cmdWrapped) return isGitCommandSegment(cmdWrapped[1]);
+
+    const powerShellWrapped = normalized.match(/^(?:powershell|pwsh)(?:\.exe)?\b[\s\S]*?\s-(?:command|c)\s+([\s\S]+)$/i);
+    if (!powerShellWrapped) return false;
+    return isGitCommandSegment(powerShellWrapped[1].replace(/^["']|["']$/g, ""));
 }

@@ -266,7 +266,9 @@ test.describe("continuous acceptance generated run", () => {
             await record("关闭设置窗口后主窗口仍可继续操作", async () => {
                 if (!page || !settingsWindow) throw new Error("main page or settings window missing");
                 const closed = settingsWindow.waitForEvent("close");
-                await settingsWindow.getByRole("button", { name: "关闭窗口" }).click();
+                await settingsWindow.getByRole("button", { name: "关闭窗口" }).click({ noWaitAfter: true }).catch((error) => {
+                    if (!settingsWindow.isClosed()) throw error;
+                });
                 await closed;
                 await page.bringToFront();
                 await page.getByRole("tab", { name: "对话" }).click();

@@ -88,7 +88,29 @@ interface AgentRuntime {
 }
 
 const AGENT_WATCHDOG_MS = 5 * 60 * 1000;
-export class AgentRuntimeRegistry {
+
+export function formatPromptFailureMessage(error: unknown): string {
+    const raw = promptFailureDetails(error);
+    const category = /(?:\b401\b|\b403\b|unauthori[sz]ed|forbidden|invalid api key|authentication failed)/i.test(raw)
+        ? "模型认证失败，请检查 API Key 或登录状态。"
+        : /(?:\b429\b|too many requests|rate[ -]?limit)/i.test(raw)
+            ? "模型服务请求过于频繁，请稍后重试。"
+            : /(?:timed?\s*out|timeout|ETIMEDOUT)/i.test(raw)
+                ? "模型请求超时，请稍后重试或检查网络。"
+                : /(?:ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|fetch failed|network(?: error| down)?)/i.test(raw)
+                    ? "无法连接模型服务，请检查网络和服务地址。"
+                    : "模型请求失败。";
+    return raw ? `${category} ${raw}` : category;
+}
+
+function promptFailureDetails(error: unknown): string {
+    if (error instanceof Error) {
+        const cause = Reflect.get(error, "cause");
+        const causeDetails = cause && cause !== error ? promptFailureDetails(cause) : "";
+        return [error.message.trim(), causeDetails].filter(Boolean).join(": ");
+    }
+    return String(error ?? "").trim();
+}export class AgentRuntimeRegistry {
     private readonly runtimes = new Map<string, AgentRuntime>();
     private suppressedAgentIds = new Set<string>();
 
@@ -422,6 +444,11 @@ export class AgentRuntimeRegistry {
         runtime.watchdog = setTimeout(() => {
             runtime.watchdog = undefined;
             log.error("[agent-runtime] watchdog fired (stuck running):", runtime.tab.id);
+            try {
+                runtime.session.session.abort();
+            } catch (error) {
+                log.warn("[agent-runtime] watchdog abort failed:", error);
+            }
             runtime.tab.status = "error";
             runtime.isStreaming = false;
             runtime.tab.updatedAt = Date.now();
@@ -453,7 +480,7 @@ export class AgentRuntimeRegistry {
     }
 
     private handlePromptFailure(runtime: AgentRuntime, error: unknown): void {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = formatPromptFailureMessage(error);
         runtime.tab.status = "error";
         runtime.tab.updatedAt = Date.now();
         runtime.isStreaming = false;

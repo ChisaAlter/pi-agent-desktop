@@ -5,7 +5,7 @@ import { mkdir as mkdirAsync } from "fs/promises";
 import { join } from "path";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl } from "./support/electron-windows";
+import { getWindowByUrl, retryMainAction } from "./support/electron-windows";
 
 const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 const HISTORY_NEEDLE = "m6-history-needle";
@@ -88,12 +88,12 @@ async function reloadAppShell(page: Page): Promise<void> {
 }
 
 async function stubPromptIpc(app: ElectronApplication): Promise<void> {
-    await app.evaluate(({ ipcMain }) => {
+    await retryMainAction(() => app.evaluate(({ ipcMain }) => {
         ipcMain.removeHandler("pi:send");
         ipcMain.handle("pi:send", async () => undefined);
         ipcMain.removeHandler("agents:prompt");
         ipcMain.handle("agents:prompt", async () => undefined);
-    });
+    }));
 }
 
 async function emitCurrentAgentEvents(

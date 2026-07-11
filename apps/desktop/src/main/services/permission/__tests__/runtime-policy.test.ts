@@ -180,17 +180,17 @@ describe("runtime tool policy", () => {
         });
     });
 
-    it("removes all shell tools when Git permission is disabled", () => {
+    it("keeps shell tools active when only Git permission is disabled", () => {
         const policy = resolveRuntimePolicy({
             mode: "build",
             workspacePermissions: { ...allEnabled, git: false },
         });
 
         expect(filterActiveTools(["read", "bash", "shell", "write"], policy))
-            .toEqual(["read", "write"]);
+            .toEqual(["read", "bash", "shell", "write"]);
     });
 
-    it.each(["git status", "pnpm test", "echo harmless"])("denies shell command %j when Git permission is disabled", (command) => {
+    it.each(["git status", "git.exe diff", "git -C . log", "pnpm test && git status", "cmd /c git status", 'powershell -Command "git status"', 'pwsh -c "git status"'])("denies Git command %j when Git permission is disabled", (command) => {
         const policy = resolveRuntimePolicy({
             mode: "build",
             workspacePermissions: { ...allEnabled, git: false },
@@ -198,7 +198,16 @@ describe("runtime tool policy", () => {
 
         expect(checkBashCommand(command, policy)).toEqual({
             allowed: false,
-            reason: "Shell is disabled because Git permission is off",
+            reason: "Git commands are disabled",
         });
+    });
+
+    it.each(["pnpm test", "echo harmless", "echo git status", "node --version"])("allows non-Git shell command %j when Git permission is disabled", (command) => {
+        const policy = resolveRuntimePolicy({
+            mode: "build",
+            workspacePermissions: { ...allEnabled, git: false },
+        });
+
+        expect(checkBashCommand(command, policy)).toEqual({ allowed: true });
     });
 });

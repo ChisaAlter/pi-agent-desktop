@@ -3,6 +3,7 @@ import { dirname, join } from "path";
 import { randomUUID } from "crypto";
 import readline from "node:readline";
 import { DatabaseSync } from "node:sqlite";
+import log from "electron-log/main";
 import type {
     GoalState,
     LongHorizonMemoryLayer,
@@ -149,8 +150,47 @@ export class LongHorizonDatabase {
         mkdirSync(rootDir, { recursive: true });
         this.dbPath = join(rootDir, "long-horizon.db");
         mkdirSync(dirname(this.dbPath), { recursive: true });
-        this.db = new DatabaseSync(this.dbPath);
+        this.db = this.openHealthyDatabase();
         this.migrate();
+    }
+
+    private openHealthyDatabase(): DatabaseSync {
+        let candidate: DatabaseSync | undefined;
+        try {
+            candidate = new DatabaseSync(this.dbPath);
+            const rows = candidate.prepare("PRAGMA quick_check;").all() as Array<{ quick_check?: unknown }>;
+            if (rows.length === 0 || rows.some((row) => row.quick_check !== "ok")) {
+                throw new Error(`SQLite quick_check failed: ${JSON.stringify(rows)}`);
+            }
+            return candidate;
+        } catch (error) {
+            try {
+                candidate?.close();
+            } catch {
+                // Best effort: the invalid handle may already be unusable.
+            }
+            const backupPath = this.backupCorruptDatabase();
+            log.error("[long-horizon] corrupt database recovered:", {
+                databasePath: this.dbPath,
+                backupPath,
+                error,
+            });
+            return new DatabaseSync(this.dbPath);
+        }
+    }
+
+    private backupCorruptDatabase(): string {
+        let timestamp = Date.now();
+        let backupPath = `${this.dbPath}.corrupt-${timestamp}`;
+        while (existsSync(backupPath)) {
+            timestamp += 1;
+            backupPath = `${this.dbPath}.corrupt-${timestamp}`;
+        }
+        for (const suffix of ["", "-wal", "-shm"]) {
+            const source = `${this.dbPath}${suffix}`;
+            if (existsSync(source)) renameSync(source, `${backupPath}${suffix}`);
+        }
+        return backupPath;
     }
 
     private async yieldToEventLoop(): Promise<void> {
@@ -179,6 +219,16 @@ export class LongHorizonDatabase {
      */
     getDb(): DatabaseSync {
         return this.db;
+    }
+
+    checkHealth(): { ok: boolean; details: string[] } {
+        try {
+            const rows = this.db.prepare("PRAGMA quick_check;").all() as Array<Record<string, unknown>>;
+            const details = rows.map((row) => String(row.quick_check ?? Object.values(row)[0] ?? "unknown"));
+            return { ok: details.length > 0 && details.every((item) => item === "ok"), details };
+        } catch (error) {
+            return { ok: false, details: [error instanceof Error ? error.message : String(error)] };
+        }
     }
 
     async migrateLegacyMemoryJsonl(jsonlPath: string): Promise<void> {
@@ -649,9 +699,9 @@ export class LongHorizonDatabase {
         // PRAGMAs that affect connection behavior — must be outside transactions.
         this.db.exec("PRAGMA journal_mode = WAL;");
         this.db.exec("PRAGMA foreign_keys = ON;");
-        // Checkpoint any pre-existing WAL so the file doesn't grow unbounded
-        // across restarts. TRUNCATE also resets the WAL file back to ~zero size.
-        this.db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+        // Bound WAL growth without taking an exclusive checkpoint lock during startup.
+        // close() still performs a best-effort TRUNCATE checkpoint on clean shutdown.
+        this.db.exec("PRAGMA wal_autocheckpoint = 1000;");
 
         // Base schema (memories / goals) — always created, idempotent.
         this.db.exec(`

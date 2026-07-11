@@ -32,3 +32,15 @@ export async function getWindowByUrl(
     }
     return page;
 }
+export async function retryMainAction<T>(action: () => Promise<T>, attempts = 8): Promise<T> {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+        try {
+            return await action();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            if (!message.includes("Execution context was destroyed") || attempt === attempts - 1) throw error;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+    }
+    throw new Error("Electron main process action did not complete");
+}

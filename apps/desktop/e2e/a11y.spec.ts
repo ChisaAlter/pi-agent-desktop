@@ -194,8 +194,6 @@ test.describe('Pi Desktop a11y', () => {
 
         expect(violations, `expected 0 a11y violations, got ${violations.length}`).toHaveLength(0);
 
-        // 顺手关掉应用
-        await app.close();
     });
 
     test('main chat page: 0 critical a11y violations (without palette open)', async () => {
@@ -235,6 +233,5 @@ test.describe('Pi Desktop a11y', () => {
         }
         expect(violations, `expected 0 a11y violations on main chat, got ${violations.length}`).toHaveLength(0);
 
-        await app.close();
     });
 });

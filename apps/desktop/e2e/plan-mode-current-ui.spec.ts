@@ -1,7 +1,7 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from "@playwright/test";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl } from "./support/electron-windows";
+import { getWindowByUrl, retryMainAction } from "./support/electron-windows";
 
 async function skipOnboarding(page: Page): Promise<void> {
   const modal = page.locator('[data-testid="onboarding-modal"]');
@@ -11,7 +11,7 @@ async function skipOnboarding(page: Page): Promise<void> {
 }
 
 async function installTestIpc(app: ElectronApplication): Promise<void> {
-  await app.evaluate(({ ipcMain }) => {
+  await retryMainAction(() => app.evaluate(({ ipcMain }) => {
     const target = globalThis as typeof globalThis & {
       __currentUiPromptCalls?: Array<
         | { kind: "legacy"; workspaceId: string; message: string }
@@ -119,7 +119,7 @@ async function installTestIpc(app: ElectronApplication): Promise<void> {
 
     ipcMain.removeHandler("plan:set-enabled");
     ipcMain.handle("plan:set-enabled", async () => undefined);
-  });
+  }));
 }
 
 async function createWorkspace(page: Page, workspacePath: string): Promise<void> {

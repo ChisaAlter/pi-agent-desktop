@@ -5,7 +5,7 @@ import { mkdir } from "fs/promises";
 import { electronMainEntry } from "../../playwright.config";
 import { IMPLEMENTED_CART_SOURCE, type MiniNodeProject } from "./programmer-project";
 import { resolveElectronExecutablePath } from "./electron-launch";
-import { getWindowByUrl } from "./electron-windows";
+import { getWindowByUrl, retryMainAction } from "./electron-windows";
 
 export const TEST_TIMEOUT_MS = 120_000;
 export const USER_PROMPT = "请像真实程序员一样完成一次小开发：阅读这个 Node 项目，修好购物车总价计算，并运行测试。";
@@ -159,20 +159,8 @@ async function waitForExit(process: ChildProcess | undefined, timeoutMs = 5_000)
     });
 }
 
-async function retryMainAction(action: () => Promise<void>): Promise<void> {
-    for (let attempt = 0; attempt < 5; attempt += 1) {
-        try {
-            await action();
-            return;
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            if (!message.includes("Execution context was destroyed") || attempt === 4) throw error;
-            await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-    }
-}
 async function installStableIpcStubs(app: ElectronApplication, selectedWorkspacePath: string): Promise<void> {
-    await app.evaluate(({ ipcMain }, workspacePath) => {
+    await retryMainAction(() => app.evaluate(({ ipcMain }, workspacePath) => {
         type MainGlobal = typeof globalThis & {
             __programmerWorkflowPrompts?: CapturedPrompt[];
             __programmerWorkflowPickerCalls?: WorkspacePickerCall[];
@@ -200,7 +188,7 @@ async function installStableIpcStubs(app: ElectronApplication, selectedWorkspace
         });
         ipcMain.handle("packages:list-installed", async () => []);
         ipcMain.handle("skills:installed", async () => []);
-    }, selectedWorkspacePath);
+    }, selectedWorkspacePath));
 }
 
 async function workspacePickerCalls(app: ElectronApplication): Promise<readonly WorkspacePickerCall[]> {

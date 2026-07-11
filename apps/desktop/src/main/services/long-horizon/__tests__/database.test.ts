@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "fs";
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { DatabaseSync } from "node:sqlite";
@@ -26,6 +26,19 @@ describe("LongHorizonDatabase", () => {
         return db;
     }
 
+    it("backs up a corrupt database and recreates a usable store", async () => {
+        const dir = mkdtempSync(join(tmpdir(), "pi-lh-corrupt-"));
+        dirs.push(dir);
+        writeFileSync(join(dir, "long-horizon.db"), "not a sqlite database", "utf8");
+
+        const db = new LongHorizonDatabase(dir);
+        databases.push(db);
+        await db.insertMemory({ scope: "global", kind: "note", text: "recovered memory" });
+
+        expect((await db.listRecentMemories({ limit: 10 })).map((item) => item.text)).toContain("recovered memory");
+        expect(db.checkHealth()).toEqual({ ok: true, details: ["ok"] });
+        expect(readdirSync(dir).some((name) => /^long-horizon\.db\.corrupt-\d+$/.test(name))).toBe(true);
+    });
     it("isolates listRecentMemories by workspace_id and does not leak across workspaces", async () => {
         const db = createDb();
         await db.insertMemory({

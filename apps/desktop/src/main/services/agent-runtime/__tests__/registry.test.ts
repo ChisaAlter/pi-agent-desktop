@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_LONG_HORIZON_SETTINGS, type ToolPermissions } from "@shared";
-import { AgentRuntimeRegistry } from "../registry";
+import { AgentRuntimeRegistry, formatPromptFailureMessage } from "../registry";
 import { PendingEdits } from "../../approval/pending-edits";
 import { createExtensionUiBridge } from "../../extensions/extension-ui-bridge";
 import { createApprovalInterceptor } from "../../approval/interceptor";
@@ -836,6 +836,7 @@ describe("AgentRuntimeRegistry", () => {
                 status: "error",
                 isStreaming: false,
             });
+            expect(sessions[0].abort).toHaveBeenCalledOnce();
         } finally {
             vi.useRealTimers();
         }
@@ -896,6 +897,17 @@ describe("AgentRuntimeRegistry", () => {
         });
     });
 
+    it.each([
+        ["401 Unauthorized", "模型认证失败，请检查 API Key 或登录状态。"],
+        ["429 Too Many Requests", "模型服务请求过于频繁，请稍后重试。"],
+        ["fetch failed: ECONNREFUSED", "无法连接模型服务，请检查网络和服务地址。"],
+        ["request timed out after 30000ms", "模型请求超时，请稍后重试或检查网络。"],
+    ])("classifies prompt failure %j for a user-actionable message", (raw, expected) => {
+        const message = formatPromptFailureMessage(new Error(raw));
+
+        expect(message).toContain(expected);
+        expect(message).toContain(raw);
+    });
     it("marks the agent as error when prompt fails", async () => {
         const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
         sessions[0].prompt.mockRejectedValueOnce(new Error("network down"));

@@ -1031,6 +1031,14 @@
       "version": "Version: {{version}}",
       "description": "Pi Desktop is a Windows desktop application that provides a graphical interface for the Pi Agent, making it easy to interact with the Pi CLI.",
       "stack": "Built on Electron + React + TypeScript.",
+      "diagnostics": {
+        "heading": "Diagnostic report",
+        "description": "Export redacted version, runtime, database health, and recent log information. Conversation content, workspace paths, and API keys are excluded.",
+        "export": "Export diagnostic report",
+        "exporting": "Exporting...",
+        "exported": "Diagnostic report saved to {{path}}",
+        "failed": "Export failed: {{message}}"
+      },
       "unknownVersion": "Unknown",
       "updater": {
         "heading": "App updates",

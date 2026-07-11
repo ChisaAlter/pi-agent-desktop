@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n, useTranslateIpcError } from "../../../i18n";
 import { SectionTitle, SettingsCard, SettingsPage } from "../_shared";
 import { useUpdaterStore } from "../../../stores/updater-store";
-import type { IpcError } from "@shared";
+import { isIpcError, type IpcError } from "@shared";
 
 function formatTimestamp(timestamp: number | null, locale: string): string {
     if (!timestamp) return "—";
@@ -162,6 +162,57 @@ function UpdaterActionRow(): React.JSX.Element {
     );
 }
 
+function DiagnosticsSection(): React.JSX.Element {
+    const { t } = useI18n();
+    const [exporting, setExporting] = useState(false);
+    const [status, setStatus] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+
+    const exportDiagnostics = async (): Promise<void> => {
+        setExporting(true);
+        setStatus(null);
+        try {
+            const result = await window.piAPI.diagnosticsExport();
+            if (isIpcError(result)) throw new Error(result.fallback);
+            if (!result.cancelled) {
+                setStatus({ tone: "success", message: t("settings.about.diagnostics.exported", { path: result.path ?? "" }) });
+            }
+        } catch (error) {
+            setStatus({
+                tone: "error",
+                message: t("settings.about.diagnostics.failed", {
+                    message: error instanceof Error ? error.message : String(error),
+                }),
+            });
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    return (
+        <SettingsCard anchorId="about-diagnostics" className="px-5 py-4">
+            <SectionTitle title={t("settings.about.diagnostics.heading")} />
+            <p className="m-0 text-sm leading-6 text-[var(--mm-text-secondary)]">
+                {t("settings.about.diagnostics.description")}
+            </p>
+            <button
+                type="button"
+                onClick={() => void exportDiagnostics()}
+                disabled={exporting}
+                className="mt-4 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-3 py-2 text-sm text-[var(--mm-text-primary)] transition hover:bg-[var(--mm-bg-sidebar)] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+                {exporting ? t("settings.about.diagnostics.exporting") : t("settings.about.diagnostics.export")}
+            </button>
+            {status && (
+                <p
+                    role="status"
+                    className={`m-0 mt-3 text-xs ${status.tone === "success" ? "text-emerald-600" : "text-red-600"}`}
+                >
+                    {status.message}
+                </p>
+            )}
+        </SettingsCard>
+    );
+}
 export function AboutTab(): React.JSX.Element {
     const { t } = useI18n();
     return (
@@ -174,6 +225,7 @@ export function AboutTab(): React.JSX.Element {
                     <p className="m-0 mt-2">{t("settings.about.stack")}</p>
                 </div>
             </SettingsCard>
+            <DiagnosticsSection />
             <div data-settings-anchor="about-updates">
                 <UpdaterActionRow />
             </div>

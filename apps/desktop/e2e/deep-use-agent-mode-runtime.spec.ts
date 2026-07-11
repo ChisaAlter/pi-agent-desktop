@@ -4,7 +4,7 @@ import { join } from "path";
 import { electronMainEntry } from "../playwright.config";
 import { PLAN_DIRECTIVE } from "../src/main/services/agent-modes/plan-prompt";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl } from "./support/electron-windows";
+import { getWindowByUrl, retryMainAction } from "./support/electron-windows";
 
 const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 const SESSION_ID = "deep-use-agent-mode-session";
@@ -61,10 +61,10 @@ async function skipOnboarding(page: Page): Promise<void> {
 }
 
 async function installModeAuditIpc(app: ElectronApplication): Promise<void> {
-    await app.evaluate(({ ipcMain }, attachmentPath) => {
+    await retryMainAction(() => app.evaluate(({ ipcMain }, attachmentPath) => {
         ipcMain.removeHandler("files:select");
         ipcMain.handle("files:select", async () => [attachmentPath]);
-    }, ATTACHMENT_PATH);
+    }, ATTACHMENT_PATH));
 }
 
 async function openSession(page: Page, title: string): Promise<void> {
@@ -98,7 +98,7 @@ async function waitForBoundAgent(page: Page, sessionId: string): Promise<string>
 }
 
 async function installRuntimePromptRecorder(app: ElectronApplication, sessionId: string): Promise<void> {
-    await app.evaluate((_electron, targetSessionId) => {
+    await retryMainAction(() => app.evaluate((_electron, targetSessionId) => {
         const target = globalThis as RuntimeRecorderGlobals;
         target.__deepUseRuntimePromptCalls = [];
         target.__deepUseRuntimeAbortCalls = [];
@@ -124,14 +124,14 @@ async function installRuntimePromptRecorder(app: ElectronApplication, sessionId:
         runtimeSession.abort = () => {
             target.__deepUseRuntimeAbortCalls?.push(agent.id);
         };
-    }, sessionId);
+    }, sessionId));
 }
 
 async function recordedPromptCalls(app: ElectronApplication): Promise<RuntimePromptCall[]> {
-    return app.evaluate(() => {
+    return retryMainAction(() => app.evaluate(() => {
         const target = globalThis as RuntimeRecorderGlobals;
         return target.__deepUseRuntimePromptCalls ?? [];
-    });
+    }));
 }
 
 async function emitBoundAgentEvents(page: Page, app: ElectronApplication, events: Array<Record<string, unknown>>): Promise<void> {
@@ -140,7 +140,7 @@ async function emitBoundAgentEvents(page: Page, app: ElectronApplication, events
         return agents.find((item) => item.sessionId === sessionId) ?? null;
     }, SESSION_ID);
     if (!agent) throw new Error(`No bound agent found for ${SESSION_ID}`);
-    await app.evaluate(({ BrowserWindow }, payload) => {
+    await retryMainAction(() => app.evaluate(({ BrowserWindow }, payload) => {
         const win = BrowserWindow.getAllWindows().find((item) => !item.isDestroyed() && item.webContents.getURL().includes("index.html"))
             ?? BrowserWindow.getAllWindows().find((item) => !item.isDestroyed());
         if (!win) throw new Error("No Electron window available for agents:event injection");
@@ -151,7 +151,7 @@ async function emitBoundAgentEvents(page: Page, app: ElectronApplication, events
                 event,
             });
         }
-    }, { agent, events });
+    }, { agent, events }));
 }
 
 async function selectAgentMode(page: Page, mode: "Build" | "Plan" | "Compose"): Promise<void> {

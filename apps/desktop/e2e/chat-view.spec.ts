@@ -11,7 +11,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { electronMainEntry } from '../playwright.config';
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl } from "./support/electron-windows";
+import { getWindowByUrl, retryMainAction } from "./support/electron-windows";
 
 async function getMainWindow(app: ElectronApplication): Promise<Page> {
     await getWindowByUrl(app, "index.html");
@@ -280,10 +280,10 @@ test.describe('Pi Desktop — ChatView 接通 + ChatInput controls', () => {
         });
         page = await getMainWindow(app);
         await page.waitForLoadState('domcontentloaded');
-        await app.evaluate(({ ipcMain }, selectedFile) => {
+        await retryMainAction(() => app.evaluate(({ ipcMain }, selectedFile) => {
             ipcMain.removeHandler('files:select');
             ipcMain.handle('files:select', async () => [selectedFile]);
-        }, pickedFile);
+        }, pickedFile));
 
         await page.evaluate(async ({ workspacePath }) => {
             window.localStorage.setItem('pi-desktop:firstLaunchDone', 'true');

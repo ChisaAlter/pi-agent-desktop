@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { I18nProvider } from "../../../i18n";
 import { AboutTab } from "./AboutTab";
 import { useUpdaterStore } from "../../../stores/updater-store";
@@ -33,6 +33,7 @@ describe("AboutTab updater card", () => {
         Object.assign(window, {
             piAPI: {
                 openPath: vi.fn(async () => ""),
+                diagnosticsExport: vi.fn(async () => ({ cancelled: false, path: "C:/tmp/pi-diagnostics.json" })),
             },
         });
     });
@@ -99,5 +100,18 @@ describe("AboutTab updater card", () => {
         );
 
         expect(screen.getByText("GitHub Releases 404")).toBeTruthy();
+    });
+
+    it("exports a redacted diagnostic report from the About page", async () => {
+        render(
+            <I18nProvider>
+                <AboutTab />
+            </I18nProvider>,
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "导出诊断报告" }));
+
+        await waitFor(() => expect(window.piAPI.diagnosticsExport).toHaveBeenCalledTimes(1));
+        expect((await screen.findByRole("status")).textContent).toContain("C:/tmp/pi-diagnostics.json");
     });
 });

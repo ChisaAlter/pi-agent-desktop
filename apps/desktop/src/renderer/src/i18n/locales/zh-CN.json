@@ -1031,6 +1031,14 @@
       "version": "版本: {{version}}",
       "description": "Pi 桌面是一款 Windows 桌面应用程序，为 Pi Agent 提供图形化界面，方便与 Pi CLI 交互。",
       "stack": "基于 Electron + React + TypeScript 构建。",
+      "diagnostics": {
+        "heading": "诊断报告",
+        "description": "导出脱敏的版本、运行环境、数据库健康状态和最近日志。报告不包含会话正文、工作区路径或 API Key。",
+        "export": "导出诊断报告",
+        "exporting": "正在导出...",
+        "exported": "诊断报告已保存到 {{path}}",
+        "failed": "导出失败: {{message}}"
+      },
       "unknownVersion": "未知",
       "updater": {
         "heading": "应用更新",

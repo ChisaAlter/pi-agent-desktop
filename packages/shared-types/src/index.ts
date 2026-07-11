@@ -967,6 +967,10 @@ export interface AppUpdaterProgress {
     total: number;
 }
 
+export interface DiagnosticExportResult {
+    cancelled: boolean;
+    path?: string;
+}
 export interface AppUpdaterState {
     phase: AppUpdaterPhase;
     currentVersion: string;
@@ -1223,6 +1227,7 @@ export interface PiAPI {
     updaterDownload(): Promise<AppUpdaterState | IpcError>;
     updaterInstall(): Promise<AppUpdaterState | IpcError>;
     onUpdaterStateChanged(cb: (state: AppUpdaterState) => void): Unsubscribe;
+    diagnosticsExport(): Promise<DiagnosticExportResult | IpcError>;
 
     // Approval flow (M1)
     respondApproval(requestId: string, approved: boolean): void;

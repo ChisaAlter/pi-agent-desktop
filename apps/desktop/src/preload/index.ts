@@ -72,6 +72,7 @@ import type {
     GoalVerdict,
     GoalEvaluationEvent,
     SettingsWindowTab,
+    DiagnosticExportResult,
 } from "@shared";
 
 // 内部 helper: 把 ipcRenderer.on 的 (_event, payload) 签名转成 (payload)
@@ -110,6 +111,8 @@ const piAPI: PiAPI = {
     updaterDownload: () => ipcRenderer.invoke("updater:download") as Promise<AppUpdaterState | IpcError>,
     updaterInstall: () => ipcRenderer.invoke("updater:install") as Promise<AppUpdaterState | IpcError>,
     onUpdaterStateChanged: (cb) => subscribe<AppUpdaterState>("updater:state-changed", cb),
+    diagnosticsExport: () =>
+        ipcRenderer.invoke("diagnostics:export") as Promise<DiagnosticExportResult | IpcError>,
 
     // M1: Approval flow
     respondApproval: (requestId, approved) => {

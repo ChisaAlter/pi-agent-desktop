@@ -3,7 +3,7 @@ import { electronMainEntry } from "../playwright.config";
 import { existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
-import { getWindowByUrl } from "./support/electron-windows";
+import { getWindowByUrl, retryMainAction } from "./support/electron-windows";
 
 const ACCEPTANCE_DIR = join(__dirname, "..", "..", "..", "docs", "compose", "acceptance");
 const SESSION_ID = "deep-use-session";
@@ -48,7 +48,7 @@ async function openSettingsWindow(app: ElectronApplication, page: Page): Promise
 }
 
 async function installAcceptanceStubs(app: ElectronApplication, blankParentDir: string): Promise<void> {
-    await app.evaluate(({ ipcMain }, payload) => {
+    await retryMainAction(() => app.evaluate(({ ipcMain }, payload) => {
         const target = globalThis as typeof globalThis & {
             __deepUseAgentPromptCalls?: Array<{ agentId: string; message: string }>;
         };
@@ -62,7 +62,7 @@ async function installAcceptanceStubs(app: ElectronApplication, blankParentDir: 
 
         ipcMain.removeHandler("workspace:select-directory");
         ipcMain.handle("workspace:select-directory", async () => payload.blankParentDir);
-    }, { blankParentDir });
+    }, { blankParentDir }));
 }
 
 async function openSession(page: Page, title: string): Promise<void> {
