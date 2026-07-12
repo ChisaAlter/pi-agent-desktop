@@ -23,8 +23,6 @@ extraResources:
 win:
   executableName: "Pi Desktop"
   icon: build/icon.ico
-  signtoolOptions:
-    publisherName: "Pi Desktop Contributors"
   target:
     - target: nsis
       arch: x64
@@ -60,8 +58,7 @@ electronDownload:
   cache: "${env.ELECTRON_CACHE}"
 
 # 自动更新源: GitHub Releases. electron-updater 据此拉取 latest.yml.
-# 只有在 release workflow 已验证签名 secrets 并用 PI_DESKTOP_ENABLE_AUTO_UPDATE=1
-# 重新构建 main bundle 时, 应用内更新入口才会启用.
+# Release workflow 使用 PI_DESKTOP_ENABLE_AUTO_UPDATE=1 重新构建 main bundle，应用内更新入口才会启用。
 publish:
   provider: github
   owner: ChisaAlter
