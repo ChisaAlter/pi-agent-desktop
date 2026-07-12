@@ -31,8 +31,10 @@ export function redactLogValue(value: unknown, seen = new WeakSet<object>(), dep
 }
 
 export function configureProductionLogging(logger: typeof log): void {
-    logger.transports.file.maxSize = 10 * 1024 * 1024;
-    if (hookInstalled) return;
+    if (logger.transports?.file) {
+        logger.transports.file.maxSize = 10 * 1024 * 1024;
+    }
+    if (hookInstalled || !Array.isArray(logger.hooks)) return;
     logger.hooks.push((message) => ({
         ...message,
         data: message.data.map((item) => redactLogValue(item)),

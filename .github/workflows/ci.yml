@@ -8,12 +8,8 @@ on:
 
 jobs:
   quality:
-    name: Quality (Typecheck + Lint + Test) - ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    name: Quality (Typecheck + Lint + Test)
+    runs-on: windows-latest
     timeout-minutes: 15
 
     steps:
@@ -64,12 +60,8 @@ jobs:
         run: pnpm -r test
 
   build:
-    name: Build - ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    name: Build
+    runs-on: windows-latest
     timeout-minutes: 15
 
     steps:
@@ -119,7 +111,7 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-build-${{ matrix.os }}
+          name: desktop-build-windows
           path: apps/desktop/out/
           retention-days: 7
 
