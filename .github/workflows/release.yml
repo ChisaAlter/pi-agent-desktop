@@ -49,12 +49,6 @@ jobs:
           Set-Location C:\p
           pnpm install --frozen-lockfile
 
-      - name: Rebuild native modules
-        shell: pwsh
-        run: |
-          Set-Location C:\p
-          pnpm --filter @pi-desktop/desktop exec electron-rebuild -f -w node-pty,sharp
-
       - name: Typecheck
         shell: pwsh
         run: |
