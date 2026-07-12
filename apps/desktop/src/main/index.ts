@@ -69,6 +69,11 @@ import { resolveStoredToolPermissions } from './services/permission/runtime-poli
 import { resolveNativeSessionPath } from './services/pi-session/session-path';
 import type { PiAgentConfig } from './types';
 
+const e2eLocale = process.env.PI_DESKTOP_E2E_LOCALE;
+if (e2eLocale) {
+  app.commandLine?.appendSwitch('lang', e2eLocale);
+}
+
 let mainWindow: BrowserWindow | null = null;
 let desktopOverlayWindowManager: DesktopOverlayWindowManager | null = null;
 let mainWindowLifecycle: MainWindowLifecycleController | null = null;
