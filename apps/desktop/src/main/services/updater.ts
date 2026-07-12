@@ -108,6 +108,10 @@ function normalizeErrorMessage(error: unknown): string {
         return "连接 GitHub Releases 失败，请检查网络连接后重试。";
     }
 
+    if (/ERR_UPDATER_INVALID_SIGNATURE|not signed by the application owner|root certificate which is not trusted/i.test(raw)) {
+        return "更新包的代码签名无法通过 Windows 信任校验。请暂勿安装，并从 GitHub Releases 获取受信任签名的版本。";
+    }
+
     if (!compact) {
         return "检查更新失败，请稍后重试。";
     }

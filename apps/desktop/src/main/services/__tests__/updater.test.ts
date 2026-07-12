@@ -134,6 +134,20 @@ describe("AppUpdaterService", () => {
         expect(quitAndInstallMock).toHaveBeenCalledTimes(1);
     });
 
+    it("explains untrusted update signatures without exposing certificate internals", () => {
+        const service = setupAutoUpdater({ autoUpdateEnabled: true, scheduleChecks: false });
+
+        emit(
+            "error",
+            new Error("ERR_UPDATER_INVALID_SIGNATURE: A certificate chain processed, but terminated in a root certificate which is not trusted by the trust provider"),
+        );
+
+        expect(service.getState()).toMatchObject({
+            phase: "error",
+            error: "更新包的代码签名无法通过 Windows 信任校验。请暂勿安装，并从 GitHub Releases 获取受信任签名的版本。",
+        });
+    });
+
     it("normalizes noisy GitHub 404 errors before exposing them to the renderer", async () => {
         const service = setupAutoUpdater({ autoUpdateEnabled: true, scheduleChecks: false });
 

@@ -148,6 +148,26 @@ jobs:
             }
           }
 
+      - name: Verify trusted Windows code signature
+        shell: pwsh
+        run: |
+          Set-Location C:\p
+          $installer = Get-ChildItem 'apps\desktop\dist\Pi-Desktop-*-setup.exe' |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if (-not $installer) {
+            throw "Cannot locate packaged installer for signature verification."
+          }
+
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
+          if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+            throw "Installer signature is not trusted by Windows: status=$($signature.Status), message=$($signature.StatusMessage)"
+          }
+          if ($signature.SignerCertificate.Subject -notlike '*CN=Pi Desktop Contributors*') {
+            throw "Unexpected installer signer: $($signature.SignerCertificate.Subject)"
+          }
+          Write-Host "Trusted installer signature verified: $($signature.SignerCertificate.Subject)"
+
       - name: Publish GitHub release assets
         shell: pwsh
         env:
