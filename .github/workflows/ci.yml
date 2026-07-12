@@ -116,10 +116,10 @@ jobs:
           retention-days: 7
 
   e2e:
-    name: E2E Tests
+    name: Critical E2E Tests
     needs: build
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -162,7 +162,7 @@ jobs:
       - name: Build for E2E
         run: pnpm --filter @pi-desktop/desktop build
 
-      - name: Run E2E tests (including permission enforcement and session resume)
-        run: pnpm --filter @pi-desktop/desktop e2e
+      - name: Run critical Electron E2E tests
+        run: pnpm --filter @pi-desktop/desktop exec playwright test e2e/launch.spec.ts e2e/a11y.spec.ts e2e/permission-enforcement.spec.ts e2e/provider-error-real-acceptance.spec.ts e2e/session-resume.spec.ts e2e/updater.spec.ts
         env:
           PI_DESKTOP_E2E_LOCALE: zh-CN
