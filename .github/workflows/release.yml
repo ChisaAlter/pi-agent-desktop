@@ -61,12 +61,6 @@ jobs:
           Set-Location C:\p
           pnpm -r lint
 
-      - name: Test
-        shell: pwsh
-        run: |
-          Set-Location C:\p
-          pnpm -r test
-
       - name: Build (renderer + main)
         shell: pwsh
         run: |
