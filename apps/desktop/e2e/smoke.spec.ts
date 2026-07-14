@@ -47,6 +47,16 @@ async function expandRightRailIfNeeded(page: Page): Promise<void> {
     }
 }
 
+async function closeSettingsWindow(settingsWindow: Page): Promise<void> {
+    const closed = settingsWindow.waitForEvent('close');
+    await settingsWindow.evaluate(() => {
+        const closeButton = Array.from(document.querySelectorAll<HTMLButtonElement>('button'))
+            .find((button) => button.getAttribute('aria-label') === '关闭窗口');
+        closeButton?.click();
+    });
+    await closed;
+}
+
 test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
     let app: ElectronApplication;
     let page: Page;
@@ -111,9 +121,7 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         await settingsWindow.waitForLoadState('domcontentloaded');
         await expect(settingsWindow.getByRole('tablist', { name: '设置分类' })).toBeVisible({ timeout: 5000 });
 
-        const settingsClosed = settingsWindow.waitForEvent('close');
-        await settingsWindow.getByRole('button', { name: '关闭窗口' }).click();
-        await settingsClosed;
+        await closeSettingsWindow(settingsWindow);
         await page.bringToFront();
 
         await page.locator('button[data-mmcode-section="new-task"]').click();
@@ -205,9 +213,7 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         await tablist.getByRole('tab', { name: '关于' }).click();
         await expect(tablist.getByRole('tab', { name: '关于' })).toHaveAttribute('aria-selected', 'true');
 
-        const settingsClosed = settingsWindow.waitForEvent('close');
-        await settingsWindow.getByRole('button', { name: '关闭窗口' }).click();
-        await settingsClosed;
+        await closeSettingsWindow(settingsWindow);
     });
 
     test('5. CommandPalette 接通 — Ctrl+K 快捷键 + 历史 / Sessions 路由', async () => {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   handlers,
@@ -88,6 +88,10 @@ describe("setupSettingsWindowIpc", () => {
     setupSettingsWindowIpc();
   });
 
+  afterEach(() => {
+    windowListeners.get("closed")?.();
+  });
+
   it("buffers the initial tab until the settings renderer reports ready", async () => {
     const openWindow = handlers.get("settings:open-window");
     expect(openWindow).toBeTruthy();
@@ -97,5 +101,14 @@ describe("setupSettingsWindowIpc", () => {
     const rendererReady = handlers.get("settings:renderer-ready");
     expect(rendererReady).toBeTruthy();
     expect(rendererReady?.({ sender: webContents })).toBe("model");
+  });
+
+  it("uses an opaque settings window to avoid the Windows transparent renderer penalty", async () => {
+    const openWindow = handlers.get("settings:open-window");
+    await openWindow?.({}, "general");
+
+    expect(BrowserWindowMock).toHaveBeenCalledWith(expect.objectContaining({
+      transparent: false,
+    }));
   });
 });

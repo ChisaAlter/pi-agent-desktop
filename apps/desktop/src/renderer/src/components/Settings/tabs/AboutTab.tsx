@@ -102,7 +102,7 @@ function UpdaterActionRow(): React.JSX.Element {
                     </div>
                     <div className="h-2 overflow-hidden rounded-full bg-[var(--mm-bg-main)]">
                         <div
-                            className="h-full rounded-full bg-[var(--mm-accent-blue)] transition-all duration-300"
+                            className="h-full rounded-full bg-[var(--mm-accent-blue)] transition-[width] duration-[var(--motion-panel)]"
                             style={{ width: `${Math.max(0, Math.min(100, state.progress.percent))}%` }}
                         />
                     </div>

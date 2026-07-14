@@ -20,7 +20,7 @@ function UsageBar({ label, value, total, color }: { label: string; value: number
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-[var(--mm-bg-hover)]">
         <div
-          className="h-full rounded-full transition-all duration-300"
+          className="h-full rounded-full transition-[width,background-color] duration-[var(--motion-panel)]"
           style={{ width: `${Math.min(100, percentage)}%`, backgroundColor: color }}
         />
       </div>

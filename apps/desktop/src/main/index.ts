@@ -67,6 +67,7 @@ import { buildDiagnosticReport } from './services/diagnostics';
 import { attachCrashDiagnostics, attachRendererCrashDiagnostics } from './services/crash-diagnostics';
 import { resolveStoredToolPermissions } from './services/permission/runtime-policy';
 import { resolveNativeSessionPath } from './services/pi-session/session-path';
+import { registerSingleInstance } from './services/single-instance';
 import type { PiAgentConfig } from './types';
 
 const e2eLocale = process.env.PI_DESKTOP_E2E_LOCALE;
@@ -82,6 +83,27 @@ let piDriver: PiDriver | null = null;
 
 const MAIN_WINDOW_WIDTH = 896;
 const MAIN_WINDOW_HEIGHT = 756;
+let restoreRequestedBeforeReady = false;
+
+function restoreExistingMainWindow(): void {
+  if (mainWindowLifecycle) {
+    mainWindowLifecycle.restoreMainWindow();
+    return;
+  }
+
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    restoreRequestedBeforeReady = true;
+    return;
+  }
+
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
+  }
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+const isPrimaryInstance = registerSingleInstance(app, restoreExistingMainWindow);
 
 type PiDesktopTestGlobals = typeof globalThis & {
   __PI_DESKTOP_TEST_AGENT_REGISTRY__?: AgentRuntimeRegistry;
@@ -850,6 +872,8 @@ function cleanupAllServices(): void {
 
 // App lifecycle
 app.whenReady().then(() => {
+  if (!isPrimaryInstance) return;
+
   // audit round 3, Task 3.3: localfile:// now needs the active workspace path
   // so it can enforce a workspace boundary. We resolve it lazily on every
   // request (not captured at startup) so workspace switches take effect
@@ -894,6 +918,10 @@ app.whenReady().then(() => {
   });
   if (mainWindow) {
     mainWindowLifecycle.attachMainWindow(mainWindow);
+  }
+  if (restoreRequestedBeforeReady) {
+    restoreRequestedBeforeReady = false;
+    mainWindowLifecycle.restoreMainWindow();
   }
   try {
     const trayIconResolution = resolveTrayIconPath({

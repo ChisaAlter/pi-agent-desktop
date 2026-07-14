@@ -160,4 +160,21 @@ describe("SettingsContent", () => {
         fireEvent.change(searchInput, { target: { value: "" } });
         expect(await screen.findByText("常用")).toBeTruthy();
     });
+
+    it("updates settings selection immediately and keys the active panel motion wrapper", () => {
+        render(
+            <I18nProvider>
+                <SettingsContent />
+            </I18nProvider>,
+        );
+
+        expect(screen.getByTestId("settings-active-panel").getAttribute("data-settings-active-tab")).toBe("general");
+
+        fireEvent.click(screen.getByRole("tab", { name: "模型" }));
+
+        const activePanel = screen.getByTestId("settings-active-panel");
+        expect(activePanel.getAttribute("data-settings-active-tab")).toBe("model");
+        expect(activePanel.className).toContain("settings-tab-panel-motion");
+        expect(screen.getByRole("tab", { name: "模型" }).getAttribute("aria-selected")).toBe("true");
+    });
 });

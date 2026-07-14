@@ -24,7 +24,7 @@
 //
 // 不持有路由状态: 父级通过 currentSection/onSectionChange 控制激活。
 
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useSessionStore, type Session } from "../../stores/session-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { useI18n } from "../../i18n";
@@ -85,9 +85,9 @@ interface GroupModeSwitchProps {
 
 function GroupModeSwitch({ mode, onChange, t }: GroupModeSwitchProps): React.JSX.Element {
     const buttonClass = (active: boolean): string =>
-        `h-8 min-w-0 flex-1 rounded-lg px-3 text-[12px] font-medium transition-[background-color,color,box-shadow] focus:outline-none ${
+        `relative z-10 h-8 min-w-0 flex-1 rounded-lg px-3 text-[12px] font-medium transition-[color,transform] duration-[var(--motion-panel)] focus:outline-none active:scale-[0.96] motion-reduce:transition-none ${
             active
-                ? "bg-[var(--mm-bg-panel)] text-[var(--mm-text-primary)] shadow-[0_6px_16px_rgba(15,23,42,0.08)]"
+                ? "text-[var(--mm-text-primary)] shadow-[0_0_0_rgba(0,0,0,0)]"
                 : "bg-transparent text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
         }`;
 
@@ -100,8 +100,14 @@ function GroupModeSwitch({ mode, onChange, t }: GroupModeSwitchProps): React.JSX
                 role="group"
                 aria-label={t("sidebar.groupModeAria")}
                 data-mmcode-group-switch="soft-segmented"
-                className="flex items-center gap-1 rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] p-1 shadow-[0_10px_26px_rgba(15,23,42,0.05)]"
+                className="relative grid grid-cols-2 items-center gap-1 rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] p-1 shadow-[0_10px_26px_rgba(15,23,42,0.05)]"
             >
+                <span
+                    aria-hidden="true"
+                    className={`absolute bottom-1 top-1 w-[calc(50%-6px)] rounded-lg bg-[var(--mm-bg-panel)] shadow-[0_6px_16px_rgba(15,23,42,0.08)] transition-transform duration-[var(--motion-panel)] ease-[var(--motion-ease)] motion-reduce:transition-none ${
+                        mode === "date" ? "translate-x-1" : "translate-x-[calc(100%+8px)]"
+                    }`}
+                />
                 <button
                     type="button"
                     aria-label={t("sidebar.groupByDate")}
@@ -123,6 +129,26 @@ function GroupModeSwitch({ mode, onChange, t }: GroupModeSwitchProps): React.JSX
                     <span className="truncate">{t("sidebar.groupByWorkspaceShort")}</span>
                 </button>
             </div>
+        </div>
+    );
+}
+
+function AnimatedGroupList({ mode, children }: { mode: "date" | "workspace"; children: React.ReactNode }): React.JSX.Element {
+    const [entered, setEntered] = useState(false);
+
+    useEffect(() => {
+        setEntered(false);
+        const frame = window.requestAnimationFrame(() => setEntered(true));
+        return () => window.cancelAnimationFrame(frame);
+    }, [mode]);
+
+    return (
+        <div
+            className={`transition-[opacity,transform] duration-[var(--motion-panel)] ease-[var(--motion-ease)] motion-reduce:transition-none ${
+                entered ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0"
+            }`}
+        >
+            {children}
         </div>
     );
 }
@@ -276,29 +302,31 @@ export function MiniMaxCodeSidebar({
                         t={t}
                     />
                     <GroupModeSwitch mode={groupMode} onChange={onGroupModeChange} t={t} />
-                    {groupMode === "date" ? (
-                        <DateGroupedSessionList
-                            currentSessionId={currentSessionId}
-                            onSelectSession={(id) => onSectionChange(`session:${id}`)}
-                            onArchiveSession={archiveSession}
-                            onToggleFavorite={toggleFavorite}
-                            onRenameSession={renameSession}
-                            onDeleteSession={deleteSession}
-                            hideEmptyState={hasPinnedSessions}
-                        />
-                    ) : (
-                        <ProjectGroupedSessionList
-                            currentWorkspaceId={currentWorkspaceId ?? null}
-                            currentSessionId={currentSessionId}
-                            onSelectSession={(id) => onSectionChange(`session:${id}`)}
-                            onArchiveSession={archiveSession}
-                            onToggleFavorite={toggleFavorite}
-                            onRenameSession={renameSession}
-                            onDeleteSession={deleteSession}
-                            onSwitchWorkspace={(wid) => useWorkspaceStore.getState().setCurrentWorkspace(wid)}
-                            hideEmptyState={hasPinnedSessions}
-                        />
-                    )}
+                    <AnimatedGroupList mode={groupMode}>
+                        {groupMode === "date" ? (
+                            <DateGroupedSessionList
+                                currentSessionId={currentSessionId}
+                                onSelectSession={(id) => onSectionChange(`session:${id}`)}
+                                onArchiveSession={archiveSession}
+                                onToggleFavorite={toggleFavorite}
+                                onRenameSession={renameSession}
+                                onDeleteSession={deleteSession}
+                                hideEmptyState={hasPinnedSessions}
+                            />
+                        ) : (
+                            <ProjectGroupedSessionList
+                                currentWorkspaceId={currentWorkspaceId ?? null}
+                                currentSessionId={currentSessionId}
+                                onSelectSession={(id) => onSectionChange(`session:${id}`)}
+                                onArchiveSession={archiveSession}
+                                onToggleFavorite={toggleFavorite}
+                                onRenameSession={renameSession}
+                                onDeleteSession={deleteSession}
+                                onSwitchWorkspace={(wid) => useWorkspaceStore.getState().setCurrentWorkspace(wid)}
+                                hideEmptyState={hasPinnedSessions}
+                            />
+                        )}
+                    </AnimatedGroupList>
                 </div>
             </nav>
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
+import { useMotionPresenceList } from "../../hooks/useMotionPresence";
 import { usePermissionStore } from "../../stores/permission-store";
 import { Popover } from "../common/Popover";
 
@@ -38,6 +39,7 @@ export function PermissionRequestStack({
       : pending.filter((request) => isVisibleInScope(request, workspaceId, agentId, displayMode))),
     [agentId, displayMode, pending, workspaceId],
   );
+  const presentPending = useMotionPresenceList(visiblePending, (request) => request.requestId, 120);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -49,7 +51,7 @@ export function PermissionRequestStack({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [visiblePending, respond]);
 
-  if (visiblePending.length === 0) return null;
+  if (presentPending.length === 0) return null;
 
   const overlayClassName = displayMode === "viewport"
     ? "pointer-events-none fixed bottom-4 right-4 z-[90] w-full max-w-sm"
@@ -74,10 +76,11 @@ export function PermissionRequestStack({
       style={overlayStyle}
     >
       <div className="pointer-events-auto space-y-2">
-        {visiblePending.map((request, index) => (
+        {presentPending.map(({ item: request, state }, index) => (
           <div
             key={request.requestId}
-            className="rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-4 py-3 shadow-[0_18px_48px_rgba(15,23,42,0.16)]"
+            className="pi-motion-permission rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-4 py-3 shadow-[0_18px_48px_rgba(15,23,42,0.16)]"
+            data-motion-state={state}
             role="alertdialog"
             aria-label={`权限请求 ${index + 1}`}
           >

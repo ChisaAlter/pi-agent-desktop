@@ -7,6 +7,7 @@ import { useTranslateIpcError } from '../../../i18n';
 import { isIpcError, type ManagedModelEntry, type ManagedModelsResult, type ManagedModelSaveInput } from '@shared';
 import { SectionTitle, SettingsCard, SettingsPage } from '../_shared';
 import { useFocusTrap } from '../../../hooks/useFocusTrap';
+import { useMotionPresence } from '../../../hooks/useMotionPresence';
 
 type ModelFormState = {
     originalProviderId?: string;
@@ -39,12 +40,9 @@ const emptyModelForm: ModelFormState = {
 };
 
 const providerApiOptions = [
-    { value: 'openai-completions', label: 'OpenAI Chat Completions' },
-    { value: 'openai-responses', label: 'OpenAI Responses' },
-    { value: 'openai-codex-responses', label: 'OpenAI Codex Responses' },
-    { value: 'anthropic-messages', label: 'Anthropic Messages' },
-    { value: 'google-generative-ai', label: 'Google Generative AI' },
-    { value: 'mistral-conversations', label: 'Mistral Conversations' },
+    { value: 'openai-completions', label: 'OpenAI 兼容' },
+    { value: 'openai-codex-responses', label: 'Codex' },
+    { value: 'anthropic-messages', label: 'Claude Code' },
 ];
 
 function apiFromApiType(apiType?: string): string | undefined {
@@ -95,6 +93,14 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
     const deleteConfirmButtonRef = useRef<HTMLButtonElement>(null);
     const dialogRef = useRef<HTMLDivElement>(null);
     const deleteDialogRef = useRef<HTMLDivElement>(null);
+    const retainedFormRef = useRef<ModelFormState | null>(form);
+    const retainedDeleteModelRef = useRef<ManagedModelEntry | null>(pendingDeleteModel);
+    if (form) retainedFormRef.current = form;
+    if (pendingDeleteModel) retainedDeleteModelRef.current = pendingDeleteModel;
+    const formPresence = useMotionPresence(form !== null, 180);
+    const deletePresence = useMotionPresence(pendingDeleteModel !== null, 180);
+    const displayedForm = form ?? retainedFormRef.current;
+    const displayedDeleteModel = pendingDeleteModel ?? retainedDeleteModelRef.current;
     useFocusTrap(dialogRef, form !== null);
     useFocusTrap(deleteDialogRef, pendingDeleteModel !== null);
     const modelRows = result
@@ -213,11 +219,12 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
         await onPiConfigChanged();
     };
 
-    const formDialog = form ? (
-        <div className="settings-subdialog-backdrop fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 p-6">
+    const formDialog = formPresence.rendered && displayedForm ? (
+        <div className="settings-subdialog-backdrop fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 p-6" data-motion-state={formPresence.state}>
             <div
                 ref={dialogRef}
                 className="settings-subdialog flex max-h-[calc(100vh-48px)] w-[min(680px,calc(100vw-48px))] flex-col overflow-hidden rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-2xl"
+                data-motion-state={formPresence.state}
                 role="dialog"
                 aria-modal="true"
                 aria-label="模型编辑"
@@ -226,18 +233,18 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                 }}
             >
                 <div className="flex shrink-0 items-center justify-between border-b border-[var(--mm-border)] px-5 py-4">
-                    <div className="text-sm font-semibold text-[var(--mm-text-primary)]">{form.originalModelId ? '编辑模型' : '新增模型'}</div>
+                    <div className="text-sm font-semibold text-[var(--mm-text-primary)]">{displayedForm.originalModelId ? '编辑模型' : '新增模型'}</div>
                     <button type="button" onClick={() => setForm(null)} className="settings-pressable rounded-md px-2 py-1 text-sm transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)]">关闭</button>
                 </div>
                 <div className="grid min-h-0 grid-cols-2 gap-4 overflow-y-auto p-5">
-                    <FormInput inputRef={providerIdInputRef} label="Provider ID" value={form.providerId} onChange={(providerId) => setForm({ ...form, providerId })} />
-                    <FormInput label="Provider 名称" value={form.providerName} onChange={(providerName) => setForm({ ...form, providerName })} />
-                    <FormInput className="col-span-2" label="Base URL" value={form.baseUrl} onChange={(baseUrl) => setForm({ ...form, baseUrl })} />
+                    <FormInput inputRef={providerIdInputRef} label="Provider ID" value={displayedForm.providerId} onChange={(providerId) => setForm({ ...displayedForm, providerId })} />
+                    <FormInput label="Provider 名称" value={displayedForm.providerName} onChange={(providerName) => setForm({ ...displayedForm, providerName })} />
+                    <FormInput className="col-span-2" label="Base URL" value={displayedForm.baseUrl} onChange={(baseUrl) => setForm({ ...displayedForm, baseUrl })} />
                     <label className="block text-xs font-medium text-[var(--mm-text-secondary)]">
                         API 类型
                         <select
-                            value={form.api}
-                            onChange={(event) => setForm({ ...form, api: event.target.value })}
+                            value={displayedForm.api}
+                            onChange={(event) => setForm({ ...displayedForm, api: event.target.value })}
                             className="mt-1 w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-primary)]"
                         >
                             {providerApiOptions.map((option) => (
@@ -245,17 +252,17 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                             ))}
                         </select>
                     </label>
-                    <FormInput label="API Key" value={form.apiKey} onChange={(apiKey) => setForm({ ...form, apiKey })} placeholder={form.originalModelId ? '留空表示不修改' : ''} />
-                    <FormInput label="模型 ID" value={form.modelId} onChange={(modelId) => setForm({ ...form, modelId })} />
-                    <FormInput label="模型名称" value={form.modelName} onChange={(modelName) => setForm({ ...form, modelName })} />
-                    <FormInput label="上下文窗口" value={form.contextWindow} onChange={(contextWindow) => setForm({ ...form, contextWindow })} />
-                    <FormInput label="最大输出 Token" value={form.maxTokens} onChange={(maxTokens) => setForm({ ...form, maxTokens })} />
+                    <FormInput label="API Key" value={displayedForm.apiKey} onChange={(apiKey) => setForm({ ...displayedForm, apiKey })} placeholder={displayedForm.originalModelId ? '留空表示不修改' : ''} />
+                    <FormInput label="模型 ID" value={displayedForm.modelId} onChange={(modelId) => setForm({ ...displayedForm, modelId })} />
+                    <FormInput label="模型名称" value={displayedForm.modelName} onChange={(modelName) => setForm({ ...displayedForm, modelName })} />
+                    <FormInput label="上下文窗口" value={displayedForm.contextWindow} onChange={(contextWindow) => setForm({ ...displayedForm, contextWindow })} />
+                    <FormInput label="最大输出 Token" value={displayedForm.maxTokens} onChange={(maxTokens) => setForm({ ...displayedForm, maxTokens })} />
                     <label className="flex items-center gap-2 text-sm text-[var(--mm-text-secondary)]">
-                        <input type="checkbox" checked={form.reasoning} onChange={(event) => setForm({ ...form, reasoning: event.target.checked })} />
+                        <input type="checkbox" checked={displayedForm.reasoning} onChange={(event) => setForm({ ...displayedForm, reasoning: event.target.checked })} />
                         推理模型
                     </label>
                     <label className="flex items-center gap-2 text-sm text-[var(--mm-text-secondary)]">
-                        <input type="checkbox" checked={form.setDefault} onChange={(event) => setForm({ ...form, setDefault: event.target.checked })} />
+                        <input type="checkbox" checked={displayedForm.setDefault} onChange={(event) => setForm({ ...displayedForm, setDefault: event.target.checked })} />
                         保存后设为默认
                     </label>
                 </div>
@@ -267,14 +274,15 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
         </div>
     ) : null;
 
-    const deleteDialog = pendingDeleteModel ? (
-        <div className="settings-subdialog-backdrop fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 p-6">
+    const deleteDialog = deletePresence.rendered && displayedDeleteModel ? (
+        <div className="settings-subdialog-backdrop fixed inset-0 z-[1000] flex items-center justify-center bg-black/30 p-6" data-motion-state={deletePresence.state}>
             <div
                 ref={deleteDialogRef}
                 role="dialog"
                 aria-modal="true"
                 aria-label="删除模型确认"
                 className="settings-subdialog flex max-h-[calc(100vh-48px)] w-[min(440px,calc(100vw-48px))] flex-col overflow-hidden rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-[0_24px_80px_rgba(0,0,0,0.22)]"
+                data-motion-state={deletePresence.state}
                 onKeyDown={(e) => {
                     if (e.key === 'Escape') setPendingDeleteModel(null);
                 }}
@@ -287,9 +295,9 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                 </div>
                 <div className="min-h-0 overflow-y-auto px-5 py-4">
                     <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2">
-                        <div className="truncate text-sm font-medium text-red-700">{pendingDeleteModel.modelName}</div>
+                        <div className="truncate text-sm font-medium text-red-700">{displayedDeleteModel.modelName}</div>
                         <div className="mt-1 truncate font-mono text-xs text-red-500">
-                            {pendingDeleteModel.providerId}/{pendingDeleteModel.modelId}
+                            {displayedDeleteModel.providerId}/{displayedDeleteModel.modelId}
                         </div>
                     </div>
                 </div>
@@ -304,7 +312,7 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                     <button
                         ref={deleteConfirmButtonRef}
                         type="button"
-                        onClick={() => void deleteModel(pendingDeleteModel)}
+                        onClick={() => void deleteModel(displayedDeleteModel)}
                         className="settings-pressable rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:bg-red-700"
                     >
                         确认删除
@@ -395,21 +403,21 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                                                 <span className="truncate">{apiLabel} / {contextLabel} / {keyLabel}</span>
                                             </div>
                                         </div>
-                                        <div className="flex w-[100px] shrink-0 flex-col items-end pt-0">
+                                        <div data-testid="managed-model-actions" className="flex w-[132px] shrink-0 flex-col items-end pt-0">
                                             <div className="flex items-center gap-[6px]">
                                                 <span className={`h-[5px] w-[5px] rounded-full ${model.hasApiKey ? 'bg-[#4fb866]' : 'bg-[var(--mm-text-tertiary)]'}`} aria-hidden />
                                                 <span className="min-w-[24px] text-[9px] text-[var(--mm-text-secondary)]">
                                                     {stateLabel}
                                                 </span>
                                             </div>
-                                            <div className="mt-[22px] flex items-center gap-[6px]">
-                                                <button type="button" onClick={() => void testModel(model)} disabled={testingKey === key} aria-label={`测试 ${model.modelName}`} className="settings-pressable rounded border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-1.5 py-1 text-[9px] text-[var(--mm-text-secondary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50">
+                                            <div className="mt-[22px] flex flex-nowrap items-center gap-[6px]">
+                                                <button type="button" onClick={() => void testModel(model)} disabled={testingKey === key} aria-label={`测试 ${model.modelName}`} className="settings-pressable shrink-0 whitespace-nowrap rounded border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-1.5 py-1 text-[9px] text-[var(--mm-text-secondary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50">
                                                     {testingKey === key ? '测试中' : '测试'}
                                                 </button>
-                                                <button type="button" onClick={() => setForm(modelToForm(model))} aria-label={`编辑 ${model.modelName}`} className="settings-pressable rounded border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-1.5 py-1 text-[9px] text-[var(--mm-text-secondary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50">
+                                                <button type="button" onClick={() => setForm(modelToForm(model))} aria-label={`编辑 ${model.modelName}`} className="settings-pressable shrink-0 whitespace-nowrap rounded border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-1.5 py-1 text-[9px] text-[var(--mm-text-secondary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50">
                                                     编辑
                                                 </button>
-                                                <button type="button" onClick={() => setPendingDeleteModel(model)} aria-label={`删除 ${model.modelName}`} className="settings-pressable rounded border border-transparent px-1 py-1 text-[9px] leading-none text-[var(--mm-text-tertiary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50">
+                                                <button type="button" onClick={() => setPendingDeleteModel(model)} aria-label={`删除 ${model.modelName}`} className="settings-pressable shrink-0 whitespace-nowrap rounded border border-transparent px-1 py-1 text-[9px] leading-none text-[var(--mm-text-tertiary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50">
                                                     删除
                                                 </button>
                                             </div>

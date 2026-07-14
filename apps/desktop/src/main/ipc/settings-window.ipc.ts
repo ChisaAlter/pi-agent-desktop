@@ -49,7 +49,7 @@ export function setupSettingsWindowIpc(getMainWindow?: () => BrowserWindow | nul
       modal: false,
       show: false,
       autoHideMenuBar: true,
-      transparent: process.platform === "win32",
+      transparent: false,
       backgroundColor: "#00000000",
       ...(process.platform === "darwin"
         ? { titleBarStyle: "hiddenInset" as const, frame: true }

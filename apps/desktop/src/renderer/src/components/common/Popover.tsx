@@ -10,6 +10,7 @@
 
 import React, { cloneElement, useCallback, useEffect, useRef, useState, isValidElement } from "react";
 import { createPortal } from "react-dom";
+import { useMotionPresence } from "../../hooks/useMotionPresence";
 
 export interface PopoverProps {
     /** 触发元素 — 必须是能接受 ref 的 React 元素(button/div) */
@@ -25,8 +26,8 @@ export interface PopoverProps {
 interface Position {
     top: number;
     left: number;
-    width: number;
-    viewport: { vh: number; vw: number; margin: number };
+    maxHeight: number;
+    viewportWidth: number;
 }
 
 export function Popover({
@@ -39,6 +40,7 @@ export function Popover({
     const [pos, setPos] = useState<Position | null>(null);
     const triggerRef = useRef<HTMLElement | null>(null);
     const contentRef = useRef<HTMLDivElement | null>(null);
+    const presence = useMotionPresence(open, 100);
 
     // 计算位置:trigger 下方,左/右对齐
     // v1.0.13:viewport 适配 — 优先下方,空间不够翻上方;content 自身 max-height 限
@@ -50,13 +52,19 @@ export function Popover({
         const vh = window.innerHeight;
         const vw = window.innerWidth;
         const margin = 8;
+        const gap = 8;
         // 优先用已渲染 content 的真实高度,未渲染时用 140 保守估算(3 个菜单项约 100px)
         const actualHeight = contentRef.current?.offsetHeight ?? 0;
         const estimatedHeight = actualHeight > 0 ? actualHeight : 140;
-        const preferBottom = rect.bottom + 4 + estimatedHeight + margin < vh;
-        const top = preferBottom ? rect.bottom + 4 : Math.max(margin, rect.top - 4 - estimatedHeight);
+        const spaceBelow = Math.max(0, vh - rect.bottom - gap - margin);
+        const spaceAbove = Math.max(0, rect.top - gap - margin);
+        const openBelow = spaceBelow >= estimatedHeight || spaceBelow >= spaceAbove;
+        const maxHeight = openBelow ? spaceBelow : spaceAbove;
+        const top = openBelow
+            ? rect.bottom + gap
+            : Math.max(margin, rect.top - gap - Math.min(estimatedHeight, maxHeight));
         const left = align === "end" ? rect.right : rect.left;
-        setPos({ top, left, width: rect.width, viewport: { vh, vw, margin } });
+        setPos({ top, left, maxHeight, viewportWidth: vw });
     }, [align]);
 
     // 点击 trigger 切换
@@ -140,14 +148,15 @@ export function Popover({
         <div
             ref={contentRef}
             role="menu"
-            className={`fixed z-[60] min-w-[180px] bg-[var(--mm-bg-sidebar)] border border-[var(--color-border)] rounded-lg shadow-lg py-1 overflow-y-auto ${contentClassName}`}
+            data-pi-popover-surface
+            data-motion-state={presence.state}
+            className={`pi-motion-popover fixed z-[60] min-w-[180px] overflow-y-auto rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-popover)] py-1 shadow-[0_14px_36px_rgba(20,20,18,0.14),0_2px_8px_rgba(20,20,18,0.06)] ${contentClassName}`}
             style={
                 pos
                     ? {
                           top: pos.top,
-                          // 高度限:不超出 viewport 上下边界
-                          maxHeight: pos.viewport.vh - pos.top - pos.viewport.margin,
-                          ...(align === "end" ? { right: pos.viewport.vw - pos.left } : { left: pos.left }),
+                          maxHeight: pos.maxHeight,
+                          ...(align === "end" ? { right: pos.viewportWidth - pos.left } : { left: pos.left }),
                       }
                     : { visibility: "hidden" }
             }
@@ -159,7 +168,7 @@ export function Popover({
     return (
         <>
             {triggerWithRef}
-            {open && typeof document !== "undefined" && createPortal(content, document.body)}
+            {presence.rendered && typeof document !== "undefined" && createPortal(content, document.body)}
         </>
     );
 }

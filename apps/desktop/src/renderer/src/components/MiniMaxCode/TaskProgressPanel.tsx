@@ -231,7 +231,7 @@ export function TaskProgressPanel({
                                                     className="mt-1.5 h-[2px] w-full overflow-hidden rounded-[1px] bg-[var(--mm-bg-hover)]"
                                                 >
                                                     <div
-                                                        className="h-full bg-[#1a1a1a] transition-all"
+                                                        className="h-full bg-[#1a1a1a] transition-[width] duration-[var(--motion-panel)]"
                                                         style={{ width: `${clamped}%` }}
                                                     />
                                                 </div>

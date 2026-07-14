@@ -98,6 +98,21 @@ function getAssistantMessageEvent(event: PiEvent): AssistantMessageEvent | null 
     return null;
 }
 
+function summarizeToolCallEvent(event: AssistantMessageEvent): Record<string, unknown> {
+    const record = event as Record<string, unknown>;
+    const summary: Record<string, unknown> = { type: event.type };
+    if (typeof record.contentIndex === "number") {
+        summary.contentIndex = record.contentIndex;
+    }
+    summary.hasToolCall = Boolean(record.toolCall);
+    const partial = record.partial;
+    if (partial && typeof partial === "object" && !Array.isArray(partial)) {
+        const content = (partial as Record<string, unknown>).content;
+        if (Array.isArray(content)) summary.partialContentCount = content.length;
+    }
+    return summary;
+}
+
 function asNumber(value: unknown): number | undefined {
     return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
@@ -663,7 +678,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     const toolCallId = readToolCallId(assistantEvent);
                     const toolName = readToolCallName(assistantEvent);
                     if (!toolCallId || !toolName) {
-                        logger.warn("[usePiStream] skip toolcall_start without canonical id/name", assistantEvent);
+                        logger.warn("[usePiStream] skip toolcall_start without canonical id/name", summarizeToolCallEvent(assistantEvent));
                         break;
                     }
                     const input = readToolCallInput(assistantEvent);
@@ -717,7 +732,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 } else if (assistantEvent.type === "toolcall_end") {
                     const toolCallId = readToolCallId(assistantEvent);
                     if (!toolCallId) {
-                        logger.warn("[usePiStream] skip toolcall_end without canonical id", assistantEvent);
+                        logger.warn("[usePiStream] skip toolcall_end without canonical id", summarizeToolCallEvent(assistantEvent));
                         break;
                     }
                     const output = readToolCallOutput(assistantEvent);

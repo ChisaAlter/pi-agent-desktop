@@ -33,6 +33,7 @@ function useEventCallback<T extends (...args: any[]) => any>(fn: T): T {
 }
 
 interface ChatViewProps {
+    active?: boolean;
     /** v1.0.14: 外部注入的预填文本(由 App.tsx 监听 'chatpanel:prefill' 事件传来,用于跨组件切到 chat 时把 prompt 灌进 ChatInput) */
     prefillText?: string | null;
     /** prefill 已被 ChatInput 消费后回调 */
@@ -259,6 +260,7 @@ function mergeAdjacentThinkingMessages(messages: Message[]): ChatMessage[] {
 }
 
 export function ChatView({
+  active = true,
   prefillText,
   onPrefillConsumed,
   focusMessageId,
@@ -478,7 +480,7 @@ export function ChatView({
     : isConnected
       ? t("chatView.status.connected")
       : t("chatView.status.disconnected");
-  const shouldUseGlobalComposer = !currentSession?.readOnly;
+  const shouldUseGlobalComposer = active && !currentSession?.readOnly;
 
   useEffect(() => {
     animatedTokenValueRef.current = animatedTotalTokens;
@@ -750,7 +752,7 @@ export function ChatView({
           ) : null}
         </div>
         <div className="pi-motion-status-pill flex h-7 shrink-0 items-center justify-end gap-3 text-[var(--mm-text-secondary)]" data-motion-state={isStreaming ? "running" : isConnected ? "connected" : "disconnected"}>
-          <span className={`inline-flex h-7 shrink-0 items-center font-mono tabular-nums leading-none text-[var(--mm-text-primary)] ${isStreaming ? "animate-pulse" : ""}`}>{usageSummary}</span>
+          <span className="inline-flex h-7 shrink-0 items-center font-mono tabular-nums leading-none text-[var(--mm-text-primary)]">{usageSummary}</span>
           <span className="inline-flex items-center gap-2">
             <span className={`h-1.5 w-1.5 rounded-full ${isStreaming ? "pi-motion-running-dot bg-[var(--color-success)]" : isConnected ? "bg-[var(--color-success)]" : "bg-[var(--color-error)]"}`} aria-hidden="true" />
             <span key={connectionLabel} className="pi-motion-status-text inline-flex h-7 items-center leading-none" role="status" aria-label={connectionLabel}>{connectionLabel}</span>
@@ -905,7 +907,7 @@ export function ChatView({
                 onClick={() => {
                   scrollRegionRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
                 }}
-                className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] shadow-sm text-[var(--mm-text-secondary)] hover:text-[var(--mm-text-primary)] transition-all"
+                className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] shadow-sm text-[var(--mm-text-secondary)] hover:text-[var(--mm-text-primary)] transition-[background-color,border-color,color,opacity,box-shadow,transform]"
                 aria-label={t("chatView.scrollTop")}
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

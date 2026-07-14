@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PermissionRequestStack } from "./PermissionRequestStack";
 import { usePermissionStore } from "../../stores/permission-store";
 
@@ -31,9 +31,14 @@ describe("PermissionRequestStack", () => {
     });
   });
 
-  it("renders pending permission and allows the current session", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("responds immediately and retains the permission card for its exit transition", () => {
+    vi.useFakeTimers();
     render(<PermissionRequestStack workspaceId="ws1" />);
-    expect(screen.getByRole("alertdialog", { name: "权限请求 1" })).toBeTruthy();
+    const dialog = screen.getByRole("alertdialog", { name: "权限请求 1" });
 
     fireEvent.click(screen.getByRole("button", { name: "仅本对话" }));
 
@@ -42,6 +47,10 @@ describe("PermissionRequestStack", () => {
       decision: "allow_session",
     });
     expect(usePermissionStore.getState().pending).toHaveLength(0);
+    expect(dialog.getAttribute("data-motion-state")).toBe("exit");
+
+    act(() => vi.advanceTimersByTime(120));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
   it("denies the first pending request with Escape", () => {

@@ -299,6 +299,30 @@ describe("ConfigManager", () => {
         );
     });
 
+    it("adds the Anthropic v1 path when the provider base URL omits it", async () => {
+        const fetchMock = vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({}),
+        }));
+        vi.stubGlobal("fetch", fetchMock);
+
+        const result = await manager.testProviderConnection(
+            "https://api.minimaxi.com/anthropic",
+            "sk-minimax-test",
+            "MiniMax-M3",
+            undefined,
+            undefined,
+            { providerId: "minimax", api: "anthropic-messages" },
+        );
+
+        expect(result.ok).toBe(true);
+        expect(fetchMock).toHaveBeenCalledWith(
+            "https://api.minimaxi.com/anthropic/v1/messages",
+            expect.any(Object),
+        );
+    });
+
     it("describes images with the configured vision provider and model", async () => {
         const fetchMock = vi.fn(async () => ({
             ok: true,

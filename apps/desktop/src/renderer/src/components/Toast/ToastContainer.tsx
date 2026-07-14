@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { useMotionPresenceList, type MotionPresenceState } from "../../hooks/useMotionPresence";
 import { useToastStore } from "../../stores/toast-store";
 
 const toneStyles: Record<string, string> = {
@@ -18,11 +19,12 @@ const toneIcons: Record<string, string> = {
 export function ToastContainer(): React.ReactElement {
   const toasts = useToastStore((s) => s.toasts);
   const removeToast = useToastStore((s) => s.removeToast);
+  const presentToasts = useMotionPresenceList(toasts, (toast) => toast.id, 120);
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
-      {toasts.map((toast) => (
-        <ToastItem key={toast.id} toast={toast} onDismiss={() => removeToast(toast.id)} />
+      {presentToasts.map(({ item: toast, state }) => (
+        <ToastItem key={toast.id} toast={toast} motionState={state} onDismiss={() => removeToast(toast.id)} />
       ))}
     </div>
   );
@@ -30,9 +32,11 @@ export function ToastContainer(): React.ReactElement {
 
 function ToastItem({
   toast,
+  motionState,
   onDismiss,
 }: {
   toast: ReturnType<typeof useToastStore.getState>["toasts"][number];
+  motionState: MotionPresenceState;
   onDismiss: () => void;
 }): React.ReactElement {
   useEffect(() => {
@@ -43,14 +47,17 @@ function ToastItem({
 
   return (
     <div
-      className={`flex items-start gap-2 px-4 py-3 rounded-lg border shadow-lg text-sm ${toneStyles[toast.tone] ?? toneStyles.info}`}
+      role="status"
+      aria-live="polite"
+      data-motion-state={motionState}
+      className={`pi-motion-toast flex items-start gap-2 px-4 py-3 rounded-lg border shadow-lg text-sm ${toneStyles[toast.tone] ?? toneStyles.info}`}
     >
       <span className="flex-shrink-0 text-base leading-none">{toneIcons[toast.tone] ?? toneIcons.info}</span>
       <p className="flex-1 whitespace-pre-wrap break-words">{toast.message}</p>
       <div className="flex items-center gap-1 flex-shrink-0">
         {toast.retryAction && (
           <button
-            onClick={() => { toast.retryAction?.(); onDismiss(); }}
+            onClick={() => { void toast.retryAction?.(); onDismiss(); }}
             className="px-2 py-0.5 text-xs font-medium rounded hover:opacity-80 underline"
           >
             重试
@@ -58,6 +65,7 @@ function ToastItem({
         )}
         <button
           onClick={onDismiss}
+          aria-label="关闭通知"
           className="px-1 py-0.5 text-xs rounded hover:opacity-80 opacity-60"
         >
           ✕

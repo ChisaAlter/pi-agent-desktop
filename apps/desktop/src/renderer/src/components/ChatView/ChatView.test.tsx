@@ -680,6 +680,19 @@ describe("ChatView", () => {
     expect(screen.queryByTestId("external-model-selector")).toBeNull();
   });
 
+  it("keeps the stream surface mounted without rendering the composer while inactive", () => {
+    mockedStreamError = null;
+
+    render(
+      <I18nProvider>
+        <ChatView active={false} />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByTestId("chat-view-root")).toBeTruthy();
+    expect(screen.queryByTestId("chat-input-shell")).toBeNull();
+  });
+
   it("shows compact token usage in the top strip without collapsing small values to zero", () => {
     mockedStreamError = null;
     useSessionStore.setState((state) => ({

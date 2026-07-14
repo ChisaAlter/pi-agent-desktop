@@ -58,7 +58,7 @@ function ProgressBar({ progress }: { progress: PiInstallProgress | null }): Reac
       </div>
       <div className="w-full h-1.5 bg-[#ececea] rounded-full overflow-hidden">
         <div
-          className={`h-full ${color} rounded-full transition-all duration-300 ${!isDone && !isError ? 'animate-pulse' : ''}`}
+          className={`h-full ${color} rounded-full transition-[width,background-color] duration-[var(--motion-panel)]`}
           style={{ width: progress.percent != null ? `${progress.percent}%` : isDone ? '100%' : '60%' }}
         />
       </div>

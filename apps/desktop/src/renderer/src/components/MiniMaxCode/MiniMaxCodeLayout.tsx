@@ -18,7 +18,7 @@ import { MiniMaxCodeTitleBar } from "./MiniMaxCodeTitleBar";
 const DEFAULT_LEFT_WIDTH = 190;
 const MIN_LEFT_WIDTH = 160;
 const MAX_LEFT_WIDTH = 320;
-const RIGHT_FLOATING_MOTION_MS = 300;
+const RIGHT_FLOATING_MOTION_MS = 180;
 
 function clampLeftWidth(width: number): number {
     return Math.max(MIN_LEFT_WIDTH, Math.min(MAX_LEFT_WIDTH, Math.round(width)));
@@ -252,6 +252,7 @@ export function MiniMaxCodeLayout({
                         style={{ width: leftCollapsed ? 0 : resolvedLeftWidth, opacity: leftCollapsed ? 0 : 1 }}
                         data-mmcode-region="left"
                         data-collapsed={leftCollapsed ? "true" : "false"}
+                        data-resizing={isResizingLeft ? "true" : "false"}
                         aria-hidden={leftCollapsed}
                         aria-label="primary navigation"
                     >

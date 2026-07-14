@@ -80,6 +80,21 @@ export function SettingsContent({ onClose }: SettingsContentProps = {}): React.J
         return () => window.cancelAnimationFrame(frame);
     }, [activeTab, pendingAnchor]);
 
+    const activeTabContent = (() => {
+        switch (activeTab) {
+            case 'appearance': return <AppearanceTab />;
+            case 'model': return <ManagedModelsPanel onPiConfigChanged={loadPiConfig} />;
+            case 'piagent': return <PiAgentTab />;
+            case 'permissions': return <PermissionsTab />;
+            case 'usage': return <UsageTab />;
+            case 'longHorizon': return <LongHorizonTab />;
+            case 'general': return <GeneralTab />;
+            case 'config': return <PiConfigEditor />;
+            case 'shortcuts': return <ShortcutsSettings />;
+            case 'about': return <AboutTab />;
+        }
+    })();
+
     return (
         <>
             <SettingsNav
@@ -119,16 +134,14 @@ export function SettingsContent({ onClose }: SettingsContentProps = {}): React.J
                 )}
 
                 <div ref={scrollRegionRef} className="min-h-0 flex-1 overflow-y-auto" data-testid="settings-scroll-region">
-                    {activeTab === 'appearance' && <AppearanceTab />}
-                    {activeTab === 'model' && <ManagedModelsPanel onPiConfigChanged={loadPiConfig} />}
-                    {activeTab === 'piagent' && <PiAgentTab />}
-                    {activeTab === 'permissions' && <PermissionsTab />}
-                    {activeTab === 'usage' && <UsageTab />}
-                    {activeTab === 'longHorizon' && <LongHorizonTab />}
-                    {activeTab === 'general' && <GeneralTab />}
-                    {activeTab === 'config' && <PiConfigEditor />}
-                    {activeTab === 'shortcuts' && <ShortcutsSettings />}
-                    {activeTab === 'about' && <AboutTab />}
+                    <div
+                        key={activeTab}
+                        className="settings-tab-panel-motion min-h-full"
+                        data-testid="settings-active-panel"
+                        data-settings-active-tab={activeTab}
+                    >
+                        {activeTabContent}
+                    </div>
                 </div>
 
                 {onClose && (

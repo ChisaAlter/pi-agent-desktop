@@ -131,6 +131,26 @@ describe("MiniMaxCode window chrome interactivity", () => {
         expect(onLeftWidthChange).toHaveBeenCalledWith(320);
     });
 
+    it("disables rail interpolation while resizing", () => {
+        render(
+            <MiniMaxCodeLayout
+                leftSlot={<div>对话</div>}
+                centerSlot={<div>主内容</div>}
+                rightSlot={null}
+                leftWidth={190}
+                onLeftWidthChange={vi.fn()}
+            />,
+        );
+
+        const rail = screen.getByLabelText("primary navigation");
+        const handle = screen.getByRole("separator", { name: "调整左侧栏宽度" });
+        fireEvent.pointerDown(handle, { clientX: 190, pointerId: 1 });
+        expect(rail.getAttribute("data-resizing")).toBe("true");
+
+        fireEvent.pointerUp(window, { pointerId: 1 });
+        expect(rail.getAttribute("data-resizing")).toBe("false");
+    });
+
     it("renders the right rail as a floating workspace panel instead of a layout column", () => {
         render(
             <MiniMaxCodeLayout

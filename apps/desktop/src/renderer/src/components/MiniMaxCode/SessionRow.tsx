@@ -69,6 +69,7 @@ export interface SessionRowProps {
   onRename: (title: string) => void;
   onDelete: () => void;
   t: (key: string, opts?: Record<string, unknown>) => string;
+  baseIndent?: number;
 }
 
 export function SessionRow({
@@ -82,6 +83,7 @@ export function SessionRow({
   onRename,
   onDelete,
   t,
+  baseIndent = 8,
 }: SessionRowProps): React.JSX.Element {
   const [confirming, setConfirming] = useState(false);
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
@@ -159,7 +161,7 @@ export function SessionRow({
 
   if (renaming) {
     return (
-      <div className="group relative flex items-center" style={{ paddingLeft: 8 + depth * 14 }}>
+      <div className="group relative flex items-center" style={{ paddingLeft: baseIndent + depth * 14 }}>
         <input
           autoFocus
           value={draftTitle}
@@ -182,8 +184,8 @@ export function SessionRow({
 
   return (
     <div
-      className="group relative flex items-center"
-      style={{ paddingLeft: 8 + depth * 14 }}
+      className="pi-motion-list-item-enter group relative flex items-center"
+      style={{ paddingLeft: baseIndent + depth * 14 }}
       onContextMenu={(event) => {
         event.preventDefault();
         setContextMenuOpen(true);

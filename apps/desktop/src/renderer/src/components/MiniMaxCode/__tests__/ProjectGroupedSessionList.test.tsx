@@ -33,6 +33,36 @@ beforeEach(() => {
 });
 
 describe("ProjectGroupedSessionList", () => {
+  it("renders a folder workspace row and toggles its sessions", () => {
+    useSessionStore.setState({
+      sessions: [makeSession({ id: "s1", title: "缩进会话", workspaceId: "w1" })],
+    });
+
+    renderWithI18n(
+      <ProjectGroupedSessionList
+        currentWorkspaceId="w1"
+        currentSessionId={null}
+        onSelectSession={() => undefined}
+        onArchiveSession={() => undefined}
+        onDeleteSession={() => undefined}
+        onSwitchWorkspace={() => undefined}
+      />,
+    );
+
+    const workspaceButton = screen.getByTitle("C:/repo");
+    expect(workspaceButton.querySelector("svg")).toBeTruthy();
+    expect(workspaceButton.getAttribute("aria-expanded")).toBe("true");
+    expect(workspaceButton.className).not.toContain("bg-[var(--mm-bg-selected)]");
+    expect(workspaceButton.className).not.toContain("hover:bg-");
+    expect(workspaceButton.className).not.toContain("shadow-");
+    expect(screen.getByRole("button", { name: "缩进会话" }).parentElement?.style.paddingLeft).toBe("24px");
+
+    fireEvent.click(workspaceButton);
+
+    expect(workspaceButton.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("button", { name: "缩进会话" })).toBeNull();
+  });
+
   it("keeps workspace group order stable when switching workspaces", () => {
     useWorkspaceStore.setState({
       workspaces: [

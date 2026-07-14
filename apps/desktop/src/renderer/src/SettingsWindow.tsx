@@ -63,12 +63,9 @@ function SettingsShell(): React.JSX.Element {
         return () => { if (typeof unsub === 'function') unsub(); };
     }, []);
 
-    const handleCloseWindow = React.useCallback(async () => {
-        try {
-            await flushPendingSettingsWrite();
-        } finally {
-            await window.piAPI?.windowClose?.();
-        }
+    const handleCloseWindow = React.useCallback(() => {
+        void flushPendingSettingsWrite().catch(() => undefined);
+        void window.piAPI?.windowClose?.();
     }, [flushPendingSettingsWrite]);
 
     return (
@@ -77,9 +74,11 @@ function SettingsShell(): React.JSX.Element {
             style={{ "--mm-height-titlebar": "34px" } as React.CSSProperties}
         >
             <div
-                className={`flex min-h-0 flex-1 flex-col overflow-hidden border border-[var(--mm-border)] bg-[var(--mm-bg-main)] ${
+                className={`settings-window-enter flex min-h-0 flex-1 flex-col overflow-hidden border border-[var(--mm-border)] bg-[var(--mm-bg-main)] ${
                     isMaximized ? 'rounded-none shadow-none' : 'rounded-[var(--mm-window-radius)] shadow-[var(--mm-window-shadow)]'
                 }`}
+                data-testid="settings-window-frame"
+                data-settings-window-motion="enter"
                 data-mmcode-layout="window-frame"
                 data-mm-window-kind="settings"
             >

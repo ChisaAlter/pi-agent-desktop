@@ -20,6 +20,35 @@ function asNonEmptyString(value: unknown): string | null {
     return trimmed.length > 0 ? trimmed : null;
 }
 
+function toolCallRecords(value: unknown): Record<string, unknown>[] {
+    const record = asRecord(value);
+    if (!record) return [];
+
+    const records = [record];
+    const completedToolCall = asRecord(record.toolCall);
+    if (completedToolCall) records.push(completedToolCall);
+
+    const partial = asRecord(record.partial);
+    const content = partial?.content;
+    const contentIndex = record.contentIndex;
+    if (Array.isArray(content) && typeof contentIndex === "number" && Number.isInteger(contentIndex)) {
+        const partialToolCall = asRecord(content[contentIndex]);
+        if (partialToolCall) records.push(partialToolCall);
+    }
+
+    return records;
+}
+
+function readStringField(records: Record<string, unknown>[], fields: string[]): string | null {
+    for (const record of records) {
+        for (const field of fields) {
+            const value = asNonEmptyString(record[field]);
+            if (value) return value;
+        }
+    }
+    return null;
+}
+
 function reviveDate(value: unknown): Date | undefined {
     if (value == null) return undefined;
     if (value instanceof Date) return new Date(value);
@@ -58,34 +87,37 @@ function normalizeStatus(value: unknown, fallback: ToolCall["status"]): ToolCall
 }
 
 export function readToolCallId(value: unknown): string | null {
-    const record = asRecord(value);
-    if (!record) return null;
-    return asNonEmptyString(record.toolCallId) ?? asNonEmptyString(record.id);
+    return readStringField(toolCallRecords(value), ["toolCallId", "id"]);
 }
 
 export function readToolCallName(value: unknown): string | null {
-    const record = asRecord(value);
-    if (!record) return null;
-    return asNonEmptyString(record.toolName) ?? asNonEmptyString(record.name);
+    return readStringField(toolCallRecords(value), ["toolName", "name"]);
 }
 
 export function readToolCallInput(value: unknown): Record<string, unknown> {
-    const record = asRecord(value);
-    if (!record) return {};
-    return asRecord(record.args ?? record.input) ?? {};
+    for (const record of toolCallRecords(value)) {
+        for (const field of ["args", "input", "arguments"]) {
+            const input = asRecord(record[field]);
+            if (input) return input;
+        }
+    }
+    return {};
 }
 
 export function readToolCallOutput(value: unknown): unknown {
-    const record = asRecord(value);
-    if (!record) return undefined;
-    return record.output ?? record.result;
+    for (const record of toolCallRecords(value)) {
+        if (record.output !== undefined) return record.output;
+        if (record.result !== undefined) return record.result;
+    }
+    return undefined;
 }
 
 export function readToolCallIsError(value: unknown): boolean {
-    const record = asRecord(value);
-    if (!record) return false;
-    if (typeof record.isError === "boolean") return record.isError;
-    return normalizeStatus(record.status, "pending") === "error";
+    for (const record of toolCallRecords(value)) {
+        if (typeof record.isError === "boolean") return record.isError;
+        if (record.status !== undefined) return normalizeStatus(record.status, "pending") === "error";
+    }
+    return false;
 }
 
 export function normalizeToolCallForRuntime(
@@ -105,7 +137,7 @@ export function normalizeToolCallForRuntime(
         status: normalizeStatus(record.status, fallbackStatus),
     };
 
-    const input = record.input ?? record.args;
+    const input = record.input ?? record.args ?? record.arguments;
     if (input !== undefined) {
         toolCall.input = input;
     }
@@ -115,7 +147,7 @@ export function normalizeToolCallForRuntime(
         toolCall.output = output;
     }
 
-    const args = asRecord(record.args);
+    const args = asRecord(record.args ?? record.arguments);
     if (args) {
         toolCall.args = args;
     }

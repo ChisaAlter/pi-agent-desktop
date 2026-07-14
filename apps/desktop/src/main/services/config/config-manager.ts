@@ -498,7 +498,7 @@ export class ConfigManager {
         const base = this.trimBaseUrl(baseUrl);
 
         if (vision.api === "anthropic-messages") {
-            const response = await fetch(`${base}/messages`, {
+            const response = await fetch(this.anthropicMessagesUrl(base), {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
@@ -611,7 +611,9 @@ export class ConfigManager {
         const base = this.trimBaseUrl(baseUrl);
         const isResponses = resolvedApiType === "openai-responses" || resolvedApiType === "openai-codex-responses";
         const isAnthropic = resolvedApiType === "anthropic-messages";
-        const url = `${base}/${isResponses ? "responses" : isAnthropic ? "messages" : "chat/completions"}`;
+        const url = isAnthropic
+            ? this.anthropicMessagesUrl(base)
+            : `${base}/${isResponses ? "responses" : "chat/completions"}`;
         const body = isResponses
             ? { model, input: "ping", max_output_tokens: 1 }
             : { model, messages: [{ role: "user", content: "ping" }], max_tokens: 1 };
@@ -948,5 +950,9 @@ export class ConfigManager {
 
     private trimBaseUrl(baseUrl: string): string {
         return baseUrl.replace(/\/+$/, "");
+    }
+
+    private anthropicMessagesUrl(baseUrl: string): string {
+        return `${baseUrl}${/\/v1$/i.test(baseUrl) ? "" : "/v1"}/messages`;
     }
 }

@@ -22,8 +22,15 @@
   --radius-panel: 8px;
   --radius-card: 6px;
   
-  --transition-fast: 80ms;
-  --transition-normal: 160ms;
+  --motion-instant: 70ms;
+  --motion-fast: 100ms;
+  --motion-panel: 160ms;
+  --motion-overlay: 180ms;
+  --motion-emphasized: 220ms;
+  --motion-ease: cubic-bezier(0.2, 0, 0, 1);
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-fast: var(--motion-fast);
+  --transition-normal: var(--motion-panel);
 }
 
 /* ===== Design Tokens (扩展) =====
@@ -98,6 +105,9 @@
   --mm-bg-composer: #f9f9fb;      /* 底部全局输入区 */
   --mm-bg-control: #fbfbfb;       /* 输入区内嵌控制胶囊 */
   --mm-bg-input: #ffffff;         /* 可编辑输入控件 */
+  --mm-bg-popover: #ffffff;       /* 浮层菜单: 中性白, 与侧栏色解耦 */
+  --mm-bg-popover-hover: #f2f2f2;
+  --mm-bg-popover-selected: #e9e9e9;
   --mm-bg-hover: #e8f0fa;         /* 通用 hover 浅灰蓝 */
   --mm-bg-selected: #c1d2ec;      /* 左侧选中态: 参考图浅蓝 */
   --mm-bg-active: #1a1a1a;        /* 主操作激活态:黑底(配白字) */
@@ -280,10 +290,27 @@ html, body {
 }
 
 /* 交互反馈只作用于可操作元素，避免整棵 DOM 同时参与重绘。 */
-:is(button, a, input, textarea, select, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [role="switch"]) {
-  transition-property: background-color, border-color, color, opacity, box-shadow, transform;
-  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
-  transition-duration: var(--transition-fast);
+:is(button, a, [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="option"], [role="switch"]),
+.pi-motion-control,
+.settings-pressable {
+  transition-property: background-color, border-color, color, opacity, box-shadow, transform, scale;
+  transition-timing-function: var(--motion-ease);
+  transition-duration: var(--motion-fast);
+}
+
+:is(input, textarea, select) {
+  transition-property: background-color, border-color, color, opacity, box-shadow;
+  transition-timing-function: var(--motion-ease);
+  transition-duration: var(--motion-fast);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :is(button, a, [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="option"], [role="switch"]):active:not(:disabled):not([aria-disabled="true"]),
+  .pi-motion-control:active:not(:disabled):not([aria-disabled="true"]),
+  .settings-pressable:active:not(:disabled):not([aria-disabled="true"]) {
+    scale: 0.96;
+    transition-duration: var(--motion-instant);
+  }
 }
 
 /* 焦点样式 - 非输入控件保留高对比度 :focus-visible */
@@ -351,6 +378,9 @@ select:not([data-allow-blue-focus]):focus {
   --mm-bg-composer: #20242a;
   --mm-bg-control: #171b20;
   --mm-bg-input: #171b20;
+  --mm-bg-popover: #242424;
+  --mm-bg-popover-hover: #303030;
+  --mm-bg-popover-selected: #383838;
   --mm-bg-hover: #2a2a2a;
   --mm-bg-selected: #303030;
   --mm-bg-active: #ffffff;
@@ -869,11 +899,11 @@ code {
 
 /* 动画类 */
 .animate-slide-in {
-  animation: slide-in-right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: slide-in-right var(--motion-overlay) var(--motion-ease);
 }
 
 .animate-slide-out {
-  animation: slide-out-right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: slide-out-right var(--motion-overlay) var(--motion-ease);
 }
 
 .animate-pulse-subtle {
@@ -881,7 +911,7 @@ code {
 }
 
 .animate-fade-in {
-  animation: fade-in 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: fade-in var(--motion-panel) var(--motion-ease);
 }
 
 /* 关键帧 */
@@ -940,6 +970,82 @@ code {
   transition: opacity 140ms cubic-bezier(0.2, 0, 0, 1);
 }
 
+.pi-motion-panel-stack {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  flex: 1 1 0%;
+  overflow: hidden;
+}
+
+.pi-motion-panel-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  flex-direction: column;
+  contain: layout paint style;
+  content-visibility: hidden;
+  opacity: 0;
+  transform: translateY(-3px) scale(0.995);
+  pointer-events: none;
+  transition:
+    opacity var(--motion-fast) var(--motion-ease),
+    transform var(--motion-panel) var(--motion-ease);
+}
+
+.pi-motion-panel-layer[data-active="true"] {
+  z-index: 1;
+  content-visibility: visible;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.pi-motion-panel-layer[data-active="true"][data-enter-on-mount="true"] {
+  animation: pi-motion-panel-first-visit var(--motion-panel) var(--motion-ease);
+}
+
+.pi-motion-popover,
+.pi-motion-toast,
+.pi-motion-permission,
+.settings-subdialog,
+.settings-subdialog-backdrop {
+  transition-property: opacity, transform;
+  transition-timing-function: var(--motion-ease);
+}
+
+.pi-motion-popover[data-motion-state="enter"] {
+  animation: pi-motion-popover-in 140ms var(--motion-ease-out);
+}
+
+.pi-motion-popover[data-motion-state="exit"] {
+  opacity: 0;
+  transform: translateY(2px) scale(0.99);
+  pointer-events: none;
+  transition-duration: 100ms;
+}
+
+.pi-motion-toast[data-motion-state="enter"],
+.pi-motion-permission[data-motion-state="enter"] {
+  animation: pi-motion-notice-in var(--motion-overlay) var(--motion-ease-out);
+}
+
+.pi-motion-toast[data-motion-state="exit"],
+.pi-motion-permission[data-motion-state="exit"] {
+  opacity: 0;
+  transform: translateY(4px) scale(0.995);
+  pointer-events: none;
+  transition-duration: 120ms;
+}
+
+.pi-motion-list-item-enter {
+  animation: pi-motion-list-item-in var(--motion-panel) var(--motion-ease);
+}
+
 .pi-motion-rail {
   transition:
     width 160ms cubic-bezier(0.2, 0, 0, 1),
@@ -951,7 +1057,6 @@ code {
   transition:
     opacity 100ms cubic-bezier(0.2, 0, 0, 1),
     transform 160ms cubic-bezier(0.2, 0, 0, 1);
-  will-change: opacity, transform;
 }
 
 .pi-motion-rail[data-collapsed="true"] .pi-motion-rail-content {
@@ -964,12 +1069,15 @@ code {
   transform: translateX(0);
 }
 
+.pi-motion-rail[data-resizing="true"] {
+  transition: none;
+}
+
 .pi-motion-floating-rail {
   transition:
     opacity 120ms cubic-bezier(0.2, 0, 0, 1),
     transform 160ms cubic-bezier(0.2, 0, 0, 1),
     box-shadow 160ms cubic-bezier(0.2, 0, 0, 1);
-  will-change: opacity, transform;
 }
 
 .pi-motion-floating-rail[data-motion-state="enter"] {
@@ -985,7 +1093,6 @@ code {
 
 .pi-motion-message-enter {
   animation: pi-message-enter 220ms cubic-bezier(0.2, 0, 0, 1);
-  will-change: opacity, transform;
 }
 
 .pi-motion-thinking-shell {
@@ -994,18 +1101,15 @@ code {
 
 .pi-motion-thinking-content {
   animation: pi-thinking-content-in 180ms cubic-bezier(0.2, 0, 0, 1);
-  will-change: opacity, transform;
 }
 
 .pi-motion-running-strip {
-  animation: pi-running-strip-in 360ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: pi-running-strip-in var(--motion-emphasized) var(--motion-ease-out);
   transform-origin: bottom center;
-  will-change: opacity, transform, filter;
 }
 
 .pi-motion-running-card {
-  animation: pi-running-card-in 260ms cubic-bezier(0.2, 0, 0, 1);
-  will-change: opacity, transform;
+  animation: pi-running-card-in var(--motion-overlay) var(--motion-ease);
 }
 
 .pi-motion-status-pill {
@@ -1027,6 +1131,50 @@ code {
   from {
     opacity: 0;
     transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pi-motion-panel-first-visit {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pi-motion-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pi-motion-notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes pi-motion-list-item-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
   }
   to {
     opacity: 1;
@@ -1059,12 +1207,10 @@ code {
 @keyframes pi-running-strip-in {
   from {
     opacity: 0;
-    filter: blur(1px);
     transform: translateY(10px) scale(0.985);
   }
   to {
     opacity: 1;
-    filter: blur(0);
     transform: translateY(0) scale(1);
   }
 }
@@ -1103,8 +1249,12 @@ code {
 }
 
 /* 设置面板内容切换淡入淡出 */
-.settings-content-enter {
-  animation: settings-fade-in 80ms ease-out;
+.settings-window-enter {
+  animation: settings-window-in var(--motion-overlay) var(--motion-ease-out);
+}
+
+.settings-tab-panel-motion {
+  animation: settings-tab-motion-in var(--motion-panel) var(--motion-ease);
 }
 
 .settings-backdrop-enter {
@@ -1113,34 +1263,43 @@ code {
 
 .settings-shell-enter {
   animation: settings-shell-in 110ms cubic-bezier(0.2, 0, 0, 1);
-  will-change: transform, opacity;
-}
-
-.settings-tab-panel {
-  animation: settings-tab-panel-in 90ms cubic-bezier(0.2, 0, 0, 1);
-  will-change: transform, opacity;
 }
 
 .settings-subdialog-backdrop {
-  animation: settings-backdrop-in 80ms cubic-bezier(0.2, 0, 0, 1);
+  transition-duration: var(--motion-overlay);
 }
 
 .settings-subdialog {
-  animation: settings-subdialog-in 100ms cubic-bezier(0.2, 0, 0, 1);
-  will-change: transform, opacity;
+  transition-duration: var(--motion-overlay);
 }
 
-.settings-pressable {
-  will-change: transform;
+.settings-subdialog-backdrop[data-motion-state="enter"] {
+  animation: settings-backdrop-in var(--motion-overlay) var(--motion-ease);
 }
 
-.settings-pressable:active {
-  transform: scale(0.96);
+.settings-subdialog[data-motion-state="enter"] {
+  animation: settings-subdialog-in var(--motion-overlay) var(--motion-ease-out);
 }
 
-@keyframes settings-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+.settings-subdialog-backdrop[data-motion-state="exit"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.settings-subdialog[data-motion-state="exit"] {
+  opacity: 0;
+  transform: translateY(3px) scale(0.99);
+}
+
+@keyframes settings-window-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes settings-backdrop-in {
@@ -1159,10 +1318,10 @@ code {
   }
 }
 
-@keyframes settings-tab-panel-in {
+@keyframes settings-tab-motion-in {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -1183,6 +1342,11 @@ code {
 
 @media (prefers-reduced-motion: reduce) {
   .pi-motion-message-enter,
+  .pi-motion-panel-layer[data-active="true"][data-enter-on-mount="true"],
+  .pi-motion-popover[data-motion-state="enter"],
+  .pi-motion-toast[data-motion-state="enter"],
+  .pi-motion-permission[data-motion-state="enter"],
+  .pi-motion-list-item-enter,
   .pi-motion-thinking-shell,
   .pi-motion-thinking-content,
   .pi-motion-running-strip,
@@ -1190,40 +1354,47 @@ code {
   .pi-motion-status-text,
   .pi-motion-running-dot {
     animation: none;
-    will-change: auto;
   }
 
   .pi-motion-rail,
+  .pi-motion-panel-layer,
+  .pi-motion-popover,
+  .pi-motion-toast,
+  .pi-motion-permission,
   .pi-motion-rail-content,
   .pi-motion-floating-rail,
   .pi-motion-status-pill {
     transition-duration: 1ms;
-    will-change: auto;
   }
 
   .pi-motion-rail[data-collapsed="true"] .pi-motion-rail-content,
   .pi-motion-rail[data-collapsed="false"] .pi-motion-rail-content,
+  .pi-motion-panel-layer,
   .pi-motion-floating-rail[data-motion-state="enter"],
   .pi-motion-floating-rail[data-motion-state="exit"] {
     transform: none;
   }
 
   .settings-backdrop-enter,
+  .settings-window-enter,
+  .settings-tab-panel-motion,
   .settings-shell-enter,
-  .settings-tab-panel,
   .settings-subdialog-backdrop,
   .settings-subdialog {
     animation: none;
-    will-change: auto;
   }
 
-  .settings-pressable {
+  :is(button, a, [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="option"], [role="switch"]),
+  .pi-motion-control,
+  .settings-pressable,
+  :is(input, textarea, select) {
     transition-duration: 1ms !important;
-    will-change: auto;
   }
 
+  :is(button, a, [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="option"], [role="switch"]):active,
+  .pi-motion-control:active,
   .settings-pressable:active {
-    transform: none;
+    scale: none;
   }
 }
 
@@ -1241,6 +1412,9 @@ code {
   --mm-bg-composer: #20242a;
   --mm-bg-control: #171b20;
   --mm-bg-input: #171b20;
+  --mm-bg-popover: #22262c;
+  --mm-bg-popover-hover: #2c3137;
+  --mm-bg-popover-selected: #343a41;
   --mm-bg-hover: #2b3138;
   --mm-bg-selected: #28384c;
   --mm-bg-active: #8ab4ff;
@@ -1275,6 +1449,10 @@ code {
   --settings-chart-5: #c9dff4;
   background: var(--mm-bg-main) !important;
   border-color: var(--mm-border) !important;
+}
+
+[data-pi-popover-surface] {
+  --mm-bg-hover: var(--mm-bg-popover-hover);
 }
 
 [data-theme="dark"] [data-mmcode-region="titlebar"],

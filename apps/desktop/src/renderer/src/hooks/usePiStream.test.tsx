@@ -438,6 +438,96 @@ describe("usePiStream", () => {
         });
     });
 
+    it("reads canonical SDK tool calls without logging the full partial event", async () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        try {
+            await act(async () => {
+                render(<HookHost />);
+            });
+
+            await act(async () => {
+                emitPiEvent?.({ type: "agent_start" });
+                emitPiEvent?.({
+                    type: "message_update",
+                    assistantMessageEvent: {
+                        type: "toolcall_start",
+                        contentIndex: 1,
+                        partial: {
+                            content: [
+                                { type: "text", text: "准备读取" },
+                                {
+                                    type: "toolCall",
+                                    id: "tc_sdk",
+                                    name: "read",
+                                    arguments: { path: "README.md" },
+                                },
+                            ],
+                        },
+                    },
+                } as unknown as PiEvent);
+                emitPiEvent?.({
+                    type: "message_update",
+                    assistantMessageEvent: {
+                        type: "toolcall_end",
+                        contentIndex: 1,
+                        toolCall: {
+                            type: "toolCall",
+                            id: "tc_sdk",
+                            name: "read",
+                            arguments: { path: "README.md" },
+                        },
+                    },
+                } as unknown as PiEvent);
+            });
+
+            const toolCalls = useSessionStore.getState().sessions[0].messages[0].toolCalls ?? [];
+            expect(toolCalls).toHaveLength(1);
+            expect(toolCalls[0]).toMatchObject({
+                id: "tc_sdk",
+                name: "read",
+                input: { path: "README.md" },
+                status: "completed",
+            });
+            expect(warn.mock.calls.some(([message]) => String(message).includes("without canonical"))).toBe(false);
+        } finally {
+            warn.mockRestore();
+        }
+    });
+
+    it("logs only compact metadata for a genuinely malformed tool event", async () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+        try {
+            await act(async () => {
+                render(<HookHost />);
+            });
+
+            await act(async () => {
+                emitPiEvent?.({ type: "agent_start" });
+                emitPiEvent?.({
+                    type: "message_update",
+                    assistantMessageEvent: {
+                        type: "toolcall_start",
+                        contentIndex: 0,
+                        partial: {
+                            content: [{
+                                type: "toolCall",
+                                name: "read",
+                                arguments: { payload: "x".repeat(10_000) },
+                            }],
+                        },
+                    },
+                } as unknown as PiEvent);
+            });
+
+            const call = warn.mock.calls.find(([message]) => String(message).includes("without canonical"));
+            expect(call).toBeTruthy();
+            expect(call?.[1]).not.toHaveProperty("partial");
+            expect(JSON.stringify(call?.[1]).length).toBeLessThan(300);
+        } finally {
+            warn.mockRestore();
+        }
+    });
+
     it("syncs execution-only tool events into the assistant message", async () => {
         await act(async () => {
             render(<HookHost />);

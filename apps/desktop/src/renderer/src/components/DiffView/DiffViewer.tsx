@@ -38,7 +38,7 @@ function DiffLineRow({ line }: { line: DiffLine }): React.JSX.Element {
   };
 
   return (
-    <tr className={`${getLineBg()} hover:brightness-95 transition-all`}>
+    <tr className={`${getLineBg()} hover:brightness-95 transition-colors`}>
       {/* 旧文件行号 */}
       <td className="w-[50px] px-2 py-0 text-right select-none text-[var(--mm-text-tertiary)] text-xs border-r border-[var(--mm-border)] whitespace-nowrap"
           style={monoStyle}>

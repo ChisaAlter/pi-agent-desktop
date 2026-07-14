@@ -12,6 +12,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
+import { MotionPanelLayer } from "./components/common/MotionPanelLayer";
 // 2026-06-06 hotfix: 持久化失败顶部提示
 import { PersistenceBanner } from "./components/PersistenceBanner/PersistenceBanner";
 import { ToastContainer } from "./components/Toast/ToastContainer";
@@ -216,9 +217,19 @@ function AppShell(): React.ReactElement {
     const routeSectionRef = useRef<(section: string) => void>(() => undefined);
     const lastUpdaterToastRef = useRef<string | null>(null);
     const activePanel = panelForSection(activeSection);
+    const [visitedPanels, setVisitedPanels] = useState<ReadonlySet<MainPanel>>(() => new Set<MainPanel>(["chat"]));
     updaterSetupRef.current = setupUpdaterListeners;
     updaterCleanupRef.current = cleanupUpdaterListeners;
     updaterHydrateRef.current = hydrateUpdaterState;
+
+    useEffect(() => {
+        setVisitedPanels((current) => {
+            if (current.has(activePanel)) return current;
+            const next = new Set(current);
+            next.add(activePanel);
+            return next;
+        });
+    }, [activePanel]);
     const setLeftSidebarWidth = useCallback((width: number): void => {
         const next = clampLeftSidebarWidth(width);
         setLeftSidebarWidthState(next);
@@ -864,10 +875,11 @@ function AppShell(): React.ReactElement {
                     />
                 }
                 centerSlot={
-                    <>
-                        {activePanel === "chat" && (
+                    <div className="pi-motion-panel-stack">
+                        <MotionPanelLayer active={activePanel === "chat"} panelId="chat">
                             <ErrorBoundary fallback={panelFallback(t("app.panels.chat"))}>
                                 <ChatView
+                                    active={activePanel === "chat"}
                                     prefillText={chatPrefill}
                                     onPrefillConsumed={() => setChatPrefill(null)}
                                     focusMessageId={searchTarget?.sessionId === currentSessionId ? searchTarget.messageId : null}
@@ -876,37 +888,61 @@ function AppShell(): React.ReactElement {
                                     onToggleRightRail={handleToggleRightRail}
                                 />
                             </ErrorBoundary>
+                        </MotionPanelLayer>
+                        {(activePanel === "skills" || visitedPanels.has("skills")) && (
+                            <MotionPanelLayer
+                                active={activePanel === "skills"}
+                                panelId="skills"
+                                enterOnMount={activePanel === "skills" && !visitedPanels.has("skills")}
+                            >
+                                <ErrorBoundary fallback={panelFallback(t("app.panels.skills"))}>
+                                    <div className="flex min-h-0 flex-1 overflow-hidden">
+                                        <SkillsPanel />
+                                    </div>
+                                </ErrorBoundary>
+                            </MotionPanelLayer>
                         )}
-                        {activePanel === "skills" && (
-                            <ErrorBoundary fallback={panelFallback(t("app.panels.skills"))}>
-                                <div className="flex-1 overflow-hidden">
-                                    <SkillsPanel />
-                                </div>
-                            </ErrorBoundary>
+                        {(activePanel === "run" || visitedPanels.has("run")) && (
+                            <MotionPanelLayer
+                                active={activePanel === "run"}
+                                panelId="run"
+                                enterOnMount={activePanel === "run" && !visitedPanels.has("run")}
+                            >
+                                <ErrorBoundary fallback={panelFallback(t("app.panels.run"))}>
+                                    <RunPanel view={runView} onViewChange={setRunView} />
+                                </ErrorBoundary>
+                            </MotionPanelLayer>
                         )}
-                        {activePanel === "run" && (
-                            <ErrorBoundary fallback={panelFallback(t("app.panels.run"))}>
-                                <RunPanel view={runView} onViewChange={setRunView} />
-                            </ErrorBoundary>
+                        {(activePanel === "workbench" || visitedPanels.has("workbench")) && (
+                            <MotionPanelLayer
+                                active={activePanel === "workbench"}
+                                panelId="workbench"
+                                enterOnMount={activePanel === "workbench" && !visitedPanels.has("workbench")}
+                            >
+                                <ErrorBoundary fallback={panelFallback(t("app.panels.workbench"))}>
+                                    <WorkbenchPanel
+                                        workspacePath={currentWorkspace?.path}
+                                        workspaceId={currentWorkspace?.id}
+                                        view={workbenchView}
+                                        onViewChange={setWorkbenchView}
+                                        fileTarget={fileWorkspaceTarget}
+                                        terminalCommand={terminalCommandTarget}
+                                    />
+                                </ErrorBoundary>
+                            </MotionPanelLayer>
                         )}
-                        {activePanel === "workbench" && (
-                            <ErrorBoundary fallback={panelFallback(t("app.panels.workbench"))}>
-                                <WorkbenchPanel
-                                    workspacePath={currentWorkspace?.path}
-                                    workspaceId={currentWorkspace?.id}
-                                    view={workbenchView}
-                                    onViewChange={setWorkbenchView}
-                                    fileTarget={fileWorkspaceTarget}
-                                    terminalCommand={terminalCommandTarget}
-                                />
-                            </ErrorBoundary>
+                        {(activePanel === "history" || visitedPanels.has("history")) && (
+                            <MotionPanelLayer
+                                active={activePanel === "history"}
+                                panelId="history"
+                                enterOnMount={activePanel === "history" && !visitedPanels.has("history")}
+                            >
+                                <ErrorBoundary fallback={panelFallback(t("app.panels.history"))}>
+                                    <SessionCenter onOpenChat={() => setActiveSection("chat")} />
+                                </ErrorBoundary>
+                            </MotionPanelLayer>
                         )}
-                        {activePanel === "history" && (
-                            <ErrorBoundary fallback={panelFallback(t("app.panels.history"))}>
-                                <SessionCenter onOpenChat={() => setActiveSection("chat")} />
-                            </ErrorBoundary>
-                        )}
-                    </>
+                    </div>
                 }
                 rightSlot={
                     activePanel === "chat" ? (

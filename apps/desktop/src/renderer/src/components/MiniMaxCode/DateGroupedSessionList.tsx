@@ -3,6 +3,21 @@ import { useSessionStore, type Session } from "../../stores/session-store";
 import { useI18n } from "../../i18n";
 import { sessionActivityTime, sessionDepth } from "../../utils/session-grouping";
 import { SessionRow } from "./SessionRow";
+import { AnimatedCollapse } from "./AnimatedCollapse";
+
+function ChevronIcon({ expanded }: { expanded: boolean }): React.JSX.Element {
+  return (
+    <svg
+      className={`h-3.5 w-3.5 shrink-0 transition-transform duration-[var(--motion-panel)] ease-[var(--motion-ease)] motion-reduce:transition-none ${expanded ? "rotate-90" : "rotate-0"}`}
+      fill="none"
+      viewBox="0 0 16 16"
+      stroke="currentColor"
+      aria-hidden="true"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="m6 3.5 4 4.5-4 4.5" />
+    </svg>
+  );
+}
 
 export interface DateGroupedSessionListProps {
   currentSessionId: string | null;
@@ -126,30 +141,33 @@ export function DateGroupedSessionList({
               aria-expanded={expanded}
               className="flex h-8 w-full items-center gap-2 rounded-[var(--mm-radius-sm)] px-3 text-[12px] font-medium text-[var(--mm-text-primary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none"
             >
-              <span className="text-[10px] text-[var(--mm-text-tertiary)]" aria-hidden="true">
-                {expanded ? "▾" : "▸"}
+              <span className="text-[var(--mm-text-tertiary)]">
+                <ChevronIcon expanded={expanded} />
               </span>
               <span className="min-w-0 flex-1 truncate text-left">{label}</span>
               <span className="ml-auto shrink-0 rounded bg-[var(--mm-bg-hover)] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">
                 {groupSessions.length}
               </span>
             </button>
-            {expanded &&
-              groupSessions.map((session) => (
-                <SessionRow
-                  key={session.id}
-                  session={session}
-                  active={currentSessionId === session.id}
-                  depth={sessionDepth(session, byIdAll)}
-                  archived={false}
-                  onSelect={() => onSelectSession(session.id)}
-                  onArchive={(archived) => onArchiveSession(session.id, archived)}
-                  onToggleFavorite={() => onToggleFavorite(session.id)}
-                  onRename={(title) => onRenameSession(session.id, title)}
-                  onDelete={() => onDeleteSession(session.id)}
-                  t={t}
-                />
-              ))}
+            <AnimatedCollapse expanded={expanded}>
+              <div className="flex flex-col gap-0.5">
+                {groupSessions.map((session) => (
+                  <SessionRow
+                    key={session.id}
+                    session={session}
+                    active={currentSessionId === session.id}
+                    depth={sessionDepth(session, byIdAll)}
+                    archived={false}
+                    onSelect={() => onSelectSession(session.id)}
+                    onArchive={(archived) => onArchiveSession(session.id, archived)}
+                    onToggleFavorite={() => onToggleFavorite(session.id)}
+                    onRename={(title) => onRenameSession(session.id, title)}
+                    onDelete={() => onDeleteSession(session.id)}
+                    t={t}
+                  />
+                ))}
+              </div>
+            </AnimatedCollapse>
           </div>
         );
       })}
@@ -162,33 +180,36 @@ export function DateGroupedSessionList({
             aria-expanded={archivedExpanded}
             className="flex h-8 w-full items-center gap-2 rounded-[var(--mm-radius-sm)] px-3 text-[12px] font-medium text-[var(--mm-text-primary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none"
           >
-            <span className="text-[10px] text-[var(--mm-text-tertiary)]" aria-hidden="true">
-              {archivedExpanded ? "▾" : "▸"}
+            <span className="text-[var(--mm-text-tertiary)]">
+              <ChevronIcon expanded={archivedExpanded} />
             </span>
             <span className="min-w-0 flex-1 truncate text-left">{t("sidebar.sessions.archived")}</span>
             <span className="ml-auto shrink-0 rounded bg-[var(--mm-bg-hover)] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-tertiary)]">
               {archivedSessions.length}
             </span>
           </button>
-          {archivedExpanded &&
-            archivedSessions.map((session) => (
-              <SessionRow
-                key={session.id}
-                session={session}
-                active={false}
-                depth={0}
-                archived={true}
-                onSelect={() => {
-                  onArchiveSession(session.id, false);
-                  onSelectSession(session.id);
-                }}
-                onArchive={(archived) => onArchiveSession(session.id, archived)}
-                onToggleFavorite={() => onToggleFavorite(session.id)}
-                onRename={(title) => onRenameSession(session.id, title)}
-                onDelete={() => onDeleteSession(session.id)}
-                t={t}
-              />
-            ))}
+          <AnimatedCollapse expanded={archivedExpanded}>
+            <div className="flex flex-col gap-0.5">
+              {archivedSessions.map((session) => (
+                <SessionRow
+                  key={session.id}
+                  session={session}
+                  active={false}
+                  depth={0}
+                  archived={true}
+                  onSelect={() => {
+                    onArchiveSession(session.id, false);
+                    onSelectSession(session.id);
+                  }}
+                  onArchive={(archived) => onArchiveSession(session.id, archived)}
+                  onToggleFavorite={() => onToggleFavorite(session.id)}
+                  onRename={(title) => onRenameSession(session.id, title)}
+                  onDelete={() => onDeleteSession(session.id)}
+                  t={t}
+                />
+              ))}
+            </div>
+          </AnimatedCollapse>
         </div>
       )}
     </div>

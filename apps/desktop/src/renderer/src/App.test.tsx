@@ -1,11 +1,20 @@
 // @vitest-environment jsdom
 
 import React from "react";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentTab, CreateAgentInput } from "@shared";
+
+function collectRendererSources(directory: string): string[] {
+    return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+        const path = join(directory, entry.name);
+        if (entry.isDirectory()) return collectRendererSources(path);
+        if (entry.name.includes(".test.")) return [];
+        return /\.(css|tsx)$/.test(entry.name) ? [path] : [];
+    });
+}
 
 vi.mock("./components/MiniMaxCode", async () => {
     const actual = await vi.importActual<typeof import("./components/MiniMaxCode")>("./components/MiniMaxCode");
@@ -90,15 +99,17 @@ vi.mock("./components/Onboarding/Onboarding", () => ({
 }));
 vi.mock("./components/ChatView/ChatView", () => ({
     ChatView: ({
+        active,
         focusMessageId,
         rightRailCollapsed,
         onToggleRightRail,
     }: {
+        active?: boolean;
         focusMessageId?: string | null;
         rightRailCollapsed?: boolean;
         onToggleRightRail?: () => void;
     }) => (
-        <div data-testid="chat-view" data-focus-message-id={focusMessageId ?? ""}>
+        <div data-testid="chat-view" data-active={String(active ?? true)} data-focus-message-id={focusMessageId ?? ""}>
             ChatView
             <button type="button" onClick={onToggleRightRail}>
                 {rightRailCollapsed ? "展开右侧栏" : "收起右侧栏"}
@@ -450,14 +461,20 @@ describe("App sidebar session navigation", () => {
 
     it("运行页默认展示任务，并把记忆降为页内二级入口", async () => {
         render(<App />);
+        const chatView = screen.getByTestId("chat-view");
 
         fireEvent.click(screen.getByRole("tab", { name: "运行" }));
         expect(await screen.findByText("任务总览")).toBeTruthy();
-        expect(screen.queryByText("ChatView")).toBeNull();
+        expect(chatView.isConnected).toBe(true);
+        expect(chatView.getAttribute("data-active")).toBe("false");
 
         fireEvent.click(screen.getByRole("tab", { name: "记忆管理" }));
         expect(await screen.findByRole("heading", { name: "记忆" })).toBeTruthy();
         expect(screen.queryByText("输入关键词搜索所有对话")).toBeNull();
+
+        fireEvent.click(screen.getByRole("tab", { name: "对话" }));
+        expect(screen.getByTestId("chat-view")).toBe(chatView);
+        expect(chatView.getAttribute("data-active")).toBe("true");
     });
 
     it("工作台把文件、Git 和终端收拢为页内视图", async () => {
@@ -610,6 +627,30 @@ describe("App sidebar session navigation", () => {
         expect(screen.getByText("SkillsPanel")).toBeTruthy();
     });
 
+    it("保留访问过的主面板，只让当前面板可交互", () => {
+        render(<App />);
+
+        const chatLayer = screen.getByTestId("motion-panel-chat");
+        expect(chatLayer.getAttribute("data-active")).toBe("true");
+        expect(chatLayer.getAttribute("aria-hidden")).toBe("false");
+
+        fireEvent.click(screen.getByRole("tab", { name: "扩展" }));
+
+        const skillsLayer = screen.getByTestId("motion-panel-skills");
+        expect(skillsLayer.getAttribute("data-active")).toBe("true");
+        expect(chatLayer.getAttribute("data-active")).toBe("false");
+        expect(chatLayer.getAttribute("aria-hidden")).toBe("true");
+        expect(chatLayer.hasAttribute("inert")).toBe(true);
+
+        fireEvent.click(screen.getByRole("tab", { name: "对话" }));
+
+        expect(screen.getByTestId("motion-panel-skills")).toBe(skillsLayer);
+        expect(skillsLayer.getAttribute("data-active")).toBe("false");
+        expect(skillsLayer.getAttribute("aria-hidden")).toBe("true");
+        expect(skillsLayer.hasAttribute("inert")).toBe(true);
+        expect(chatLayer.getAttribute("data-active")).toBe("true");
+    });
+
     it("权限请求在非聊天页到达时会自动切回对话页，并显示在主窗口 composer lane", async () => {
         render(<App />);
         fireEvent.click(screen.getByRole("tab", { name: "扩展" }));
@@ -631,8 +672,8 @@ describe("App sidebar session navigation", () => {
         });
 
         await waitFor(() => {
-            expect(screen.queryByText("SkillsPanel")).toBeNull();
-            expect(screen.getByTestId("chat-view")).toBeTruthy();
+            expect(screen.getByTestId("motion-panel-skills").getAttribute("data-active")).toBe("false");
+            expect(screen.getByTestId("motion-panel-chat").getAttribute("data-active")).toBe("true");
         });
         expect(screen.getByRole("alertdialog", { name: "权限请求 1" })).toBeTruthy();
     });
@@ -648,8 +689,8 @@ describe("App sidebar session navigation", () => {
         });
 
         await waitFor(() => {
-            expect(screen.queryByText("SkillsPanel")).toBeNull();
-            expect(screen.getByTestId("chat-view")).toBeTruthy();
+            expect(screen.getByTestId("motion-panel-skills").getAttribute("data-active")).toBe("false");
+            expect(screen.getByTestId("motion-panel-chat").getAttribute("data-active")).toBe("true");
         });
         expect(screen.queryByRole("status", { name: "任务运行中提醒" })).toBeNull();
     });
@@ -673,7 +714,7 @@ describe("App sidebar session navigation", () => {
         });
     });
 
-    it("keeps desktop interactions lightweight", () => {
+    it("defines the shared motion vocabulary without broad transitions or permanent compositor hints", () => {
         const globalsCssPath = resolve(process.cwd(), "src/renderer/src/styles/globals.css");
         const globalsCss = readFileSync(globalsCssPath, "utf8");
         const overlayPaths = [
@@ -684,10 +725,27 @@ describe("App sidebar session navigation", () => {
         ];
 
         expect(globalsCss).not.toMatch(/\/\* 平滑过渡 \*\/[\s\S]*?\*\s*\{\s*transition-property:/);
-        expect(globalsCss).toContain("--transition-fast: 80ms");
-        expect(globalsCss).toContain("--transition-normal: 160ms");
+        expect(globalsCss).toContain("--motion-instant: 70ms");
+        expect(globalsCss).toContain("--motion-fast: 100ms");
+        expect(globalsCss).toContain("--motion-panel: 160ms");
+        expect(globalsCss).toContain("--motion-overlay: 180ms");
+        expect(globalsCss).toContain("--motion-emphasized: 220ms");
+        expect(globalsCss).toContain("--motion-ease: cubic-bezier(0.2, 0, 0, 1)");
+        expect(globalsCss).toContain("--motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1)");
+        expect(globalsCss).toMatch(/\.pi-motion-control[\s\S]*transition-property:[^;]*\bscale\b/);
+        expect(globalsCss).toMatch(/:active:not\(:disabled\)[\s\S]*scale:\s*0\.96/);
+        expect(globalsCss).not.toContain("transition: all");
+        expect(globalsCss).not.toContain("will-change:");
+        expect(globalsCss).toMatch(/prefers-reduced-motion:\s*reduce[\s\S]*transition-duration:\s*1ms/);
         for (const overlayPath of overlayPaths) {
             expect(readFileSync(resolve(process.cwd(), overlayPath), "utf8")).not.toContain("backdrop-blur");
+        }
+    });
+
+    it("uses only explicit transition properties across renderer source", () => {
+        const rendererRoot = resolve(process.cwd(), "src/renderer/src");
+        for (const sourcePath of collectRendererSources(rendererRoot)) {
+            expect(readFileSync(sourcePath, "utf8"), sourcePath).not.toContain("transition-all");
         }
     });
     it("does not keep a forced gray chat background override in globals.css", () => {

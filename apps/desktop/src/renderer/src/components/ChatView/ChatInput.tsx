@@ -738,7 +738,7 @@ export function ChatInput({
           type="button"
           className={referenceFrame
             ? "flex h-6 items-center gap-1 rounded-[4px] px-1.5 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
-            : "flex h-[22px] items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-all hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"}
+            : "flex h-[22px] items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-[background-color,border-color,color,opacity,box-shadow,transform] hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"}
           aria-label={t("chatInput.permissionAria", { label: currentPermissionLabel })}
           data-testid="chat-input-permission-trigger"
         >
@@ -829,7 +829,7 @@ export function ChatInput({
       <div
         ref={shellRef}
         data-testid="chat-input-shell"
-        className={`${referenceFrame ? "mx-0 flex w-full max-w-none flex-col" : "mx-auto max-w-[770px]"} relative overflow-visible rounded-[7px] border border-[var(--mm-border)] bg-[var(--mm-bg-composer)] shadow-none transition-all focus-within:border-[var(--mm-border-strong)]`}
+        className={`${referenceFrame ? "mx-0 flex w-full max-w-none flex-col" : "mx-auto max-w-[770px]"} relative overflow-visible rounded-[7px] border border-[var(--mm-border)] bg-[var(--mm-bg-composer)] shadow-none transition-[border-color,box-shadow] focus-within:border-[var(--mm-border-strong)]`}
         style={referenceFrame ? { height: `${composerHeight}px` } : undefined}
       >
         {referenceFrame ? (
@@ -1024,7 +1024,7 @@ export function ChatInput({
             type="button"
             onClick={handlePrimaryAction}
             disabled={primaryActionDisabled}
-            className={`${referenceFrame ? "hidden" : "flex"} h-7 w-8 flex-shrink-0 items-center justify-center self-end rounded-[5px] transition-all ${
+            className={`${referenceFrame ? "hidden" : "flex"} h-7 w-8 flex-shrink-0 items-center justify-center self-end rounded-[5px] transition-[background-color,color,opacity,transform] ${
               showStopAction
                 ? "border border-[var(--mm-bg-active)] bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)] hover:opacity-90"
                 : "bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)] hover:opacity-90 disabled:cursor-not-allowed disabled:bg-[var(--mm-bg-selected)] disabled:text-[var(--mm-text-tertiary)]"
@@ -1088,7 +1088,7 @@ export function ChatInput({
               </button>
               <Popover
                 align="start"
-                contentClassName="w-[246px] rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-1.5 shadow-[0_16px_38px_rgba(20,31,50,0.14)]"
+                contentClassName="w-[246px] rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-popover)] p-1.5"
                 trigger={
                   <button type="button" className="flex h-6 items-center gap-1 rounded-[4px] px-1.5 text-[11px] hover:bg-[var(--mm-bg-hover)]" aria-label={t("chatInput.agentMode.aria")}>
                     <span className="font-medium text-[var(--mm-text-primary)]">
@@ -1113,7 +1113,7 @@ export function ChatInput({
                           close();
                         }}
                         className={`flex w-full items-start gap-2 rounded-[7px] px-2 py-2 text-left hover:bg-[var(--mm-bg-hover)] ${
-                          currentAgentMode === mode.value ? "bg-[var(--mm-bg-selected)]" : ""
+                          currentAgentMode === mode.value ? "bg-[var(--mm-bg-popover-selected)]" : ""
                         }`}
                       >
                         <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${currentAgentMode === mode.value ? "bg-[var(--mm-accent-blue)]" : "bg-[var(--mm-text-tertiary)]"}`} aria-hidden />
@@ -1186,7 +1186,7 @@ export function ChatInput({
               </Popover>
               <Popover
                 align="end"
-                contentClassName="w-[180px] rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-1.5 shadow-[0_16px_38px_rgba(20,31,50,0.14)]"
+                contentClassName="w-[180px] rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-popover)] p-1.5"
                 trigger={
                   <button
                     type="button"
@@ -1214,7 +1214,7 @@ export function ChatInput({
                           close();
                         }}
                         className={`flex h-8 w-full items-center justify-between rounded-[7px] px-2 text-left text-[12px] hover:bg-[var(--mm-bg-hover)] ${
-                          currentThinking === option.value ? "bg-[var(--mm-bg-selected)] text-[var(--mm-text-primary)]" : "text-[var(--mm-text-secondary)]"
+                          currentThinking === option.value ? "bg-[var(--mm-bg-popover-selected)] text-[var(--mm-text-primary)]" : "text-[var(--mm-text-secondary)]"
                         }`}
                       >
                         <span>{option.label}</span>
@@ -1258,7 +1258,7 @@ export function ChatInput({
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <Popover
               align="start"
-              contentClassName="w-[222px] rounded-[13px] border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-[7px] shadow-[0_18px_38px_rgba(20,20,18,0.12),0_2px_8px_rgba(20,20,18,0.05)]"
+              contentClassName="w-[222px] rounded-[13px] border-[var(--mm-border)] bg-[var(--mm-bg-popover)] p-[7px]"
               trigger={
                 <button
                   type="button"
@@ -1317,7 +1317,7 @@ export function ChatInput({
               contentClassName="min-w-[220px]"
               trigger={
                 <div
-                  className="flex h-[22px] max-w-[110px] cursor-pointer items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-all hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"
+                  className="flex h-[22px] max-w-[110px] cursor-pointer items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-[background-color,border-color,color,opacity,box-shadow,transform] hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"
                   role="button"
                   tabIndex={0}
                   aria-label={currentWorkspace ? t("chatInput.workspace.current", { name: currentWorkspace.name }) : t("chatInput.workspace.select")}
@@ -1404,7 +1404,7 @@ export function ChatInput({
               contentClassName="min-w-[220px]"
               trigger={
                 <div
-                  className="flex h-[22px] max-w-[96px] cursor-pointer items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-all hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"
+                  className="flex h-[22px] max-w-[96px] cursor-pointer items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-[background-color,border-color,color,opacity,box-shadow,transform] hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"
                   role="button"
                   tabIndex={0}
                   aria-label={currentModel ? t("chatInput.model.current", { model: currentModel }) : t("chatInput.model.notSelected")}
@@ -1463,4 +1463,3 @@ export function ChatInput({
     </div>
   );
 }
-
