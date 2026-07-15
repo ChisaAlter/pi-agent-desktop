@@ -116,10 +116,17 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
         const pinnedRegion = screen.getByRole("region", { name: "置顶" });
         const groupSwitch = screen.getByRole("group", { name: "会话分组方式" });
         const dateButton = screen.getByRole("button", { name: "按时间分组" });
+        const workspaceButton = screen.getByRole("button", { name: "按工作区分组" });
 
         expect(groupSwitch.getAttribute("data-mmcode-group-switch")).toBe("soft-segmented");
         expect(pinnedRegion.compareDocumentPosition(groupSwitch) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-        expect(dateButton.className).toContain("rounded-lg");
+        expect(groupSwitch.className).toContain("p-0.5");
+        expect(groupSwitch.className).not.toContain("p-1");
+        expect(dateButton.className).toContain("rounded-[6px]");
+        expect(dateButton.className).toContain("h-7");
+        expect(dateButton.className).not.toContain("h-8");
+        expect(dateButton.className).toContain("focus-visible:!outline-none");
+        expect(workspaceButton.className).toContain("focus-visible:!outline-none");
         expect(dateButton.className).toContain("shadow-");
     });
 

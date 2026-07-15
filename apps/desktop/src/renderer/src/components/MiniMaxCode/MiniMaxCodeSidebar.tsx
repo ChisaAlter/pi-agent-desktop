@@ -85,7 +85,7 @@ interface GroupModeSwitchProps {
 
 function GroupModeSwitch({ mode, onChange, t }: GroupModeSwitchProps): React.JSX.Element {
     const buttonClass = (active: boolean): string =>
-        `relative z-10 h-8 min-w-0 flex-1 rounded-lg px-3 text-[12px] font-medium transition-[color,transform] duration-[var(--motion-panel)] focus:outline-none active:scale-[0.96] motion-reduce:transition-none ${
+        `relative z-10 h-7 min-w-0 flex-1 rounded-[6px] px-2.5 text-[12px] font-medium transition-[color,transform] duration-[var(--motion-panel)] focus:outline-none focus-visible:!outline-none focus-visible:!shadow-[inset_0_0_0_1px_var(--mm-border-strong)] active:scale-[0.96] motion-reduce:transition-none ${
             active
                 ? "text-[var(--mm-text-primary)] shadow-[0_0_0_rgba(0,0,0,0)]"
                 : "bg-transparent text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
@@ -100,12 +100,12 @@ function GroupModeSwitch({ mode, onChange, t }: GroupModeSwitchProps): React.JSX
                 role="group"
                 aria-label={t("sidebar.groupModeAria")}
                 data-mmcode-group-switch="soft-segmented"
-                className="relative grid grid-cols-2 items-center gap-1 rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] p-1 shadow-[0_10px_26px_rgba(15,23,42,0.05)]"
+                className="relative grid grid-cols-2 items-center gap-0.5 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] p-0.5 shadow-[0_8px_20px_rgba(15,23,42,0.045)]"
             >
                 <span
                     aria-hidden="true"
-                    className={`absolute bottom-1 top-1 w-[calc(50%-6px)] rounded-lg bg-[var(--mm-bg-panel)] shadow-[0_6px_16px_rgba(15,23,42,0.08)] transition-transform duration-[var(--motion-panel)] ease-[var(--motion-ease)] motion-reduce:transition-none ${
-                        mode === "date" ? "translate-x-1" : "translate-x-[calc(100%+8px)]"
+                    className={`absolute bottom-0.5 top-0.5 w-[calc(50%-3px)] rounded-[6px] bg-[var(--mm-bg-panel)] shadow-[0_4px_12px_rgba(15,23,42,0.07)] transition-transform duration-[var(--motion-panel)] ease-[var(--motion-ease)] motion-reduce:transition-none ${
+                        mode === "date" ? "translate-x-0.5" : "translate-x-[calc(100%+4px)]"
                     }`}
                 />
                 <button
