@@ -199,6 +199,19 @@ describe("SettingsContent", () => {
         expect(screen.getByRole("tab", { name: "模型" }).getAttribute("aria-selected")).toBe("true");
     });
 
+    it("renders the permissions surface immediately on its first selection", () => {
+        render(
+            <I18nProvider>
+                <SettingsContent />
+            </I18nProvider>,
+        );
+
+        fireEvent.click(screen.getByRole("tab", { name: "权限" }));
+
+        expect(screen.queryByTestId("settings-tab-loading")).toBeNull();
+        expect(screen.getByRole("heading", { name: "权限" })).toBeTruthy();
+    });
+
     it("loads non-default settings tabs only after they are selected", async () => {
         render(
             <I18nProvider>

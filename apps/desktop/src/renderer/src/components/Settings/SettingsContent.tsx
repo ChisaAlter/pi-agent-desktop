@@ -7,6 +7,7 @@ import { type IpcError } from '@shared';
 import { CloseIcon } from './_shared';
 import { SettingsNav } from './SettingsNav';
 import { GeneralTab } from './tabs/GeneralTab';
+import { PermissionsTab } from './tabs/PermissionsTab';
 import { isSettingsTab, type SettingsSearchResult, type SettingsTab } from './tab-defs';
 import { buildSettingsNavigation, getDefaultSettingsAnchor, searchSettings } from './settings-nav-metadata';
 
@@ -15,7 +16,6 @@ const PiAgentTab = lazy(() => import('./tabs/PiAgentTab').then((module) => ({ de
 const AboutTab = lazy(() => import('./tabs/AboutTab').then((module) => ({ default: module.AboutTab })));
 const ManagedModelsPanel = lazy(() => import('./tabs/ManagedModelsPanel').then((module) => ({ default: module.ManagedModelsPanel })));
 const PiConfigEditor = lazy(() => import('./tabs/PiConfigEditor').then((module) => ({ default: module.PiConfigEditor })));
-const PermissionsTab = lazy(() => import('./tabs/PermissionsTab').then((module) => ({ default: module.PermissionsTab })));
 const UsageTab = lazy(() => import('./tabs/UsageTab').then((module) => ({ default: module.UsageTab })));
 const LongHorizonTab = lazy(() => import('./tabs/LongHorizonTab').then((module) => ({ default: module.LongHorizonTab })));
 const ShortcutsSettings = lazy(() => import('./ShortcutsSettings/ShortcutsSettings').then((module) => ({ default: module.ShortcutsSettings })));
