@@ -217,10 +217,15 @@ function AppShell(): React.ReactElement {
     const routeSectionRef = useRef<(section: string) => void>(() => undefined);
     const lastUpdaterToastRef = useRef<string | null>(null);
     const activePanel = panelForSection(activeSection);
+    const initializeSessions = useSessionStore((state) => state.init);
     const [visitedPanels, setVisitedPanels] = useState<ReadonlySet<MainPanel>>(() => new Set<MainPanel>(["chat"]));
     updaterSetupRef.current = setupUpdaterListeners;
     updaterCleanupRef.current = cleanupUpdaterListeners;
     updaterHydrateRef.current = hydrateUpdaterState;
+
+    useEffect(() => {
+        initializeSessions();
+    }, [initializeSessions]);
 
     useEffect(() => {
         setVisitedPanels((current) => {

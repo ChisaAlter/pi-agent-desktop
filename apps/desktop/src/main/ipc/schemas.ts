@@ -231,7 +231,7 @@ export const appendMessageSchema = z.tuple([
             thinking: z.string().optional(),
             toolCalls: z.array(toolCallSchema).max(1000).optional(),
         })
-        .passthrough(), // 允许额外字段,真值由 services/session-store 决定
+        .passthrough(), // 允许额外字段,真值由 SessionRepository 决定
 ]);
 
 // session:update-message — (sessionId, messageId, updates: Partial<Message>)

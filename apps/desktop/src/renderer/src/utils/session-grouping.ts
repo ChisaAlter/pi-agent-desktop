@@ -8,8 +8,11 @@ export function sessionMatches(session: Session, query: string): boolean {
   const text = [
     session.title,
     session.summary,
+    session.firstUserMessagePreview,
     ...(session.tags ?? []),
-    ...session.messages.map((message) => `${contentWithGeneratedUiText(message.content, message.generatedUi)} ${message.thinking ?? ""}`),
+    ...(session.messagesLoaded === false
+      ? []
+      : session.messages.map((message) => `${contentWithGeneratedUiText(message.content, message.generatedUi)} ${message.thinking ?? ""}`)),
   ].join("\n").toLowerCase();
   return text.includes(q);
 }

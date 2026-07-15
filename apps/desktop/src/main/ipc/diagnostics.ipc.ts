@@ -5,7 +5,7 @@ import { ipcError } from "@shared";
 
 export function setupDiagnosticsIpc(opts: {
     getMainWindow: () => BrowserWindow | null;
-    buildReport: () => unknown;
+    buildReport: () => unknown | Promise<unknown>;
 }): void {
     ipcMain.handle("diagnostics:export", async () => {
         try {
@@ -20,7 +20,7 @@ export function setupDiagnosticsIpc(opts: {
                 : await dialog.showSaveDialog(dialogOptions);
             if (selection.canceled || !selection.filePath) return { cancelled: true };
 
-            const report = opts.buildReport();
+            const report = await opts.buildReport();
             await writeFile(selection.filePath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
             return { cancelled: false, path: selection.filePath };
         } catch (error) {

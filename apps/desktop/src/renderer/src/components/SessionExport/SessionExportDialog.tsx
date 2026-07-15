@@ -22,20 +22,19 @@ const formats: Array<{ value: ExportFormat; label: string; extension: string; mi
 ];
 
 export function SessionExportDialog({ isOpen, onClose, sessionId }: SessionExportDialogProps): React.JSX.Element | null {
-  const { sessions } = useSessionStore();
+  const { sessions, ensureSessionLoaded } = useSessionStore();
   const [selectedFormat, setSelectedFormat] = useState<ExportFormat>("markdown");
   const [selectedSessionIds, setSelectedSessionIds] = useState<string[]>([]);
 
-  const session = sessionId ? sessions.find((s) => s.id === sessionId) : null;
   const availableSessions = sessions.filter((s) => !s.archived);
 
-  const handleExport = useCallback(() => {
+  const handleExport = useCallback(async () => {
     const format = formats.find((f) => f.value === selectedFormat);
     if (!format) return;
 
-    const sessionsToExport = sessionId
-      ? [session].filter(Boolean) as Session[]
-      : availableSessions.filter((s) => selectedSessionIds.includes(s.id));
+    const targetIds = sessionId ? [sessionId] : selectedSessionIds;
+    const sessionsToExport = (await Promise.all(targetIds.map((id) => ensureSessionLoaded(id))))
+      .filter((item): item is Session => Boolean(item));
 
     for (const s of sessionsToExport) {
       let content: string;
@@ -58,7 +57,7 @@ export function SessionExportDialog({ isOpen, onClose, sessionId }: SessionExpor
     }
 
     onClose();
-  }, [selectedFormat, sessionId, session, availableSessions, selectedSessionIds, onClose]);
+  }, [ensureSessionLoaded, onClose, selectedFormat, selectedSessionIds, sessionId]);
 
   const toggleSession = useCallback((id: string) => {
     setSelectedSessionIds((prev) =>
@@ -125,7 +124,7 @@ export function SessionExportDialog({ isOpen, onClose, sessionId }: SessionExpor
                     />
                     <span className="min-w-0 flex-1 truncate text-xs text-[var(--mm-text-primary)]">{s.title}</span>
                     <span className="shrink-0 text-[10px] text-[var(--mm-text-tertiary)]">
-                      {s.messages.length} 条
+                      {s.messageCount ?? s.messages.length} 条
                     </span>
                   </label>
                 ))}
@@ -144,7 +143,7 @@ export function SessionExportDialog({ isOpen, onClose, sessionId }: SessionExpor
           </button>
           <button
             type="button"
-            onClick={handleExport}
+            onClick={() => void handleExport()}
             disabled={!sessionId && selectedSessionIds.length === 0}
             className="rounded-lg bg-[var(--mm-bg-active)] px-4 py-2 text-xs text-[var(--mm-text-on-active)] hover:opacity-90 disabled:opacity-50"
           >

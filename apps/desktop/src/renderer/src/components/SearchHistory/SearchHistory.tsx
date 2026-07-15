@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { useSessionStore } from "../../stores/session-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
+import { isIpcError, type SessionSearchResult } from "@shared";
 import { contentWithGeneratedUiText } from "../../utils/generated-ui";
 
 interface SearchResult {
@@ -37,53 +38,84 @@ function highlightMatch(text: string, matchIndex: number, matchLength: number): 
 }
 
 export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProps): React.JSX.Element | null {
-  const { sessions } = useSessionStore();
   const { workspaces, getCurrentWorkspace } = useWorkspaceStore();
   const currentWorkspace = getCurrentWorkspace();
+  const sessions = useSessionStore((state) => state.sessions);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
 
-  const searchResults = useMemo(() => {
-    if (!query.trim()) return [];
-
-    const results: SearchResult[] = [];
-    const lowerQuery = query.toLowerCase();
-    const workspaceNameById = new Map(workspaces.map((workspace) => [workspace.id, workspace.name]));
-
-    for (const session of sessions) {
-      for (const message of session.messages) {
-        const messageContent = contentWithGeneratedUiText(message.content, message.generatedUi);
-        const content = messageContent.toLowerCase();
-        let matchIndex = content.indexOf(lowerQuery);
-
-        while (matchIndex !== -1 && results.length < 50) {
-          results.push({
-            sessionId: session.id,
-            sessionTitle: session.title,
-            workspaceId: session.workspaceId,
-            workspaceName: workspaceNameById.get(session.workspaceId) ?? "未知工作区",
-            messageId: message.id,
-            messageContent,
-            messageRole: message.role,
-            timestamp: message.timestamp instanceof Date ? message.timestamp : new Date(message.timestamp),
-            matchIndex,
-            matchLength: query.length,
-          });
-
-          matchIndex = content.indexOf(lowerQuery, matchIndex + 1);
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!isOpen || !trimmed) {
+      setSearchResults([]);
+      return;
+    }
+    if (!window.piAPI?.searchSessionMessages) {
+      const lowerQuery = trimmed.toLowerCase();
+      const workspaceNameById = new Map(workspaces.map((workspace) => [workspace.id, workspace.name]));
+      const localResults: SearchResult[] = [];
+      for (const session of sessions) {
+        for (const message of session.messages) {
+          const messageContent = contentWithGeneratedUiText(message.content, message.generatedUi);
+          const content = messageContent.toLowerCase();
+          let matchIndex = content.indexOf(lowerQuery);
+          while (matchIndex !== -1 && localResults.length < 50) {
+            localResults.push({
+              sessionId: session.id,
+              sessionTitle: session.title,
+              workspaceId: session.workspaceId,
+              workspaceName: workspaceNameById.get(session.workspaceId) ?? "未知工作区",
+              messageId: message.id,
+              messageContent,
+              messageRole: message.role,
+              timestamp: message.timestamp instanceof Date ? message.timestamp : new Date(message.timestamp),
+              matchIndex,
+              matchLength: trimmed.length,
+            });
+            matchIndex = content.indexOf(lowerQuery, matchIndex + 1);
+          }
         }
       }
+      localResults.sort((a, b) => {
+        const workspacePriority = Number(b.workspaceId === currentWorkspace?.id) - Number(a.workspaceId === currentWorkspace?.id);
+        return workspacePriority || b.timestamp.getTime() - a.timestamp.getTime();
+      });
+      setSearchResults(localResults.slice(0, 20));
+      return;
     }
-
-    return results
-      .sort((a, b) => {
-        const workspacePriority =
-          Number(b.workspaceId === currentWorkspace?.id) - Number(a.workspaceId === currentWorkspace?.id);
-        if (workspacePriority !== 0) return workspacePriority;
-        return b.timestamp.getTime() - a.timestamp.getTime();
-      })
-      .slice(0, 20);
-  }, [currentWorkspace?.id, query, sessions, workspaces]);
+    let disposed = false;
+    const timer = window.setTimeout(() => {
+      void window.piAPI.searchSessionMessages({ query: trimmed, limit: 50 }).then((result) => {
+        if (disposed || isIpcError(result)) return;
+        const rows = result as SessionSearchResult[];
+        const workspaceNameById = new Map(workspaces.map((workspace) => [workspace.id, workspace.name]));
+        const mapped = rows.map((row) => ({
+          sessionId: row.sessionId,
+          sessionTitle: row.sessionTitle,
+          workspaceId: row.workspaceId,
+          workspaceName: workspaceNameById.get(row.workspaceId) ?? "未知工作区",
+          messageId: row.messageId,
+          messageContent: row.messageContent,
+          messageRole: row.messageRole,
+          timestamp: new Date(row.timestamp),
+          matchIndex: row.matchIndex,
+          matchLength: row.matchLength,
+        }));
+        mapped.sort((a, b) => {
+          const workspacePriority = Number(b.workspaceId === currentWorkspace?.id) - Number(a.workspaceId === currentWorkspace?.id);
+          return workspacePriority || b.timestamp.getTime() - a.timestamp.getTime();
+        });
+        setSearchResults(mapped.slice(0, 20));
+      }).catch(() => {
+        if (!disposed) setSearchResults([]);
+      });
+    }, 120);
+    return () => {
+      disposed = true;
+      window.clearTimeout(timer);
+    };
+  }, [currentWorkspace?.id, isOpen, query, sessions, workspaces]);
 
   const handleSelect = useCallback(
     (result: SearchResult) => {

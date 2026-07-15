@@ -15,7 +15,8 @@ export interface DiagnosticReportInput {
     platform: NodeJS.Platform;
     versions: { electron: string; node: string; chrome: string };
     workspaces: Workspace[];
-    sessions: Session[];
+    sessions?: Session[];
+    sessionStats?: { count: number; messageCount: number };
     databaseHealth: DatabaseHealth;
 }
 
@@ -34,6 +35,10 @@ export interface DiagnosticReport {
 const MAX_LOG_BYTES = 512 * 1024;
 
 export function buildDiagnosticReport(input: DiagnosticReportInput): DiagnosticReport {
+    const sessionStats = input.sessionStats ?? {
+        count: input.sessions?.length ?? 0,
+        messageCount: input.sessions?.reduce((total, session) => total + session.messages.length, 0) ?? 0,
+    };
     return {
         generatedAt: new Date().toISOString(),
         appVersion: input.appVersion,
@@ -41,10 +46,7 @@ export function buildDiagnosticReport(input: DiagnosticReportInput): DiagnosticR
         versions: { ...input.versions },
         storageRoot: basename(input.userDataPath),
         workspaces: { count: input.workspaces.length },
-        sessions: {
-            count: input.sessions.length,
-            messageCount: input.sessions.reduce((total, session) => total + session.messages.length, 0),
-        },
+        sessions: sessionStats,
         database: {
             ok: input.databaseHealth.ok,
             details: [...input.databaseHealth.details],

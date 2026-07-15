@@ -9,7 +9,7 @@
 
 import { create } from 'zustand';
 import { logger } from '../utils/logger';
-import { isIpcError, type Message, type SessionUsageSnapshot, type ToolCall, type ToolPermissions } from '@shared';
+import { isIpcError, type Message, type SessionListItem, type SessionUsageSnapshot, type ToolCall, type ToolPermissions } from '@shared';
 import { addToast } from './toast-store';
 import { i18n } from '../i18n';
 import { getPiAPI } from '../utils/pi-api';
@@ -42,6 +42,10 @@ export interface Session {
   parentSessionId?: string;
   forkedFromMessageId?: string;
   forkedAt?: Date;
+  messageCount?: number;
+  toolCallCount?: number;
+  firstUserMessagePreview?: string;
+  messagesLoaded?: boolean;
 }
 
 interface SessionState {
@@ -128,6 +132,7 @@ interface SessionState {
     opts?: { persist?: boolean },
   ) => void;
   loadSessions: () => Promise<void>;
+  ensureSessionLoaded: (sessionId: string) => Promise<Session | null>;
   init: () => void;
   getCurrentSession: () => Session | null;
   getSessionMessages: (sessionId: string) => Message[];
@@ -273,6 +278,16 @@ function cloneMessageForFork(message: Message): Message {
 }
 
 function reviveSession(raw: Session | import("@shared").Session): Session {
+  const messages = (raw.messages ?? []).map((message) => ({
+    ...message,
+    timestamp:
+      message.timestamp instanceof Date
+        ? message.timestamp
+        : new Date(typeof message.timestamp === "number" ? message.timestamp : String(message.timestamp)),
+    toolCalls: Array.isArray(message.toolCalls)
+      ? normalizeToolCallsForRuntime(message.toolCalls)
+      : undefined,
+  }));
   return {
     ...raw,
     createdAt: raw.createdAt instanceof Date ? raw.createdAt : new Date(raw.createdAt),
@@ -290,28 +305,72 @@ function reviveSession(raw: Session | import("@shared").Session): Session {
     tags: Array.isArray(raw.tags) ? raw.tags : [],
     favorite: raw.favorite ?? false,
     readOnly: raw.readOnly ?? false,
-    messages: (raw.messages ?? []).map((message) => ({
-      ...message,
-      timestamp:
-        message.timestamp instanceof Date
-          ? message.timestamp
-          : new Date(typeof message.timestamp === "number" ? message.timestamp : String(message.timestamp)),
-      toolCalls: Array.isArray(message.toolCalls)
-        ? normalizeToolCallsForRuntime(message.toolCalls)
-        : undefined,
-    })),
+    messages,
+    messageCount: "messageCount" in raw && typeof raw.messageCount === "number" ? raw.messageCount : messages.length,
+    toolCallCount: "toolCallCount" in raw && typeof raw.toolCallCount === "number"
+      ? raw.toolCallCount
+      : messages.reduce((total, message) => total + (message.toolCalls?.length ?? 0), 0),
+    firstUserMessagePreview: "firstUserMessagePreview" in raw && typeof raw.firstUserMessagePreview === "string"
+      ? raw.firstUserMessagePreview
+      : messages.find((message) => message.role === "user")?.content,
+    messagesLoaded: true,
+  };
+}
+
+function reviveSessionSummary(raw: SessionListItem): Session {
+  return {
+    ...raw,
+    createdAt: new Date(raw.createdAt),
+    updatedAt: new Date(raw.updatedAt),
+    lastOpenedAt: raw.lastOpenedAt == null ? undefined : new Date(raw.lastOpenedAt),
+    forkedAt: raw.forkedAt == null ? undefined : new Date(raw.forkedAt),
+    tags: Array.isArray(raw.tags) ? raw.tags : [],
+    favorite: raw.favorite ?? false,
+    readOnly: raw.readOnly ?? false,
+    messages: [],
+    messageCount: raw.messageCount,
+    toolCallCount: raw.toolCallCount,
+    firstUserMessagePreview: raw.firstUserMessagePreview,
+    messagesLoaded: false,
   };
 }
 
 export const useSessionStore = create<SessionState>((set, get) => {
+  const sessionLoads = new Map<string, Promise<Session | null>>();
+
+  const ensureSessionLoaded = async (sessionId: string): Promise<Session | null> => {
+    const existing = get().sessions.find((session) => session.id === sessionId);
+    if (!existing) return null;
+    if (existing.messagesLoaded !== false) return existing;
+    const pending = sessionLoads.get(sessionId);
+    if (pending) return pending;
+    const load = (async () => {
+      const piAPI = getPiAPI();
+      if (!piAPI?.getSession) return existing;
+      const result = await piAPI.getSession(sessionId);
+      if (isIpcError(result)) throw new Error(result.fallback);
+      const loaded = reviveSession(result);
+      set((state) => ({
+        sessions: state.sessions.map((session) => session.id === sessionId ? loaded : session),
+      }));
+      return loaded;
+    })().catch((error) => {
+      recordPersistFailure(error);
+      return null;
+    }).finally(() => sessionLoads.delete(sessionId));
+    sessionLoads.set(sessionId, load);
+    return load;
+  };
+
   // Load sessions from main process on init
   const loadSessions = async () => {
     set({ sessionsLoading: true });
     try {
       const piAPI = getPiAPI();
       if (piAPI) {
-        const sessionList = await piAPI.listSessions();
-        const sessions = sessionList.map(reviveSession);
+        const sessions = piAPI.listSessionSummaries
+          ? (await piAPI.listSessionSummaries()).map(reviveSessionSummary)
+          : (await piAPI.listSessions()).map(reviveSession);
         const currentSession = sessions
           .slice()
           .sort((a, b) => getSessionActivityTime(b) - getSessionActivityTime(a))[0];
@@ -320,6 +379,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
           currentSessionId: currentSession?.id || null,
           sessionsLoading: false,
         });
+        if (currentSession) void ensureSessionLoaded(currentSession.id);
       } else {
         set({ sessionsLoading: false });
       }
@@ -337,7 +397,11 @@ export const useSessionStore = create<SessionState>((set, get) => {
   persistErrorCount: 0,
   lastPersistError: null,
   loadSessions,
-  init: () => { void loadSessions(); },
+  ensureSessionLoaded,
+  init: () => {
+    if (get().sessions.length > 0) return;
+    void loadSessions();
+  },
   clearCurrentSession: () => {
     set({ currentSessionId: null });
   },
@@ -351,6 +415,9 @@ export const useSessionStore = create<SessionState>((set, get) => {
       createdAt: new Date(),
       updatedAt: new Date(),
       messages: [],
+      messageCount: 0,
+      toolCallCount: 0,
+      messagesLoaded: true,
       favorite: false,
       tags: [],
       readOnly: false,
@@ -460,6 +527,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
         s.id === sessionId ? { ...s, readOnly: true, lastOpenedAt: openedAt } : s
       ),
     }));
+    void ensureSessionLoaded(sessionId);
     const piAPI = getPiAPI();
     if (piAPI?.updateSessionMetadata) {
       observePersistResult(piAPI.updateSessionMetadata(sessionId, { readOnly: true, lastOpenedAt: openedAt.getTime() }));
@@ -467,7 +535,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
   },
 
   continueSession: async (sessionId, fromMessageId) => {
-    const source = get().sessions.find((session) => session.id === sessionId);
+    const source = await ensureSessionLoaded(sessionId);
     if (!source) throw new Error(`Session not found: ${sessionId}`);
     const forkIndex = fromMessageId
       ? source.messages.findIndex((message) => message.id === fromMessageId)
@@ -536,6 +604,7 @@ export const useSessionStore = create<SessionState>((set, get) => {
         s.id === sessionId ? { ...s, readOnly: false, lastOpenedAt: openedAt } : s
       ),
     }));
+    void ensureSessionLoaded(sessionId);
     const piAPI = getPiAPI();
     if (piAPI?.updateSessionMetadata) {
       observePersistResult(piAPI.updateSessionMetadata(sessionId, { readOnly: false, lastOpenedAt: openedAt.getTime() }));
@@ -558,6 +627,10 @@ export const useSessionStore = create<SessionState>((set, get) => {
                   ? summarizeTitle(message.content)
                   : session.title,
               messages: [...session.messages, message],
+              messageCount: (session.messageCount ?? session.messages.length) + 1,
+              toolCallCount: (session.toolCallCount ?? session.messages.reduce((total, item) => total + (item.toolCalls?.length ?? 0), 0)) + (message.toolCalls?.length ?? 0),
+              firstUserMessagePreview: session.firstUserMessagePreview ?? (message.role === "user" ? message.content : undefined),
+              messagesLoaded: true,
               updatedAt: new Date()
             }
           : session
@@ -694,6 +767,9 @@ export const useSessionStore = create<SessionState>((set, get) => {
           ? {
               ...session,
               messages: [...session.messages, message],
+              messageCount: (session.messageCount ?? session.messages.length) + 1,
+              toolCallCount: (session.toolCallCount ?? session.messages.reduce((total, item) => total + (item.toolCalls?.length ?? 0), 0)) + (message.toolCalls?.length ?? 0),
+              messagesLoaded: true,
               updatedAt: new Date()
             }
           : session
@@ -741,8 +817,3 @@ export const useSessionStore = create<SessionState>((set, get) => {
   }
   };
 });
-
-// Trigger initial load at module load time (preserves original behavior:
-// in tests window.piAPI is not yet set up, so getPiAPI() returns undefined
-// and loadSessions() is a no-op; in production it loads from main process).
-useSessionStore.getState().init();

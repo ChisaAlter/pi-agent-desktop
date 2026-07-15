@@ -41,6 +41,30 @@ export interface Session {
     forkedAt?: number;
 }
 
+export interface SessionListItem extends Omit<Session, "messages"> {
+    messageCount: number;
+    toolCallCount: number;
+    firstUserMessagePreview?: string;
+}
+
+export interface SessionSearchInput {
+    query: string;
+    workspaceId?: string;
+    limit?: number;
+}
+
+export interface SessionSearchResult {
+    sessionId: string;
+    sessionTitle: string;
+    workspaceId: string;
+    messageId: string;
+    messageContent: string;
+    messageRole: Message["role"];
+    timestamp: number;
+    matchIndex: number;
+    matchLength: number;
+}
+
 export interface Message {
     id: string;
     role: "user" | "assistant" | "system";
@@ -1253,6 +1277,9 @@ export interface PiAPI {
 
     // Session
     listSessions(): Promise<Session[]>;
+    listSessionSummaries(): Promise<SessionListItem[]>;
+    getSession(id: string): Promise<Session | IpcError>;
+    searchSessionMessages(input: SessionSearchInput): Promise<SessionSearchResult[] | IpcError>;
     createSession(workspaceId: string, title?: string, id?: string): Promise<Session>;
     renameSession(id: string, title: string): Promise<Session>;
     deleteSession(id: string): Promise<void>;

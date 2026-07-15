@@ -1,6 +1,6 @@
 // Session messages persistence IPC
 // 4 session handlers (list/create/rename/delete) + 3 message handlers (append/update/update-tool-call)
-// All args zod-validated, errors return IpcError; writes serialized via async mutex in session-store
+// All args zod-validated, errors return IpcError; persistence is delegated to SessionRepository.
 //
 // 设计:
 //  - 把现有 index.ts 里 4 个 session handler 重构过来,保持 channel 名不变(向后兼容)
@@ -10,20 +10,17 @@
 
 import { ipcMain } from "electron";
 import log from "electron-log/main";
-import { ipcError, type Message, type ToolCall } from "@shared";
 import {
-    listSessions as _listSessions,
-    getSession,
-    createSession as _createSession,
-    renameSession as _renameSession,
-    deleteSession as _deleteSession,
-    archiveSession as _archiveSession,
-    updateSessionMetadata as _updateSessionMetadata,
-    appendMessage,
-    updateMessage,
-    updateToolCall,
-    type SessionPersistence,
-} from "../services/session-store";
+    ipcError,
+    type Message,
+    type Session,
+    type SessionSearchInput,
+    type ToolCall,
+} from "@shared";
+import type {
+    SessionMetadataUpdates,
+    SessionRepository,
+} from "../services/session-repository";
 import {
     appendMessageSchema,
     archiveSessionSchema,
@@ -34,7 +31,9 @@ import {
 import { normalizeLegacyMessagePayload } from "./tool-call-normalization";
 
 export interface SessionsIpcDeps {
-    store: SessionPersistence;
+    repository: SessionRepository;
+    onSessionUpdated?: (session: Session) => void;
+    onSessionDeleted?: (sessionId: string) => void;
 }
 
 function toMessage(raw: unknown): Message {
@@ -47,19 +46,53 @@ function toToolCallUpdate(raw: unknown): Partial<ToolCall> {
 }
 
 export function setupSessionsIpc(deps: SessionsIpcDeps): void {
-    const { store } = deps;
+    const { repository } = deps;
 
     // ── 原有 4 个 handler(从 index.ts 搬过来,行为不变)───────────────
 
     ipcMain.handle("session:list", async () => {
-        return _listSessions(store);
+        return repository.listSessions();
+    });
+
+    ipcMain.handle("session:list-summaries", async () => {
+        return repository.listSessionSummaries();
+    });
+
+    ipcMain.handle("session:get", async (_event, id: string) => {
+        try {
+            return (await repository.getSession(id)) ?? ipcError(
+                "ipcErrors.session.notFound",
+                `会话不存在: ${id}`,
+                { id },
+            );
+        } catch (err) {
+            return ipcError(
+                "ipcErrors.session.getFailed",
+                `读取会话失败: ${err instanceof Error ? err.message : String(err)}`,
+                { id },
+            );
+        }
+    });
+
+    ipcMain.handle("session:search", async (_event, raw: SessionSearchInput) => {
+        if (!raw || typeof raw.query !== "string" || !raw.query.trim()) return [];
+        try {
+            return await repository.searchSessionMessages(raw);
+        } catch (err) {
+            return ipcError(
+                "ipcErrors.session.searchFailed",
+                `搜索会话失败: ${err instanceof Error ? err.message : String(err)}`,
+            );
+        }
     });
 
     ipcMain.handle(
         "session:create",
         async (_event, workspaceId: string, title?: string, id?: string) => {
             try {
-                return await _createSession(store, workspaceId, title, id);
+                const session = await repository.createSession(workspaceId, title, id);
+                deps.onSessionUpdated?.(session);
+                return session;
             } catch (err) {
                 log.error("[sessions.ipc] session:create failed:", err);
                 return ipcError(
@@ -74,7 +107,9 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
         "session:rename",
         async (_event, id: string, title: string) => {
             try {
-                return await _renameSession(store, id, title);
+                const session = await repository.renameSession(id, title);
+                deps.onSessionUpdated?.(session);
+                return session;
             } catch (err) {
                 log.error("[sessions.ipc] session:rename failed:", err);
                 return ipcError(
@@ -88,7 +123,8 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
 
     ipcMain.handle("session:delete", async (_event, id: string) => {
         try {
-            await _deleteSession(store, id);
+            await repository.deleteSession(id);
+            deps.onSessionDeleted?.(id);
         } catch (err) {
             log.error("[sessions.ipc] session:delete failed:", err);
             return ipcError(
@@ -110,7 +146,9 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
             );
         }
         try {
-            return await _archiveSession(store, id, archived);
+            const session = await repository.archiveSession(id, archived);
+            deps.onSessionUpdated?.(session);
+            return session;
         } catch (err) {
             log.error("[sessions.ipc] session:archive failed:", err);
             return ipcError(
@@ -131,7 +169,9 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
             );
         }
         try {
-            return await _updateSessionMetadata(store, id, raw as Parameters<typeof _updateSessionMetadata>[2]);
+            const session = await repository.updateSessionMetadata(id, raw as SessionMetadataUpdates);
+            deps.onSessionUpdated?.(session);
+            return session;
         } catch (err) {
             log.error("[sessions.ipc] session:update-metadata failed:", err);
             return ipcError(
@@ -159,7 +199,7 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
             }
             try {
                 const [, message] = parsed.data;
-                await appendMessage(store, sessionId, toMessage(message));
+                await repository.appendMessage(sessionId, toMessage(message));
             } catch (err) {
                 log.error("[sessions.ipc] session:append-message failed:", err);
                 return ipcError(
@@ -187,7 +227,7 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
             }
             try {
                 const [, , updates] = parsed.data;
-                await updateMessage(store, sessionId, messageId, toMessage(updates));
+                await repository.updateMessage(sessionId, messageId, toMessage(updates));
             } catch (err) {
                 log.error("[sessions.ipc] session:update-message failed:", err);
                 return ipcError(
@@ -227,8 +267,7 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
                 );
             }
             try {
-                await updateToolCall(
-                    store,
+                await repository.updateToolCall(
                     sessionId,
                     messageId,
                     toolCallId,
@@ -245,7 +284,4 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
             return undefined;
         },
     );
-
-    // 显式 getSession(目前 renderer 不调,留作未来分页加载入口)
-    void getSession;
 }

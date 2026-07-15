@@ -1,20 +1,17 @@
-import type { Session, SessionMessage, SessionSummary } from "@shared";
+import type {
+    Session,
+    SessionListItem,
+    SessionMessage,
+    SessionSearchInput,
+    SessionSearchResult,
+    SessionSummary,
+} from "@shared";
 
 /**
  * SessionSummaryService — Phase E Task 4.
  *
- * Read-only adapter that exposes the persisted `Session[]` (electron-store
- * JSON, NOT a SQLite `sessions.db` — see deviation note below) to subagent
- * custom tools. Used by `dream` / `distill` subagents to review recent work
- * without giving them direct database or filesystem access.
- *
- * Spec deviation (SubTask 4.1):
- *   The spec assumed `better-sqlite3` + `sessions.db` — neither exists in
- *   the current codebase. Sessions are persisted as `Session[]` via
- *   electron-store (see `apps/desktop/src/main/services/session-store.ts`
- *   `SessionPersistence` interface). This service consumes a reader callback
- *   `() => Session[]` so the live store is read on every call (no stale
- *   snapshots), and so unit tests can pass a plain array-backed stub.
+ * Read-only adapter over the SQLite-backed SessionRepository. The legacy
+ * callback form remains only as a lightweight unit-test seam.
  *
  * Methods:
  *  - searchRecentSessions({ workspaceId?, limit, sinceMs? }) — list recent
@@ -29,6 +26,12 @@ import type { Session, SessionMessage, SessionSummary } from "@shared";
 export interface SessionSource {
     /** Returns the live Session[] snapshot. Called on every query. */
     (): Session[];
+}
+
+export interface SessionSummaryRepositorySource {
+    listSessionSummaries(): Promise<SessionListItem[]>;
+    getSession(id: string): Promise<Session | undefined>;
+    searchSessionMessages(input: SessionSearchInput): Promise<SessionSearchResult[]>;
 }
 
 export interface SearchRecentSessionsOptions {
@@ -58,10 +61,18 @@ const DEFAULT_SEARCH_LIMIT = 20;
 const DEFAULT_RECENT_LIMIT = 20;
 
 export class SessionSummaryService {
-    private readonly source: SessionSource;
+    private readonly source: SessionSource | SessionSummaryRepositorySource;
 
-    constructor(source: SessionSource) {
+    constructor(source: SessionSource | SessionSummaryRepositorySource) {
         this.source = source;
+    }
+
+    private repositorySource(): SessionSummaryRepositorySource | null {
+        return typeof this.source === "function" ? null : this.source;
+    }
+
+    private arraySource(): SessionSource | null {
+        return typeof this.source === "function" ? this.source : null;
     }
 
     /**
@@ -71,7 +82,17 @@ export class SessionSummaryService {
     async searchRecentSessions(opts: SearchRecentSessionsOptions = {}): Promise<SessionSummary[]> {
         const limit = clampPositive(opts.limit, DEFAULT_RECENT_LIMIT);
         const since = opts.sinceMs ?? 0;
-        const sessions = this.source();
+        const repository = this.repositorySource();
+        if (repository) {
+            const summaries = await repository.listSessionSummaries();
+            return summaries
+                .filter((session) => !opts.workspaceId || session.workspaceId === opts.workspaceId)
+                .filter((session) => !since || session.createdAt >= since)
+                .map(toRepositorySummary)
+                .sort((a, b) => b.createdAt - a.createdAt)
+                .slice(0, limit);
+        }
+        const sessions = this.arraySource()?.() ?? [];
         const out: SessionSummary[] = [];
         for (const s of sessions) {
             if (opts.workspaceId && s.workspaceId !== opts.workspaceId) continue;
@@ -89,7 +110,10 @@ export class SessionSummaryService {
      */
     async getSessionMessages(opts: GetSessionMessagesOptions): Promise<SessionMessage[]> {
         const limit = clampPositive(opts.limit, DEFAULT_TRANSCRIPT_LIMIT);
-        const session = this.source().find((s) => s.id === opts.sessionId);
+        const repository = this.repositorySource();
+        const session = repository
+            ? await repository.getSession(opts.sessionId)
+            : this.arraySource()?.().find((s) => s.id === opts.sessionId);
         if (!session) return [];
         const messages = session.messages;
         const start = Math.max(0, messages.length - limit);
@@ -104,7 +128,22 @@ export class SessionSummaryService {
         const limit = clampPositive(opts.limit, DEFAULT_SEARCH_LIMIT);
         const needle = opts.query.trim().toLowerCase();
         if (!needle) return [];
-        const session = this.source().find((s) => s.id === opts.sessionId);
+        const repository = this.repositorySource();
+        if (repository) {
+            const results = await repository.searchSessionMessages({
+                query: needle,
+                limit,
+            });
+            return results
+                .filter((result) => result.sessionId === opts.sessionId)
+                .slice(0, limit)
+                .map((result) => ({
+                    role: result.messageRole,
+                    text: result.messageContent,
+                    createdAt: result.timestamp,
+                }));
+        }
+        const session = this.arraySource()?.().find((s) => s.id === opts.sessionId);
         if (!session) return [];
         const out: SessionMessage[] = [];
         for (const msg of session.messages) {
@@ -130,6 +169,17 @@ function toSummary(s: Session): SessionSummary {
         createdAt: s.createdAt,
         lastMessageAt,
         messageCount,
+    };
+}
+
+function toRepositorySummary(session: SessionListItem): SessionSummary {
+    return {
+        sessionId: session.id,
+        workspaceId: session.workspaceId,
+        title: session.title || undefined,
+        createdAt: session.createdAt,
+        lastMessageAt: session.updatedAt,
+        messageCount: session.messageCount,
     };
 }
 

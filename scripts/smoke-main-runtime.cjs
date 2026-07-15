@@ -83,6 +83,7 @@ function runSmoke() {
             },
         },
         app: {
+            requestSingleInstanceLock: () => true,
             whenReady: () => ({ then: () => { } }),
             on: () => { },
             quit: () => { },

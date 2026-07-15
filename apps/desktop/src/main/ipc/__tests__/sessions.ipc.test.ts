@@ -1,7 +1,10 @@
 // 2026-06-06 hotfix: sessions.ipc 单测
 // 覆盖 7 个 handler (4 原有 + 3 新增) + zod 校验失败路径
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Session, Message } from "@shared";
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
@@ -24,37 +27,43 @@ vi.mock("electron-log/main", () => ({
 }));
 
 import { setupSessionsIpc, type SessionsIpcDeps } from "../sessions.ipc";
-import type { SessionPersistence } from "../../services/session-store";
+import { SqliteSessionRepository } from "../../services/sqlite-session-repository";
 
 // ── In-memory store mock ───────────────────────────────────────────────
 
-function makeStore(seed: Session[] = []): SessionPersistence & {
-    raw: Session[];
-    writes: number;
-} {
-    const raw: Session[] = [...seed];
-    let writes = 0;
-    return {
-        raw,
-        get writes() {
-            return writes;
-        },
-        get(_key) {
-            return raw;
-        },
-        set(_key, value) {
-            writes += 1;
-            const snapshot = [...value];
-            raw.length = 0;
-            for (const v of snapshot) raw.push(v);
-        },
-    };
-}
+const repositories: SqliteSessionRepository[] = [];
+const dirs: string[] = [];
 
-function setupWithStore(seed: Session[] = []) {
-    const store = makeStore(seed);
-    setupSessionsIpc({ store } as SessionsIpcDeps);
-    return store;
+afterEach(() => {
+    for (const repository of repositories.splice(0)) repository.close();
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+function setupWithStore(seed: Session[] = []): SqliteSessionRepository {
+    const dir = mkdtempSync(join(tmpdir(), "pi-sessions-ipc-"));
+    dirs.push(dir);
+    const repository = new SqliteSessionRepository(dir);
+    repositories.push(repository);
+    for (const session of seed) {
+        void repository.createSession(session.workspaceId, session.title, session.id);
+        void repository.updateSessionMetadata(session.id, {
+            archived: session.archived,
+            favorite: session.favorite,
+            tags: session.tags,
+            readOnly: session.readOnly,
+            lastOpenedAt: session.lastOpenedAt,
+            summary: session.summary,
+            lastOutputPaths: session.lastOutputPaths,
+            usage: session.usage,
+            toolPermissions: session.toolPermissions,
+            parentSessionId: session.parentSessionId,
+            forkedFromMessageId: session.forkedFromMessageId,
+            forkedAt: session.forkedAt,
+        });
+        for (const message of session.messages) void repository.appendMessage(session.id, message);
+    }
+    setupSessionsIpc({ repository } as SessionsIpcDeps);
+    return repository;
 }
 
 const userMsg: Message = {
@@ -87,13 +96,17 @@ describe("session:list", () => {
                 updatedAt: 1,
             },
         ];
-        const store = setupWithStore(seed);
+        setupWithStore(seed);
         const handler = handlers.get("session:list")!;
         const result = await handler();
-        // session-store 现在返回深拷贝 (避免 caller 持 live 引用原地修改污染持久化态).
-        // 断言值相等而非引用相等.
-        expect(result).toEqual(store.raw);
-        expect(result).not.toBe(store.raw);
+        // Repository returns detached values rather than live database objects.
+        expect(result).toEqual([expect.objectContaining({
+            id: "s1",
+            workspaceId: "ws1",
+            title: "a",
+            messages: [],
+        })]);
+        expect(result).not.toBe(seed);
     });
 });
 
@@ -101,34 +114,25 @@ describe("session:create", () => {
     beforeEach(() => handlers.clear());
 
     it("创建 session, 初始化 messages: []", async () => {
-        const store = setupWithStore();
+        const repository = setupWithStore();
         const handler = handlers.get("session:create")!;
         const result = (await handler({}, "ws1", "title", "s1")) as Session;
         expect(result.id).toBe("s1");
         expect(result.title).toBe("title");
         expect(result.messages).toEqual([]);
-        expect(store.raw).toHaveLength(1);
+        expect(await repository.listSessions()).toHaveLength(1);
     });
 
     it("服务抛错时返 IpcError 而不是 throw", async () => {
         setupWithStore();
-        // store.set 抛错模拟
-        const orig = (handlers.get("session:create") as (...a: unknown[]) => unknown);
-        // 上面已经注册了,改成改 store,看是否能优雅返 IpcError
-        const store = makeStore();
+        const repository = setupWithStore();
         handlers.clear();
-        setupSessionsIpc({ store } as SessionsIpcDeps);
-        // 注入一个抛错的 store.set
-        const origSet = store.set;
-        store.set = () => {
-            throw new Error("disk full");
-        };
+        vi.spyOn(repository, "createSession").mockRejectedValueOnce(new Error("disk full"));
+        setupSessionsIpc({ repository } as SessionsIpcDeps);
         const handler = handlers.get("session:create")!;
         const result = (await handler({}, "ws1", "t")) as { code: string; fallback: string };
         expect(result.code).toBe("ipcErrors.session.createFailed");
         expect(result.fallback).toContain("disk full");
-        store.set = origSet;
-        void orig;
     });
 });
 
@@ -174,17 +178,16 @@ describe("session:delete", () => {
                 updatedAt: 1,
             },
         ];
-        const store = setupWithStore(seed);
+        const repository = setupWithStore(seed);
         const handler = handlers.get("session:delete")!;
         const result = await handler({}, "s1");
         expect(result).toBeUndefined();
-        expect(store.raw).toHaveLength(0);
+        expect(await repository.listSessions()).toHaveLength(0);
     });
 
     it("id 不存在静默 noop, 返 undefined (跟原 index.ts 行为一致)", async () => {
         // 旧 index.ts 实现: filter 不命中,不抛错,返 undefined.
-        // services/session-store.deleteSession 行为是"找不到也静默",
-        // 保持向后兼容,UI 端 toast 提示由 caller 处理.
+        // Delete remains idempotent for renderer retries.
         setupWithStore();
         const handler = handlers.get("session:delete")!;
         const result = await handler({}, "ghost");
@@ -463,7 +466,7 @@ describe("session:update-tool-call", () => {
 // ── 防重复注册回归(no-duplicate-ipc.test.ts 已经扫过字面量) ─────────
 
 describe("IPC channel 名称字面量", () => {
-    it("注册了 9 个 session:* handler", () => {
+    it("注册了 12 个 session:* handler", () => {
         handlers.clear();
         setupWithStore();
         const sessionHandlers = Array.from(handlers.keys()).filter((k) =>
@@ -475,8 +478,11 @@ describe("IPC channel 名称字面量", () => {
                 "session:archive",
                 "session:create",
                 "session:delete",
+                "session:get",
                 "session:list",
+                "session:list-summaries",
                 "session:rename",
+                "session:search",
                 "session:update-message",
                 "session:update-metadata",
                 "session:update-tool-call",

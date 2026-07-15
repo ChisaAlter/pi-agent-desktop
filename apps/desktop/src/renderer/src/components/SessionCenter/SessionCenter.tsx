@@ -41,7 +41,7 @@ function compactSnippet(text: string, query: string): string {
 }
 
 function countToolCalls(session: Session): number {
-  return session.messages.reduce((total, message) => total + (message.toolCalls?.length ?? 0), 0);
+  return session.toolCallCount ?? session.messages.reduce((total, message) => total + (message.toolCalls?.length ?? 0), 0);
 }
 
 function countChildren(session: Session, sessions: Session[]): number {
@@ -333,7 +333,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                               className="w-full border-0 bg-transparent p-0 text-sm font-medium outline-none"
                             />
                             <p className="m-0 mt-1 line-clamp-2 text-xs leading-5 text-[var(--mm-text-secondary)]">
-                              {session.summary || session.messages.find((message) => message.role === "user")?.content || "暂无摘要"}
+                              {session.summary || session.firstUserMessagePreview || session.messages.find((message) => message.role === "user")?.content || "暂无摘要"}
                             </p>
                             {matchingMessage && (
                               <div className="mt-2 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2.5 py-2">
@@ -357,7 +357,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                             )}
                             <div className="mt-2 flex flex-wrap items-center gap-2">
                               <span className="rounded bg-[var(--mm-bg-sidebar)] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-secondary)]">
-                                {session.messages.length} messages
+                                {session.messageCount ?? session.messages.length} messages
                               </span>
                               <span className="rounded bg-[var(--mm-bg-sidebar)] px-1.5 py-0.5 text-[10px] text-[var(--mm-text-secondary)]">
                                 {toolCount} tools

@@ -44,7 +44,6 @@ beforeEach(() => {
     vi.clearAllMocks();
 });
 
-// 模块加载会触发 loadSessions() 一次性副作用, 拿到 store 后再重置.
 import { useSessionStore } from "../session-store";
 
 function seedSession(id: string, title: string) {
@@ -705,5 +704,54 @@ describe("session-store (2026-06-06 hotfix): loadSessions 行为", () => {
             status: "running",
         });
         expect(toolCalls[0].startTime).toBeInstanceOf(Date);
+    });
+
+    it("production startup loads summaries and only hydrates the most recent transcript", async () => {
+        const now = Date.now();
+        const api = piAPI as typeof piAPI & {
+            listSessionSummaries: ReturnType<typeof vi.fn>;
+            getSession: ReturnType<typeof vi.fn>;
+        };
+        api.listSessionSummaries = vi.fn(async () => [
+            {
+                id: "recent",
+                workspaceId: "ws1",
+                title: "Recent",
+                createdAt: now - 100,
+                updatedAt: now,
+                messageCount: 1,
+                toolCallCount: 0,
+            },
+            {
+                id: "old",
+                workspaceId: "ws1",
+                title: "Old",
+                createdAt: now - 1000,
+                updatedAt: now - 900,
+                messageCount: 12,
+                toolCallCount: 2,
+            },
+        ]);
+        api.getSession = vi.fn(async () => ({
+            id: "recent",
+            workspaceId: "ws1",
+            title: "Recent",
+            createdAt: now - 100,
+            updatedAt: now,
+            messages: [{ id: "m1", role: "user", content: "loaded", timestamp: now }],
+        }));
+
+        useSessionStore.setState({ sessions: [], currentSessionId: null });
+        await useSessionStore.getState().loadSessions();
+        await vi.waitFor(() => expect(api.getSession).toHaveBeenCalledWith("recent"));
+
+        const state = useSessionStore.getState();
+        expect(state.sessions.find((session) => session.id === "recent")?.messages[0]?.content).toBe("loaded");
+        expect(state.sessions.find((session) => session.id === "old")).toMatchObject({
+            messages: [],
+            messagesLoaded: false,
+            messageCount: 12,
+        });
+        expect(piAPI.listSessions).not.toHaveBeenCalled();
     });
 });

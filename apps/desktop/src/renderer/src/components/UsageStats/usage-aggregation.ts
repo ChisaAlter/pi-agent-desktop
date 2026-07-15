@@ -310,7 +310,7 @@ export function buildUsageOverview(sessions: Session[], options: UsageOverviewOp
   const sessionMap = new Map(sessions.map((s) => [s.id, s]));
   const messageCount = sessionRows.reduce((sum, row) => {
     const source = sessionMap.get(row.id);
-    return sum + (source?.messages.length ?? 0);
+    return sum + (source?.messageCount ?? source?.messages.length ?? 0);
   }, 0);
 
   const modelBreakdown = Array.from(modelBuckets.values())

@@ -46,6 +46,9 @@ import type {
     GoalState,
     // v1.0.5 (Task 24): explicit return types for `ipcRenderer.invoke` channels
     Session,
+    SessionListItem,
+    SessionSearchInput,
+    SessionSearchResult,
     PiSlashCommand,
     SlashCommandRunResult,
     MiMoCodeRuntimeFeatureState,
@@ -143,6 +146,10 @@ const piAPI: PiAPI = {
 
     // Session
     listSessions: () => ipcRenderer.invoke("session:list") as Promise<Session[]>,
+    listSessionSummaries: () => ipcRenderer.invoke("session:list-summaries") as Promise<SessionListItem[]>,
+    getSession: (id) => ipcRenderer.invoke("session:get", id) as Promise<Session | IpcError>,
+    searchSessionMessages: (input: SessionSearchInput) =>
+        ipcRenderer.invoke("session:search", input) as Promise<SessionSearchResult[] | IpcError>,
     createSession: (workspaceId, title, id) => ipcRenderer.invoke("session:create", workspaceId, title, id) as Promise<Session>,
     renameSession: (id, title) => ipcRenderer.invoke("session:rename", id, title) as Promise<Session>,
     deleteSession: (id) => ipcRenderer.invoke("session:delete", id) as Promise<void>,

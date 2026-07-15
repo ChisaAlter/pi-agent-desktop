@@ -1,7 +1,7 @@
 // Electron Main Process Entry Point
 
 import { app, BrowserWindow, Menu, Tray, nativeImage } from 'electron';
-import { mkdirSync } from 'fs';
+import { mkdirSync, rmSync } from 'fs';
 import { dirname, join } from 'path';
 import { is } from '@electron-toolkit/utils';
 import { homedir } from 'os';
@@ -41,7 +41,7 @@ import { clearPendingExtensionUiRequests } from './services/extensions/extension
 import { setExtensionUiTargetResolver } from './services/extensions/extension-ui-bridge';
 import { setupAutoUpdater, type AppUpdaterService } from './services/updater';
 import { ptyManager } from './services/shell/pty-manager';
-import { DEFAULT_LONG_HORIZON_SETTINGS, normalizeLongHorizonSettings, type AppSettings, type Session } from '@shared';
+import { DEFAULT_LONG_HORIZON_SETTINGS, normalizeLongHorizonSettings, type AppSettings, type Session, type ToolPermissions } from '@shared';
 import { SubagentManager, type SubagentSessionFactory } from './services/subagent/manager';
 import { AutoScheduler, type ScheduledSubagentType } from './services/subagent/auto-scheduler';
 import { createAutoSchedulerSpawnHandler, type SubagentSpawnHandlerDeps } from './services/subagent/spawn-handler';
@@ -68,6 +68,7 @@ import { attachCrashDiagnostics, attachRendererCrashDiagnostics } from './servic
 import { resolveStoredToolPermissions } from './services/permission/runtime-policy';
 import { resolveNativeSessionPath } from './services/pi-session/session-path';
 import { registerSingleInstance } from './services/single-instance';
+import { SqliteSessionRepository } from './services/sqlite-session-repository';
 import type { PiAgentConfig } from './types';
 
 const e2eLocale = process.env.PI_DESKTOP_E2E_LOCALE;
@@ -162,6 +163,7 @@ interface StoreSchema {
   schemaVersion: number;
   workspaces: Workspace[];
   sessions: Session[];
+  sessionStorage?: "sqlite-v1";
   settings: AppSettings;
   /**
    * AutoScheduler lastRunAt persistence (Phase 2 wire-inert-subsystems).
@@ -173,7 +175,8 @@ interface StoreSchema {
 }
 
 /** 当前持久化 schema 版本; 升级字段/重命名时递增并在 migrateStore 内补迁移步骤. */
-const CURRENT_SCHEMA_VERSION = 1;
+const CURRENT_SCHEMA_VERSION = 2;
+let resetSessionStorageOnOpen = false;
 
 const store = new Store<StoreSchema>({
   defaults: {
@@ -221,10 +224,31 @@ function migrateStore(): void {
     }));
     store.set('sessions', migrated);
   }
-  // 未来迁移: if (version < 2) { ... }
+  if (version < 2 || store.get('sessionStorage') !== 'sqlite-v1') {
+    store.set('sessions', []);
+    store.set('sessionStorage', 'sqlite-v1');
+    resetSessionStorageOnOpen = true;
+  }
   store.set('schemaVersion', CURRENT_SCHEMA_VERSION);
 }
 migrateStore();
+
+let sessionRepository: SqliteSessionRepository | null = null;
+const sessionToolPermissions = new Map<string, ToolPermissions>();
+
+function getSessionRepository(): SqliteSessionRepository {
+  if (!sessionRepository) {
+    const userDataPath = app.getPath('userData');
+    if (resetSessionStorageOnOpen) {
+      for (const fileName of ['sessions.db', 'sessions.db-wal', 'sessions.db-shm', 'sessions.backup.db']) {
+        rmSync(join(userDataPath, fileName), { force: true });
+      }
+      resetSessionStorageOnOpen = false;
+    }
+    sessionRepository = new SqliteSessionRepository(userDataPath);
+  }
+  return sessionRepository;
+}
 
 const sendToRenderer = (channel: string, payload: unknown) => {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -369,7 +393,7 @@ const agentRegistry = new AgentRuntimeRegistry({
   getSettings: () => store.get('settings'),
   getEffectiveToolPermissions: (workspaceId, sessionId) => {
     const sessionPermissions = sessionId
-      ? store.get('sessions').find((session) => session.id === sessionId)?.toolPermissions
+      ? sessionToolPermissions.get(sessionId)
       : undefined;
     const workspacePermissions = store.get('settings')?.workspaceToolDefaults?.[workspaceId];
     return resolveStoredToolPermissions({ sessionPermissions, workspacePermissions });
@@ -457,12 +481,13 @@ async function resolveActiveModel(_workspaceId: string): Promise<{ provider: Res
   return { provider, model };
 }
 
-function lookupTranscript(workspaceId: string, agentId?: string): Array<{ role: 'user' | 'assistant'; content: string; id?: string }> {
-  const sessions = store.get('sessions') ?? [];
+async function lookupTranscript(workspaceId: string, agentId?: string): Promise<Array<{ role: 'user' | 'assistant'; content: string; id?: string }>> {
+  const repository = getSessionRepository();
+  const sessions = await repository.listSessionSummaries();
   const candidates = sessions
     .filter((session) => session.workspaceId === workspaceId && (!agentId || session.id === agentId))
     .sort((a, b) => (b.lastOpenedAt ?? b.updatedAt) - (a.lastOpenedAt ?? a.updatedAt));
-  const session = candidates[0];
+  const session = candidates[0] ? await repository.getSession(candidates[0].id) : undefined;
   const transcript: Array<{ role: 'user' | 'assistant'; content: string; id?: string }> = [];
   for (const message of session?.messages ?? []) {
     if (message.role !== 'user' && message.role !== 'assistant') continue;
@@ -542,6 +567,12 @@ function initializePiDriver(): void {
 
 // IPC Handlers
 function setupIPC(updaterService: AppUpdaterService): void {
+  const sessions = getSessionRepository();
+  void sessions.listSessionSummaries().then((items) => {
+    for (const session of items) {
+      if (session.toolPermissions) sessionToolPermissions.set(session.id, session.toolPermissions);
+    }
+  }).catch((error) => log.error('[Main] session summary hydration failed:', error));
   // Pi session (long-lived AgentSession)
   const longHorizonRoot = join(app.getPath('userData'), 'long-horizon');
   memoryService ??= new MemoryService({ rootDir: longHorizonRoot });
@@ -575,7 +606,7 @@ function setupIPC(updaterService: AppUpdaterService): void {
       };
     },
     resolveActiveModel,
-    transcriptLookup: async (workspaceId, agentId) => lookupTranscript(workspaceId, agentId),
+    transcriptLookup: lookupTranscript,
   });
   // Wire the stop-gate hook: every `turn_end` Pi event forwarded by
   // event-bridge.ts will now trigger GoalService.onTurnEnd, which runs the
@@ -607,7 +638,7 @@ function setupIPC(updaterService: AppUpdaterService): void {
     checkpointService,
     taskService,
     getSettings: () => store.get('settings'),
-    transcriptLookup: async (workspaceId, agentId) => lookupTranscript(workspaceId, agentId),
+    transcriptLookup: lookupTranscript,
     getWorkspace: (id: string) => store.get('workspaces').find((w) => w.id === id),
     getDefaultWorkspace: () => {
       return getMostRecentlyActiveWorkspace(store.get('workspaces'));
@@ -630,7 +661,7 @@ function setupIPC(updaterService: AppUpdaterService): void {
   //    subagents when the primary agent is idle, no subagent is in-flight, and
   //    the configured interval has elapsed since the last run.
   markdownMemoryService ??= new MarkdownMemoryService({});
-  sessionSummaryService ??= new SessionSummaryService(() => store.get('sessions'));
+  sessionSummaryService ??= new SessionSummaryService(sessions);
   setupSubagentIpc({ subagentManager });
   subagentManager.start();
 
@@ -710,10 +741,12 @@ function setupIPC(updaterService: AppUpdaterService): void {
 
   // Session management (delegated to sessions.ipc.ts)
   setupSessionsIpc({
-    store: {
-      get: (key) => store.get(key) as Session[],
-      set: (key, value) => store.set(key, value as never),
+    repository: sessions,
+    onSessionUpdated: (session) => {
+      if (session.toolPermissions) sessionToolPermissions.set(session.id, session.toolPermissions);
+      else sessionToolPermissions.delete(session.id);
     },
+    onSessionDeleted: (sessionId) => sessionToolPermissions.delete(sessionId),
   });
 
   setupPackagesIpc();
@@ -755,7 +788,9 @@ function setupIPC(updaterService: AppUpdaterService): void {
   setupUpdaterIpc(updaterService);
   setupDiagnosticsIpc({
     getMainWindow: () => mainWindow,
-    buildReport: () => buildDiagnosticReport({
+    buildReport: async () => {
+      const sessionStats = await sessions.getStats();
+      return buildDiagnosticReport({
       appVersion: app.getVersion(),
       userDataPath: app.getPath("userData"),
       logPath: log.transports.file.getFile().path,
@@ -766,12 +801,10 @@ function setupIPC(updaterService: AppUpdaterService): void {
         chrome: process.versions.chrome,
       },
       workspaces: store.get("workspaces"),
-      sessions: store.get("sessions"),
-      databaseHealth: memoryService?.getDatabase().checkHealth() ?? {
-        ok: false,
-        details: ["Long-horizon database is not initialized"],
-      },
-    }),
+        sessionStats: { count: sessionStats.sessionCount, messageCount: sessionStats.messageCount },
+        databaseHealth: sessions.checkHealth(),
+      });
+    },
   });
 
   // Terminal (node-pty)
@@ -867,6 +900,11 @@ function cleanupAllServices(): void {
     goalService?.close()?.catch((e: unknown) => log.error("goalService close failed:", e));
   } catch (e) {
     log.error("goalService close failed:", e);
+  }
+  try {
+    sessionRepository?.close();
+  } catch (e) {
+    log.error("sessionRepository close failed:", e);
   }
 }
 
