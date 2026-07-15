@@ -732,8 +732,8 @@ describe("App sidebar session navigation", () => {
         expect(globalsCss).toContain("--motion-emphasized: 220ms");
         expect(globalsCss).toContain("--motion-ease: cubic-bezier(0.2, 0, 0, 1)");
         expect(globalsCss).toContain("--motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1)");
-        expect(globalsCss).toMatch(/\.pi-motion-control[\s\S]*transition-property:[^;]*\bscale\b/);
-        expect(globalsCss).toMatch(/:active:not\(:disabled\)[\s\S]*scale:\s*0\.96/);
+        expect(globalsCss).toMatch(/\.pi-motion-control[\s\S]*transition-property:[^;]*\btransform\b/);
+        expect(globalsCss).not.toMatch(/:active:not\(:disabled\)[\s\S]*scale:\s*0\.96/);
         expect(globalsCss).not.toContain("transition: all");
         expect(globalsCss).not.toContain("will-change:");
         expect(globalsCss).toMatch(/prefers-reduced-motion:\s*reduce[\s\S]*transition-duration:\s*1ms/);

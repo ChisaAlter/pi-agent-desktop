@@ -151,6 +151,8 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
   const [filesExpanded, setFilesExpanded] = useState(false);
   const [copiedPath, setCopiedPath] = useTransientState<string>(1600);
   const rightRailCollapsed = useSettingsStore((state) => state.rightRailCollapsed);
+  const [documentVisible, setDocumentVisible] = useState(() => document.visibilityState === "visible");
+  const railVisible = !rightRailCollapsed && documentVisible;
   const { steps, goal } = usePlanStore();
   const queue = useQueueStore();
   const currentSession = useSessionStore((state) =>
@@ -176,38 +178,29 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
   }, [workspacePath]);
 
   useEffect(() => {
-    if (!workspacePath || !window.piAPI?.getGitStatus) return;
+    const onVisibilityChange = (): void => {
+      setDocumentVisible(document.visibilityState === "visible");
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, []);
+
+  useEffect(() => {
+    if (!railVisible || !workspacePath || !window.piAPI?.getGitStatus) return;
     let disposed = false;
-    let intervalId: ReturnType<typeof setInterval> | null = null;
     const load = async (): Promise<void> => {
       if (!disposed) await loadGitSnapshot();
     };
-    const start = (): void => {
-      if (intervalId || disposed) return;
-      intervalId = setInterval(() => void load(), 15000);
-    };
-    const stop = (): void => {
-      if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
-    };
-    const onVisibilityChange = (): void => {
-      if (document.visibilityState === "visible" && !rightRailCollapsed) start();
-      else stop();
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
+    const intervalId = setInterval(() => void load(), 15000);
     void load();
-    if (document.visibilityState === "visible" && !rightRailCollapsed) start();
     return () => {
       disposed = true;
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      stop();
+      clearInterval(intervalId);
     };
-  }, [loadGitSnapshot, workspacePath, rightRailCollapsed]);
+  }, [loadGitSnapshot, railVisible, workspacePath]);
 
   useEffect(() => {
-    if (!workspacePath || !window.piAPI?.detectProject) return;
+    if (!railVisible || !workspacePath || !window.piAPI?.detectProject) return;
     let disposed = false;
     const load = async (): Promise<void> => {
       const result = await window.piAPI!.detectProject(workspacePath);
@@ -224,9 +217,10 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
     return () => {
       disposed = true;
     };
-  }, [workspacePath]);
+  }, [railVisible, workspacePath]);
 
   useEffect(() => {
+    if (!railVisible) return;
     const onWorkspaceGitUpdate = (event: Event): void => {
       const detail = (event as CustomEvent<{ workspacePath?: string }>).detail;
       if (!detail?.workspacePath || detail.workspacePath === workspacePath) {
@@ -239,7 +233,7 @@ export function RightRail({ workspacePath, workspaceId, tasks = [] }: RightRailP
       window.removeEventListener("workspace:file-saved", onWorkspaceGitUpdate);
       window.removeEventListener("workspace:git-changed", onWorkspaceGitUpdate);
     };
-  }, [loadGitSnapshot, workspacePath]);
+  }, [loadGitSnapshot, railVisible, workspacePath]);
 
   const changeCount = useMemo(() => {
     if (!git) return 0;

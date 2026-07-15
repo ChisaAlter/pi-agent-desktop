@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, screen, type Event as ElectronEvent } from 'electron';
 import { join } from 'path';
 import { is } from '@electron-toolkit/utils';
 import log from 'electron-log/main';
@@ -8,6 +8,8 @@ import { attachWebSecurityHandlers } from '../services/web-security';
 let settingsWindow: BrowserWindow | null = null;
 let pendingSettingsTab: SettingsWindowTab | undefined;
 let settingsRendererReady = false;
+let appQuitting = false;
+let quitListenerRegistered = false;
 
 const SETTINGS_WINDOW_WIDTH = 1067;
 const SETTINGS_WINDOW_HEIGHT = 800;
@@ -29,9 +31,17 @@ function selectSettingsTab(tab: SettingsWindowTab | undefined): void {
 }
 
 export function setupSettingsWindowIpc(getMainWindow?: () => BrowserWindow | null): void {
+  if (!quitListenerRegistered) {
+    quitListenerRegistered = true;
+    app.on('before-quit', () => {
+      appQuitting = true;
+    });
+  }
+
   ipcMain.handle('settings:open-window', (_event, requestedTab?: unknown) => {
     const tab = isSettingsWindowTab(requestedTab) ? requestedTab : undefined;
     if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.show();
       settingsWindow.focus();
       selectSettingsTab(tab);
       return;
@@ -90,6 +100,12 @@ export function setupSettingsWindowIpc(getMainWindow?: () => BrowserWindow | nul
       settingsWindow?.show();
     });
 
+    settingsWindow.on('close', (event: ElectronEvent) => {
+      if (appQuitting || !settingsWindow || settingsWindow.isDestroyed()) return;
+      event.preventDefault();
+      settingsWindow.hide();
+    });
+
     settingsWindow.on('closed', () => {
       settingsWindow = null;
       pendingSettingsTab = undefined;
@@ -117,7 +133,7 @@ export function setupSettingsWindowIpc(getMainWindow?: () => BrowserWindow | nul
 
   ipcMain.handle('settings:close-window', () => {
     if (settingsWindow && !settingsWindow.isDestroyed()) {
-      settingsWindow.close();
+      settingsWindow.hide();
     }
   });
 }

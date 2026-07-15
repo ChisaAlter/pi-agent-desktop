@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const openMock = vi.fn((element: HTMLElement | null) => {
@@ -38,10 +38,12 @@ import { TerminalPanel } from "./TerminalPanel";
 
 const unsubOut = vi.fn();
 const unsubExit = vi.fn();
+let outputListener: ((data: string) => void) | null = null;
 
 describe("TerminalPanel", () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        outputListener = null;
         class ResizeObserverStub {
             observe = vi.fn();
             disconnect = vi.fn();
@@ -56,9 +58,16 @@ describe("TerminalPanel", () => {
                 terminalInput: vi.fn(async () => undefined),
                 terminalResize: vi.fn(async () => undefined),
                 closeTerminal: vi.fn(async () => undefined),
-                onTerminalOutput: vi.fn(() => unsubOut),
+                onTerminalOutput: vi.fn((_id: string, listener: (data: string) => void) => {
+                    outputListener = listener;
+                    return unsubOut;
+                }),
                 onTerminalExit: vi.fn(() => unsubExit),
             },
+            configurable: true,
+        });
+        Object.defineProperty(navigator, "clipboard", {
+            value: { writeText: vi.fn(async () => undefined) },
             configurable: true,
         });
     });
@@ -104,5 +113,49 @@ describe("TerminalPanel", () => {
 
         expect(screen.getByRole("note").textContent).toContain("终端由你直接控制，拥有本机完整权限；Agent 工具权限不会限制此终端");
         expect(screen.getByRole("note").className).not.toContain("hidden");
+    });
+
+    it("does not create a terminal for a command while the panel is hidden", async () => {
+        render(
+            <TerminalPanel
+                isOpen={false}
+                workspacePath="C:/demo"
+                onClose={vi.fn()}
+                initialCommand={{ command: "pnpm test", nonce: 1 }}
+            />,
+        );
+
+        await Promise.resolve();
+        expect(window.piAPI.createTerminal).not.toHaveBeenCalled();
+        expect(window.piAPI.terminalInput).not.toHaveBeenCalled();
+    });
+
+    it("commits terminal output bursts to React state once per animation frame", async () => {
+        const frames: FrameRequestCallback[] = [];
+        vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+            frames.push(callback);
+            return frames.length;
+        });
+
+        render(<TerminalPanel isOpen workspacePath="C:/demo" onClose={vi.fn()} />);
+        fireEvent.click(screen.getByRole("button", { name: "+ 新建终端" }));
+        await waitFor(() => expect(outputListener).toBeTruthy());
+
+        act(() => {
+            outputListener?.("first");
+            outputListener?.("second");
+        });
+
+        expect(window.requestAnimationFrame).toHaveBeenCalledTimes(1);
+        expect(screen.getByTitle("当前终端暂无输出").hasAttribute("disabled")).toBe(true);
+
+        act(() => frames[0]?.(16));
+
+        const copyButton = screen.getByTitle("复制当前终端最近输出");
+        expect(copyButton.hasAttribute("disabled")).toBe(false);
+        fireEvent.click(copyButton);
+        await waitFor(() => {
+            expect(navigator.clipboard.writeText).toHaveBeenCalledWith("firstsecond");
+        });
     });
 });

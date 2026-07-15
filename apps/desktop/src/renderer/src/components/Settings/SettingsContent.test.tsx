@@ -5,6 +5,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { SettingsContent } from "./SettingsContent";
 
+const { usageTabModuleLoaded, usageTabModulePromise, resolveUsageTabModule } = vi.hoisted(() => {
+    let resolveUsageTabModule!: () => void;
+    const usageTabModulePromise = new Promise<void>((resolve) => {
+        resolveUsageTabModule = resolve;
+    });
+    return {
+        usageTabModuleLoaded: vi.fn(),
+        usageTabModulePromise,
+        resolveUsageTabModule,
+    };
+});
+
 vi.mock("./tabs/GeneralTab", () => ({
     GeneralTab: () => (
         <div className="settings-tab-panel" role="tabpanel" id="settings-tabpanel-general" aria-labelledby="settings-tab-general">
@@ -51,13 +63,18 @@ vi.mock("./tabs/PermissionsTab", () => ({
     ),
 }));
 
-vi.mock("./tabs/UsageTab", () => ({
-    UsageTab: () => (
-        <div className="settings-tab-panel" role="tabpanel" id="settings-tabpanel-usage" aria-labelledby="settings-tab-usage">
-            <h1>用量</h1>
-        </div>
-    ),
-}));
+vi.mock("./tabs/UsageTab", async () => {
+    await usageTabModulePromise;
+    usageTabModuleLoaded();
+    return {
+        UsageTab: () => (
+            <div className="settings-tab-panel" role="tabpanel" id="settings-tabpanel-usage" aria-labelledby="settings-tab-usage">
+                <h1>用量</h1>
+                <div data-settings-anchor="usage-overview">Token 用量概览</div>
+            </div>
+        ),
+    };
+});
 
 vi.mock("./tabs/LongHorizonTab", () => ({
     LongHorizonTab: () => (
@@ -101,6 +118,10 @@ describe("SettingsContent", () => {
             },
         });
         Object.defineProperty(Element.prototype, "scrollIntoView", {
+            configurable: true,
+            value: vi.fn(),
+        });
+        Object.defineProperty(HTMLElement.prototype, "scrollTo", {
             configurable: true,
             value: vi.fn(),
         });
@@ -176,5 +197,30 @@ describe("SettingsContent", () => {
         expect(activePanel.getAttribute("data-settings-active-tab")).toBe("model");
         expect(activePanel.className).toContain("settings-tab-panel-motion");
         expect(screen.getByRole("tab", { name: "模型" }).getAttribute("aria-selected")).toBe("true");
+    });
+
+    it("loads non-default settings tabs only after they are selected", async () => {
+        render(
+            <I18nProvider>
+                <SettingsContent />
+            </I18nProvider>,
+        );
+
+        expect(screen.getByText("通用设置")).toBeTruthy();
+        expect(usageTabModuleLoaded).not.toHaveBeenCalled();
+
+        const searchInput = screen.getByPlaceholderText("搜索设置...");
+        fireEvent.change(searchInput, { target: { value: "Token" } });
+        fireEvent.click(screen.getByRole("tab", { name: "用量 · Token 用量概览" }));
+
+        expect(screen.getByTestId("settings-tab-loading")).toBeTruthy();
+        expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+        resolveUsageTabModule();
+
+        expect(await screen.findByRole("heading", { name: "用量" })).toBeTruthy();
+        expect(usageTabModuleLoaded).toHaveBeenCalledTimes(1);
+        await waitFor(() => {
+            expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+        });
     });
 });

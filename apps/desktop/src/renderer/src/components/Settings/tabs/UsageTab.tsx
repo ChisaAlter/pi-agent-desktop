@@ -1,7 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { isIpcError } from "@shared";
 import { useI18n } from "../../../i18n";
-import { useSessionStore } from "../../../stores/session-store";
-import { useWorkspaceStore } from "../../../stores/workspace-store";
 import {
   buildUsageOverview,
   formatUsageDate,
@@ -11,6 +10,25 @@ import {
 import { SectionTitle, SettingsCard, SettingsPage } from "../_shared";
 
 type TimeRange = 7 | 30;
+type UsageSession = Parameters<typeof buildUsageOverview>[0][number];
+type UsageSessionSource = Pick<UsageSession, "id" | "title" | "workspaceId" | "archived" | "usage"> & {
+  createdAt: number | Date;
+  updatedAt: number | Date;
+  messages?: UsageSession["messages"];
+  messageCount?: number;
+};
+type UsageApi = NonNullable<Window["piAPI"]> & {
+  listSessionSummaries?: () => Promise<UsageSessionSource[]>;
+};
+
+function reviveUsageSession(session: UsageSessionSource): UsageSession {
+  return {
+    ...session,
+    createdAt: session.createdAt instanceof Date ? session.createdAt : new Date(session.createdAt),
+    updatedAt: session.updatedAt instanceof Date ? session.updatedAt : new Date(session.updatedAt),
+    messages: session.messages ?? [],
+  } as UsageSession;
+}
 
 interface TooltipState {
   content: string;
@@ -249,21 +267,57 @@ function ModelUsage({
 
 export function UsageTab(): React.JSX.Element {
   const { t } = useI18n();
-  const sessions = useSessionStore((state) => state.sessions);
-  const currentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace());
+  const [sessions, setSessions] = useState<UsageSession[]>([]);
+  const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | undefined>();
   const [timeRange, setTimeRange] = useState<TimeRange>(30);
   const [includeAllWorkspaces, setIncludeAllWorkspaces] = useState(false);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
 
+  useEffect(() => {
+    let active = true;
+    const load = async (): Promise<void> => {
+      const api = window.piAPI as UsageApi | undefined;
+      if (!api?.listSessions || !api.listWorkspaces) return;
+      try {
+        const [sessionList, workspaceList] = await Promise.all([
+          api.listSessionSummaries ? api.listSessionSummaries() : api.listSessions(),
+          api.listWorkspaces(),
+        ]);
+        if (!active) return;
+        const currentWorkspace = isIpcError(workspaceList)
+          ? undefined
+          : workspaceList
+            .slice()
+            .sort((a, b) => (b.lastActiveAt ?? b.createdAt) - (a.lastActiveAt ?? a.createdAt))[0];
+        setSessions((sessionList as UsageSessionSource[]).map(reviveUsageSession));
+        setCurrentWorkspaceId(currentWorkspace?.id);
+      } catch {
+        if (!active) return;
+        setSessions([]);
+        setCurrentWorkspaceId(undefined);
+      }
+    };
+    const onVisibilityChange = (): void => {
+      if (document.visibilityState === "visible") void load();
+    };
+
+    void load();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      active = false;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+
   const overview = useMemo(
     () => buildUsageOverview(sessions, {
-      workspaceId: currentWorkspace?.id,
+      workspaceId: currentWorkspaceId,
       includeAllWorkspaces,
       includeArchived,
       days: timeRange,
     }),
-    [currentWorkspace?.id, includeAllWorkspaces, includeArchived, sessions, timeRange],
+    [currentWorkspaceId, includeAllWorkspaces, includeArchived, sessions, timeRange],
   );
 
   const clearTooltip = (): void => setTooltip(null);

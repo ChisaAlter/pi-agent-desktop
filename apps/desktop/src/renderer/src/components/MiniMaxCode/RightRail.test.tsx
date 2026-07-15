@@ -45,6 +45,7 @@ describe("RightRail", () => {
     });
     useSessionStore.setState({ sessions: [], currentSessionId: null });
     useSettingsStore.setState({
+      rightRailCollapsed: false,
       settings: {
         ...useSettingsStore.getState().settings,
         model: "",
@@ -62,6 +63,17 @@ describe("RightRail", () => {
       status: "idle",
     });
     useQueueStore.getState().clear();
+  });
+
+  it("does not issue initial workspace IPC while the rail is collapsed", async () => {
+    useSettingsStore.setState({ rightRailCollapsed: true });
+
+    renderWithI18n(<RightRail workspacePath="C:/repo" />);
+    await Promise.resolve();
+
+    expect(getGitStatus).not.toHaveBeenCalled();
+    expect(gitDiff).not.toHaveBeenCalled();
+    expect(detectProject).not.toHaveBeenCalled();
   });
 
   it("renders environment git information from the current workspace", async () => {

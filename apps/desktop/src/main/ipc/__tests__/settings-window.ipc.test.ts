@@ -6,6 +6,7 @@ const {
   webContentsListeners,
   sendMock,
   webContents,
+  mockWindow,
   BrowserWindowMock,
 } = vi.hoisted(() => {
   const handlers = new Map<string, (...args: unknown[]) => unknown>();
@@ -30,6 +31,7 @@ const {
     focus: vi.fn(),
     setBounds: vi.fn(),
     show: vi.fn(),
+    hide: vi.fn(),
     close: vi.fn(),
     loadFile: vi.fn(async () => undefined),
     loadURL: vi.fn(async () => undefined),
@@ -46,11 +48,15 @@ const {
     webContentsListeners,
     sendMock,
     webContents,
+    mockWindow,
     BrowserWindowMock,
   };
 });
 
 vi.mock("electron", () => ({
+  app: {
+    on: vi.fn(),
+  },
   BrowserWindow: BrowserWindowMock,
   ipcMain: {
     handle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
@@ -85,6 +91,10 @@ describe("setupSettingsWindowIpc", () => {
     webContentsListeners.clear();
     sendMock.mockReset();
     BrowserWindowMock.mockClear();
+    mockWindow.show.mockClear();
+    mockWindow.hide.mockClear();
+    mockWindow.close.mockClear();
+    mockWindow.focus.mockClear();
     setupSettingsWindowIpc();
   });
 
@@ -110,5 +120,31 @@ describe("setupSettingsWindowIpc", () => {
     expect(BrowserWindowMock).toHaveBeenCalledWith(expect.objectContaining({
       transparent: false,
     }));
+  });
+
+  it("hides and reuses the settings window instead of destroying it", async () => {
+    const openWindow = handlers.get("settings:open-window");
+    const closeWindow = handlers.get("settings:close-window");
+
+    await openWindow?.({}, "general");
+    await closeWindow?.({});
+    await openWindow?.({}, "usage");
+
+    expect(BrowserWindowMock).toHaveBeenCalledTimes(1);
+    expect(mockWindow.hide).toHaveBeenCalledTimes(1);
+    expect(mockWindow.close).not.toHaveBeenCalled();
+    expect(mockWindow.show).toHaveBeenCalledTimes(1);
+    expect(mockWindow.focus).toHaveBeenCalledTimes(1);
+  });
+
+  it("turns a native close request into a hide while the app is running", async () => {
+    const openWindow = handlers.get("settings:open-window");
+    await openWindow?.({}, "general");
+    const event = { preventDefault: vi.fn() };
+
+    windowListeners.get("close")?.(event);
+
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(mockWindow.hide).toHaveBeenCalledTimes(1);
   });
 });

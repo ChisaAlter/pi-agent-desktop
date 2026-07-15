@@ -1,7 +1,7 @@
 // TerminalPanel (M4 Task M4-3)
 // 多 tab 终端面板, 集成 xterm.js + node-pty
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -42,6 +42,8 @@ export function TerminalPanel({
     const { t } = useTranslation();
     const [tabs, setTabs] = useState<Tab[]>([]);
     const tabsRef = useRef<Tab[]>([]);
+    const pendingOutputRef = useRef(new Map<string, string>());
+    const outputFrameRef = useRef<number | null>(null);
     const [activeId, setActiveId] = useState<string | null>(null);
     const [copiedOutput, setCopiedOutput] = useState(false);
     const [createError, setCreateError] = useState<string | null>(null);
@@ -49,6 +51,25 @@ export function TerminalPanel({
     const [copyError, setCopyError] = useState<string | null>(null);
     const settingsFontSize = useSettingsStore((state) => state.settings.fontSize);
     const terminalFontSize = getEditorFontSize(settingsFontSize);
+
+    const flushPendingOutput = useCallback((): void => {
+        outputFrameRef.current = null;
+        if (pendingOutputRef.current.size === 0) return;
+        const pending = new Map(pendingOutputRef.current);
+        pendingOutputRef.current.clear();
+        setTabs((prev) => prev.map((tab) => {
+            const output = pending.get(tab.id);
+            return output === undefined
+                ? tab
+                : { ...tab, output: `${tab.output}${output}`.slice(-MAX_OUTPUT_BUFFER) };
+        }));
+    }, []);
+
+    const queueOutputUpdate = useCallback((id: string, data: string): void => {
+        pendingOutputRef.current.set(id, `${pendingOutputRef.current.get(id) ?? ""}${data}`);
+        if (outputFrameRef.current !== null) return;
+        outputFrameRef.current = window.requestAnimationFrame(flushPendingOutput);
+    }, [flushPendingOutput]);
 
     const createTab = async (): Promise<string | null> => {
         if (!window.piAPI) return null;
@@ -91,24 +112,12 @@ export function TerminalPanel({
 
         const unsubOut = window.piAPI.onTerminalOutput(actualId, (data: string) => {
             term.write(data);
-            setTabs((prev) =>
-                prev.map((tab) =>
-                    tab.id === actualId
-                        ? { ...tab, output: `${tab.output}${data}`.slice(-MAX_OUTPUT_BUFFER) }
-                        : tab,
-                ),
-            );
+            queueOutputUpdate(actualId, data);
         });
         const unsubExit = window.piAPI.onTerminalExit(actualId, (code: number | null) => {
             const message = `\r\n\x1b[33m[Process exited with code ${code}]\x1b[0m\r\n`;
             term.write(message);
-            setTabs((prev) =>
-                prev.map((tab) =>
-                    tab.id === actualId
-                        ? { ...tab, output: `${tab.output}${message}`.slice(-MAX_OUTPUT_BUFFER) }
-                        : tab,
-                ),
-            );
+            queueOutputUpdate(actualId, message);
         });
 
         // Stash unsubs for cleanup in closeTab (xterm has no onDispose event)
@@ -131,6 +140,7 @@ export function TerminalPanel({
     };
 
     const closeTab = (id: string) => {
+        pendingOutputRef.current.delete(id);
         const tab = tabs.find((t) => t.id === id);
         if (tab) {
             (tab.terminal as unknown as { _unsubs?: Array<() => void> })._unsubs?.forEach((unsub) => unsub());
@@ -149,6 +159,7 @@ export function TerminalPanel({
     }, [tabs]);
 
     useEffect(() => {
+        if (!isOpen) return;
         for (const tab of tabsRef.current) {
             tab.terminal.options.fontSize = terminalFontSize;
             try {
@@ -158,15 +169,21 @@ export function TerminalPanel({
                 // xterm can throw while a hidden tab has not been opened yet; it will fit on activation.
             }
         }
-    }, [terminalFontSize]);
+    }, [isOpen, terminalFontSize]);
 
     useEffect(() => {
+        const pendingOutput = pendingOutputRef.current;
         return () => {
             for (const tab of tabsRef.current) {
                 (tab.terminal as unknown as { _unsubs?: Array<() => void> })._unsubs?.forEach((unsub) => unsub());
                 tab.terminal.dispose();
                 void window.piAPI?.closeTerminal(tab.id);
             }
+            if (outputFrameRef.current !== null) {
+                window.cancelAnimationFrame(outputFrameRef.current);
+                outputFrameRef.current = null;
+            }
+            pendingOutput.clear();
             tabsRef.current = [];
         };
     }, []);
@@ -175,6 +192,7 @@ export function TerminalPanel({
 
     const clearActiveTerminal = (): void => {
         if (!activeTab) return;
+        pendingOutputRef.current.delete(activeTab.id);
         activeTab.terminal.clear();
         setTabs((prev) => prev.map((tab) => tab.id === activeTab.id ? { ...tab, output: "" } : tab));
         setCopiedOutput(false);
@@ -217,7 +235,7 @@ export function TerminalPanel({
 
     // Resize active tab when panel resizes
     useEffect(() => {
-        if (!activeTab) return;
+        if (!isOpen || !activeTab) return;
         const opened = (activeTab.terminal as unknown as { _opened?: boolean })._opened;
         if (!opened && activeTab.containerRef.current) {
             activeTab.terminal.open(activeTab.containerRef.current);
@@ -240,13 +258,13 @@ export function TerminalPanel({
         const obs = new ResizeObserver(resize);
         if (activeTab.containerRef.current) obs.observe(activeTab.containerRef.current);
         return () => obs.disconnect();
-    }, [activeTab]);
+    }, [activeTab, isOpen]);
 
     useEffect(() => {
-        if (!initialCommand?.command) return;
+        if (!isOpen || !initialCommand?.command) return;
         void sendCommand(initialCommand.command, initialCommand.mode ?? "run");
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [initialCommand?.nonce]);
+    }, [initialCommand?.nonce, isOpen]);
 
     if (!isOpen) return null;
 

@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect, useState } from "react";
+import React, { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { TerminalCommandMode } from "../../utils/terminal-command";
 import { useI18n } from "../../i18n";
 import { GitPanel } from "../GitPanel/GitPanel";
@@ -36,15 +36,33 @@ export function WorkbenchPanel({
   terminalCommand,
 }: WorkbenchPanelProps): React.JSX.Element {
   const { t } = useI18n();
-  const [terminalMounted, setTerminalMounted] = useState(view === "terminal");
-  const shouldMountTerminal = terminalMounted || view === "terminal";
+  const rootRef = useRef<HTMLElement>(null);
+  const [surfaceVisible, setSurfaceVisible] = useState(false);
+  const [terminalMounted, setTerminalMounted] = useState(false);
+  const shouldMountTerminal = terminalMounted || (surfaceVisible && view === "terminal");
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    const panelLayer = root?.closest<HTMLElement>("[data-main-panel]");
+    if (!panelLayer) {
+      setSurfaceVisible(true);
+      return;
+    }
+    const updateVisibility = (): void => {
+      setSurfaceVisible(panelLayer.dataset.active === "true");
+    };
+    updateVisibility();
+    const observer = new MutationObserver(updateVisibility);
+    observer.observe(panelLayer, { attributes: true, attributeFilter: ["data-active"] });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
-    if (view === "terminal") setTerminalMounted(true);
-  }, [view]);
+    if (surfaceVisible && view === "terminal") setTerminalMounted(true);
+  }, [surfaceVisible, view]);
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--mm-bg-body)]">
+    <section ref={rootRef} className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--mm-bg-body)]">
       <div className="flex h-12 shrink-0 items-center border-b border-[var(--mm-border)] px-6">
         <div className="flex h-full items-center gap-5" role="tablist" aria-label={t("workbenchPanel.ariaLabel")}>
           {WORKBENCH_TABS.map((tab) => {
@@ -79,7 +97,7 @@ export function WorkbenchPanel({
           </div>
         ) : (
           <>
-            {view === "files" ? (
+            {surfaceVisible && view === "files" ? (
               <Suspense fallback={<WorkbenchLoading label={t("workbenchPanel.loading.files")} />}>
                 <FileWorkspace
                   workspacePath={workspacePath}
@@ -88,12 +106,12 @@ export function WorkbenchPanel({
                 />
               </Suspense>
             ) : null}
-            {view === "git" ? <GitPanel workspacePath={workspacePath} /> : null}
+            {surfaceVisible && view === "git" ? <GitPanel workspacePath={workspacePath} /> : null}
             {shouldMountTerminal ? (
-              <div className={view === "terminal" ? "h-full" : "hidden"}>
+              <div className={surfaceVisible && view === "terminal" ? "h-full" : "hidden"}>
                 <Suspense fallback={<WorkbenchLoading label={t("workbenchPanel.loading.terminal")} />}>
                   <TerminalPanel
-                    isOpen
+                    isOpen={surfaceVisible && view === "terminal"}
                     displayMode="embedded"
                     workspacePath={workspacePath}
                     initialCommand={terminalCommand}

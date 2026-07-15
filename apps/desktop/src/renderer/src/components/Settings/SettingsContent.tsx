@@ -1,26 +1,42 @@
 // 设置内容 — 独立设置窗口复用的左栏单导航壳.
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useSettingsStore } from '../../stores/settings-store';
-import { ShortcutsSettings } from './ShortcutsSettings/ShortcutsSettings';
 import { useI18n, useTranslateIpcError } from '../../i18n';
 import { type IpcError } from '@shared';
 import { CloseIcon } from './_shared';
 import { SettingsNav } from './SettingsNav';
-import { AppearanceTab } from './tabs/AppearanceTab';
-import { PiAgentTab } from './tabs/PiAgentTab';
 import { GeneralTab } from './tabs/GeneralTab';
-import { AboutTab } from './tabs/AboutTab';
-import { ManagedModelsPanel } from './tabs/ManagedModelsPanel';
-import { PiConfigEditor } from './tabs/PiConfigEditor';
-import { PermissionsTab } from './tabs/PermissionsTab';
-import { UsageTab } from './tabs/UsageTab';
-import { LongHorizonTab } from './tabs/LongHorizonTab';
 import { isSettingsTab, type SettingsSearchResult, type SettingsTab } from './tab-defs';
 import { buildSettingsNavigation, getDefaultSettingsAnchor, searchSettings } from './settings-nav-metadata';
 
+const AppearanceTab = lazy(() => import('./tabs/AppearanceTab').then((module) => ({ default: module.AppearanceTab })));
+const PiAgentTab = lazy(() => import('./tabs/PiAgentTab').then((module) => ({ default: module.PiAgentTab })));
+const AboutTab = lazy(() => import('./tabs/AboutTab').then((module) => ({ default: module.AboutTab })));
+const ManagedModelsPanel = lazy(() => import('./tabs/ManagedModelsPanel').then((module) => ({ default: module.ManagedModelsPanel })));
+const PiConfigEditor = lazy(() => import('./tabs/PiConfigEditor').then((module) => ({ default: module.PiConfigEditor })));
+const PermissionsTab = lazy(() => import('./tabs/PermissionsTab').then((module) => ({ default: module.PermissionsTab })));
+const UsageTab = lazy(() => import('./tabs/UsageTab').then((module) => ({ default: module.UsageTab })));
+const LongHorizonTab = lazy(() => import('./tabs/LongHorizonTab').then((module) => ({ default: module.LongHorizonTab })));
+const ShortcutsSettings = lazy(() => import('./ShortcutsSettings/ShortcutsSettings').then((module) => ({ default: module.ShortcutsSettings })));
+
 interface SettingsContentProps {
     onClose?: () => void;
+}
+
+function SettingsTabReady({
+    tab,
+    onReady,
+    children,
+}: {
+    tab: SettingsTab;
+    onReady: React.Dispatch<React.SetStateAction<SettingsTab | null>>;
+    children: React.ReactNode;
+}): React.JSX.Element {
+    useEffect(() => {
+        onReady(tab);
+    }, [onReady, tab]);
+    return <>{children}</>;
 }
 
 export function SettingsContent({ onClose }: SettingsContentProps = {}): React.JSX.Element {
@@ -28,6 +44,7 @@ export function SettingsContent({ onClose }: SettingsContentProps = {}): React.J
     const [activeTab, setActiveTab] = useState<SettingsTab>('general');
     const [activeAnchor, setActiveAnchor] = useState<string>(getDefaultSettingsAnchor('general'));
     const [pendingAnchor, setPendingAnchor] = useState<string | null>(null);
+    const [contentReadyTab, setContentReadyTab] = useState<SettingsTab | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const scrollRegionRef = useRef<HTMLDivElement>(null);
     const { t } = useI18n();
@@ -64,7 +81,7 @@ export function SettingsContent({ onClose }: SettingsContentProps = {}): React.J
     }, []);
 
     useEffect(() => {
-        if (!pendingAnchor) return;
+        if (!pendingAnchor || contentReadyTab !== activeTab) return;
 
         const root = scrollRegionRef.current;
         const frame = window.requestAnimationFrame(() => {
@@ -78,7 +95,7 @@ export function SettingsContent({ onClose }: SettingsContentProps = {}): React.J
         });
 
         return () => window.cancelAnimationFrame(frame);
-    }, [activeTab, pendingAnchor]);
+    }, [activeTab, contentReadyTab, pendingAnchor]);
 
     const activeTabContent = (() => {
         switch (activeTab) {
@@ -140,7 +157,11 @@ export function SettingsContent({ onClose }: SettingsContentProps = {}): React.J
                         data-testid="settings-active-panel"
                         data-settings-active-tab={activeTab}
                     >
-                        {activeTabContent}
+                        <Suspense fallback={<div className="min-h-full" aria-busy="true" data-testid="settings-tab-loading" />}>
+                            <SettingsTabReady tab={activeTab} onReady={setContentReadyTab}>
+                                {activeTabContent}
+                            </SettingsTabReady>
+                        </Suspense>
                     </div>
                 </div>
 

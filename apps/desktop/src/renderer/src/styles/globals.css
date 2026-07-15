@@ -293,7 +293,7 @@ html, body {
 :is(button, a, [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="option"], [role="switch"]),
 .pi-motion-control,
 .settings-pressable {
-  transition-property: background-color, border-color, color, opacity, box-shadow, transform, scale;
+  transition-property: background-color, border-color, color, opacity, box-shadow, transform;
   transition-timing-function: var(--motion-ease);
   transition-duration: var(--motion-fast);
 }
@@ -302,15 +302,6 @@ html, body {
   transition-property: background-color, border-color, color, opacity, box-shadow;
   transition-timing-function: var(--motion-ease);
   transition-duration: var(--motion-fast);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  :is(button, a, [role="button"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="option"], [role="switch"]):active:not(:disabled):not([aria-disabled="true"]),
-  .pi-motion-control:active:not(:disabled):not([aria-disabled="true"]),
-  .settings-pressable:active:not(:disabled):not([aria-disabled="true"]) {
-    scale: 0.96;
-    transition-duration: var(--motion-instant);
-  }
 }
 
 /* 焦点样式 - 非输入控件保留高对比度 :focus-visible */
