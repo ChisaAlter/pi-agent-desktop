@@ -270,6 +270,8 @@ export function ChatView({
 }: ChatViewProps = {}): React.JSX.Element {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollRegionRef = useRef<HTMLDivElement>(null);
+  const autoScrollFrameRef = useRef<number | null>(null);
+  const isNearBottomRef = useRef(true);
   const focusHandledTimerRef = useRef<number | null>(null);
   const currentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace());
   const agents = useAgentStore((state) => state.agents);
@@ -319,11 +321,32 @@ export function ChatView({
   const shouldUseSessionMessages = Boolean(currentSession);
 
   useEffect(() => {
-    if (focusMessageId) return;
-    const scrollRegion = scrollRegionRef.current;
-    if (!scrollRegion) return;
-    scrollRegion.scrollTo({ top: scrollRegion.scrollHeight, behavior: 'smooth' });
+    isNearBottomRef.current = true;
+  }, [agentId, currentSession?.id]);
+
+  useEffect(() => {
+    if (focusMessageId || !isNearBottomRef.current || autoScrollFrameRef.current !== null) return;
+    const scrollToBottom = (): void => {
+      autoScrollFrameRef.current = null;
+      const scrollRegion = scrollRegionRef.current;
+      if (!scrollRegion || !isNearBottomRef.current) return;
+      scrollRegion.scrollTo({ top: scrollRegion.scrollHeight, behavior: 'auto' });
+      isNearBottomRef.current = true;
+    };
+    if (typeof window.requestAnimationFrame !== "function") {
+      scrollToBottom();
+      return;
+    }
+    autoScrollFrameRef.current = window.requestAnimationFrame(scrollToBottom);
   }, [agentMessages, currentSession?.messages, focusMessageId]);
+
+  useEffect(() => {
+    return () => {
+      if (autoScrollFrameRef.current !== null && typeof window.cancelAnimationFrame === "function") {
+        window.cancelAnimationFrame(autoScrollFrameRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     void initAgents();
@@ -776,6 +799,11 @@ export function ChatView({
       <div
         ref={scrollRegionRef}
         data-testid="chat-scroll-region"
+        onScroll={(event) => {
+          const scrollRegion = event.currentTarget;
+          const distanceFromBottom = scrollRegion.scrollHeight - scrollRegion.clientHeight - scrollRegion.scrollTop;
+          isNearBottomRef.current = distanceFromBottom <= 160;
+        }}
         className={`min-h-0 flex-1 overflow-y-auto ${shouldUseGlobalComposer ? "pb-[var(--pi-global-composer-height,103px)]" : ""}`}
       >
         {messages.length === 0 ? (

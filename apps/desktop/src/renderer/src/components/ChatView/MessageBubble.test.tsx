@@ -419,7 +419,7 @@ describe("MessageBubble", () => {
     const assistantMessage: Message = {
       id: "m-assistant-transparent",
       role: "assistant",
-      content: "普通助手回复",
+      content: "**普通助手回复**",
       timestamp: new Date(0),
     };
 
@@ -442,7 +442,17 @@ describe("MessageBubble", () => {
 
     expect(screen.getByTestId("message-surface").className).not.toContain("bg-[var(--mm-bg-panel)]");
     expect(screen.getByTestId("message-surface").className).not.toContain("border-[var(--mm-border)]");
+    expect(screen.getByText("普通助手回复").tagName).toBe("STRONG");
     expect(screen.getByTestId("message-footer")).toBeTruthy();
+
+    rerender(
+      <I18nProvider>
+        <MessageBubble message={assistantMessage} isStreaming />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText("**普通助手回复**").tagName).toBe("DIV");
+    expect(screen.queryByText("普通助手回复")).toBeNull();
   });
 
   it("shows custom card open-file string failures from Electron shell", async () => {

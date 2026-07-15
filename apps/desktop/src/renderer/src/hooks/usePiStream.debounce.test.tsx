@@ -6,25 +6,27 @@
 //   - turn_end 强制 flush
 //   - flush 调用一次 piAPI.updateMessage,带累积 content/thinking/toolCalls
 
-import { act, render } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiEvent } from "@shared/events";
 import { usePiStream } from "./usePiStream";
 import { useSessionStore } from "../stores/session-store";
 
 let emitPiEvent: ((event: PiEvent) => void) | null = null;
+let animationFrameCallbacks: FrameRequestCallback[] = [];
 const appendMessageMock = vi.fn(async (..._args: unknown[]) => undefined);
 const updateMessageMock = vi.fn(async (..._args: unknown[]) => undefined);
 const updateToolCallMock = vi.fn(async (..._args: unknown[]) => undefined);
 
-function HookHost(): null {
-    usePiStream();
-    return null;
+function HookHost(): React.JSX.Element {
+    const stream = usePiStream();
+    return <div data-testid="current-text">{stream.currentText}</div>;
 }
 
 beforeEach(() => {
     vi.useFakeTimers();
     emitPiEvent = null;
+    animationFrameCallbacks = [];
     appendMessageMock.mockClear();
     updateMessageMock.mockClear();
     updateToolCallMock.mockClear();
@@ -36,6 +38,11 @@ beforeEach(() => {
         clearTimeout: (id: number) => clearTimeout(id),
         setInterval: (...args: Parameters<typeof setInterval>) => setInterval(...args),
         clearInterval: (id: number) => clearInterval(id),
+        requestAnimationFrame: vi.fn((callback: FrameRequestCallback) => {
+            animationFrameCallbacks.push(callback);
+            return animationFrameCallbacks.length;
+        }),
+        cancelAnimationFrame: vi.fn(),
         piAPI: {
             getStatus: vi.fn(async () => ({
                 installed: true,
@@ -84,6 +91,33 @@ function fakeEvent<T extends PiEvent>(evt: T): PiEvent {
 }
 
 describe("usePiStream (T6) — debounce + flush", () => {
+    it("同一动画帧内的多个 delta 只产生一次可见更新", async () => {
+        await act(async () => {
+            render(<HookHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.(fakeEvent({ type: "agent_start" }));
+            for (const delta of ["a", "b", "c"]) {
+                emitPiEvent?.(fakeEvent({
+                    type: "message_update",
+                    assistantMessageEvent: { type: "text_delta", delta },
+                }));
+            }
+        });
+
+        expect(screen.getByTestId("current-text").textContent).toBe("");
+        expect(useSessionStore.getState().sessions[0]?.messages.at(-1)?.content).toBe("");
+        expect(animationFrameCallbacks).toHaveLength(1);
+
+        await act(async () => {
+            animationFrameCallbacks.shift()?.(16);
+        });
+
+        expect(screen.getByTestId("current-text").textContent).toBe("abc");
+        expect(useSessionStore.getState().sessions[0]?.messages.at(-1)?.content).toBe("abc");
+    });
+
     it("100 个 text_delta 在 500ms 内只触发 1 次 updateMessage IPC", async () => {
         await act(async () => {
             render(<HookHost />);
@@ -164,6 +198,8 @@ describe("usePiStream (T6) — debounce + flush", () => {
             emitPiEvent?.(fakeEvent({ type: "turn_end" }));
         });
 
+        expect(screen.getByTestId("current-text").textContent).toBe("early");
+        expect(useSessionStore.getState().sessions[0]?.messages.at(-1)?.content).toBe("early");
         expect(updateMessageMock).toHaveBeenCalledTimes(1);
         const arg = updateMessageMock.mock.calls[0]?.[2] as { content: string };
         expect(arg.content).toBe("early");

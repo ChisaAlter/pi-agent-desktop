@@ -394,7 +394,11 @@ function MessageBubbleImpl({
 
                 {shouldRenderAssistantContent && (
                   <div className="text-sm leading-relaxed font-normal">
-                    <MarkdownRenderer content={visibleContent} />
+                    {isStreaming ? (
+                      <div className="whitespace-pre-wrap break-words">{visibleContent}</div>
+                    ) : (
+                      <MarkdownRenderer content={visibleContent} />
+                    )}
                   </div>
                 )}
 

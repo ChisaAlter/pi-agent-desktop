@@ -811,7 +811,8 @@ describe("ChatView", () => {
     expect(rafCallbacks.length).toBeGreaterThan(0);
 
     act(() => {
-      rafCallbacks.shift()?.(performance.now() + 500);
+      const currentFrame = rafCallbacks.splice(0);
+      currentFrame.forEach((callback) => callback(performance.now() + 500));
     });
 
     expect(screen.getByText(/Token:/).textContent).toContain("2M");
@@ -878,12 +879,20 @@ describe("ChatView", () => {
     expect(screen.queryByLabelText("切换会话")).toBeNull();
   });
 
-  it("auto-scrolls only the chat scroll region instead of the outer document", () => {
+  it("frame-bounds near-bottom chat auto-scrolls without smooth behavior", () => {
     mockedStreamError = null;
+    const rafCallbacks: FrameRequestCallback[] = [];
+    const originalRaf = window.requestAnimationFrame;
+    const originalCancelRaf = window.cancelAnimationFrame;
     const scrollIntoView = vi.fn();
     const scrollTo = vi.fn();
     window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
     window.HTMLElement.prototype.scrollTo = scrollTo;
+    window.requestAnimationFrame = vi.fn((callback: FrameRequestCallback) => {
+      rafCallbacks.push(callback);
+      return rafCallbacks.length;
+    });
+    window.cancelAnimationFrame = vi.fn();
 
     render(
       <I18nProvider>
@@ -892,7 +901,51 @@ describe("ChatView", () => {
     );
 
     expect(scrollIntoView).not.toHaveBeenCalled();
-    expect(scrollTo).toHaveBeenCalled();
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(rafCallbacks).toHaveLength(1);
+
+    act(() => {
+      rafCallbacks.shift()?.(16);
+    });
+
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: "auto" });
+
+    const scrollRegion = screen.getByTestId("chat-scroll-region");
+    Object.defineProperties(scrollRegion, {
+      clientHeight: { configurable: true, value: 400 },
+      scrollHeight: { configurable: true, value: 1_000 },
+      scrollTop: { configurable: true, writable: true, value: 100 },
+    });
+    fireEvent.scroll(scrollRegion);
+    act(() => {
+      useSessionStore.getState().addMessage("s1", {
+        id: "a-far",
+        role: "assistant",
+        content: "far update",
+        timestamp: new Date(1),
+      }, { persist: false });
+    });
+    expect(rafCallbacks).toHaveLength(0);
+
+    scrollRegion.scrollTop = 550;
+    fireEvent.scroll(scrollRegion);
+    act(() => {
+      useSessionStore.getState().addMessage("s1", {
+        id: "a-near",
+        role: "assistant",
+        content: "near update",
+        timestamp: new Date(2),
+      }, { persist: false });
+    });
+    expect(rafCallbacks).toHaveLength(1);
+
+    act(() => {
+      rafCallbacks.shift()?.(32);
+    });
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 1_000, behavior: "auto" });
+
+    window.requestAnimationFrame = originalRaf;
+    window.cancelAnimationFrame = originalCancelRaf;
   });
 
   it("does not create a session just by opening an empty draft", async () => {

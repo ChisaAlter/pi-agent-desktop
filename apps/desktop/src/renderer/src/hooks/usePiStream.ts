@@ -335,6 +335,8 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     const messageIdRef = useRef<string | null>(null);
     const sessionIdRef = useRef<string | null>(null);
     const agentIdRef = useRef<string | null>(null);
+    const streamRenderFrameRef = useRef<number | null>(null);
+    const pendingStreamRenderRef = useRef({ content: false, thinking: false });
     const isTurnActiveRef = useRef(false);
     const lastProviderErrorRef = useRef<string | null>(null);
     const hasCompletionSignalRef = useRef(false);
@@ -449,6 +451,61 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     useEffect(() => { agentIdRef.current = agentId ?? null; }, [agentId]);
     useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
 
+    const cancelStreamRenderFrame = useCallback(() => {
+        if (streamRenderFrameRef.current === null) return;
+        if (typeof window.cancelAnimationFrame === "function") {
+            window.cancelAnimationFrame(streamRenderFrameRef.current);
+        }
+        streamRenderFrameRef.current = null;
+    }, []);
+
+    const discardPendingStreamRender = useCallback(() => {
+        cancelStreamRenderFrame();
+        pendingStreamRenderRef.current = { content: false, thinking: false };
+    }, [cancelStreamRenderFrame]);
+
+    const flushStreamRender = useCallback(() => {
+        cancelStreamRenderFrame();
+        const pending = pendingStreamRenderRef.current;
+        if (!pending.content && !pending.thinking) return;
+        pendingStreamRenderRef.current = { content: false, thinking: false };
+
+        const updates: { content?: string; thinking?: string } = {};
+        if (pending.content) {
+            updates.content = textRef.current;
+            setCurrentText(textRef.current);
+        }
+        if (pending.thinking) {
+            updates.thinking = thinkingRef.current;
+            setCurrentThinking(thinkingRef.current);
+        }
+
+        const messageId = messageIdRef.current;
+        if (!messageId) return;
+        const aid = agentIdRef.current;
+        if (aid) {
+            useAgentStore.getState().updateStreamMessage(aid, messageId, updates);
+        }
+        const sessionId = sessionIdRef.current;
+        if (sessionId) {
+            useSessionStore.getState().updateMessage(sessionId, messageId, updates, { persist: false });
+        }
+    }, [cancelStreamRenderFrame]);
+
+    const scheduleStreamRender = useCallback(() => {
+        if (streamRenderFrameRef.current !== null) return;
+        if (typeof window.requestAnimationFrame !== "function") {
+            flushStreamRender();
+            return;
+        }
+        streamRenderFrameRef.current = window.requestAnimationFrame(() => {
+            streamRenderFrameRef.current = null;
+            flushStreamRender();
+        });
+    }, [flushStreamRender]);
+
+    useEffect(() => discardPendingStreamRender, [discardPendingStreamRender]);
+
     const getPinnedSession = useCallback(() => {
         const pinnedSessionId = sessionIdRef.current;
         if (!pinnedSessionId) return null;
@@ -527,6 +584,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     }, []);
 
     const pauseVisibleStreamingForPlanDecision = useCallback(() => {
+        flushStreamRender();
         setIsStreaming(false);
         isStreamingRef.current = false;
         promptInFlightRef.current = false;
@@ -534,7 +592,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         messageIdRef.current = null;
         sessionIdRef.current = null;
         window.dispatchEvent(new CustomEvent("pi:stream-end"));
-    }, []);
+    }, [flushStreamRender]);
 
     // ── 连接状态 ────────────────────────────────────────────────────────────
     // Track when window.piAPI becomes available — preload injects it after the
@@ -616,6 +674,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     break;
                 }
                 // 新 turn 或首次 agent_start — 完整重置
+                discardPendingStreamRender();
                 setIsStreaming(true);
                 isStreamingRef.current = true;
                 isTurnActiveRef.current = true;
@@ -645,15 +704,9 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     ensureAssistantMessage();
                     hasCompletionSignalRef.current = true;
                     textRef.current += delta;
-                    setCurrentText(textRef.current);
-                    if (agentIdRef.current && messageIdRef.current) {
-                        useAgentStore.getState().updateStreamMessage(agentIdRef.current, messageIdRef.current, {
-                            content: textRef.current,
-                        });
-                    }
+                    pendingStreamRenderRef.current.content = true;
+                    scheduleStreamRender();
                     if (sessionIdRef.current && messageIdRef.current) {
-                        // In-memory update (for UI), persistence via debounce
-                        useSessionStore.getState().updateMessage(sessionIdRef.current, messageIdRef.current, { content: textRef.current }, { persist: false });
                         if (!streamPersistRef.current ||
                             streamPersistRef.current.sessionId !== sessionIdRef.current ||
                             streamPersistRef.current.messageId !== messageIdRef.current) {
@@ -671,14 +724,9 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     if (!delta) break;
                     ensureAssistantMessage();
                     thinkingRef.current += delta;
-                    setCurrentThinking(thinkingRef.current);
-                    if (agentIdRef.current && messageIdRef.current) {
-                        useAgentStore.getState().updateStreamMessage(agentIdRef.current, messageIdRef.current, {
-                            thinking: thinkingRef.current,
-                        });
-                    }
+                    pendingStreamRenderRef.current.thinking = true;
+                    scheduleStreamRender();
                     if (sessionIdRef.current && messageIdRef.current) {
-                        useSessionStore.getState().updateMessage(sessionIdRef.current, messageIdRef.current, { thinking: thinkingRef.current }, { persist: false });
                         if (!streamPersistRef.current ||
                             streamPersistRef.current.sessionId !== sessionIdRef.current ||
                             streamPersistRef.current.messageId !== messageIdRef.current) {
@@ -781,6 +829,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                         break;
                     }
                     lastProviderErrorRef.current = providerError;
+                    flushStreamRender();
                     setError(providerError);
                     break;
                 }
@@ -797,14 +846,8 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 ensureAssistantMessage();
                 hasCompletionSignalRef.current = true;
                 textRef.current = cleanedFinalText;
-                setCurrentText(cleanedFinalText);
-                if (agentIdRef.current && messageIdRef.current) {
-                    useAgentStore.getState().updateStreamMessage(agentIdRef.current, messageIdRef.current, {
-                        content: cleanedFinalText,
-                    });
-                }
+                pendingStreamRenderRef.current.content = true;
                 if (sessionIdRef.current && messageIdRef.current) {
-                    useSessionStore.getState().updateMessage(sessionIdRef.current, messageIdRef.current, { content: cleanedFinalText }, { persist: false });
                     streamPersistRef.current = {
                         ...streamPersistRef.current,
                         sessionId: sessionIdRef.current,
@@ -813,6 +856,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     };
                     scheduleStreamPersist();
                 }
+                flushStreamRender();
                 break;
             }
 
@@ -928,6 +972,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
 
             case "turn_end":
                 syncUsageFromAssistantMessage((event as { message?: unknown }).message);
+                flushStreamRender();
                 // Force flush accumulated content/thinking/toolCalls
                 // 在 turn_end 这一刻把整个 assistant message 落盘一次
                 flushStreamPersist();
@@ -1012,6 +1057,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     setError("Pi 本轮没有返回内容，请检查模型/API Key 配置后重试。");
                 }
                 // Safety flush (in case turn_end doesn't fire)
+                flushStreamRender();
                 flushStreamPersist();
                 setIsStreaming(false);
                 isStreamingRef.current = false;
@@ -1035,6 +1081,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             case "extension_error":
                 lastProviderErrorRef.current = eventMessage(event, "Pi 扩展错误");
                 setError(lastProviderErrorRef.current);
+                flushStreamRender();
                 flushStreamPersist();
                 setIsStreaming(false);
                 isStreamingRef.current = false;
@@ -1047,7 +1094,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 break;
         }
-    }, [ensureAssistantMessage, flushStreamPersist, scheduleStreamPersist, syncUsageFromAssistantMessage, updateCurrentUsage, getTargetSession]);
+    }, [discardPendingStreamRender, ensureAssistantMessage, flushStreamPersist, flushStreamRender, scheduleStreamPersist, scheduleStreamRender, syncUsageFromAssistantMessage, updateCurrentUsage, getTargetSession]);
 
     useEffect(() => {
         handleEventRef.current = handleEvent;
@@ -1119,6 +1166,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         isStreamingRef.current = true;
         isTurnActiveRef.current = true;
         setError(null);
+        discardPendingStreamRender();
         textRef.current = "";
         thinkingRef.current = "";
         hasCompletionSignalRef.current = false;
@@ -1223,7 +1271,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             // Notify useTaskProgress: streaming error
             window.dispatchEvent(new CustomEvent("pi:stream-end"));
         }
-    }, [appendAgentMessage, getTargetSession]);
+    }, [appendAgentMessage, discardPendingStreamRender, getTargetSession]);
 
     const stopStreaming = useCallback((workspaceId: string) => {
         void (async () => {
@@ -1239,13 +1287,14 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 },
             });
             if (!stopped) return;
+            flushStreamRender();
             setIsStreaming(false);
             isStreamingRef.current = false;
             promptInFlightRef.current = false;
             hasCompletionSignalRef.current = false;
             setStreamingMessageId(null);
         })();
-    }, []);
+    }, [flushStreamRender]);
 
     const clearError = useCallback(() => {
         setError(null);
