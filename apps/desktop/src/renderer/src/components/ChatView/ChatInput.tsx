@@ -825,7 +825,7 @@ export function ChatInput({
 
   // TODO: extract sub-components (InputAttachments, InputMentionPopover, InputCommandPopover, InputToolbar)
   return (
-    <div className={`${referenceFrame ? "pointer-events-auto w-full px-2 pb-2" : "w-full px-3 pb-6"} bg-transparent pt-1`}>
+    <div className={`${referenceFrame ? "pointer-events-auto w-full px-2 pb-2 pt-0" : "w-full px-3 pb-6 pt-1"} bg-transparent`}>
       <div
         ref={shellRef}
         data-testid="chat-input-shell"

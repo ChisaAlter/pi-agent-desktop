@@ -663,9 +663,35 @@ describe("ChatView", () => {
     expect(scrollRegion.className).toContain("flex-1");
     expect(scrollRegion.className).toContain("min-h-0");
     expect(scrollRegion.className).toContain("overflow-y-auto");
+    expect(scrollRegion.className).not.toContain("--pi-global-composer-height");
     expect(log.className).not.toContain("justify-end");
     expect(scrollRegion.contains(inputShell)).toBe(false);
     expect(root.lastElementChild?.contains(inputShell)).toBe(true);
+  });
+
+  it("does not synchronously measure the full transcript on scroll", () => {
+    mockedStreamError = null;
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    const scrollRegion = screen.getByTestId("chat-scroll-region");
+    const scrollHeightRead = vi.fn(() => 1600);
+    const clientHeightRead = vi.fn(() => 600);
+    const scrollTopRead = vi.fn(() => 200);
+    Object.defineProperties(scrollRegion, {
+      scrollHeight: { configurable: true, get: scrollHeightRead },
+      clientHeight: { configurable: true, get: clientHeightRead },
+      scrollTop: { configurable: true, get: scrollTopRead },
+    });
+
+    fireEvent.scroll(scrollRegion);
+
+    expect(scrollHeightRead).not.toHaveBeenCalled();
+    expect(clientHeightRead).not.toHaveBeenCalled();
+    expect(scrollTopRead).not.toHaveBeenCalled();
   });
 
   it("does not render a second model selector outside the composer", () => {
@@ -884,6 +910,8 @@ describe("ChatView", () => {
     const rafCallbacks: FrameRequestCallback[] = [];
     const originalRaf = window.requestAnimationFrame;
     const originalCancelRaf = window.cancelAnimationFrame;
+    const originalIntersectionObserver = window.IntersectionObserver;
+    let intersectionCallback: IntersectionObserverCallback | null = null;
     const scrollIntoView = vi.fn();
     const scrollTo = vi.fn();
     window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
@@ -893,6 +921,18 @@ describe("ChatView", () => {
       return rafCallbacks.length;
     });
     window.cancelAnimationFrame = vi.fn();
+    window.IntersectionObserver = class {
+      constructor(callback: IntersectionObserverCallback) {
+        intersectionCallback = callback;
+      }
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {}
+      takeRecords(): IntersectionObserverEntry[] { return []; }
+      readonly root = null;
+      readonly rootMargin = "0px";
+      readonly thresholds = [0];
+    };
 
     render(
       <I18nProvider>
@@ -909,14 +949,12 @@ describe("ChatView", () => {
     });
 
     expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: "auto" });
-
     const scrollRegion = screen.getByTestId("chat-scroll-region");
-    Object.defineProperties(scrollRegion, {
-      clientHeight: { configurable: true, value: 400 },
-      scrollHeight: { configurable: true, value: 1_000 },
-      scrollTop: { configurable: true, writable: true, value: 100 },
+    Object.defineProperty(scrollRegion, "scrollHeight", { configurable: true, value: 1_000 });
+
+    act(() => {
+      intersectionCallback?.([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver);
     });
-    fireEvent.scroll(scrollRegion);
     act(() => {
       useSessionStore.getState().addMessage("s1", {
         id: "a-far",
@@ -927,8 +965,9 @@ describe("ChatView", () => {
     });
     expect(rafCallbacks).toHaveLength(0);
 
-    scrollRegion.scrollTop = 550;
-    fireEvent.scroll(scrollRegion);
+    act(() => {
+      intersectionCallback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+    });
     act(() => {
       useSessionStore.getState().addMessage("s1", {
         id: "a-near",
@@ -946,6 +985,7 @@ describe("ChatView", () => {
 
     window.requestAnimationFrame = originalRaf;
     window.cancelAnimationFrame = originalCancelRaf;
+    window.IntersectionObserver = originalIntersectionObserver;
   });
 
   it("does not create a session just by opening an empty draft", async () => {

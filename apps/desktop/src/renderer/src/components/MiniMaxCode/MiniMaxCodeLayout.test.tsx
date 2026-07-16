@@ -45,7 +45,7 @@ describe("MiniMaxCode window chrome interactivity", () => {
         expect(chatTab.className).toContain("app-region-no-drag");
     });
 
-    it("keeps the global composer root scoped to the center workspace", () => {
+    it("keeps the global composer root in the center workspace layout flow", () => {
         render(
             <MiniMaxCodeLayout
                 leftSlot={<div />}
@@ -55,9 +55,8 @@ describe("MiniMaxCode window chrome interactivity", () => {
         );
 
         expect(document.getElementById("pi-global-composer-root")?.className ?? "").toContain("pointer-events-auto");
-        expect(document.getElementById("pi-global-composer-root")?.className ?? "").not.toContain("inset-x-0");
-        expect(document.getElementById("pi-global-composer-root")?.className ?? "").toContain("left-0");
-        expect(document.getElementById("pi-global-composer-root")?.className ?? "").toContain("right-0");
+        expect(document.getElementById("pi-global-composer-root")?.className ?? "").toContain("shrink-0");
+        expect(document.getElementById("pi-global-composer-root")?.className ?? "").not.toContain("absolute");
         expect(document.querySelector('[data-mmcode-region="center"]')?.querySelector("#pi-global-composer-root")).toBeTruthy();
     });
 

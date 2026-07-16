@@ -115,6 +115,11 @@ async function expectChatInputAnchored(page: Page): Promise<void> {
         };
     });
     expect(metrics.distanceToBottom, JSON.stringify(metrics)).toBeLessThan(32);
+    expect(metrics.scrollRegion, JSON.stringify(metrics)).not.toBeNull();
+    expect(metrics.inputOuter, JSON.stringify(metrics)).not.toBeNull();
+    expect(metrics.shell, JSON.stringify(metrics)).not.toBeNull();
+    expect(Math.abs(metrics.scrollRegion!.bottom - metrics.inputOuter!.top), JSON.stringify(metrics)).toBeLessThanOrEqual(1);
+    expect(Math.abs(metrics.inputOuter!.top - metrics.shell!.top), JSON.stringify(metrics)).toBeLessThanOrEqual(1);
 }
 
 async function expectChatLayoutStable(page: Page): Promise<void> {

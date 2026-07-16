@@ -230,7 +230,7 @@ export function MiniMaxCodeLayout({
                 />
 
                 <div
-                    className="relative flex min-h-0 w-full flex-1 data-[has-global-composer=true]:pb-[var(--pi-global-composer-height,103px)]"
+                    className="relative flex min-h-0 w-full flex-1"
                     data-mmcode-region="body"
                 >
                     {leftCollapsed ? (
@@ -283,7 +283,7 @@ export function MiniMaxCodeLayout({
                         {centerSlot}
                         <div
                             id="pi-global-composer-root"
-                            className="pointer-events-auto absolute bottom-0 left-0 right-0 z-30"
+                            className="pointer-events-auto relative z-30 w-full shrink-0"
                             aria-live="polite"
                         />
                     </main>

@@ -460,6 +460,22 @@ export function ChatView({
   }, [rawMessages, isStreaming, streamingMessageId]);
 
   useEffect(() => {
+    const scrollRegion = scrollRegionRef.current;
+    const bottomSentinel = messagesEndRef.current;
+    if (!scrollRegion || !bottomSentinel || typeof IntersectionObserver === "undefined") return;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      isNearBottomRef.current = entry?.isIntersecting ?? true;
+    }, {
+      root: scrollRegion,
+      rootMargin: "0px 0px 160px 0px",
+      threshold: 0,
+    });
+    observer.observe(bottomSentinel);
+    return () => observer.disconnect();
+  }, [agentId, currentSession?.id, messages.length]);
+
+  useEffect(() => {
     if (focusHandledTimerRef.current !== null) {
       window.clearTimeout(focusHandledTimerRef.current);
       focusHandledTimerRef.current = null;
@@ -799,12 +815,10 @@ export function ChatView({
       <div
         ref={scrollRegionRef}
         data-testid="chat-scroll-region"
-        onScroll={(event) => {
-          const scrollRegion = event.currentTarget;
-          const distanceFromBottom = scrollRegion.scrollHeight - scrollRegion.clientHeight - scrollRegion.scrollTop;
-          isNearBottomRef.current = distanceFromBottom <= 160;
+        onWheel={(event) => {
+          if (event.deltaY < 0) isNearBottomRef.current = false;
         }}
-        className={`min-h-0 flex-1 overflow-y-auto ${shouldUseGlobalComposer ? "pb-[var(--pi-global-composer-height,103px)]" : ""}`}
+        className="min-h-0 flex-1 overflow-y-auto"
       >
         {messages.length === 0 ? (
           <div className="flex min-h-full flex-col px-0 pb-0 pt-0 text-center">
