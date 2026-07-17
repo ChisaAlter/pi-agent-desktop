@@ -8,13 +8,14 @@ import { MarkdownRenderer } from './MarkdownRenderer';
 import { CommandCard } from './CommandCard';
 import { CustomMessageCard } from './CustomMessageCard';
 import { GeneratedUiCard } from './GeneratedUiCard';
+import type { GeneratedUiSendRequest } from './GeneratedUiForm';
 import { ThinkingBlock } from './ThinkingBlock';
 import { PlanCard } from './PlanCard';
 import { usePlanStore } from '../../stores/plan-store';
 import { useSettingsStore } from '../../stores/settings-store';
 import { formatTime, formatIso } from '../../utils/format';
 import { contentWithGeneratedUiText } from '../../utils/generated-ui';
-import type { GeneratedUiCardV1 } from '@shared';
+import type { GeneratedUiCard as GeneratedUiCardData } from '@shared';
 
 type ChatMessage = Message & {
   thinkingCount?: number;
@@ -25,12 +26,14 @@ interface MessageBubbleProps {
   isStreaming?: boolean;
   isSearchTarget?: boolean;
   onPlanAction?: (message: ChatMessage, action: "execute" | "refine" | "cancel" | "pause" | "resume", text?: string) => Promise<void>;
+  onGeneratedUiSend?: (request: GeneratedUiSendRequest) => Promise<void>;
+  generatedUiDisabled?: boolean;
 }
 
 function inferInlinePlanAction(
   message: Pick<ChatMessage, "id" | "role" | "planAction">,
   visibleContent: string,
-  generatedUi: GeneratedUiCardV1 | undefined,
+  generatedUi: GeneratedUiCardData | undefined,
 ): Message["planAction"] | undefined {
   if (message.role !== "assistant" || message.planAction || !visibleContent.trim()) return undefined;
   const normalized = visibleContent.trim();
@@ -194,9 +197,10 @@ function ToolActivity({
 }: {
   toolCalls: NonNullable<Message["toolCalls"]>;
 }): React.JSX.Element {
+  const visibleToolCalls = toolCalls.filter((toolCall) => toolCall.name !== "render_ui" || toolCall.status === "error");
   const [isExpanded, setIsExpanded] = useState(false);
   const running = toolCalls.some((tc) => tc.status === "running");
-  const summary = useMemo(() => toolSummary(toolCalls), [toolCalls]);
+  const summary = useMemo(() => toolSummary(visibleToolCalls), [visibleToolCalls]);
 
   return (
     <div className="mt-1">
@@ -222,7 +226,7 @@ function ToolActivity({
 
       {isExpanded && (
         <div className="pi-motion-thinking-content mt-2 space-y-1" data-motion="tool-activity-content">
-          {toolCalls.map((toolCall) => (
+          {visibleToolCalls.map((toolCall) => (
             <CommandCard key={toolCall.id} toolCall={toolCall} />
           ))}
         </div>
@@ -236,6 +240,8 @@ function MessageBubbleImpl({
   isStreaming = false,
   isSearchTarget = false,
   onPlanAction,
+  onGeneratedUiSend,
+  generatedUiDisabled,
 }: MessageBubbleProps): React.JSX.Element {
   const isUser = message.role === 'user';
   const timeText = formatTime(message.timestamp);
@@ -410,7 +416,7 @@ function MessageBubbleImpl({
 
                 {message.generatedUi && !showPlanPanel && (
                   <div className={message.content ? "mt-3" : ""}>
-                    <GeneratedUiCard card={message.generatedUi} />
+                    <GeneratedUiCard card={message.generatedUi} disabled={generatedUiDisabled} onSend={onGeneratedUiSend} />
                   </div>
                 )}
 
@@ -443,9 +449,12 @@ function MessageBubbleImpl({
               </>
             )}
 
-            {message.toolCalls && message.toolCalls.length > 0 && (
+            {message.toolCalls?.some((toolCall) => toolCall.name === "render_ui" && toolCall.status === "running") ? (
+              <div className="mt-2 text-[11px] text-[var(--mm-text-tertiary)]">正在生成界面...</div>
+            ) : null}
+            {message.toolCalls && message.toolCalls.some((toolCall) => toolCall.name !== "render_ui" || toolCall.status === "error") ? (
               <ToolActivity toolCalls={message.toolCalls} />
-            )}
+            ) : null}
 
             {!isUser && (
               <div className="mt-2 flex items-center justify-start gap-2" data-testid="message-footer">
@@ -496,6 +505,8 @@ function areEqual(prev: MessageBubbleProps, next: MessageBubbleProps): boolean {
     prev.message.planAction === next.message.planAction &&
     prev.isStreaming === next.isStreaming &&
     prev.isSearchTarget === next.isSearchTarget &&
+    prev.onGeneratedUiSend === next.onGeneratedUiSend &&
+    prev.generatedUiDisabled === next.generatedUiDisabled &&
     prev.onPlanAction === next.onPlanAction
   );
 }

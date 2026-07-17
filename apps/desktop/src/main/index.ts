@@ -198,6 +198,7 @@ const store = new Store<StoreSchema>({
       permissionLevel: 'smart',
       runtimeChannel: 'stable',
       autoCompactionEnabled: false,
+      generatedUiEnabled: true,
       workspaceToolDefaults: {},
       sidebarGroupMode: 'date',
       shortcutOverrides: [],
@@ -261,7 +262,8 @@ const sendToRenderer = (channel: string, payload: unknown) => {
 function shouldRefreshSessionsForSettingsChange(previous: AppSettings, next: AppSettings): boolean {
   const prevLongHorizon = previous.longHorizon ?? DEFAULT_LONG_HORIZON_SETTINGS;
   const nextLongHorizon = next.longHorizon ?? DEFAULT_LONG_HORIZON_SETTINGS;
-  return JSON.stringify(prevLongHorizon) !== JSON.stringify(nextLongHorizon);
+  return previous.generatedUiEnabled !== next.generatedUiEnabled ||
+    JSON.stringify(prevLongHorizon) !== JSON.stringify(nextLongHorizon);
 }
 
 /**
@@ -286,6 +288,7 @@ const getLongHorizonModeOptions = (workspaceId?: string) => {
     : undefined;
   const workspacePlanMode = workspace?.planModeEnabled;
   return {
+    generatedUiEnabled: store.get('settings').generatedUiEnabled !== false,
     longHorizonEnabled: longHorizon.enabled,
     planModeEnabled:
       workspacePlanMode !== undefined ? workspacePlanMode : longHorizon.planMode.enabled,
@@ -768,6 +771,10 @@ function setupIPC(updaterService: AppUpdaterService): void {
         ]).catch((error) => {
           log.warn("[Main] failed to switch live sessions after model change:", error);
         });
+      }
+
+      if ((previous.generatedUiEnabled !== false) !== (next.generatedUiEnabled !== false)) {
+        piRegistry.disposeAll();
       }
 
       if (shouldRefreshSessionsForSettingsChange(previous, next)) {

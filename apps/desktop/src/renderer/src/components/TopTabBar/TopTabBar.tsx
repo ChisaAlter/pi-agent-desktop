@@ -22,6 +22,16 @@ const TAB_DEFS: TabDef[] = [
 
 export function TopTabBar({ activeTab, onTabChange, onOpenSettings, rightSlot }: TopTabBarProps): React.JSX.Element {
     const { t } = useI18n();
+    const dragPointerRef = React.useRef<number | null>(null);
+
+    const finishTitlebarDrag = (event: React.PointerEvent<HTMLDivElement>): void => {
+        if (dragPointerRef.current !== event.pointerId) return;
+        dragPointerRef.current = null;
+        if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        window.piAPI?.windowEndDrag();
+    };
 
     return (
         <div
@@ -30,7 +40,7 @@ export function TopTabBar({ activeTab, onTabChange, onOpenSettings, rightSlot }:
             role="tablist"
             aria-label={t("topbar.ariaLabel")}
         >
-            <div className="app-region-drag flex h-full items-center gap-5 pl-[28px]">
+            <div className="app-region-drag flex h-full shrink-0 items-center gap-5 pl-[28px]">
                 {TAB_DEFS.map((tab) => {
                     const isActive = activeTab === tab.id;
                     return (
@@ -59,8 +69,30 @@ export function TopTabBar({ activeTab, onTabChange, onOpenSettings, rightSlot }:
                     );
                 })}
             </div>
+            <div
+                className="app-region-no-drag h-full min-w-[96px] flex-1 touch-none cursor-default"
+                data-mmcode-region="titlebar-drag-surface"
+                aria-hidden="true"
+                onPointerDown={(event) => {
+                    if (event.button !== 0) return;
+                    dragPointerRef.current = event.pointerId;
+                    event.currentTarget.setPointerCapture?.(event.pointerId);
+                    window.piAPI?.windowBeginDrag(event.screenX, event.screenY);
+                }}
+                onPointerMove={(event) => {
+                    if (dragPointerRef.current !== event.pointerId) return;
+                    if (event.buttons === 0) {
+                        finishTitlebarDrag(event);
+                        return;
+                    }
+                    window.piAPI?.windowUpdateDrag(event.screenX, event.screenY);
+                }}
+                onPointerUp={finishTitlebarDrag}
+                onPointerCancel={finishTitlebarDrag}
+                onDoubleClick={() => void window.piAPI?.windowToggleMaximize()}
+            />
             {rightSlot || onOpenSettings ? (
-                <div className="app-region-no-drag ml-auto flex items-center gap-2 pr-2">
+                <div className="app-region-no-drag flex shrink-0 items-center gap-2 pr-2">
                     {rightSlot}
                     {onOpenSettings ? (
                         <button

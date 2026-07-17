@@ -669,6 +669,45 @@ describe("ChatView", () => {
     expect(root.lastElementChild?.contains(inputShell)).toBe(true);
   });
 
+  it("uses the floating arrow to jump to the latest message", () => {
+    mockedStreamError = null;
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              messages: [
+                ...session.messages,
+                ...Array.from({ length: 6 }, (_, index) => ({
+                  id: `latest-${index}`,
+                  role: "assistant" as const,
+                  content: `message ${index}`,
+                  timestamp: new Date(index + 1),
+                })),
+              ],
+            }
+          : session
+      )),
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    const scrollRegion = screen.getByTestId("chat-scroll-region");
+    const scrollTo = vi.fn();
+    Object.defineProperties(scrollRegion, {
+      scrollHeight: { configurable: true, value: 2400 },
+      scrollTo: { configurable: true, value: scrollTo },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "回到最新消息" }));
+
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 2400, behavior: "smooth" });
+  });
+
   it("does not synchronously measure the full transcript on scroll", () => {
     mockedStreamError = null;
     render(

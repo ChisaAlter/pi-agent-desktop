@@ -39,10 +39,17 @@ describe("MiniMaxCode window chrome interactivity", () => {
         const chatTab = screen.getByRole("tab", { name: "对话" });
         const tablist = screen.getByRole("tablist", { name: "顶部标签栏" });
         const titlebarCenter = chatTab.closest('[data-mmcode-region="titlebar-center"]');
+        const dragSurface = document.querySelector('[data-mmcode-region="titlebar-drag-surface"]');
+        const closeButton = screen.getByRole("button", { name: "关闭窗口" });
+        const titlebarRight = closeButton.closest('[data-mmcode-region="titlebar-right"]');
 
         expect(titlebarCenter?.className ?? "").not.toContain("app-region-no-drag");
         expect(tablist.className).toContain("app-region-drag");
         expect(chatTab.className).toContain("app-region-no-drag");
+        expect(dragSurface?.className ?? "").toContain("flex-1");
+        expect(dragSurface?.className ?? "").toContain("app-region-no-drag");
+        expect(dragSurface?.className ?? "").toContain("touch-none");
+        expect(titlebarRight?.className ?? "").toContain("pr-[5px]");
     });
 
     it("keeps the global composer root in the center workspace layout flow", () => {
@@ -57,6 +64,7 @@ describe("MiniMaxCode window chrome interactivity", () => {
         expect(document.getElementById("pi-global-composer-root")?.className ?? "").toContain("pointer-events-auto");
         expect(document.getElementById("pi-global-composer-root")?.className ?? "").toContain("shrink-0");
         expect(document.getElementById("pi-global-composer-root")?.className ?? "").not.toContain("absolute");
+        expect(document.getElementById("pi-global-composer-root")?.className ?? "").toContain("bg-[var(--mm-bg-input)]");
         expect(document.querySelector('[data-mmcode-region="center"]')?.querySelector("#pi-global-composer-root")).toBeTruthy();
     });
 

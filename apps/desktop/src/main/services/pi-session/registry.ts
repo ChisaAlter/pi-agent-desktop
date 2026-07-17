@@ -3,7 +3,7 @@
 // get() reuses sessions; lazy-inits bridge + interceptor + subscriptions on first call
 // Event types use @shared/events PiEvent (no 'as any')
 
-import { createWorkspaceSession, type WorkspaceSession } from "./factory";
+import { createWorkspaceSession, resolveBundledDesktopExtensionPaths, type WorkspaceSession } from "./factory";
 import { createEventBridge, type IpcSender } from "./event-bridge";
 import { createApprovalInterceptor } from "../approval/interceptor";
 import { createExtensionUiBridge } from "../extensions/extension-ui-bridge";
@@ -87,6 +87,7 @@ export class WorkspaceRegistry {
         pendingEdits?: PendingEdits,
         send?: IpcSender,
         getMode?: () => AgentMode,
+        generatedUiEnabled = true,
     ): Promise<WorkspaceSession> {
         const existing = this.entries.get(workspaceId);
         if (existing) {
@@ -104,6 +105,7 @@ export class WorkspaceRegistry {
                     workspaceId,
                     workspacePath,
                     uiContext: createExtensionUiBridge(workspaceId),
+                    desktopExtensions: resolveBundledDesktopExtensionPaths({ generatedUiEnabled }),
                 });
                 const entry: WorkspaceEntry = {
                     session,

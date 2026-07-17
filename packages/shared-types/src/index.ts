@@ -72,7 +72,7 @@ export interface Message {
     timestamp: string | Date;
     thinking?: string;
     toolCalls?: ToolCall[];
-    generatedUi?: GeneratedUiCardV1;
+    generatedUi?: GeneratedUiCard;
     customCard?: CustomMessageCard;
     planAction?: PlanMessageAction;
     /** v1.2: Parent message ID for tree-structured conversations (Pi JSONL v3 branching). undefined = root message. */
@@ -135,7 +135,7 @@ export interface AgentMessage {
     content: string;
     createdAt: number;
     thinking?: string;
-    generatedUi?: GeneratedUiCardV1;
+    generatedUi?: GeneratedUiCard;
     planAction?: PlanMessageAction;
     meta?: Record<string, unknown>;
 }
@@ -642,6 +642,8 @@ export interface AppSettings {
     managedRuntimePath?: string;
     runtimeChannel?: "stable" | "latest";
     autoCompactionEnabled?: boolean;
+    /** 是否允许主 Agent 加载 render_ui 并生成声明式 UI 卡片。 */
+    generatedUiEnabled?: boolean;
     workspaceToolDefaults?: Record<string, ToolPermissions>;
     sidebarGroupMode?: "date" | "workspace";
     /** 识图功能: 视觉模型提供商 */
@@ -774,6 +776,127 @@ export interface GeneratedUiCardV1 {
     id: string;
     title?: string;
     sections: GeneratedUiSection[];
+}
+
+export type GeneratedUiTone = "neutral" | "info" | "success" | "warning" | "danger";
+export type GeneratedUiPrimitive = string | number | boolean | null;
+
+export interface GeneratedUiMetricItem {
+    id: string;
+    label: string;
+    value: string;
+    detail?: string;
+    trend?: string;
+    tone?: GeneratedUiTone;
+}
+
+export interface GeneratedUiProgressItem {
+    id: string;
+    label: string;
+    value: number;
+    max: number;
+    status?: string;
+    description?: string;
+}
+
+export interface GeneratedUiTimelineItem {
+    id: string;
+    title: string;
+    time?: string;
+    description?: string;
+    status?: string;
+}
+
+export interface GeneratedUiTableColumn {
+    key: string;
+    label: string;
+    align?: "left" | "center" | "right";
+    format?: "text" | "number" | "percent";
+    sortable?: boolean;
+}
+
+export interface GeneratedUiChartSeries {
+    key: string;
+    label?: string;
+    stack?: string;
+}
+
+export interface GeneratedUiOption {
+    label: string;
+    value: string;
+    description?: string;
+}
+
+interface GeneratedUiFormFieldBase {
+    id: string;
+    label: string;
+    description?: string;
+    required?: boolean;
+}
+
+export type GeneratedUiFormField =
+    | (GeneratedUiFormFieldBase & {
+        kind: "text" | "textarea";
+        placeholder?: string;
+        defaultValue?: string;
+    })
+    | (GeneratedUiFormFieldBase & {
+        kind: "number";
+        min?: number;
+        max?: number;
+        step?: number;
+        defaultValue?: number;
+    })
+    | (GeneratedUiFormFieldBase & {
+        kind: "select" | "radio";
+        options: GeneratedUiOption[];
+        defaultValue?: string;
+    })
+    | (GeneratedUiFormFieldBase & {
+        kind: "multi-select";
+        options: GeneratedUiOption[];
+        defaultValue?: string[];
+    })
+    | (GeneratedUiFormFieldBase & {
+        kind: "checkbox";
+        defaultValue?: boolean;
+    });
+
+export interface GeneratedUiActionV2 {
+    id: string;
+    label: string;
+    kind: "copy-text" | "open-file" | "open-url" | "switch-view" | "prefill-message" | "send-message";
+    value: string;
+    tone?: GeneratedUiTone;
+}
+
+export type GeneratedUiSectionV2 =
+    | { id: string; kind: "markdown"; content: string }
+    | { id: string; kind: "callout"; title?: string; content: string; tone?: GeneratedUiTone }
+    | { id: string; kind: "metric_grid"; items: GeneratedUiMetricItem[] }
+    | { id: string; kind: "key_value"; items: GeneratedUiKeyValueItem[] }
+    | { id: string; kind: "status_list" | "steps" | "file_list"; items: GeneratedUiListItem[] }
+    | { id: string; kind: "timeline"; items: GeneratedUiTimelineItem[] }
+    | { id: string; kind: "progress"; items: GeneratedUiProgressItem[] }
+    | { id: string; kind: "table"; columns: GeneratedUiTableColumn[]; rows: Array<Record<string, GeneratedUiPrimitive>>; caption?: string }
+    | { id: string; kind: "chart"; chartType: "bar" | "line" | "area" | "pie"; data: Array<Record<string, GeneratedUiPrimitive>>; xKey: string; series: GeneratedUiChartSeries[]; summary: string; stacked?: boolean }
+    | { id: string; kind: "form"; fields: GeneratedUiFormField[]; submitLabel?: string; submitPrompt?: string }
+    | { id: string; kind: "action_bar"; actions: GeneratedUiActionV2[] };
+
+export interface GeneratedUiCardV2 {
+    version: "v2";
+    id: string;
+    title?: string;
+    subtitle?: string;
+    tone?: GeneratedUiTone;
+    sections: GeneratedUiSectionV2[];
+}
+
+export type GeneratedUiCard = GeneratedUiCardV1 | GeneratedUiCardV2;
+
+export interface GeneratedUiUpsertEnvelope {
+    operation: "upsert";
+    card: GeneratedUiCard;
 }
 
 // ── Extension UI: permissions + plan mode ─────────────────────────
@@ -1507,6 +1630,9 @@ export interface PiAPI {
     windowToggleMaximize(): Promise<void>;
     windowIsMaximized(): Promise<boolean>;
     windowClose(): Promise<void>;
+    windowBeginDrag(screenX: number, screenY: number): void;
+    windowUpdateDrag(screenX: number, screenY: number): void;
+    windowEndDrag(): void;
     onWindowMaximizeChanged(cb: (maximized: boolean) => void): Unsubscribe;
 
     // v1.2: Workbench context — renderer pushes currently-viewed file to main

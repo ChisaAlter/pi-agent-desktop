@@ -90,6 +90,10 @@ interface ChatIpcDeps {
 type SlashSession = {
     extensionRunner?: {
         getRegisteredCommands?: () => unknown[];
+        getCommand?: (name: string) => {
+            handler?: (args: string, context: unknown) => void | Promise<void>;
+        } | undefined;
+        createCommandContext?: () => unknown;
     };
     promptTemplates?: Array<{
         name: string;
@@ -607,7 +611,14 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             }
             return deps.agentRegistry.getWorkspaceSession(agent.id).session as unknown as SlashSession;
         }
-        return (await deps.registry.get(ws.id, ws.path, deps.pendingEdits, send)).session as unknown as SlashSession;
+        return (await deps.registry.get(
+            ws.id,
+            ws.path,
+            deps.pendingEdits,
+            send,
+            undefined,
+            deps.getSettings?.().generatedUiEnabled !== false,
+        )).session as unknown as SlashSession;
     };
 
     // 监听 renderer 响应审批
@@ -943,6 +954,22 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             return slashInfo(command, `任务目标已设置：${args}`);
         }
         if (!BUILTIN_SLASH_COMMANDS.some((item) => item.name === command)) {
+            try {
+                const session = await getSlashSession(ws, input.agentId);
+                const runner = session.extensionRunner;
+                const extensionCommand = runner?.getCommand?.(command);
+                if (extensionCommand?.handler && runner?.createCommandContext) {
+                    await extensionCommand.handler(args, runner.createCommandContext());
+                    return slashInfo(command, `/${command} 已执行`);
+                }
+            } catch (err) {
+                log.error("[chat.ipc] run extension slash command failed:", err);
+                return ipcError(
+                    "ipcErrors.chat.slashCommandFailed",
+                    `执行 /${command} 失败: ${err instanceof Error ? err.message : String(err)}`,
+                    { workspace: ws.name },
+                );
+            }
             return {
                 handled: false,
                 command,
@@ -1114,6 +1141,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
                 deps.pendingEdits,
                 send,
                 () => agentModeByWorkspace.get(ws.id) ?? "build",
+                settings?.generatedUiEnabled !== false,
             );
             await wsSession.session.prompt(outbound);
             return undefined; // 显式返 void 满足 TS 全部路径 return 一致

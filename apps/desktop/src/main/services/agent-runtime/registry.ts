@@ -19,6 +19,7 @@ import {
     resolveBundledDesktopExtensionPaths,
     type WorkspaceSession,
 } from "../pi-session/factory";
+import { normalizeCustomMessageEvent } from "../pi-session/event-bridge";
 import { createApprovalInterceptor } from "../approval/interceptor";
 import { createExtensionUiBridge } from "../extensions/extension-ui-bridge";
 import { buildAgentModePrompt, normalizeAgentMode } from "../agent-modes";
@@ -53,6 +54,7 @@ interface AgentRuntimeRegistryDeps {
      */
     getModeOptions?: (workspaceId?: string) => {
         longHorizonEnabled: boolean;
+        generatedUiEnabled?: boolean;
         planModeEnabled?: boolean;
         composeModeEnabled?: boolean;
         workflowEnabled?: boolean;
@@ -371,7 +373,7 @@ function promptFailureDetails(error: unknown): string {
         });
 
         runtime.session.session.subscribe(async (rawEvent: unknown) => {
-            const event = rawEvent as PiEvent;
+            const event = normalizeCustomMessageEvent(rawEvent as PiEvent);
             try {
                 await interceptor.handleEvent(event);
             } catch (error) {
@@ -571,12 +573,12 @@ function promptFailureDetails(error: unknown): string {
 
     private buildDesktopExtensions(workspaceId: string): string[] {
         const options = this.deps.getModeOptions?.(workspaceId);
-        if (!options?.longHorizonEnabled) return [];
         return resolveBundledDesktopExtensionPaths({
-            planModeEnabled: options.planModeEnabled,
-            composeModeEnabled: options.composeModeEnabled,
-            workflowEnabled: options.workflowEnabled,
-            composeWorkflowEnabled: options.composeWorkflowEnabled,
+            generatedUiEnabled: options?.generatedUiEnabled !== false,
+            planModeEnabled: options?.longHorizonEnabled ? options.planModeEnabled : false,
+            composeModeEnabled: options?.longHorizonEnabled ? options.composeModeEnabled : false,
+            workflowEnabled: options?.longHorizonEnabled ? options.workflowEnabled : false,
+            composeWorkflowEnabled: options?.longHorizonEnabled ? options.composeWorkflowEnabled : false,
         });
     }
 

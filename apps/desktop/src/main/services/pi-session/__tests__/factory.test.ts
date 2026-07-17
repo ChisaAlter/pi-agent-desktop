@@ -4,6 +4,7 @@ import {
     createWorkspaceSession,
     resolveBundledComposeExtensionPath,
     resolveBundledDesktopExtensionPaths,
+    resolveBundledGeneratedUiExtensionPath,
 } from "../factory";
 
 const {
@@ -434,6 +435,13 @@ describe("createWorkspaceSession", () => {
         expect(paths.some((path) => /pi-openplan[\\/]extensions(?:$|[\\/])/.test(path))).toBe(false);
     });
 
+    it("resolves the generated ui extension independently of long-horizon modes", () => {
+        const paths = resolveBundledDesktopExtensionPaths({ generatedUiEnabled: true });
+
+        expect(paths.some((path) => /extensions[\\/]generated-ui[\\/]index\.ts$/.test(path))).toBe(true);
+        expect(paths.some((path) => /compose-mode|pi-openplan/.test(path))).toBe(false);
+    });
+
     it("resolves the bundled desktop compose extension when compose mode is enabled", () => {
         const paths = resolveBundledDesktopExtensionPaths({ composeModeEnabled: true });
 
@@ -467,5 +475,15 @@ describe("createWorkspaceSession", () => {
         expect(builtPath).toMatch(/extensions[\\/]compose-mode[\\/]index\.ts$/);
         expect(workflowSourcePath).toMatch(/extensions[\\/]compose-mode[\\/]workflow-extension\.ts$/);
         expect(workflowBuiltPath).toMatch(/extensions[\\/]compose-mode[\\/]workflow-extension\.ts$/);
+    });
+
+    it("prefers unpacked desktop extensions from the packaged resources directory", () => {
+        const desktopRoot = process.cwd();
+        const missingBase = join(desktopRoot, "missing-out-main");
+        const composePath = resolveBundledComposeExtensionPath(missingBase, "index.ts", desktopRoot);
+        const generatedUiPath = resolveBundledGeneratedUiExtensionPath(missingBase, desktopRoot);
+
+        expect(composePath).toBe(join(desktopRoot, "extensions/compose-mode/index.ts"));
+        expect(generatedUiPath).toBe(join(desktopRoot, "extensions/generated-ui/index.ts"));
     });
 });

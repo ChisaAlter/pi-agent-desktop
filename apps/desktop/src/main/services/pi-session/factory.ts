@@ -31,6 +31,7 @@ export interface WorkspaceSession {
 
 export interface DesktopExtensionCapabilityOptions {
     planModeEnabled?: boolean;
+    generatedUiEnabled?: boolean;
     composeModeEnabled?: boolean;
     workflowEnabled?: boolean;
     composeWorkflowEnabled?: boolean;
@@ -151,6 +152,9 @@ export function resolveBundledDesktopExtensionPaths(
     options: DesktopExtensionCapabilityOptions = {},
 ): string[] {
     const paths: Array<string | undefined> = [];
+    if (options.generatedUiEnabled) {
+        paths.push(resolveBundledGeneratedUiExtensionPath());
+    }
     if (options.planModeEnabled) {
         paths.push(safeResolve("pi-openplan/package.json", (packageJson) => dirname(packageJson)));
     }
@@ -163,12 +167,30 @@ export function resolveBundledDesktopExtensionPaths(
     return [...new Set(paths.filter((path): path is string => Boolean(path)))];
 }
 
-export function resolveBundledComposeExtensionPath(baseDir = __dirname, entryFile = "index.ts"): string | undefined {
+export function resolveBundledComposeExtensionPath(
+    baseDir = __dirname,
+    entryFile = "index.ts",
+    resourcesDir = typeof process.resourcesPath === "string" ? process.resourcesPath : undefined,
+): string | undefined {
     const candidates = [
+        resourcesDir ? join(resourcesDir, "extensions/compose-mode", entryFile) : undefined,
         join(baseDir, "../../../../extensions/compose-mode", entryFile),
         join(baseDir, "../../../extensions/compose-mode", entryFile),
         join(baseDir, "../../extensions/compose-mode", entryFile),
-    ];
+    ].filter((candidate): candidate is string => Boolean(candidate));
+    return candidates.find((candidate) => existsSync(candidate));
+}
+
+export function resolveBundledGeneratedUiExtensionPath(
+    baseDir = __dirname,
+    resourcesDir = typeof process.resourcesPath === "string" ? process.resourcesPath : undefined,
+): string | undefined {
+    const candidates = [
+        resourcesDir ? join(resourcesDir, "extensions/generated-ui/index.ts") : undefined,
+        join(baseDir, "../../../../extensions/generated-ui/index.ts"),
+        join(baseDir, "../../../extensions/generated-ui/index.ts"),
+        join(baseDir, "../../extensions/generated-ui/index.ts"),
+    ].filter((candidate): candidate is string => Boolean(candidate));
     return candidates.find((candidate) => existsSync(candidate));
 }
 

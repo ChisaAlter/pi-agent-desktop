@@ -141,7 +141,7 @@ export function MiniMaxCodeTitleBar({
 
             {/* 右侧 */}
             <div
-                className="flex h-full items-center"
+                className="flex h-full items-center gap-0.5 pr-[5px]"
                 style={isMac ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined}
                 data-mmcode-region="titlebar-right"
             >
@@ -165,7 +165,7 @@ export function MiniMaxCodeTitleBar({
                                 }
                                 void window.piAPI?.windowClose();
                             }}
-                            className="hover:!bg-[#e81123] hover:!text-white"
+                            className="hover:!bg-[#e81123] hover:!text-white focus-visible:!bg-[#e81123] focus-visible:!text-white"
                         >
                             <CloseIcon />
                         </TitleBarButton>

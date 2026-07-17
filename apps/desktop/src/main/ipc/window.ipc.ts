@@ -3,6 +3,16 @@ import type { BrowserWindow as BrowserWindowType } from 'electron';
 
 const trackedMaximizedState = new WeakMap<BrowserWindowType, boolean>();
 const normalBoundsBeforeMaximize = new WeakMap<BrowserWindowType, Rectangle>();
+const activeWindowDrags = new WeakMap<BrowserWindowType, {
+  pointerStartX: number;
+  pointerStartY: number;
+  windowStartX: number;
+  windowStartY: number;
+}>();
+
+function isFiniteCoordinate(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
 
 function windowFromEvent(event: IpcMainInvokeEvent): BrowserWindowType | null {
   return BrowserWindow.fromWebContents(event.sender);
@@ -39,6 +49,35 @@ export function setupWindowIpc(getMainWindow: () => BrowserWindowType | null): v
   ipcMain.handle("window:is-maximized", (event) => {
     const win = windowFromEvent(event) ?? getMainWindow();
     return win && !win.isDestroyed() ? trackedMaximizedState.get(win) ?? win.isMaximized() : false;
+  });
+
+  ipcMain.on("window:drag-start", (event, screenX: unknown, screenY: unknown) => {
+    const win = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
+    if (!win || win.isDestroyed() || !isFiniteCoordinate(screenX) || !isFiniteCoordinate(screenY)) return;
+    if (trackedMaximizedState.get(win) ?? win.isMaximized()) return;
+    const bounds = win.getBounds();
+    activeWindowDrags.set(win, {
+      pointerStartX: screenX,
+      pointerStartY: screenY,
+      windowStartX: bounds.x,
+      windowStartY: bounds.y,
+    });
+  });
+
+  ipcMain.on("window:drag-move", (event, screenX: unknown, screenY: unknown) => {
+    const win = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
+    if (!win || win.isDestroyed() || !isFiniteCoordinate(screenX) || !isFiniteCoordinate(screenY)) return;
+    const drag = activeWindowDrags.get(win);
+    if (!drag) return;
+    win.setPosition(
+      Math.round(drag.windowStartX + screenX - drag.pointerStartX),
+      Math.round(drag.windowStartY + screenY - drag.pointerStartY),
+    );
+  });
+
+  ipcMain.on("window:drag-end", (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender) ?? getMainWindow();
+    if (win) activeWindowDrags.delete(win);
   });
 
   ipcMain.handle("window:close", (event) => {

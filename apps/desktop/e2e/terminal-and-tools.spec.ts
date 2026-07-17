@@ -39,7 +39,7 @@ async function launchApp(userDataDir: string): Promise<{ app: ElectronApplicatio
     return { app, page };
 }
 
-async function windowState(app: ElectronApplication, urlPart: string): Promise<{ isMaximized: boolean; isMinimized: boolean; isDestroyed: boolean; bounds: { width: number; height: number } }> {
+async function windowState(app: ElectronApplication, urlPart: string): Promise<{ isMaximized: boolean; isMinimized: boolean; isDestroyed: boolean; bounds: { x: number; y: number; width: number; height: number } }> {
     return app.evaluate(({ BrowserWindow }, target) => {
         const win = BrowserWindow.getAllWindows().find((item) => item.webContents.getURL().includes(target));
         if (!win) throw new Error(`Window not found: ${target}`);
@@ -183,6 +183,21 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
         await expectTitlebarButtonsUsable(page);
 
         const initialMainBounds = (await windowState(app, 'index.html')).bounds;
+        const dragSurface = page.locator('[data-mmcode-region="titlebar-drag-surface"]');
+        const dragBounds = await dragSurface.boundingBox();
+        if (!dragBounds) throw new Error('Titlebar drag surface has no layout bounds');
+        const dragStartX = dragBounds.x + dragBounds.width / 2;
+        const dragStartY = dragBounds.y + dragBounds.height / 2;
+        await page.mouse.move(dragStartX, dragStartY);
+        await page.mouse.down();
+        await page.waitForTimeout(250);
+        await page.mouse.move(dragStartX + 72, dragStartY + 48, { steps: 6 });
+        await page.mouse.up();
+        await expect.poll(async () => {
+            const bounds = (await windowState(app, 'index.html')).bounds;
+            return Math.abs(bounds.x - initialMainBounds.x) + Math.abs(bounds.y - initialMainBounds.y);
+        }).toBeGreaterThanOrEqual(80);
+
         await page.locator('[data-mmcode-region="titlebar-right"] button[aria-label="最大化"]').click();
         await expect(page.locator('[data-mmcode-region="titlebar-right"] button[aria-label="取消最大化"]')).toBeVisible();
         await expect.poll(async () => {
@@ -228,13 +243,14 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
         await settingsWindow.locator('[data-mmcode-region="titlebar-right"] button[aria-label="关闭窗口"]').click();
         await expect.poll(async () => {
             return app.evaluate(({ BrowserWindow }) => {
-                return BrowserWindow.getAllWindows().some((item) => {
+                const window = BrowserWindow.getAllWindows().find((item) => {
                     try {
                         return !item.isDestroyed() && item.webContents.getURL().includes('settings.html');
                     } catch {
                         return false;
                     }
                 });
+                return window?.isVisible() ?? false;
             });
         }).toBe(false);
 

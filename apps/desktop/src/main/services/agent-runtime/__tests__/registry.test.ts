@@ -4,7 +4,7 @@ import { AgentRuntimeRegistry, formatPromptFailureMessage } from "../registry";
 import { PendingEdits } from "../../approval/pending-edits";
 import { createExtensionUiBridge } from "../../extensions/extension-ui-bridge";
 import { createApprovalInterceptor } from "../../approval/interceptor";
-import { createWorkspaceSession } from "../../pi-session/factory";
+import { createWorkspaceSession, resolveBundledDesktopExtensionPaths } from "../../pi-session/factory";
 import { PLAN_DIRECTIVE } from "../../agent-modes/plan-prompt";
 
 const sessions: Array<{
@@ -96,6 +96,7 @@ describe("AgentRuntimeRegistry", () => {
         interceptorHandleMock.mockResolvedValue(undefined);
         sessionCreationState.nextActiveToolsError = undefined;
         vi.mocked(createWorkspaceSession).mockClear();
+        vi.mocked(resolveBundledDesktopExtensionPaths).mockClear();
         emitted = [];
         registry = new AgentRuntimeRegistry({
             getWorkspace: (workspaceId) =>
@@ -116,6 +117,21 @@ describe("AgentRuntimeRegistry", () => {
         expect(second.workspaceId).toBe("ws_1");
         expect(sessions).toHaveLength(2);
         expect(registry.list().map((agent) => agent.title)).toEqual(["A", "B"]);
+    });
+
+    it("honors the generated UI setting when loading desktop extensions", async () => {
+        registry = new AgentRuntimeRegistry({
+            getWorkspace: (workspaceId) => workspaceId === "ws_1"
+                ? { id: "ws_1", name: "demo", path: "C:/demo", createdAt: 1 }
+                : undefined,
+            pendingEdits: new PendingEdits(),
+            send: (channel, payload) => emitted.push({ channel, payload }),
+            getModeOptions: () => ({ longHorizonEnabled: true, generatedUiEnabled: false }),
+        });
+
+        await registry.create({ workspaceId: "ws_1" });
+
+        expect(resolveBundledDesktopExtensionPaths).toHaveBeenLastCalledWith(expect.objectContaining({ generatedUiEnabled: false }));
     });
 
     it("switches live agent sessions in place without recreating them", async () => {

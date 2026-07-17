@@ -235,6 +235,19 @@ function AppShell(): React.ReactElement {
             return next;
         });
     }, [activePanel]);
+
+    useEffect(() => {
+        if (typeof window.requestIdleCallback !== "function") return;
+        const idleId = window.requestIdleCallback(() => {
+            setVisitedPanels((current) => {
+                if (current.has("run")) return current;
+                const next = new Set(current);
+                next.add("run");
+                return next;
+            });
+        }, { timeout: 1_200 });
+        return () => window.cancelIdleCallback(idleId);
+    }, []);
     const setLeftSidebarWidth = useCallback((width: number): void => {
         const next = clampLeftSidebarWidth(width);
         setLeftSidebarWidthState(next);

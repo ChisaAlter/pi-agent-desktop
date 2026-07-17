@@ -455,6 +455,44 @@ describe("setupChatIpc", () => {
         ]));
     });
 
+    it("executes extension slash commands directly without forwarding them to the agent", async () => {
+        const context = { cwd: "C:/demo" };
+        const commandHandler = vi.fn(async () => undefined);
+        const getCommand = vi.fn(() => ({ handler: commandHandler }));
+        const createCommandContext = vi.fn(() => context);
+        const session = {
+            extensionRunner: {
+                getRegisteredCommands: vi.fn(() => [
+                    { invocationName: "ui", description: "Generated UI" },
+                ]),
+                getCommand,
+                createCommandContext,
+            },
+            promptTemplates: [],
+            resourceLoader: { getSkills: vi.fn(() => ({ skills: [] })) },
+        };
+        const registry = {
+            get: vi.fn(async () => ({ session })),
+            has: vi.fn(() => true),
+        };
+
+        setupChatIpc({
+            registry: registry as any,
+            getWorkspace: () => ({ id: "ws_1", name: "demo", path: "C:/demo" }),
+            getDefaultWorkspace: () => undefined,
+            pendingEdits: { autoApprove: false } as any,
+        });
+
+        const handler = handlers.get("pi:run-builtin-slash-command");
+        const result = await handler?.({}, { workspaceId: "ws_1", command: "ui", args: "" });
+
+        expect(getCommand).toHaveBeenCalledWith("ui");
+        expect(createCommandContext).toHaveBeenCalledTimes(1);
+        expect(commandHandler).toHaveBeenCalledWith("", context);
+        expect(result).toMatchObject({ handled: true, command: "ui" });
+        expect(result).not.toHaveProperty("forwardToAgent");
+    });
+
     it("runs compact and reload builtin slash commands against the workspace session", async () => {
         const compact = vi.fn(async () => ({ summary: "ok" }));
         const reload = vi.fn(async () => undefined);

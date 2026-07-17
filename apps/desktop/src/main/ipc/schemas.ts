@@ -89,6 +89,7 @@ const appSettingsSchema = z
         managedRuntimePath: z.string().optional(),
         runtimeChannel: z.enum(["stable", "latest"]).optional(),
         autoCompactionEnabled: z.boolean().optional(),
+        generatedUiEnabled: z.boolean().optional(),
         sidebarGroupMode: z.enum(["date", "workspace"]).optional(),
         visionProvider: z.string().optional(),
         visionModel: z.string().optional(),

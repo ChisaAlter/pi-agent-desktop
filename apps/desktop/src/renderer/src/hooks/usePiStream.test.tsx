@@ -1158,6 +1158,36 @@ describe("usePiStream", () => {
         expect(actionSection && "actions" in actionSection ? actionSection.actions : []).toHaveLength(1);
     });
 
+    it("upserts generated ui cards by card id", async () => {
+        await act(async () => {
+            render(<HookHost />);
+        });
+
+        const emitCard = (title: string): void => {
+            emitPiEvent?.({
+                type: "custom_message",
+                details: {
+                    operation: "upsert",
+                    card: {
+                        version: "v2",
+                        id: "live-card",
+                        title,
+                        sections: [{ id: "progress", kind: "progress", items: [{ id: "p", label: "进度", value: title === "完成" ? 2 : 1, max: 2 }] }],
+                    },
+                },
+            } as PiEvent);
+        };
+
+        await act(async () => emitCard("进行中"));
+        await act(async () => emitCard("完成"));
+
+        const messages = useSessionStore.getState().sessions[0]?.messages ?? [];
+        expect(messages).toHaveLength(1);
+        expect(messages[0]).toMatchObject({
+            id: "cm_live-card",
+            generatedUi: expect.objectContaining({ version: "v2", id: "live-card", title: "完成" }),
+        });
+    });
     it("does not let later zero-valued usage events wipe an already observed session usage snapshot", async () => {
         await act(async () => {
             render(<AgentHookStateHost />);

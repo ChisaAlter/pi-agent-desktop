@@ -608,6 +608,26 @@ describe("ChatInput", () => {
     expect((shell as HTMLElement).style.height).toBe("155px");
   });
 
+  it("keeps the composer shell background transparent", () => {
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    const shellClassName = screen.getByTestId("chat-input-shell").className;
+    expect(shellClassName).toContain("bg-transparent");
+    expect(shellClassName).not.toContain("bg-[var(--mm-bg-composer)]");
+  });
+
   it("keeps reference composer controls pinned to the bottom while resizing", () => {
     render(
       <I18nProvider>

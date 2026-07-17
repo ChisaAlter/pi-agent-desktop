@@ -16,9 +16,15 @@ files:
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
   - '!build_output.txt'
+  - '!extensions/**/*'
 extraResources:
   - from: build/icon.ico
     to: build/icon.ico
+  - from: extensions
+    to: extensions
+    filter:
+      - '**/*'
+      - '!**/*.test.ts'
 
 win:
   executableName: "Pi Desktop"

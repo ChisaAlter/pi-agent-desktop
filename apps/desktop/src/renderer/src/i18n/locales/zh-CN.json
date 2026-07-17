@@ -259,7 +259,7 @@
       "expand": "展开右侧栏",
       "collapse": "收起右侧栏"
     },
-    "scrollTop": "回到顶部",
+    "scrollBottom": "回到最新消息",
     "readOnly": {
       "label": "当前为只读历史会话",
       "continue": "从此会话继续"
@@ -863,6 +863,10 @@
     "general": {
       "heading": "通用设置",
       "description": "控制语言、保存行为和编辑器显示偏好。",
+      "generatedUi": {
+        "label": "生成式 UI",
+        "description": "允许 Build、Plan 和 Compose 生成任务、表格、图表与表单卡片。关闭后仅停止生成新卡片，历史卡片仍可查看。"
+      },
       "notifications": {
         "heading": "通知",
         "description": "控制系统通知和声音提示",

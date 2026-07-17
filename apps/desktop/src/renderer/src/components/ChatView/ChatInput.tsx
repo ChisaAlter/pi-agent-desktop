@@ -829,7 +829,7 @@ export function ChatInput({
       <div
         ref={shellRef}
         data-testid="chat-input-shell"
-        className={`${referenceFrame ? "mx-0 flex w-full max-w-none flex-col" : "mx-auto max-w-[770px]"} relative overflow-visible rounded-[7px] border border-[var(--mm-border)] bg-[var(--mm-bg-composer)] shadow-none transition-[border-color,box-shadow] focus-within:border-[var(--mm-border-strong)]`}
+        className={`${referenceFrame ? "mx-0 flex w-full max-w-none flex-col" : "mx-auto max-w-[770px]"} relative overflow-visible rounded-[7px] border border-[var(--mm-border)] bg-transparent shadow-none transition-[border-color,box-shadow] focus-within:border-[var(--mm-border-strong)]`}
         style={referenceFrame ? { height: `${composerHeight}px` } : undefined}
       >
         {referenceFrame ? (

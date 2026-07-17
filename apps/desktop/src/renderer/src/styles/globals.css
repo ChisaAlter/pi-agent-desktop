@@ -983,18 +983,14 @@ code {
   contain: layout paint style;
   content-visibility: hidden;
   opacity: 0;
-  transform: translateY(-3px) scale(0.995);
   pointer-events: none;
-  transition:
-    opacity var(--motion-fast) var(--motion-ease),
-    transform var(--motion-panel) var(--motion-ease);
+  transition: opacity var(--motion-fast) var(--motion-ease);
 }
 
 .pi-motion-panel-layer[data-active="true"] {
   z-index: 1;
   content-visibility: visible;
   opacity: 1;
-  transform: translateY(0) scale(1);
   pointer-events: auto;
 }
 
@@ -1134,11 +1130,9 @@ code {
 @keyframes pi-motion-panel-first-visit {
   from {
     opacity: 0;
-    transform: translateY(6px) scale(0.995);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
   }
 }
 

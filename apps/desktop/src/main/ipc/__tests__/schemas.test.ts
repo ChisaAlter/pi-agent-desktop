@@ -52,7 +52,7 @@ describe("workspaceCreateSchema", () => {
 
 describe("settingsSetSchema", () => {
     it("accepts known AppSettings fields with valid values", () => {
-        expect(() => settingsSetSchema.parse([{ theme: "dark", fontSize: 14 }])).not.toThrow();
+        expect(() => settingsSetSchema.parse([{ theme: "dark", fontSize: 14, generatedUiEnabled: false }])).not.toThrow();
     });
 
     it("accepts the system theme mode", () => {

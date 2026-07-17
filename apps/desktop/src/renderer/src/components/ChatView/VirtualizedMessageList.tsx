@@ -4,6 +4,7 @@ import { MessageBubble } from './MessageBubble';
 import { SEARCH_FOCUS_CLEAR_DELAY_MS } from './search-focus';
 import type { Message as ChatMessage } from '@shared';
 
+import type { GeneratedUiSendRequest } from './GeneratedUiForm';
 interface VirtualizedMessageListProps {
     messages: ChatMessage[];
     isStreaming: boolean;
@@ -11,6 +12,8 @@ interface VirtualizedMessageListProps {
     focusMessageId?: string | null;
     onFocusHandled?: () => void;
     onPlanAction?: (message: ChatMessage, action: "execute" | "refine" | "cancel" | "pause" | "resume", text?: string) => Promise<void>;
+    onGeneratedUiSend?: (request: GeneratedUiSendRequest) => Promise<void>;
+    generatedUiDisabled?: boolean;
 }
 
 const ESTIMATED_ROW_HEIGHT = 120;
@@ -22,6 +25,8 @@ export const VirtualizedMessageList = React.memo(function VirtualizedMessageList
     focusMessageId,
     onFocusHandled,
     onPlanAction,
+    onGeneratedUiSend,
+    generatedUiDisabled,
 }: VirtualizedMessageListProps): React.JSX.Element {
     const parentRef = useRef<HTMLDivElement>(null);
     // 持有 focus scroll 的 setTimeout id, unmount 或新 focus 触发时清理, 避免泄漏 / setState-after-unmount
@@ -91,6 +96,8 @@ export const VirtualizedMessageList = React.memo(function VirtualizedMessageList
                                     isStreaming={isStreaming && message.id === streamingMessageId}
                                     isSearchTarget={focusMessageId === message.id}
                                     onPlanAction={onPlanAction}
+                                    onGeneratedUiSend={onGeneratedUiSend}
+                                    generatedUiDisabled={generatedUiDisabled}
                                 />
                             </div>
                         </div>

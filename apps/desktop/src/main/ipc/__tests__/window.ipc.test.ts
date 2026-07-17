@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
+const listeners = new Map<string, (...args: unknown[]) => unknown>();
 const webContentsSend = vi.fn();
 const maximizeMock = vi.fn();
 const unmaximizeMock = vi.fn();
 const minimizeMock = vi.fn();
 const closeMock = vi.fn();
 const setBoundsMock = vi.fn();
+const setPositionMock = vi.fn();
 const onMock = vi.fn();
 const mockWebContents = {};
 const mockWindow = {
@@ -18,6 +20,7 @@ const mockWindow = {
   close: closeMock,
   getBounds: vi.fn(() => ({ x: 10, y: 20, width: 690, height: 756 })),
   setBounds: setBoundsMock,
+  setPosition: setPositionMock,
   on: onMock,
   webContents: {
     send: webContentsSend,
@@ -28,6 +31,9 @@ vi.mock("electron", () => ({
   ipcMain: {
     handle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
       handlers.set(channel, handler);
+    }),
+    on: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
+      listeners.set(channel, handler);
     }),
   },
   BrowserWindow: {
@@ -40,12 +46,14 @@ import { setupWindowEvents, setupWindowIpc } from "../window.ipc";
 describe("setupWindowIpc", () => {
   beforeEach(() => {
     handlers.clear();
+    listeners.clear();
     webContentsSend.mockClear();
     maximizeMock.mockClear();
     unmaximizeMock.mockClear();
     minimizeMock.mockClear();
     closeMock.mockClear();
     setBoundsMock.mockClear();
+    setPositionMock.mockClear();
     onMock.mockClear();
     mockWindow.isDestroyed.mockReturnValue(false);
     mockWindow.isMaximized.mockReturnValue(false);
@@ -74,6 +82,20 @@ describe("setupWindowIpc", () => {
     handler(event);
 
     expect(setBoundsMock).toHaveBeenCalledWith({ x: 10, y: 20, width: 690, height: 756 });
+  });
+
+  it("moves the current frameless window while the explicit titlebar drag is active", () => {
+    const event = { sender: mockWebContents };
+
+    listeners.get("window:drag-start")?.(event, 100, 200);
+    listeners.get("window:drag-move")?.(event, 142, 263);
+
+    expect(setPositionMock).toHaveBeenLastCalledWith(52, 83);
+
+    listeners.get("window:drag-end")?.(event);
+    setPositionMock.mockClear();
+    listeners.get("window:drag-move")?.(event, 170, 290);
+    expect(setPositionMock).not.toHaveBeenCalled();
   });
 
   it("returns the tracked maximize state to renderer callers", () => {

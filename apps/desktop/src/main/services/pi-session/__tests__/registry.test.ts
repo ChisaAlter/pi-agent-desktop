@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { WorkspaceRegistry } from "../registry";
+import { resolveBundledDesktopExtensionPaths } from "../factory";
 
 const subscribe = vi.fn();
 const setModel = vi.fn(async () => true);
 
 vi.mock("../factory", () => ({
+    resolveBundledDesktopExtensionPaths: vi.fn(() => []),
     createWorkspaceSession: vi.fn(async (opts: any) => ({
         workspaceId: opts.workspaceId,
         session: { dispose: vi.fn(), subscribe },
@@ -19,12 +21,21 @@ describe("WorkspaceRegistry", () => {
     beforeEach(() => {
         subscribe.mockReset();
         setModel.mockClear();
+        vi.mocked(resolveBundledDesktopExtensionPaths).mockClear();
         reg = new WorkspaceRegistry();
     });
 
     it("creates a session on first get", async () => {
         const ws = await reg.get("ws_1", "C:/tmp/a");
         expect(ws.workspaceId).toBe("ws_1");
+    });
+
+    it("omits generated UI when the setting is disabled", async () => {
+        await reg.get("ws_1", "C:/tmp/a", undefined, undefined, undefined, false);
+
+        expect(resolveBundledDesktopExtensionPaths).toHaveBeenCalledWith({
+            generatedUiEnabled: false,
+        });
     });
 
     it("reuses existing session on second get", async () => {

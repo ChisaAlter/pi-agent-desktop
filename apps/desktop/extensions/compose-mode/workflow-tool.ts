@@ -70,7 +70,16 @@ function updateWorkflowUi(ctx: ExtensionContext, snapshot: WorkflowRunSnapshot):
     ctx.ui.setWidget("plan-todos", workflowPhaseLines(snapshot));
 }
 
-export function createWorkflowTool(store: WorkflowRunStore): ToolDefinition<typeof workflowSchema, { run?: WorkflowRunSnapshot }> {
+export interface WorkflowToolOptions {
+    onSnapshot?: (snapshot: WorkflowRunSnapshot) => void;
+}
+
+function publishWorkflowUi(ctx: ExtensionContext, snapshot: WorkflowRunSnapshot, options: WorkflowToolOptions): void {
+    updateWorkflowUi(ctx, snapshot);
+    options.onSnapshot?.(snapshot);
+}
+
+export function createWorkflowTool(store: WorkflowRunStore, options: WorkflowToolOptions = {}): ToolDefinition<typeof workflowSchema, { run?: WorkflowRunSnapshot }> {
     return defineTool({
         name: "workflow",
         label: "Workflow",
@@ -86,7 +95,7 @@ export function createWorkflowTool(store: WorkflowRunStore): ToolDefinition<type
                         isError: true,
                     };
                 }
-                updateWorkflowUi(ctx, snapshot);
+                publishWorkflowUi(ctx, snapshot, options);
                 return {
                     content: [{ type: "text", text: snapshotSummary(snapshot) }],
                     details: { run: snapshot },
@@ -95,7 +104,7 @@ export function createWorkflowTool(store: WorkflowRunStore): ToolDefinition<type
             if (params.operation === "wait") {
                 const outcome = await store.wait(params.runId);
                 const snapshot = store.get(params.runId);
-                if (snapshot) updateWorkflowUi(ctx, snapshot);
+                if (snapshot) publishWorkflowUi(ctx, snapshot, options);
                 return {
                     content: [{ type: "text", text: snapshot ? snapshotSummary(snapshot) : outcome.summary }],
                     details: snapshot ? { run: snapshot } : {},
@@ -111,7 +120,7 @@ export function createWorkflowTool(store: WorkflowRunStore): ToolDefinition<type
                         isError: true,
                     };
                 }
-                updateWorkflowUi(ctx, snapshot);
+                publishWorkflowUi(ctx, snapshot, options);
                 return {
                     content: [{ type: "text", text: snapshotSummary(snapshot) }],
                     details: { run: snapshot },
@@ -136,7 +145,7 @@ export function createWorkflowTool(store: WorkflowRunStore): ToolDefinition<type
             }
 
             const run = store.createComposeRun(args.task);
-            updateWorkflowUi(ctx, run);
+            publishWorkflowUi(ctx, run, options);
             onUpdate?.({
                 content: [{ type: "text", text: `Started compose workflow ${run.id}` }],
                 details: { run },
@@ -163,7 +172,7 @@ export function createWorkflowTool(store: WorkflowRunStore): ToolDefinition<type
                     },
                 });
                 const snapshot = store.complete(run.id, outcome) ?? store.get(run.id);
-                if (snapshot) updateWorkflowUi(ctx, snapshot);
+                if (snapshot) publishWorkflowUi(ctx, snapshot, options);
                 return {
                     content: [{ type: "text", text: snapshot ? snapshotSummary(snapshot) : outcome.summary }],
                     details: snapshot ? { run: snapshot } : {},
@@ -174,7 +183,7 @@ export function createWorkflowTool(store: WorkflowRunStore): ToolDefinition<type
                 const snapshot = cancelledSnapshot?.status === "cancelled"
                     ? cancelledSnapshot
                     : (store.fail(run.id, message) ?? store.get(run.id));
-                if (snapshot) updateWorkflowUi(ctx, snapshot);
+                if (snapshot) publishWorkflowUi(ctx, snapshot, options);
                 return {
                     content: [{ type: "text", text: snapshot ? snapshotSummary(snapshot) : message }],
                     details: snapshot ? { run: snapshot } : {},

@@ -126,6 +126,7 @@ const defaultSettings: AppSettings = {
   permissionLevel: 'smart',
   runtimeChannel: 'stable',
   autoCompactionEnabled: false,
+  generatedUiEnabled: true,
   workspaceToolDefaults: {},
   sidebarGroupMode: 'date',
   shortcutOverrides: readCachedShortcutOverrides(),

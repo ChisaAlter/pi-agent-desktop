@@ -26,6 +26,34 @@ describe("EventBridge", () => {
         expect(send).toHaveBeenNthCalledWith(3, "pi:event", "ws_1", { type: "message_end" });
     });
 
+    it("normalizes custom-role message_end events for renderer custom message handling", () => {
+        const send = vi.fn();
+        const bridge = createEventBridge("ws_1", send);
+        const details = {
+            operation: "upsert",
+            card: { version: "v2", id: "overview", sections: [] },
+        };
+
+        bridge.handleEvent({
+            type: "message_end",
+            message: {
+                role: "custom",
+                customType: "generated-ui",
+                content: "",
+                display: true,
+                details,
+            },
+        } as any);
+
+        expect(send).toHaveBeenCalledWith("pi:event", "ws_1", {
+            type: "custom_message",
+            customType: "generated-ui",
+            content: "",
+            display: true,
+            details,
+        });
+    });
+
     it("forwards tool_execution_start as the original PiEvent", () => {
         const send = vi.fn();
         const bridge = createEventBridge("ws_1", send);

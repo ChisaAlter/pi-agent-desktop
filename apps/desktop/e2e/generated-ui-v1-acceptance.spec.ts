@@ -345,6 +345,53 @@ test.describe("Generated UI v1 real Electron acceptance", () => {
             },
             {
                 type: "custom_message",
+                details: {
+                    operation: "upsert",
+                    card: {
+                        version: "v2",
+                        id: "runtime_generated_ui_v2",
+                        title: "生成式 UI v2 验收",
+                        subtitle: "表格、图表与表单",
+                        sections: [
+                            {
+                                id: "v2_table",
+                                kind: "table",
+                                caption: "模块数据",
+                                columns: [
+                                    { key: "module", label: "模块", sortable: true },
+                                    { key: "value", label: "数值", sortable: true },
+                                ],
+                                rows: [
+                                    { module: "Runtime", value: 12 },
+                                    { module: "Renderer", value: 24 },
+                                ],
+                            },
+                            {
+                                id: "v2_chart",
+                                kind: "chart",
+                                chartType: "bar",
+                                xKey: "module",
+                                summary: "Renderer 数值高于 Runtime。",
+                                series: [{ key: "value", label: "数值" }],
+                                data: [
+                                    { module: "Runtime", value: 12 },
+                                    { module: "Renderer", value: 24 },
+                                ],
+                            },
+                            {
+                                id: "v2_form",
+                                kind: "form",
+                                submitLabel: "提交验收",
+                                fields: [
+                                    { id: "target", kind: "select", label: "环境", options: [{ label: "测试", value: "staging" }] },
+                                ],
+                            },
+                        ],
+                    },
+                },
+            },
+            {
+                type: "custom_message",
                 ui: {
                     id: "runtime_fallback",
                     title: "安全回退",
@@ -364,11 +411,41 @@ test.describe("Generated UI v1 real Electron acceptance", () => {
 
         await expect(page.getByRole("heading", { name: "运行时 legacy card" })).toBeVisible({ timeout: 10_000 });
         await expect(page.getByRole("heading", { name: "显式 generatedUi" })).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByRole("heading", { name: "生成式 UI v2 验收" })).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByText("Renderer 数值高于 Runtime。" )).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByRole("button", { name: "提交验收" })).toBeVisible({ timeout: 10_000 });
         await expect(page.getByRole("heading", { name: "安全回退" })).toBeVisible({ timeout: 10_000 });
         await expect(page.getByText("未知 section 已被丢弃，并安全回退到 markdown。")).toBeVisible({ timeout: 10_000 });
         await expect(page.getByRole("button", { name: "危险动作" })).toHaveCount(0);
         await expect(page.getByRole("button", { name: "执行脚本" })).toHaveCount(0);
         await expect(page.getByText("should-not-render")).toHaveCount(0);
+
+        const runSwitchLatency = await page.evaluate(() => new Promise<number>((resolve, reject) => {
+            const tab = Array.from(document.querySelectorAll<HTMLElement>('[role="tab"]'))
+                .find((item) => item.textContent?.trim() === "运行");
+            if (!tab) {
+                reject(new Error("Run tab not found"));
+                return;
+            }
+            const startedAt = performance.now();
+            tab.click();
+            const deadline = startedAt + 2_000;
+            const inspect = (): void => {
+                const panel = document.querySelector<HTMLElement>('[data-main-panel="run"]');
+                if (tab.getAttribute("aria-selected") === "true" && panel?.dataset.active === "true") {
+                    requestAnimationFrame(() => resolve(performance.now() - startedAt));
+                    return;
+                }
+                if (performance.now() >= deadline) {
+                    reject(new Error("Run panel did not become interactive"));
+                    return;
+                }
+                requestAnimationFrame(inspect);
+            };
+            requestAnimationFrame(inspect);
+        }));
+        expect(runSwitchLatency).toBeLessThan(400);
+        await page.getByRole("tab", { name: "对话" }).click();
 
         const persistedBeforeRestart = await page.evaluate(async (sessionId) => {
             const sessions = await window.piAPI.listSessions();
@@ -409,6 +486,11 @@ test.describe("Generated UI v1 real Electron acceptance", () => {
                     actionCount: 4,
                 }),
                 expect.objectContaining({
+                    uiId: "runtime_generated_ui_v2",
+                    content: "",
+                    sectionKinds: ["table", "chart", "form"],
+                    actionCount: 0,
+                }),                expect.objectContaining({
                     uiId: "runtime_fallback",
                     content: "",
                     sectionKinds: ["markdown"],
@@ -482,6 +564,9 @@ test.describe("Generated UI v1 real Electron acceptance", () => {
         await scrollChat(page, "end");
 
         await expect(page.getByRole("heading", { name: "显式 generatedUi" })).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByRole("heading", { name: "生成式 UI v2 验收" })).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByText("Renderer 数值高于 Runtime。" )).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByRole("button", { name: "提交验收" })).toBeVisible({ timeout: 10_000 });
         await expect(page.getByRole("heading", { name: "安全回退" })).toBeVisible({ timeout: 10_000 });
         await expect(page.getByRole("button", { name: "填充命令" })).toBeVisible({ timeout: 10_000 });
         await page.screenshot({
@@ -505,6 +590,7 @@ test.describe("Generated UI v1 real Electron acceptance", () => {
                 expect.objectContaining({ id: "historic_custom_card_message", hasCustomCard: true, generatedUiId: null }),
                 expect.objectContaining({ id: "cm_runtime_legacy_card", hasCustomCard: false, generatedUiId: "runtime_legacy_card" }),
                 expect.objectContaining({ id: "cm_runtime_generated_ui", hasCustomCard: false, generatedUiId: "runtime_generated_ui" }),
+                expect.objectContaining({ id: "cm_runtime_generated_ui_v2", hasCustomCard: false, generatedUiId: "runtime_generated_ui_v2" }),
                 expect.objectContaining({ id: "cm_runtime_fallback", hasCustomCard: false, generatedUiId: "runtime_fallback" }),
             ]),
         );

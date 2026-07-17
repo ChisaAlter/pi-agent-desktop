@@ -11,6 +11,7 @@ import { PendingEdits } from "../../main/services/approval/pending-edits";
 
 // Mock SDK + Electron (same pattern as registry.test.ts)
 vi.mock("../../main/services/pi-session/factory", () => ({
+  resolveBundledDesktopExtensionPaths: vi.fn(() => []),
   createWorkspaceSession: vi.fn(async (opts: { workspaceId: string }) => {
     const tools = ["read", "bash", "write", "edit", "plan_write"].map((name) => ({ name }));
     let activeToolNames = tools.map((tool) => tool.name);

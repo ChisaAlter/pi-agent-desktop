@@ -259,7 +259,7 @@
       "expand": "Expand right rail",
       "collapse": "Collapse right rail"
     },
-    "scrollTop": "Back to top",
+    "scrollBottom": "Jump to latest",
     "readOnly": {
       "label": "This is a read-only history session",
       "continue": "Continue from this session"
@@ -863,6 +863,10 @@
     "general": {
       "heading": "General settings",
       "description": "Control language, save behavior, and editor display preferences.",
+      "generatedUi": {
+        "label": "Generated UI",
+        "description": "Allow Build, Plan, and Compose to generate task, table, chart, and form cards. Disabling it stops new cards while keeping historical cards readable."
+      },
       "notifications": {
         "heading": "Notifications",
         "description": "Control system notifications and sound alerts.",

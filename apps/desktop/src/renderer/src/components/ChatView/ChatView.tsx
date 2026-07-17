@@ -10,6 +10,7 @@ import { useAgentStore } from '../../stores/agent-store';
 import { MessageBubble } from './MessageBubble';
 import { VirtualizedMessageList } from './VirtualizedMessageList';
 import { ChatInput } from './ChatInput';
+import type { GeneratedUiSendRequest } from './GeneratedUiForm';
 import { useI18n } from '../../i18n';
 import { usePlanStore } from '../../stores/plan-store';
 import { useAgentModeStore } from '../../stores/agent-mode-store';
@@ -398,6 +399,10 @@ export function ChatView({
       setSendError(err instanceof Error ? err.message : String(err));
     }
   });
+  const handleGeneratedUiSend = useEventCallback(async (request: GeneratedUiSendRequest): Promise<void> => {
+    await handleSend(request.transportContent, { visibleContent: request.visibleContent, waitForAgentIdle: true });
+  });
+
   // SubTask 7.1: useEventCallback keeps identity stable (so ChatInput's onStop
   // prop doesn't churn) while always reading the latest `messages` via the ref,
   // avoiding the stale-closure bug where stop operated on an outdated array.
@@ -450,7 +455,9 @@ export function ChatView({
       const hasThinking = Boolean(message.thinking?.trim());
       const hasGeneratedUi = Boolean(message.generatedUi);
       const hasCard = Boolean(message.customCard);
-      const hasTools = Boolean(message.toolCalls && message.toolCalls.length > 0);
+      const hasTools = Boolean(message.toolCalls?.some((toolCall) =>
+        toolCall.name !== "render_ui" || toolCall.status !== "completed"
+      ));
       const hasPlan = Boolean(message.planAction);
       const isEmpty = !hasVisible && !hasThinking && !hasGeneratedUi && !hasCard && !hasTools && !hasPlan;
       // 当前正在流式中的消息即使暂时为空也不删除,避免闪烁
@@ -879,6 +886,8 @@ export function ChatView({
                 focusMessageId={focusMessageId}
                 onFocusHandled={onFocusMessageHandled}
                 onPlanAction={handlePlanAction}
+                onGeneratedUiSend={handleGeneratedUiSend}
+                generatedUiDisabled={!isConnected || isStreaming || Boolean(currentSession?.readOnly)}
               />
             ) : (
             messages.map((message) => (
@@ -888,6 +897,8 @@ export function ChatView({
                 isStreaming={isStreaming && message.id === streamingMessageId}
                 isSearchTarget={focusMessageId === message.id}
                 onPlanAction={handlePlanAction}
+                onGeneratedUiSend={handleGeneratedUiSend}
+                generatedUiDisabled={!isConnected || isStreaming || Boolean(currentSession?.readOnly)}
               />
             ))
             )}
@@ -942,18 +953,21 @@ export function ChatView({
               </div>
             )}
 
-            {/* 回到顶部按钮 */}
+            {/* 回到最新消息按钮 */}
             {messages.length > 5 && (
               <button
                 type="button"
                 onClick={() => {
-                  scrollRegionRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+                  const scrollRegion = scrollRegionRef.current;
+                  if (!scrollRegion) return;
+                  scrollRegion.scrollTo({ top: scrollRegion.scrollHeight, behavior: 'smooth' });
+                  isNearBottomRef.current = true;
                 }}
                 className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] shadow-sm text-[var(--mm-text-secondary)] hover:text-[var(--mm-text-primary)] transition-[background-color,border-color,color,opacity,box-shadow,transform]"
-                aria-label={t("chatView.scrollTop")}
+                aria-label={t("chatView.scrollBottom")}
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 14l7 7m0 0l7-7m-7 7V3" />
                 </svg>
               </button>
             )}

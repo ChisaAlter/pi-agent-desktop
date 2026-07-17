@@ -134,9 +134,9 @@ test.describe("Pi Desktop silky motion acceptance", () => {
           transitionDuration: style.transitionDuration,
         };
       });
-      expect(chatMotion.transitionProperty).toContain("opacity");
-      expect(chatMotion.transitionProperty).toContain("transform");
-      expect(chatMotion.transitionDuration).toContain("0.16s");
+      expect(chatMotion.transitionProperty).toBe("opacity");
+      expect(chatMotion.transitionProperty).not.toContain("transform");
+      expect(chatMotion.transitionDuration).toContain("0.1s");
 
       await page.getByRole("tab", { name: "扩展" }).click();
       const inactiveChat = page.locator('[data-main-panel="chat"]');
@@ -213,13 +213,21 @@ test.describe("Pi Desktop silky motion acceptance", () => {
         contentType: "application/json",
       });
 
-      const settingsClosed = settingsWindow.waitForEvent("close");
       await settingsWindow.evaluate(() => {
         const closeButton = Array.from(document.querySelectorAll<HTMLButtonElement>("button"))
           .find((button) => button.getAttribute("aria-label") === "关闭窗口");
         closeButton?.click();
       });
-      await settingsClosed;
+      await expect.poll(async () => app.evaluate(({ BrowserWindow }) => {
+        const window = BrowserWindow.getAllWindows().find((item) => {
+          try {
+            return !item.isDestroyed() && item.webContents.getURL().includes("settings.html");
+          } catch {
+            return false;
+          }
+        });
+        return window?.isVisible() ?? false;
+      })).toBe(false);
 
       await page.emulateMedia({ reducedMotion: "reduce" });
       await page.getByRole("tab", { name: "扩展" }).click();

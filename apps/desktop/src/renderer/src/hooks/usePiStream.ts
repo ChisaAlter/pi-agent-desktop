@@ -1027,8 +1027,16 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     break;
                 }
                 hasCompletionSignalRef.current = true;
+                const messageId = `cm_${generatedUi.id}`;
+                const existing = useSessionStore.getState().sessions
+                    .find((item) => item.id === session.id)?.messages
+                    .find((message) => message.id === messageId);
+                if (existing) {
+                    useSessionStore.getState().updateMessage(session.id, messageId, { generatedUi }, { persist: true });
+                    break;
+                }
                 useSessionStore.getState().addMessage(session.id, {
-                    id: `cm_${generatedUi.id}`,
+                    id: messageId,
                     role: "assistant",
                     content: "",
                     timestamp: new Date(),

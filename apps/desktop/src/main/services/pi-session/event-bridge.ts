@@ -19,14 +19,36 @@ export interface EventBridgeDeps {
     onTurnEnd?: (workspaceId: string) => void;
 }
 
+export function normalizeCustomMessageEvent(event: PiEvent): PiEvent {
+    if (event.type !== "message_end") return event;
+    const message = (event as { message?: unknown }).message;
+    if (!message || typeof message !== "object") return event;
+    const customMessage = message as {
+        role?: unknown;
+        customType?: unknown;
+        content?: unknown;
+        display?: unknown;
+        details?: unknown;
+    };
+    if (customMessage.role !== "custom") return event;
+    return {
+        type: "custom_message",
+        customType: typeof customMessage.customType === "string" ? customMessage.customType : "",
+        content: typeof customMessage.content === "string" ? customMessage.content : "",
+        display: typeof customMessage.display === "boolean" ? customMessage.display : true,
+        details: customMessage.details,
+    };
+}
+
 export function createEventBridge(workspaceId: string, send: IpcSender, deps?: EventBridgeDeps) {
     return {
         handleEvent(event: PiEvent) {
-            switch (event.type) {
+            const forwardedEvent = normalizeCustomMessageEvent(event);
+            switch (forwardedEvent.type) {
                 case "turn_end":
                     // Forward to renderer first so the UI can flip streaming
                     // state immediately, then notify the GoalService stop-gate.
-                    send("pi:event", workspaceId, event);
+                    send("pi:event", workspaceId, forwardedEvent);
                     deps?.onTurnEnd?.(workspaceId);
                     break;
 
@@ -45,12 +67,12 @@ export function createEventBridge(workspaceId: string, send: IpcSender, deps?: E
                 case "custom_message":
                 case "queue_update":
                 case "extension_error":
-                    send("pi:event", workspaceId, event);
+                    send("pi:event", workspaceId, forwardedEvent);
                     break;
 
                 default:
                     // 未知事件忽略 (auto_retry_* 等暂未接入 renderer 的诊断事件)
-                    log.warn(`[event-bridge] unknown Pi event type: ${(event as { type?: string })?.type ?? "(unknown)"}`);
+                    log.warn(`[event-bridge] unknown Pi event type: ${(forwardedEvent as { type?: string })?.type ?? "(unknown)"}`);
                     break;
             }
         },

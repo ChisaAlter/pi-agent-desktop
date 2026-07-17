@@ -401,6 +401,9 @@ const piAPI: PiAPI = {
     windowToggleMaximize: () => ipcRenderer.invoke("window:toggle-maximize") as Promise<void>,
     windowIsMaximized: () => ipcRenderer.invoke("window:is-maximized") as Promise<boolean>,
     windowClose: () => ipcRenderer.invoke("window:close") as Promise<void>,
+    windowBeginDrag: (screenX, screenY) => ipcRenderer.send("window:drag-start", screenX, screenY),
+    windowUpdateDrag: (screenX, screenY) => ipcRenderer.send("window:drag-move", screenX, screenY),
+    windowEndDrag: () => ipcRenderer.send("window:drag-end"),
     onWindowMaximizeChanged: (cb) => subscribe<boolean>("window:maximize-changed", cb),
 
     // v1.2: Workbench context — renderer tells main which file user is viewing
