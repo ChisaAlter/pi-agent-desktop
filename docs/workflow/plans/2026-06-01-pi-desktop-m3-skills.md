@@ -8,7 +8,7 @@
 
 **Tech Stack:** React 19, Tailwind 4, TypeScript 5, vitest 2, Zustand 5
 
-**Spec ref:** `docs/superpowers/specs/2026-06-01-pi-desktop-v1-design.md` §11, §7.3
+**Spec ref:** `docs/workflow/specs/2026-06-01-pi-desktop-v1-design.md` §11, §7.3
 
 **关键发现 (2026-06-01):**
 - `skillhub` CLI 已装 (`C:\Users\48818\.local\bin\skillhub`), `search --json` 输出结构化 JSON
@@ -1087,7 +1087,7 @@ Expected: 80+ pass
 - [ ] **Step 3: 写 m3 smoke 清单**
 
 ```bash
-# docs/superpowers/plans/2026-06-01-m3-smoke-test.md
+# docs/workflow/plans/2026-06-01-m3-smoke-test.md
 ```
 
 5 步:
@@ -1100,7 +1100,7 @@ Expected: 80+ pass
 - [ ] **Step 4: 提交**
 
 ```bash
-git add apps/desktop/src/test/e2e/m3.test.ts docs/superpowers/plans/2026-06-01-m3-smoke-test.md
+git add apps/desktop/src/test/e2e/m3.test.ts docs/workflow/plans/2026-06-01-m3-smoke-test.md
 git commit -m "test(M3): e2e + manual smoke checklist (Task M3-9)"
 ```
 

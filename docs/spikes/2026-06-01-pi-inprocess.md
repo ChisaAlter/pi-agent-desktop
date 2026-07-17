@@ -34,7 +34,7 @@ node scripts/spike-pi-inprocess.mjs
 
 1. **`createAgentSession(options)`** 是真实 API, 不是 `createAgentSessionFromServices` (plan 写错了, 需更新)
 2. **最小参数**: `cwd` 即可, 其他从 settings.json + auth.json 推断
-3. **11 个扩展**自动加载 (从 settings.json 的 `packages` 字段, 含 pi-superpowers/pi-plan-mode/pi-subagents 等)
+3. **11 个扩展**自动加载 (从 settings.json 的 `packages` 字段, 含 pi-workflow/pi-plan-mode/pi-subagents 等)
 4. **事件流**完整: `agent_start` → `turn_start` → `message_start/update/end` → `turn_end` → `agent_end`
 5. **message_update 事件**默认发 10 个左右, 应该是 "pong" 拆成的字符流
 6. **不需要 API key env** —— Pi 从 `~/.pi/agent/auth.json` 读 (用户已配 mimo provider)

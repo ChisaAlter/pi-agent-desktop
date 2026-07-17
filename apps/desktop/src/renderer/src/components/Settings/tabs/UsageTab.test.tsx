@@ -67,5 +67,8 @@ describe("UsageTab", () => {
     });
     expect((await screen.findAllByText("150")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("gpt-test").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("usage-heatmap")).toBeTruthy();
+    expect(screen.getByText("30 天内活跃 1 天")).toBeTruthy();
+    expect(screen.getByTestId("usage-heatmap").querySelectorAll("button")).toHaveLength(30);
   });
 });

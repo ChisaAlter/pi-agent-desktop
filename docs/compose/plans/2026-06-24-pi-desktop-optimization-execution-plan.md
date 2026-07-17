@@ -1,6 +1,6 @@
 # Pi Desktop 深度优化执行计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use workflow:subagent-driven-development (recommended) or workflow:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 基于 2026-06-24 的两轮真实代码审查，分模块修复 Pi Desktop 的会话一致性、工作区路由、审批闭环、Settings 契约、搜索/导出/I/O 体验和测试闸门，形成可并行执行、可实机验收、可独立提交的优化路线。
 

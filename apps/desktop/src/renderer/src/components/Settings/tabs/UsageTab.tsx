@@ -44,13 +44,18 @@ const MODEL_COLORS = [
   "var(--settings-chart-5)",
 ];
 
-function usageColor(value: number, max: number): string {
-  if (value <= 0 || max <= 0) return "var(--settings-heat-0)";
-  const ratio = value / max;
-  if (ratio > 0.8) return "var(--settings-heat-4)";
-  if (ratio > 0.55) return "var(--settings-heat-3)";
-  if (ratio > 0.3) return "var(--settings-heat-2)";
-  return "var(--settings-heat-1)";
+function usageLevel(value: number, positiveValues: number[]): number {
+  if (value <= 0 || positiveValues.length === 0) return 0;
+  const rank = positiveValues.filter((candidate) => candidate <= value).length;
+  return Math.max(1, Math.min(4, Math.ceil((rank / positiveValues.length) * 4)));
+}
+
+function usageColor(level: number): string {
+  return `var(--settings-heat-${level})`;
+}
+
+function parseUsageDate(date: string): Date {
+  return new Date(`${date}T00:00:00`);
 }
 
 function moveTooltip(event: React.MouseEvent<HTMLElement>, content: string, setTooltip: (next: TooltipState) => void): void {
@@ -101,37 +106,111 @@ function Heatmap({
   setTooltip: (next: TooltipState) => void;
   clearTooltip: () => void;
 }): React.JSX.Element {
-  const max = Math.max(...overview.days.map((day) => day.totalTokens), 0);
+  const positiveValues = overview.days
+    .map((day) => day.totalTokens)
+    .filter((value) => value > 0)
+    .sort((a, b) => a - b);
+  const firstDay = overview.days[0] ? parseUsageDate(overview.days[0].date) : new Date();
+  const leadingEmptyCells = (firstDay.getDay() + 6) % 7;
+  const calendarCells = [
+    ...Array.from({ length: leadingEmptyCells }, () => null),
+    ...overview.days,
+  ];
+  const weekCount = Math.max(1, Math.ceil(calendarCells.length / 7));
+  while (calendarCells.length < weekCount * 7) calendarCells.push(null);
+
+  const monthLabels = Array.from({ length: weekCount }, (_, weekIndex) => {
+    const weekDays = calendarCells.slice(weekIndex * 7, weekIndex * 7 + 7).filter((day) => day !== null);
+    const firstWeekDay = weekDays[0];
+    if (!firstWeekDay) return "";
+    const month = parseUsageDate(firstWeekDay.date).getMonth();
+    const previousWeekDays = weekIndex === 0
+      ? []
+      : calendarCells.slice((weekIndex - 1) * 7, weekIndex * 7).filter((day) => day !== null);
+    const previousMonth = previousWeekDays[0] ? parseUsageDate(previousWeekDays[0].date).getMonth() : -1;
+    return weekIndex === 0 || month !== previousMonth ? `${month + 1}月` : "";
+  });
+  const busiestDay = overview.days.reduce<(typeof overview.days)[number] | null>(
+    (busiest, day) => (!busiest || day.totalTokens > busiest.totalTokens ? day : busiest),
+    null,
+  );
+  const weekdayLabels = ["一", "", "三", "", "五", "", "日"];
+
   return (
-    <section className="rounded-[7px] bg-[var(--settings-bg-card)] px-4 py-3">
-      <div className="mb-3 flex items-center justify-between">
-        <h4 className="m-0 text-[13px] font-medium text-[var(--settings-text-primary)]">活跃热力图</h4>
+    <section className="rounded-[7px] border border-[var(--settings-border-soft)] bg-[var(--settings-bg-card)] px-4 py-4" data-testid="usage-heatmap">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h4 className="m-0 text-[13px] font-semibold text-[var(--settings-text-primary)]">活跃热力图</h4>
+          <p className="m-0 mt-1 text-[11px] text-[var(--settings-text-secondary)]">
+            {overview.days.length} 天内活跃 {overview.summary.activeDays} 天
+          </p>
+        </div>
         <div className="flex items-center gap-1 text-[10px] text-[var(--settings-text-secondary)]">
           <span>较少</span>
           {[0, 1, 2, 3, 4].map((level) => (
             <span
               key={level}
-              className="h-3 w-3 rounded-[3px] border border-[var(--settings-border)]"
-              style={{ backgroundColor: usageColor((level / 4) * max, max) }}
+              className="h-3.5 w-3.5 rounded-[3px] border border-[var(--settings-border)]"
+              style={{ backgroundColor: usageColor(level) }}
               aria-hidden="true"
             />
           ))}
           <span>较多</span>
         </div>
       </div>
-      <div className="grid grid-flow-col grid-rows-7 gap-[6px] overflow-x-auto pb-1">
-        {overview.days.map((day) => (
-          <button
-            key={day.date}
-            type="button"
-            aria-label={`${day.date} 用量详情`}
-            onMouseEnter={(event) => moveTooltip(event, day.tooltip, setTooltip)}
-            onMouseMove={(event) => moveTooltip(event, day.tooltip, setTooltip)}
-            onMouseLeave={clearTooltip}
-            className="h-[13px] w-[13px] shrink-0 rounded-[3px] transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-[#1683f7]/30"
-            style={{ backgroundColor: usageColor(day.totalTokens, max) }}
-          />
-        ))}
+
+      <div className="mt-4 grid grid-cols-[minmax(0,1fr)_190px] gap-5 max-[720px]:grid-cols-1">
+        <div className="min-w-0 overflow-x-auto rounded-[6px] border border-[var(--settings-border)] bg-[var(--settings-bg-card-muted)] px-4 py-3">
+          <div className="flex min-w-max justify-center">
+            <div className="shrink-0">
+            <div className="mb-1.5 ml-6 grid gap-[5px] text-[10px] text-[var(--settings-text-muted)]" style={{ gridTemplateColumns: `repeat(${weekCount}, 22px)` }}>
+              {monthLabels.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}
+            </div>
+            <div className="flex gap-2">
+              <div className="grid grid-rows-7 gap-[5px] text-[10px] leading-[22px] text-[var(--settings-text-muted)]" aria-hidden="true">
+                {weekdayLabels.map((label, index) => <span key={`${label}-${index}`} className="h-[22px] w-4 text-right">{label}</span>)}
+              </div>
+              <div
+                className="grid grid-flow-col gap-[5px]"
+                style={{ gridTemplateColumns: `repeat(${weekCount}, 22px)`, gridTemplateRows: "repeat(7, 22px)" }}
+              >
+                {calendarCells.map((day, index) => day ? (
+                  <button
+                    key={day.date}
+                    type="button"
+                    aria-label={`${day.date} 用量详情`}
+                    onMouseEnter={(event) => moveTooltip(event, day.tooltip, setTooltip)}
+                    onMouseMove={(event) => moveTooltip(event, day.tooltip, setTooltip)}
+                    onMouseLeave={clearTooltip}
+                    className="h-[22px] w-[22px] rounded-[4px] border border-black/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.16)] transition-[transform,box-shadow] hover:z-10 hover:scale-110 hover:shadow-md focus:z-10 focus:outline-none focus:ring-2 focus:ring-[#1683f7]/35"
+                    style={{ backgroundColor: usageColor(usageLevel(day.totalTokens, positiveValues)) }}
+                  />
+                ) : (
+                  <span key={`empty-${index}`} className="h-[22px] w-[22px] rounded-[4px] border border-dashed border-[var(--settings-border)] opacity-35" aria-hidden="true" />
+                ))}
+              </div>
+            </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-rows-3 divide-y divide-[var(--settings-border)] rounded-[6px] border border-[var(--settings-border)] bg-[var(--settings-bg-card-muted)] px-3">
+          <div className="flex items-center justify-between gap-3 py-2.5">
+            <span className="text-[11px] text-[var(--settings-text-secondary)]">活跃天数</span>
+            <strong className="font-mono text-[15px] text-[var(--settings-text-primary)]">{overview.summary.activeDays}</strong>
+          </div>
+          <div className="flex items-center justify-between gap-3 py-2.5">
+            <span className="text-[11px] text-[var(--settings-text-secondary)]">连续活跃</span>
+            <strong className="font-mono text-[15px] text-[var(--settings-text-primary)]">{overview.summary.currentStreakDays} 天</strong>
+          </div>
+          <div className="flex items-center justify-between gap-3 py-2.5">
+            <span className="text-[11px] text-[var(--settings-text-secondary)]">峰值日期</span>
+            <span className="text-right">
+              <strong className="block text-[12px] text-[var(--settings-text-primary)]">{busiestDay?.label ?? "-"}</strong>
+              <span className="mt-0.5 block font-mono text-[10px] text-[var(--settings-text-muted)]">{formatUsageNumber(busiestDay?.totalTokens ?? 0, "compact")} tokens</span>
+            </span>
+          </div>
+        </div>
       </div>
     </section>
   );

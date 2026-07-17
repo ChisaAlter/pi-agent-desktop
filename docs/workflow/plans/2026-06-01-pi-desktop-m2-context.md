@@ -8,7 +8,7 @@
 
 **Tech Stack:** React 19, Tailwind 4, TypeScript 5, vitest 2
 
-**Spec ref:** `docs/superpowers/specs/2026-06-01-pi-desktop-v1-design.md` §14 M2
+**Spec ref:** `docs/workflow/specs/2026-06-01-pi-desktop-v1-design.md` §14 M2
 
 ---
 
@@ -977,7 +977,7 @@ Expected: 60+ pass, 0 fail
 - [ ] **Step 3: 写 m2 冒烟清单**
 
 ```bash
-# docs/superpowers/plans/2026-06-01-m2-smoke-test.md
+# docs/workflow/plans/2026-06-01-m2-smoke-test.md
 ```
 
 写 5 步:
@@ -990,7 +990,7 @@ Expected: 60+ pass, 0 fail
 - [ ] **Step 4: 提交**
 
 ```bash
-git add apps/desktop/src/test/e2e/m2.test.ts docs/superpowers/plans/2026-06-01-m2-smoke-test.md
+git add apps/desktop/src/test/e2e/m2.test.ts docs/workflow/plans/2026-06-01-m2-smoke-test.md
 git commit -m "test(M2): e2e smoke + manual checklist (Task M2-7)"
 ```
 

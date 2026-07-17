@@ -76,6 +76,33 @@ describe("AboutTab updater card", () => {
         expect(screen.getByRole("button", { name: "重启并安装" })).toBeTruthy();
     });
 
+    it("keeps GitHub checks available without offering automatic download for unsigned builds", () => {
+        useUpdaterStore.setState({
+            state: {
+                phase: "available",
+                currentVersion: "0.1.0",
+                latestVersion: "0.2.0",
+                updateAvailable: true,
+                releaseNotes: "Manual release",
+                progress: null,
+                lastCheckedAt: 1_720_000_000_000,
+                disabledReason: "仍可检查 GitHub 最新版本，如有更新请手动下载。",
+                error: null,
+                releasePageUrl: "https://github.com/ChisaAlter/pi-agent-desktop/releases/latest",
+            },
+        });
+
+        render(
+            <I18nProvider>
+                <AboutTab />
+            </I18nProvider>,
+        );
+
+        expect(screen.getByRole("button", { name: "检查更新" })).toBeTruthy();
+        expect(screen.queryByRole("button", { name: "下载更新" })).toBeNull();
+        expect(screen.getByText("最新版本: 0.2.0")).toBeTruthy();
+    });
+
     it("shows updater state errors from the main process", () => {
         useUpdaterStore.setState({
             state: {

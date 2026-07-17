@@ -1,6 +1,6 @@
 # Pi Desktop Silky Motion System Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use workflow:subagent-driven-development (recommended) or workflow:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Give Pi Desktop a coherent, interruptible motion system across controls, navigation, settings, overlays, rails, lists, and status feedback without regressing the sub-100ms interaction latency already achieved.
 

@@ -1,6 +1,6 @@
 # Pi Desktop M1 — Foundation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use workflow:subagent-driven-development (recommended) or workflow:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 修复 3 个根本 bug, 建立 Pi Desktop 的可工作骨架 (长连接 Pi + 分层审批 + cwd 正确)
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** Electron 34, TypeScript 5, `@earendil-works/pi-coding-agent@0.75.5`, vitest 2, Zustand 5, electron-store 8
 
-**Reference Spec:** `docs/superpowers/specs/2026-06-01-pi-desktop-v1-design.md` §5-6, §10
+**Reference Spec:** `docs/workflow/specs/2026-06-01-pi-desktop-v1-design.md` §5-6, §10
 
 **关键发现 (实施前必读):**
 - Pi CLI v0.75.5 有完整 RPC 模式, 详见 `node_modules/@earendil-works/pi-coding-agent/docs/rpc.md`

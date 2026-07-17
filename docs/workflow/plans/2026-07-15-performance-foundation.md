@@ -1,6 +1,6 @@
 # Pi Desktop Performance Foundation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans. Keep tests focused on changed behavior.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use workflow:subagent-driven-development or workflow:executing-plans. Keep tests focused on changed behavior.
 
 **Goal:** Replace full-history session persistence and eliminate the highest-frequency renderer/main-thread latency sources.
 

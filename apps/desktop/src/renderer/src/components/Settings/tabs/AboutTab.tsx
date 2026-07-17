@@ -128,7 +128,7 @@ function UpdaterActionRow(): React.JSX.Element {
                     {t("settings.about.updater.actions.check")}
                 </button>
 
-                {state?.phase === "available" && (
+                {state?.phase === "available" && !state.disabledReason && (
                     <button
                         type="button"
                         onClick={() => void downloadUpdate()}

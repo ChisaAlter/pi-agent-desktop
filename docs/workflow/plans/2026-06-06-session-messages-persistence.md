@@ -1,6 +1,6 @@
 # Pi Desktop — 会话消息持久化与加载 (Hotfix)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development (recommended) or superpowers:executing-plans。Steps 用 checkbox (`- [ ]`) 跟踪。
+> **For agentic workers:** REQUIRED SUB-SKILL: workflow:subagent-driven-development (recommended) or workflow:executing-plans。Steps 用 checkbox (`- [ ]`) 跟踪。
 
 **Goal:** 修复"点了会话不显示消息历史"的根因。切会话 / 重启窗口 / 重启 app 后,会话的完整消息历史仍可见。
 

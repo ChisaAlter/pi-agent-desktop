@@ -6,6 +6,7 @@ import type { AppUpdaterProgress, AppUpdaterState } from "@shared";
 declare const __PI_DESKTOP_AUTO_UPDATE_ENABLED__: boolean;
 
 const RELEASE_PAGE_URL = "https://github.com/ChisaAlter/pi-agent-desktop/releases/latest";
+const RELEASE_API_URL = "https://api.github.com/repos/ChisaAlter/pi-agent-desktop/releases/latest";
 const STARTUP_CHECK_DELAY_MS = 3_000;
 const PERIODIC_CHECK_MS = 6 * 60 * 60 * 1_000;
 
@@ -45,10 +46,17 @@ export interface AppUpdaterService {
 export interface SetupAutoUpdaterOptions {
     autoUpdateEnabled?: boolean;
     currentVersion?: string;
+    fetchLatestRelease?: () => Promise<GitHubReleaseMetadata>;
     getWindows?: () => BrowserWindowLike[];
     isPackaged?: boolean;
     updater?: AppUpdaterLike;
     scheduleChecks?: boolean;
+}
+
+export interface GitHubReleaseMetadata {
+    tagName: string;
+    body: string | null;
+    pageUrl: string;
 }
 
 function createState(currentVersion: string): AppUpdaterState {
@@ -92,6 +100,58 @@ function normalizeProgress(progress: ProgressInfo): AppUpdaterProgress {
     };
 }
 
+async function fetchLatestGitHubRelease(): Promise<GitHubReleaseMetadata> {
+    const response = await fetch(RELEASE_API_URL, {
+        headers: {
+            Accept: "application/vnd.github+json",
+            "User-Agent": "Pi-Desktop-Updater",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    });
+    if (!response.ok) {
+        throw new Error(`GitHub Releases API returned ${response.status} for ${RELEASE_API_URL}`);
+    }
+    const release = await response.json() as {
+        tag_name?: unknown;
+        body?: unknown;
+        html_url?: unknown;
+    };
+    if (typeof release.tag_name !== "string" || !release.tag_name.trim()) {
+        throw new Error("GitHub Releases API response did not include a release tag.");
+    }
+    return {
+        tagName: release.tag_name,
+        body: typeof release.body === "string" ? release.body.trim() || null : null,
+        pageUrl: typeof release.html_url === "string" && release.html_url ? release.html_url : RELEASE_PAGE_URL,
+    };
+}
+
+function parseVersion(version: string): { numbers: number[]; prerelease: string | null } | null {
+    const normalized = version.trim().replace(/^v/i, "").split("+", 1)[0] ?? "";
+    const [core = "", prerelease = null] = normalized.split("-", 2);
+    const segments = core.split(".");
+    if (segments.length === 0 || segments.some((segment) => !/^\d+$/.test(segment))) return null;
+    return {
+        numbers: segments.map(Number),
+        prerelease,
+    };
+}
+
+function isNewerVersion(candidate: string, current: string): boolean {
+    const next = parseVersion(candidate);
+    const installed = parseVersion(current);
+    if (!next || !installed) return candidate.trim().replace(/^v/i, "") !== current.trim().replace(/^v/i, "");
+    const length = Math.max(next.numbers.length, installed.numbers.length);
+    for (let index = 0; index < length; index += 1) {
+        const difference = (next.numbers[index] ?? 0) - (installed.numbers[index] ?? 0);
+        if (difference !== 0) return difference > 0;
+    }
+    if (next.prerelease === installed.prerelease) return false;
+    if (next.prerelease === null) return true;
+    if (installed.prerelease === null) return false;
+    return next.prerelease > installed.prerelease;
+}
+
 function normalizeErrorMessage(error: unknown): string {
     const raw = error instanceof Error ? error.message : String(error);
     const compact = raw.replace(/\s+/g, " ").trim();
@@ -100,7 +160,7 @@ function normalizeErrorMessage(error: unknown): string {
         return "当前打包产物缺少 app-update.yml，只有正式 NSIS 发布包才能检查更新。";
     }
 
-    if (/releases\.atom/i.test(raw) && /\b404\b/.test(raw)) {
+    if (/(releases\.atom|GitHub Releases API returned 404)/i.test(raw) && /\b404\b/.test(raw)) {
         return "未找到 GitHub Releases 元数据（404）。请确认仓库、发布页和 latest.yml 已公开发布。";
     }
 
@@ -126,6 +186,7 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpda
     const currentVersion = options.currentVersion ?? app.getVersion();
     const autoUpdateEnabled = options.autoUpdateEnabled ?? __PI_DESKTOP_AUTO_UPDATE_ENABLED__;
     const packaged = options.isPackaged ?? app.isPackaged;
+    const fetchLatestRelease = options.fetchLatestRelease ?? fetchLatestGitHubRelease;
     const state = createState(currentVersion);
 
     const broadcast = () => {
@@ -141,31 +202,56 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpda
         broadcast();
     };
 
-    if (!packaged) {
+    if (!packaged || !autoUpdateEnabled) {
         patch({
-            phase: "disabled",
-            disabledReason: "开发环境不检查应用更新。",
+            disabledReason: packaged
+                ? "当前构建未启用签名自动更新；仍可检查 GitHub 最新版本，如有更新请手动下载。"
+                : "开发环境可检查 GitHub 最新版本，但不能自动下载和安装更新。",
         });
-        return {
-            getState: () => ({ ...state }),
-            checkForUpdates: async () => ({ ...state }),
-            downloadUpdate: async () => ({ ...state }),
-            installUpdate: async () => ({ ...state }),
-            dispose: () => {},
-        };
-    }
 
-    if (!autoUpdateEnabled) {
-        patch({
-            phase: "disabled",
-            disabledReason: "当前构建未启用签名自动更新，请从 GitHub Releases 手动下载。",
-        });
+        const checkLatestRelease = async (): Promise<AppUpdaterState> => {
+            patch({ phase: "checking", error: null, lastCheckedAt: Date.now() });
+            try {
+                const release = await fetchLatestRelease();
+                const latestVersion = release.tagName.trim().replace(/^v/i, "");
+                const updateAvailable = isNewerVersion(latestVersion, state.currentVersion);
+                log.info(`[AutoUpdater] GitHub release metadata checked: ${latestVersion}`);
+                patch({
+                    phase: updateAvailable ? "available" : "not-available",
+                    latestVersion,
+                    updateAvailable,
+                    releaseNotes: release.body,
+                    progress: null,
+                    error: null,
+                    lastCheckedAt: Date.now(),
+                    releasePageUrl: release.pageUrl,
+                });
+            } catch (error) {
+                const message = normalizeErrorMessage(error);
+                log.error("[AutoUpdater] GitHub release metadata check failed:", error);
+                patch({ phase: "error", error: message, progress: null, lastCheckedAt: Date.now() });
+            }
+            return { ...state };
+        };
+
+        let startupTimer: ReturnType<typeof setTimeout> | null = null;
+        let periodicTimer: ReturnType<typeof setInterval> | null = null;
+        if (packaged && options.scheduleChecks !== false) {
+            startupTimer = setTimeout(() => void checkLatestRelease(), STARTUP_CHECK_DELAY_MS);
+            periodicTimer = setInterval(() => void checkLatestRelease(), PERIODIC_CHECK_MS);
+        }
+
         return {
             getState: () => ({ ...state }),
-            checkForUpdates: async () => ({ ...state }),
+            checkForUpdates: checkLatestRelease,
             downloadUpdate: async () => ({ ...state }),
             installUpdate: async () => ({ ...state }),
-            dispose: () => {},
+            dispose: () => {
+                if (startupTimer) clearTimeout(startupTimer);
+                if (periodicTimer) clearInterval(periodicTimer);
+                startupTimer = null;
+                periodicTimer = null;
+            },
         };
     }
 

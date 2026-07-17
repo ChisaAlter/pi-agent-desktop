@@ -5,6 +5,7 @@ const {
     windows,
     checkForUpdatesMock,
     downloadUpdateMock,
+    fetchLatestReleaseMock,
     quitAndInstallMock,
 } = vi.hoisted(() => ({
     windows: [
@@ -13,6 +14,7 @@ const {
     ],
     checkForUpdatesMock: vi.fn(),
     downloadUpdateMock: vi.fn(),
+    fetchLatestReleaseMock: vi.fn(),
     quitAndInstallMock: vi.fn(),
 }));
 
@@ -62,6 +64,7 @@ describe("AppUpdaterService", () => {
         listeners.clear();
         checkForUpdatesMock.mockReset();
         downloadUpdateMock.mockReset();
+        fetchLatestReleaseMock.mockReset();
         quitAndInstallMock.mockReset();
         for (const win of windows) {
             win.webContents.send.mockReset();
@@ -69,15 +72,55 @@ describe("AppUpdaterService", () => {
         vi.useFakeTimers();
     });
 
-    it("starts in disabled state when build-time auto update is off", () => {
-        const service = setupAutoUpdater({ autoUpdateEnabled: false, scheduleChecks: false });
+    it("checks GitHub release metadata when signed automatic updates are off", async () => {
+        fetchLatestReleaseMock.mockResolvedValueOnce({
+            tagName: "v0.2.0",
+            body: "Manual release notes",
+            pageUrl: "https://github.com/ChisaAlter/pi-agent-desktop/releases/tag/v0.2.0",
+        });
+        const service = setupAutoUpdater({
+            autoUpdateEnabled: false,
+            fetchLatestRelease: fetchLatestReleaseMock,
+            scheduleChecks: false,
+        });
 
         expect(service.getState()).toMatchObject({
-            phase: "disabled",
+            phase: "idle",
             currentVersion: "0.1.0",
             updateAvailable: false,
         });
         expect(service.getState().disabledReason).toContain("签名");
+
+        await service.checkForUpdates();
+
+        expect(fetchLatestReleaseMock).toHaveBeenCalledTimes(1);
+        expect(service.getState()).toMatchObject({
+            phase: "available",
+            latestVersion: "0.2.0",
+            updateAvailable: true,
+            releaseNotes: "Manual release notes",
+        });
+    });
+
+    it("reports up to date when the GitHub release is older than the installed build", async () => {
+        fetchLatestReleaseMock.mockResolvedValueOnce({
+            tagName: "v0.0.9",
+            body: null,
+            pageUrl: "https://github.com/ChisaAlter/pi-agent-desktop/releases/tag/v0.0.9",
+        });
+        const service = setupAutoUpdater({
+            autoUpdateEnabled: false,
+            fetchLatestRelease: fetchLatestReleaseMock,
+            scheduleChecks: false,
+        });
+
+        await service.checkForUpdates();
+
+        expect(service.getState()).toMatchObject({
+            phase: "not-available",
+            latestVersion: "0.0.9",
+            updateAvailable: false,
+        });
     });
 
     it("broadcasts normalized update availability and progress to every window", async () => {
