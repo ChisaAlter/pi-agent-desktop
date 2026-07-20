@@ -10,6 +10,7 @@ import { open, stat, writeFile } from "fs/promises";
 import { scanFiles } from "../services/search/file-scanner";
 import { buildFileTree, listDirectory } from "../file-tree";
 import { getProtectedPathReason } from "../services/protected-paths";
+import { assertWorkspacePathAllowed } from "../services/path-canonical";
 import { getFileTreeSchema, listFilesSchema, readTextFileSchema, searchFilesSchema, writeTextFileSchema } from "./schemas";
 
 function toFileEntry(path: string) {
@@ -81,14 +82,17 @@ export function setupFilesIpc(opts?: { getMainWindow?: () => BrowserWindow | nul
             );
         }
         try {
-            const reason = getProtectedPathReason(targetPath, workspacePath);
-            if (reason) {
-                return ipcError("ipcErrors.files.protectedPath", reason, { path: targetPath });
+            // Canonical 校验: 词法 + realpath, 拦截 symlink/junction 逃逸出工作区。
+            // 与 agent 侧 `guarded-tools.ts` 保持同一安全标准。
+            const guard = await assertWorkspacePathAllowed(targetPath, workspacePath);
+            if (!guard.allowed) {
+                return ipcError("ipcErrors.files.protectedPath", guard.reason, { path: targetPath });
             }
+            const realPath = guard.canonicalPath;
             // SubTask 40.3: async + limited read (only first 512KB into memory)
             const maxBytes = 512 * 1024;
-            const stats = await stat(targetPath);
-            const fd = await open(targetPath, "r");
+            const stats = await stat(realPath);
+            const fd = await open(realPath, "r");
             let binary = false;
             let head = "";
             let bytesRead = 0;
@@ -134,12 +138,14 @@ export function setupFilesIpc(opts?: { getMainWindow?: () => BrowserWindow | nul
             );
         }
         try {
-            const reason = getProtectedPathReason(targetPath, workspacePath);
-            if (reason) {
-                return ipcError("ipcErrors.files.protectedPath", reason, { path: targetPath });
+            // Canonical 校验: 词法 + realpath, 拦截 symlink/junction 逃逸。
+            const guard = await assertWorkspacePathAllowed(targetPath, workspacePath);
+            if (!guard.allowed) {
+                return ipcError("ipcErrors.files.protectedPath", guard.reason, { path: targetPath });
             }
+            const realPath = guard.canonicalPath;
             if (options?.expectedMtimeMs !== undefined) {
-                const beforeStats = await stat(targetPath);
+                const beforeStats = await stat(realPath);
                 if (Math.abs(beforeStats.mtimeMs - options.expectedMtimeMs) > 1) {
                     return ipcError(
                         "ipcErrors.files.writeConflict",
@@ -148,8 +154,8 @@ export function setupFilesIpc(opts?: { getMainWindow?: () => BrowserWindow | nul
                     );
                 }
             }
-            await writeFile(targetPath, content, "utf-8");
-            const stats = await stat(targetPath);
+            await writeFile(realPath, content, "utf-8");
+            const stats = await stat(realPath);
             // Invalidate the 30s scan cache for the affected directory so the
             // next files:search / files:list sees the updated file mtime.
             // Without this, a write immediately followed by a CommandPalette

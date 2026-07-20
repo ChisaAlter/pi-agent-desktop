@@ -1,5 +1,5 @@
-import { lstat, readlink, realpath } from "fs/promises";
-import { basename, dirname, resolve } from "path";
+import { realpath } from "fs/promises";
+import { resolve } from "path";
 import {
     createBashToolDefinition,
     createEditToolDefinition,
@@ -12,6 +12,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { TSchema } from "typebox";
 import { getProtectedPathReason } from "../protected-paths";
+import { resolveCanonicalTarget } from "../path-canonical";
 import { checkBashCommand, type RuntimeToolPolicy } from "./runtime-policy";
 import { classifyToolName } from "./tool-category";
 
@@ -100,48 +101,6 @@ function replaceExecute<TParams extends TSchema, TDetails, TState>(
     };
 }
 
-async function resolveCanonicalTarget(targetPath: string, visitedLinks = new Set<string>()): Promise<string> {
-    let ancestor = targetPath;
-    const missingSegments: string[] = [];
-
-    while (true) {
-        try {
-            const canonicalAncestor = await realpath(ancestor);
-            return resolve(canonicalAncestor, ...missingSegments.reverse());
-        } catch (error) {
-            if (!isMissingPathError(error)) throw error;
-
-            const linkTarget = await readLinkTarget(ancestor);
-            if (linkTarget) {
-                const linkKey = resolve(ancestor);
-                if (visitedLinks.has(linkKey)) {
-                    throw new Error(`Symbolic link cycle detected at "${ancestor}"`);
-                }
-                visitedLinks.add(linkKey);
-                const canonicalLinkTarget = await resolveCanonicalTarget(linkTarget, visitedLinks);
-                return resolve(canonicalLinkTarget, ...missingSegments.reverse());
-            }
-
-            const parent = dirname(ancestor);
-            if (parent === ancestor) throw error;
-            missingSegments.push(basename(ancestor));
-            ancestor = parent;
-        }
-    }
-}
-
-async function readLinkTarget(path: string): Promise<string | undefined> {
-    try {
-        const stats = await lstat(path);
-        if (!stats.isSymbolicLink()) return undefined;
-        const target = await readlink(path);
-        return resolve(dirname(path), target);
-    } catch (error) {
-        if (isMissingPathError(error)) return undefined;
-        throw error;
-    }
-}
-
 function assertToolPermission(toolName: string, policy: RuntimeToolPolicy): void {
     const category = classifyToolName(toolName);
     if (policy.immutableDeniedTools.has(toolName)) {
@@ -159,10 +118,4 @@ function getStringProperty(value: unknown, key: string): string | undefined {
     if (!value || typeof value !== "object") return undefined;
     const property = Reflect.get(value, key);
     return typeof property === "string" ? property : undefined;
-}
-
-function isMissingPathError(error: unknown): boolean {
-    if (!(error instanceof Error)) return false;
-    const code = Reflect.get(error, "code");
-    return code === "ENOENT" || code === "ENOTDIR";
 }

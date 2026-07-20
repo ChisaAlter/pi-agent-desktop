@@ -15,6 +15,7 @@ import { WorkspaceRegistry } from "../services/pi-session/registry";
 import type { IpcSender } from "../services/pi-session/event-bridge";
 import { PendingEdits } from "../services/approval/pending-edits";
 import { resolveApprovalRequest, setWorkspaceWindow } from "../services/approval/approval-bridge";
+import type { WebContents } from "electron";
 import { getWorkbenchContext } from "./workbench.ipc";
 import {
     resolveExtensionUiRequest,
@@ -85,6 +86,15 @@ interface ChatIpcDeps {
      * 由 `plan:set-enabled` IPC handler 调用。
      */
     setWorkspacePlanMode?: (workspaceId: string, enabled: boolean) => Promise<void>;
+    /**
+     * 判断某个 webContents 是否属于 settings 窗口。
+     *
+     * approval / permission / plan / autoApprove 这几条 `ipcMain.on` 通道
+     * 只应由主聊天窗发起 (settings 窗不展示审批 UI)。若 sender 是 settings
+     * 窗, 静默忽略请求, 避免被设置窗的 XSS / 误调用绕过审批。
+     * 未注入时退化为「不限制」, 保持向后兼容。
+     */
+    isSettingsWebContents?: (sender: WebContents) => boolean;
 }
 
 type SlashSession = {
@@ -593,6 +603,17 @@ async function appendRecentUserIntentToMarkdownMemory(
 
 export function setupChatIpc(deps: ChatIpcDeps): void {
     const agentModeByWorkspace = new Map<string, AgentMode>();
+    // approval / permission / plan / autoApprove 只应由主聊天窗发起;
+    // settings 窗不展示审批 UI, 也不应改 autoApprove。这里做软绑定:
+    // sender 是 settings 窗 → 静默忽略, 不影响主窗正常批准/拒绝。
+    const isFromSettings = (sender: WebContents | undefined): boolean => {
+        if (!sender || !deps.isSettingsWebContents) return false;
+        try {
+            return deps.isSettingsWebContents(sender);
+        } catch {
+            return false;
+        }
+    };
     const send: IpcSender = (channel, _workspaceId, payload) => {
         const win: BrowserWindowType | null = BrowserWindow.getAllWindows()[0] ?? null;
         if (win && !win.isDestroyed()) {
@@ -622,7 +643,8 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
     };
 
     // 监听 renderer 响应审批
-    ipcMain.on("approval:respond", (_event, requestId: string, approved: boolean) => {
+    ipcMain.on("approval:respond", (event, requestId: string, approved: boolean) => {
+        if (isFromSettings(event.sender)) return;
         resolveApprovalRequest(requestId, approved);
     });
 
@@ -632,7 +654,8 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
 
     ipcMain.on(
         "permission:respond",
-        (_event, requestId: string, response: ExtensionUiResponse | PermissionDecision | boolean | string) => {
+        (event, requestId: string, response: ExtensionUiResponse | PermissionDecision | boolean | string) => {
+            if (isFromSettings(event.sender)) return;
             resolveExtensionUiRequest(requestId, response);
         },
     );
@@ -896,7 +919,8 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         });
     });
 
-    ipcMain.on("plan:respond", (_event, requestId: string, decision: string, text?: string) => {
+    ipcMain.on("plan:respond", (event, requestId: string, decision: string, text?: string) => {
+        if (isFromSettings(event.sender)) return;
         resolveExtensionUiRequest(requestId, { requestId, value: decision === "execute" ? true : text ?? "" });
     });
 
@@ -1047,7 +1071,8 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
     });
 
     // v1.1: renderer 同步 autoApprove 标志到主进程
-    ipcMain.on("approval:set-auto-approve", (_event, value: boolean) => {
+    ipcMain.on("approval:set-auto-approve", (event, value: boolean) => {
+        if (isFromSettings(event.sender)) return;
         deps.pendingEdits.autoApprove = value;
         log.info(`[chat.ipc] autoApprove set to: ${value}`);
     });

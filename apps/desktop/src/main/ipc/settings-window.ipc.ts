@@ -11,6 +11,17 @@ let settingsRendererReady = false;
 let appQuitting = false;
 let quitListenerRegistered = false;
 
+/**
+ * 返回当前 settings 窗口 (可能为 null / 已销毁)。
+ * 供 chat/terminal 等 IPC 模块判断 sender 是否来自 settings 窗口,
+ * 以便对 approval/permission/plan/autoApprove 等只应由主聊天窗发起的
+ * 请求做软绑定 (静默忽略来自 settings 窗的请求)。
+ */
+export function getSettingsWindow(): BrowserWindow | null {
+  if (!settingsWindow || settingsWindow.isDestroyed()) return null;
+  return settingsWindow;
+}
+
 const SETTINGS_WINDOW_WIDTH = 1067;
 const SETTINGS_WINDOW_HEIGHT = 800;
 const SETTINGS_WINDOW_MIN_WIDTH = 960;

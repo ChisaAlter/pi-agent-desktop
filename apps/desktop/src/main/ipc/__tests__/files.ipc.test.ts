@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -183,5 +183,101 @@ describe("files IPC", () => {
                 ?.find((child) => child.name === "src");
             expect(src?.children).toBeUndefined();
         }
+    });
+
+    // Phase 2.1 回归: 工作区内的 symlink 指向区外文件时, read/write 必须拒绝。
+    // 旧实现只用词法 isPathInside, symlink 会被当成工作区内文件放行, 导致
+    // renderer 可读/写工作区之外的目标 (与 agent tools 的 realpath 校验不一致)。
+    // 若当前环境无权创建 symlink (Windows 非管理员或无开发者模式), 跳过该用例。
+    it("blocks reads via a symlink that escapes the workspace", async () => {
+        const workspace = makeWorkspace();
+        const outsideDir = join(tmpdir(), `pi-outside-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        mkdirSync(outsideDir, { recursive: true });
+        const outsideFile = join(outsideDir, "secret.txt");
+        writeFileSync(outsideFile, "SECRET", "utf-8");
+
+        const linkPath = join(workspace, "escape.link");
+        try {
+            symlinkSync(outsideFile, linkPath, "file");
+        } catch (err) {
+            // 无权限建 symlink → 环境限制, 跳过。
+            rmSync(outsideDir, { recursive: true, force: true });
+            return;
+        }
+
+        try {
+            const readHandler = handlers.get("files:readTextFile")!;
+            const result = await readHandler({}, linkPath, workspace);
+
+            expect(isIpcError(result)).toBe(true);
+            if (isIpcError(result)) {
+                expect(result.code).toBe("ipcErrors.files.protectedPath");
+            }
+            // 真实区外文件未被读取泄露到 content 字段。
+            if (!isIpcError(result)) {
+                expect((result as { content?: string }).content).not.toContain("SECRET");
+            }
+        } finally {
+            rmSync(outsideDir, { recursive: true, force: true });
+        }
+    });
+
+    it("blocks writes via a symlink that escapes the workspace", async () => {
+        const workspace = makeWorkspace();
+        const outsideDir = join(tmpdir(), `pi-outside-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        mkdirSync(outsideDir, { recursive: true });
+        const outsideFile = join(outsideDir, "target.txt");
+        writeFileSync(outsideFile, "ORIGINAL", "utf-8");
+
+        const linkPath = join(workspace, "escape-write.link");
+        try {
+            symlinkSync(outsideFile, linkPath, "file");
+        } catch (err) {
+            rmSync(outsideDir, { recursive: true, force: true });
+            return;
+        }
+
+        try {
+            const writeHandler = handlers.get("files:writeTextFile")!;
+            const result = await writeHandler({}, linkPath, "PWNED", workspace);
+
+            expect(isIpcError(result)).toBe(true);
+            if (isIpcError(result)) {
+                expect(result.code).toBe("ipcErrors.files.protectedPath");
+            }
+            // 区外文件内容未被覆盖。
+            expect(readFileSync(outsideFile, "utf-8")).toBe("ORIGINAL");
+        } finally {
+            rmSync(outsideDir, { recursive: true, force: true });
+        }
+    });
+
+    // 正常工作区内文件的写入/读取不应被 canonical 校验误伤。
+    it("still writes and reads regular workspace files after canonical guard", async () => {
+        const workspace = makeWorkspace();
+        const file = join(workspace, "regular.txt");
+
+        const writeHandler = handlers.get("files:writeTextFile")!;
+        const readHandler = handlers.get("files:readTextFile")!;
+
+        const writeResult = await writeHandler({}, file, "hello", workspace);
+        expect(isIpcError(writeResult)).toBe(false);
+
+        const readResult = await readHandler({}, file, workspace) as { content?: string };
+        expect(readResult.content).toBe("hello");
+    });
+
+    // 写入一个尚不存在的新文件: canonical 校验会向上回溯到 workspace 祖先
+    // 再拼接缺失段, 必须放行 (与 agent tools 行为一致)。
+    it("allows writing a new file that does not yet exist", async () => {
+        const workspace = makeWorkspace();
+        const file = join(workspace, "brand-new.txt");
+        expect(existsSync(file)).toBe(false);
+
+        const writeHandler = handlers.get("files:writeTextFile")!;
+        const result = await writeHandler({}, file, "fresh", workspace);
+
+        expect(isIpcError(result)).toBe(false);
+        expect(readFileSync(file, "utf-8")).toBe("fresh");
     });
 });

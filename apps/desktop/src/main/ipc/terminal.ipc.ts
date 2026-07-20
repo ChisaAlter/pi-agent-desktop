@@ -3,23 +3,32 @@
 // Uses node-pty instead of child_process.spawn
 // Errors return IpcError (code/params/fallback)
 
-import { ipcMain, BrowserWindow } from "electron";
+import { ipcMain, BrowserWindow, type BrowserWindow as BrowserWindowType } from "electron";
 import log from "electron-log/main";
 import { ipcError } from "@shared";
 import { ptyManager } from "../services/shell/pty-manager";
 import { getProtectedPathReason } from "../services/protected-paths";
 import { terminalCreateSchema, terminalInputSchema, terminalResizeSchema } from "./schemas";
 
-export function setupTerminalIpc(): void {
+export function setupTerminalIpc(opts?: { getMainWindow?: () => BrowserWindowType | null }): void {
+    // 终端输出/退出事件只发给主聊天窗。原先用 `BrowserWindow.getAllWindows()[0]`,
+    // 当 settings 窗先创建时会变成第一个窗口, 导致终端输出进错窗 (设置窗没有终端 UI)。
+    // 没注入时退回 getAllWindows()[0], 保持向后兼容 (例如旧测试)。
+    const getTargetWindow = (): BrowserWindowType | null => {
+        const main = opts?.getMainWindow?.();
+        if (main && !main.isDestroyed()) return main;
+        const fallback = BrowserWindow.getAllWindows()[0] ?? null;
+        return fallback && !fallback.isDestroyed() ? fallback : null;
+    };
     const sendOutput = (id: string, data: string) => {
-        const win = BrowserWindow.getAllWindows()[0];
-        if (win && !win.isDestroyed()) {
+        const win = getTargetWindow();
+        if (win) {
             win.webContents.send("terminal:output", { id, data });
         }
     };
     const sendExit = (id: string, code: number | null) => {
-        const win = BrowserWindow.getAllWindows()[0];
-        if (win && !win.isDestroyed()) {
+        const win = getTargetWindow();
+        if (win) {
             win.webContents.send("terminal:exit", { id, code });
         }
     };
