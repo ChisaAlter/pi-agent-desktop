@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# 同一分支的新 push 取消旧的运行, 节省 CI 资源。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck + Lint + Test
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.0.0
+
+      # 不做 release.yml 里的 NSIS 短路径镜像; verify 只跑 typecheck/lint/test,
+      # 不打包, Windows 路径长度足够。pnpm store 缓存复用 install。
+      - name: Install dependencies
+        shell: pwsh
+        run: pnpm install --frozen-lockfile
+
+      # 严格按 AGENTS.md 的验证顺序: typecheck 与 lint 可并行, 但必须都过再跑 test。
+      - name: Typecheck
+        shell: pwsh
+        run: pnpm -r typecheck
+
+      - name: Lint
+        shell: pwsh
+        run: pnpm -r lint
+
+      - name: Test
+        shell: pwsh
+        run: pnpm -r test
