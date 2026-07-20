@@ -72,6 +72,8 @@ import { loadPiSdk } from './services/pi-session/sdk-runtime';
 import { registerSingleInstance } from './services/single-instance';
 import { SqliteSessionRepository } from './services/sqlite-session-repository';
 import { resolveMainWindowChromeOptions, resolveMainWindowPerformancePreferences } from './services/main-window-options';
+import { createMutationQueue, createKeyedMutator, type KeyedStore } from './utils/mutation-queue';
+import { getSettingsWindow as getSharedSettingsWindow } from './ipc/settings-window.ipc';
 import type { PiAgentConfig } from './types';
 
 const e2eLocale = process.env.PI_DESKTOP_E2E_LOCALE;
@@ -313,24 +315,19 @@ const getWorkspacePlanMode = (workspaceId: string): boolean | undefined => {
   return workspace?.planModeEnabled;
 };
 
-// Serial mutation chain for workspace records — mirrors workspace.ipc.ts's pattern
-// to avoid concurrent electron-store writes clobbering each other.
-let workspaceMutationChain: Promise<unknown> = Promise.resolve();
-
-function mutateWorkspaces(fn: (current: Workspace[]) => Workspace[]): Promise<Workspace[]> {
-  return new Promise((resolve, reject) => {
-    workspaceMutationChain = workspaceMutationChain.then(() => {
-      try {
-        const current = store.get('workspaces') ?? [];
-        const next = fn(current);
-        store.set('workspaces', next);
-        resolve(next);
-      } catch (err) {
-        reject(err);
-      }
-    });
-  });
-}
+// Shared serial mutation queue for workspace records.
+//
+// `main/index.ts` 的 `setWorkspacePlanMode` 与 `ipc/workspace.ipc.ts` 的
+// workspace CRUD/选择 handler **共享** 这一个队列, 避免两份独立 Promise tail
+// 在并发 plan-mode 切换 + workspace 写入时以 last-write-wins 互相覆盖
+// electron-store 的 `workspaces` 数组。锁范围仅覆盖 get/set 的 RMW;
+// `refreshWorkspace` 等重 IO 仍在 mutate 返回之后再执行, 不进队列。
+//
+// 队列语义对齐 `ipc/skills.ipc.ts` 的 `withSkillsLock`: 一次 mutate 抛错
+// 不会卡死后续写入 (tail 永续)。
+const workspaceMutationQueue = createMutationQueue();
+const workspaceStore = store as unknown as KeyedStore<'workspaces', Workspace[]>;
+const mutateWorkspaces = createKeyedMutator(workspaceMutationQueue, workspaceStore, 'workspaces');
 
 /**
  * Persist a workspace's plan-mode runtime toggle (CRIT-1).
@@ -603,7 +600,25 @@ function setupIPC(updaterService: AppUpdaterService): void {
     // judge results. Wraps the existing Pi AgentSession.sendUserMessage
     // (already patched in factory.ts to route `deliverAs: "followUp"` through
     // the Pi queue when the agent is mid-stream).
+    //
+    // 主聊天路径已迁移到 `agentRegistry` (AgentRuntimeRegistry), 但这里原先
+    // 只查 `piRegistry` (legacy WorkspaceRegistry) → 当 workspace 只有 agent
+    // 会话时 followUp 静默 no-op, 长程目标的 inconclusive 注入失效。
+    // 现在 agent 优先, piRegistry 仅作 fallback, 保证两种 runtime 都能注入。
     agentSessionLookup: (workspaceId) => {
+      const agent = agentRegistry.findDefaultAgent(workspaceId);
+      if (agent) {
+        try {
+          const ws = agentRegistry.getWorkspaceSession(agent.id);
+          return {
+            followUp: async (message: string) => {
+              await ws.session.sendUserMessage(message, { deliverAs: 'followUp' } as never);
+            },
+          };
+        } catch (err) {
+          log.warn('[Main] GoalService agentSessionLookup: agent registry miss, falling back to piRegistry:', err);
+        }
+      }
       const ws = piRegistry.tryGetWorkspaceSession(workspaceId);
       if (!ws) return null;
       return {
@@ -621,7 +636,13 @@ function setupIPC(updaterService: AppUpdaterService): void {
   // followUp (inconclusive, within MAX_GOAL_REACT), or fails open.
   // Fire-and-forget with a catch so a flaky judge never tears down the
   // session — GoalService.evaluate already fail-opens to inconclusive.
+  //
+  // 去重: 当该 workspace 已有 agent 会话时, agentRegistry 的 onTurnEnd 已经
+  // 触发过 GoalService.onTurnEnd (见 AgentRuntimeRegistry 构造注入), 这里
+  // 再从 piRegistry 触发会造成双 judge / 重复 toast。仅在没有 agent 会话
+  // 的纯 legacy 路径才让 piRegistry 触发。
   piRegistry.setOnTurnEnd((workspaceId) => {
+    if (agentRegistry.findDefaultAgent(workspaceId)) return; // agent 路径已处理
     void goalService?.onTurnEnd(workspaceId).catch((err) => {
       log.warn('[Main] GoalService.onTurnEnd failed:', err);
     });
@@ -652,6 +673,12 @@ function setupIPC(updaterService: AppUpdaterService): void {
     },
     getWorkspacePlanMode,
     setWorkspacePlanMode,
+    // 只允许主聊天窗发起 approval/permission/plan/autoApprove;
+    // settings 窗的请求被静默忽略, 防止被设置窗的 XSS/误调用绕过审批。
+    isSettingsWebContents: (sender) => {
+      const settings = getSharedSettingsWindow();
+      return !!settings && !settings.isDestroyed() && sender === settings.webContents;
+    },
   });
 
   setupAgentsIpc(agentRegistry);
@@ -748,6 +775,8 @@ function setupIPC(updaterService: AppUpdaterService): void {
   setupWorkspaceIpc({
     store,
     getMainWindow: () => mainWindow,
+    // 共享同一队列, 避免 plan-mode 切换与 workspace CRUD 互相覆盖。
+    mutateWorkspaces,
     disposeWorkspaceSession: (workspaceId) => {
       piRegistry.dispose(workspaceId);
       agentRegistry.disposeWorkspace(workspaceId);
@@ -850,8 +879,8 @@ function setupIPC(updaterService: AppUpdaterService): void {
     },
   });
 
-  // Terminal (node-pty)
-  setupTerminalIpc();
+  // Terminal (node-pty) — 注入 getMainWindow, 避免设置窗先创建时终端输出进错窗。
+  setupTerminalIpc({ getMainWindow: () => mainWindow });
 
   // Custom title bar (renderer-controlled)
   setupWindowIpc(() => mainWindow);

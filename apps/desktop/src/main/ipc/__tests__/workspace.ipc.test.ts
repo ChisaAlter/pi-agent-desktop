@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { isIpcError } from "@shared";
+import { createMutationQueue, createKeyedMutator, type KeyedStore } from "../../utils/mutation-queue";
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 
@@ -132,5 +133,109 @@ describe("workspace:create-empty", () => {
         expect(existsSync(join(parentDir, "BlankProject"))).toBe(true);
 
         rmSync(parentDir, { recursive: true, force: true });
+    });
+});
+
+// 回归测试: 共享 mutation queue 在并发 plan-mode 切换 + workspace:select 下
+// 不丢 `planModeEnabled` 字段。
+//
+// 背景: `main/index.ts` 的 setWorkspacePlanMode 与 `workspace.ipc.ts` 的
+// CRUD/选择原本各持一份 `workspaceMutationChain`, 两份独立 Promise tail
+// 并发时会 last-write-wins 互相覆盖 workspaces 数组, 表现为 plan 开关
+// 「点了又弹回」。Phase 1.1 抽出共享 `createMutationQueue` + `createKeyedMutator`
+// 注入两边, 这里用真实队列验证并发写入不丢字段。
+describe("shared workspace mutation queue (Phase 1.1 regression)", () => {
+    interface WsRecord {
+        id: string;
+        name: string;
+        path: string;
+        createdAt: number;
+        lastActiveAt?: number;
+        planModeEnabled?: boolean;
+    }
+
+    function makeStore(seed: WsRecord[]): KeyedStore<"workspaces", WsRecord[]> & { raw: WsRecord[] } {
+        const raw = [...seed];
+        return {
+            get: () => raw,
+            set: (_key, value) => {
+                raw.length = 0;
+                raw.push(...value);
+            },
+            raw,
+        };
+    }
+
+    it("concurrent setWorkspacePlanMode + workspace:select do not lose planModeEnabled", async () => {
+        const baseTime = Date.now();
+        const store = makeStore([
+            {
+                id: "ws-1",
+                name: "repo",
+                path: "C:/repo",
+                createdAt: baseTime - 1000,
+                lastActiveAt: baseTime - 60_000,
+            },
+        ]);
+
+        const queue = createMutationQueue();
+        const mutateWorkspaces = createKeyedMutator(queue, store, "workspaces");
+
+        // 模拟 setWorkspacePlanMode: 写 planModeEnabled
+        const setWorkspacePlanMode = (workspaceId: string, enabled: boolean) =>
+            mutateWorkspaces((current) =>
+                current.map((workspace) =>
+                    workspace.id === workspaceId
+                        ? { ...workspace, planModeEnabled: enabled, lastActiveAt: workspace.lastActiveAt ?? Date.now() }
+                        : workspace,
+                ),
+            );
+
+        // 模拟 workspace:select: 写 lastActiveAt (不触碰 planModeEnabled)
+        const selectWorkspace = (path: string) =>
+            mutateWorkspaces((current) => {
+                const idx = current.findIndex((workspace) => workspace.path === path);
+                if (idx < 0) return current;
+                return current.map((workspace, index) =>
+                    index === idx ? { ...workspace, lastActiveAt: Date.now() } : workspace,
+                );
+            });
+
+        // 并发触发: plan toggle ON 与多次 select 同时入队。
+        // 旧实现 (两份独立 chain) 会因为 select 读到尚未写入 planModeEnabled
+        // 的旧数组并整体写回, 把刚设的 planModeEnabled 抹掉。
+        await Promise.all([
+            setWorkspacePlanMode("ws-1", true),
+            selectWorkspace("C:/repo"),
+            selectWorkspace("C:/repo"),
+            setWorkspacePlanMode("ws-1", true),
+        ]);
+
+        expect(store.raw).toHaveLength(1);
+        expect(store.raw[0]?.planModeEnabled).toBe(true);
+        expect(store.raw[0]?.lastActiveAt).toBeTypeOf("number");
+    });
+
+    it("a failed mutate does not deadlock subsequent mutates", async () => {
+        const store = makeStore([
+            { id: "ws-1", name: "repo", path: "C:/repo", createdAt: Date.now() },
+        ]);
+        const queue = createMutationQueue();
+        const mutateWorkspaces = createKeyedMutator(queue, store, "workspaces");
+
+        // 第一次 mutate 抛错; 队列 tail 应继续推进, 后续 mutate 仍可执行。
+        await expect(
+            mutateWorkspaces(() => {
+                throw new Error("boom");
+            }),
+        ).rejects.toThrow("boom");
+
+        // 第二次必须能写入, 不能卡死。
+        await mutateWorkspaces((current) =>
+            current.map((workspace) =>
+                workspace.id === "ws-1" ? { ...workspace, planModeEnabled: true } : workspace,
+            ),
+        );
+        expect(store.raw[0]?.planModeEnabled).toBe(true);
     });
 });
