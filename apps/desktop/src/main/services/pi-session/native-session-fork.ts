@@ -84,7 +84,7 @@ function createNativeSessionFromDesktopHistory(
     moveGeneratedSession(manager.getSessionFile(), targetPath);
 }
 
-function selectDesktopMessages(messages: DesktopMessage[], fromMessageId?: string): DesktopMessage[] {
+export function selectDesktopMessages(messages: DesktopMessage[], fromMessageId?: string): DesktopMessage[] {
     if (!fromMessageId) return messages;
     const index = messages.findIndex((message) => message.id === fromMessageId);
     if (index < 0) throw new Error(`找不到分叉消息: ${fromMessageId}`);
@@ -117,7 +117,7 @@ function findNativeLeafForDesktopMessage(
     return leafId;
 }
 
-function normalizeText(content: unknown): string {
+export function normalizeText(content: unknown): string {
     if (typeof content === "string") return content.trim();
     if (!Array.isArray(content)) return "";
     return content
@@ -130,7 +130,7 @@ function normalizeText(content: unknown): string {
         .trim();
 }
 
-function toTimestamp(value: DesktopMessage["timestamp"]): number {
+export function toTimestamp(value: DesktopMessage["timestamp"]): number {
     if (value instanceof Date) return value.getTime();
     if (typeof value === "number") return value;
     const parsed = Date.parse(value);

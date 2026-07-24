@@ -152,7 +152,10 @@ export async function installSkill(slug: string, cwd: string): Promise<void> {
 }
 
 export async function uninstallSkill(slug: string, cwd: string): Promise<void> {
-    const targetDir = join(cwd, ".agents", "skills", slug);
+    const skillsDir = join(cwd, ".agents", "skills");
+    const targetDir = join(skillsDir, slug);
+    // Same containment guard as installSkill — reject `../` / absolute slugs before rm.
+    assertSafeSkillTarget(skillsDir, targetDir);
     await rm(targetDir, { recursive: true, force: true });
 }
 

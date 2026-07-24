@@ -57,6 +57,7 @@ const HIGH_RISK_PATH_PATTERNS: RegExp[] = [
 // 文件编辑类 bash
 const EDIT_BASH_PATTERNS: RegExp[] = [
     /^>\s*\S/, // > file 重定向
+    /\s>{1,2}\s+\S/, // echo x > file / echo x >> file（避免匹配 2>&1）
     /\bsed\s+-i\b/,
     /\bawk\s+.*\s+>\s+/,
 ];
@@ -112,8 +113,12 @@ function isReadOnlyMultiTool(firstToken: string, cmd: string): boolean {
     const tokens = cmd.split(/\s+/);
     // 取第一个非 flag token 作为子命令 (跳过 --global 等开关)
     const sub = tokens.find((t, i) => i > 0 && !t.startsWith("-"));
-    if (!sub) return false; // 有工具名但无明确只读子命令 → 视为可变
-    return allowed.has(sub.toLowerCase());
+    if (sub) return allowed.has(sub.toLowerCase());
+    // flag-only 调用 (如 node --version / node -v) — 白名单里可含 flag 形态
+    const flagOnly = tokens.slice(1).some((t) => allowed.has(t.toLowerCase()));
+    if (flagOnly) return true;
+    // 有工具名但无明确只读子命令 → 视为可变
+    return false;
 }
 
 function isHighRiskPath(p: string): boolean {

@@ -63,12 +63,23 @@ function parsePackageJson(workspacePath: string): Pick<ProjectInfo, "name" | "ve
 function parseCargoToml(workspacePath: string): Pick<ProjectInfo, "name" | "version"> | null {
     const text = readTextFile(join(workspacePath, "Cargo.toml"));
     if (!text) return null;
-    const packageStart = text.search(/^\s*\[package\]\s*$/m);
-    const rest = packageStart >= 0 ? text.slice(packageStart) : text;
-    const nextSection = rest.slice(1).search(/^\s*\[/m);
-    const pkgSection = nextSection >= 0 ? rest.slice(0, nextSection + 1) : rest;
-    const name = pkgSection.match(/^\s*name\s*=\s*"([^"]+)"/m)?.[1];
-    const version = pkgSection.match(/^\s*version\s*=\s*"([^"]+)"/m)?.[1];
+    // Line-scan the [package] table only. The previous slice/search logic re-matched
+    // the same [package] header when it was mid-file (rest.slice(1).search(/^\[/)).
+    const lines = text.split(/\r?\n/);
+    let inPackage = false;
+    let name: string | undefined;
+    let version: string | undefined;
+    for (const line of lines) {
+        if (/^\s*\[/.test(line)) {
+            inPackage = /^\s*\[package\]\s*$/.test(line);
+            continue;
+        }
+        if (!inPackage) continue;
+        const nameMatch = line.match(/^\s*name\s*=\s*"([^"]+)"\s*(?:#.*)?$/);
+        if (nameMatch) name = nameMatch[1];
+        const versionMatch = line.match(/^\s*version\s*=\s*"([^"]+)"\s*(?:#.*)?$/);
+        if (versionMatch) version = versionMatch[1];
+    }
     return {
         name: name && name.trim() ? name : basename(workspacePath),
         version,
