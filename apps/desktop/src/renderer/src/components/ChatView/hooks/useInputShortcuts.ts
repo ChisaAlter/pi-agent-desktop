@@ -91,7 +91,22 @@ export function useInputShortcuts(
       }
     }
 
+    // IME / composition: do not steal Enter while the user is confirming
+    // intermediate CJK composition (Windows IME keyCode 229 / isComposing).
+    // Fall through so the IME can commit the candidate without submitting.
     if (e.key === "Enter" && !e.shiftKey) {
+      const native = e.nativeEvent as KeyboardEvent | undefined;
+      const keyCode =
+        typeof native?.keyCode === "number"
+          ? native.keyCode
+          : typeof (e as { keyCode?: number }).keyCode === "number"
+            ? (e as { keyCode?: number }).keyCode
+            : undefined;
+      const composing =
+        native?.isComposing === true ||
+        (e as { isComposing?: boolean }).isComposing === true ||
+        keyCode === 229;
+      if (composing) return;
       e.preventDefault();
       if (e.repeat) return;
       void submit();

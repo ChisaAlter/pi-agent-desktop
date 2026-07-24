@@ -6,8 +6,14 @@ import type { UseMentionsReturn } from "../../../hooks/useMentions";
 import type { UseSlashCommandsReturn } from "../../../hooks/useSlashCommands";
 import { useInputShortcuts } from "./useInputShortcuts";
 
+type TestKeyboardEvent = Partial<ReactKeyboardEvent<HTMLTextAreaElement>> & {
+  isComposing?: boolean;
+  keyCode?: number;
+  nativeEvent?: Partial<KeyboardEvent>;
+};
+
 function makeEvent(
-  partial: Partial<ReactKeyboardEvent<HTMLTextAreaElement>>,
+  partial: TestKeyboardEvent = {},
 ): ReactKeyboardEvent<HTMLTextAreaElement> {
   return {
     key: "Enter",
@@ -243,5 +249,75 @@ describe("useInputShortcuts (D-003)", () => {
     handler(makeEvent({ key: "Escape" }));
     expect(mentionClose).toHaveBeenCalled();
     expect(slashClose).not.toHaveBeenCalled();
+  });
+
+  // wave-136 residual — D-003 IME / composition
+  it("does not submit or preventDefault while React isComposing is true", () => {
+    const submit = vi.fn();
+    const handler = useInputShortcuts({ ...baseOptions, submit });
+    const event = makeEvent({ key: "Enter", shiftKey: false, isComposing: true });
+    handler(event);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("does not submit while nativeEvent.isComposing is true", () => {
+    const submit = vi.fn();
+    const handler = useInputShortcuts({ ...baseOptions, submit });
+    const event = makeEvent({
+      key: "Enter",
+      shiftKey: false,
+      isComposing: false,
+      nativeEvent: { isComposing: true } as unknown as KeyboardEvent,
+    });
+    handler(event);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("does not submit on legacy IME keyCode 229 even without isComposing flag", () => {
+    const submit = vi.fn();
+    const handler = useInputShortcuts({ ...baseOptions, submit });
+    const event = makeEvent({
+      key: "Enter",
+      shiftKey: false,
+      isComposing: false,
+      keyCode: 229,
+    });
+    handler(event);
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it("submits after composition ends (isComposing false, keyCode not 229)", () => {
+    const submit = vi.fn();
+    const handler = useInputShortcuts({ ...baseOptions, submit });
+    const event = makeEvent({
+      key: "Enter",
+      shiftKey: false,
+      isComposing: false,
+      keyCode: 13,
+      nativeEvent: { isComposing: false } as unknown as KeyboardEvent,
+    });
+    handler(event);
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(submit).toHaveBeenCalledTimes(1);
+  });
+
+  it("mention Enter still selects candidate even if isComposing is true", () => {
+    // Active popup takes priority over IME-submit guard so Tab/Enter can confirm @mentions.
+    const selectCandidate = vi.fn(() => "@a.ts ");
+    const submit = vi.fn();
+    const mention = emptyMention({
+      activeMention: { start: 0, query: "a" },
+      candidates: [{ path: "a.ts", score: 1 }],
+      selectCandidate,
+      close: vi.fn(),
+    });
+    const handler = useInputShortcuts({ ...baseOptions, mention, submit });
+    const event = makeEvent({ key: "Enter", isComposing: true });
+    handler(event);
+    expect(selectCandidate).toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
   });
 });
