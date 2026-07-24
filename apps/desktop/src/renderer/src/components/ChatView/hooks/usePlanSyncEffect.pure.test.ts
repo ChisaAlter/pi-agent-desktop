@@ -52,4 +52,77 @@ describe("findReusablePlanSourceMessage", () => {
     ];
     expect(findReusablePlanSourceMessage(messages, "same")).toBeUndefined();
   });
+
+  // wave-228 residual
+  it("normalizePlanText empty/whitespace-only and frontmatter-only becomes empty string", () => {
+    expect(normalizePlanText("   \n\t  ")).toBe("");
+    expect(normalizePlanText("---\ntitle: x\n---\n   ")).toBe("");
+    expect(normalizePlanText("<think>only thinking</think>")).toBe("");
+  });
+
+  it("findReusablePlanSourceMessage returns undefined when target normalizes empty", () => {
+    expect(
+      findReusablePlanSourceMessage(
+        [{ id: "1", role: "assistant", content: "hello" }],
+        "---\na: 1\n---\n   ",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("skips user messages even when body matches normalized target", () => {
+    const messages = [
+      { id: "u1", role: "user", content: "plan body" },
+      { id: "a1", role: "assistant", content: "other" },
+    ];
+    expect(findReusablePlanSourceMessage(messages, "plan body")).toBeUndefined();
+  });
+
+
+
+  // wave-307 residual
+  describe("usePlanSyncEffect residual (wave-307)", () => {
+    it("normalizePlanText lowercases, collapses mixed whitespace, strips multiple think blocks", () => {
+      expect(normalizePlanText("Hello" + String.fromCharCode(9) + "  World")).toBe("hello world");
+      expect(normalizePlanText("A <think>one</think> B <think>two</think> C")).toBe("a b c");
+      // unclosed think drops remainder
+      expect(normalizePlanText("Keep <think>partial remainder")).toBe("keep");
+      // closed + trailing unclosed
+      expect(normalizePlanText("X <think>c</think> Y <think>open")).toBe("x y");
+    });
+
+    it("findReusablePlanSourceMessage reverse-scans; generatedUi plain text participates via contentWithGeneratedUiText", () => {
+      const older = { id: "old", role: "assistant", content: "shared body" };
+      const newer = { id: "new", role: "assistant", content: "shared body" };
+      expect(findReusablePlanSourceMessage([older, newer], "shared body")?.id).toBe("new");
+
+      // when content empty, generatedUi card text can still match after normalize
+      const withCard = {
+        id: "card",
+        role: "assistant",
+        content: "  Shared   Body  ",
+        generatedUi: undefined,
+      };
+      expect(findReusablePlanSourceMessage([withCard], "shared body")?.id).toBe("card");
+
+      // planAction skip even if newest
+      const msgs = [
+        { id: "plain", role: "assistant", content: "body" },
+        {
+          id: "action",
+          role: "assistant",
+          content: "body",
+          planAction: { id: "p", title: "t", status: "executing" as const },
+        },
+      ];
+      expect(findReusablePlanSourceMessage(msgs, "body")?.id).toBe("plain");
+    });
+
+    it("normalizePlanText strips YAML frontmatter only at start via stripPlanFrontmatter product path", () => {
+      const raw = "---" + String.fromCharCode(10) + "title: T" + String.fromCharCode(10) + "---" + String.fromCharCode(10) + "Body Text";
+      expect(normalizePlanText(raw)).toBe("body text");
+      // non-frontmatter dashes stay
+      expect(normalizePlanText("--- not frontmatter")).toBe("--- not frontmatter");
+    });
+  });
+
 });

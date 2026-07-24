@@ -86,4 +86,31 @@ describe("installSkill", () => {
         (builtin.installSkill as any).mockRejectedValue(new Error("install failed"));
         await expect(installSkill("bad-skill")).rejects.toThrow("install failed");
     });
+
+    // wave-231 residual
+    it("fills missing skill fields with empty strings and version 0.0.0", () => {
+        const json = JSON.stringify({
+            results: [
+                { slug: "only-slug" },
+                { name: "Named", description: "d", version: "2.0.0", source: "official" },
+            ],
+        });
+        const r = parseSearchOutput(json);
+        expect(r).toHaveLength(2);
+        expect(r[0]).toEqual({
+            slug: "only-slug",
+            name: "",
+            description: "",
+            version: "0.0.0",
+            source: undefined,
+        });
+        expect(r[1].name).toBe("Named");
+        expect(r[1].version).toBe("2.0.0");
+    });
+
+    it("returns empty array when results is not an array", () => {
+        expect(parseSearchOutput(JSON.stringify({ results: null }))).toEqual([]);
+        expect(parseSearchOutput(JSON.stringify({ results: "x" }))).toEqual([]);
+        expect(parseSearchOutput(JSON.stringify({}))).toEqual([]);
+    });
 });

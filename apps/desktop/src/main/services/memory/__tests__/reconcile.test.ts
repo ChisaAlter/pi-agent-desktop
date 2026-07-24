@@ -301,4 +301,98 @@ describe("reconcileMemory", () => {
         expect(s.scopeId).toBe("sess1");
         expect(s.type).toBe("checkpoint");
     });
+
+    // wave-169 residual
+    it("11. empty root returns zeros without db side effects", async () => {
+        const root = makeMemoryRoot();
+        mkdirSync(root, { recursive: true });
+        const db = new MockDb();
+        const r = await reconcileMemory(root, db);
+        expect(r).toEqual<ReconcileResult>({ indexed: 0, pruned: 0, skipped: 0 });
+        expect(db.upsertCalls).toHaveLength(0);
+        expect(db.deleteCalls).toHaveLength(0);
+    });
+
+    it("12. second reconcile with unchanged fingerprint skips re-index", async () => {
+        const root = makeMemoryRoot();
+        writeFile(root, "global/MEMORY.md", "stable body");
+        const db = new MockDb();
+        const first = await reconcileMemory(root, db);
+        expect(first.indexed).toBe(1);
+        const second = await reconcileMemory(root, db);
+        expect(second.indexed).toBe(0);
+        expect(second.skipped).toBe(1);
+        expect(second.pruned).toBe(0);
+        expect(db.upsertCalls).toHaveLength(1);
+    });
+
+    it("13. upsert failure counts as skipped without aborting batch", async () => {
+        const root = makeMemoryRoot();
+        writeFile(root, "global/ok.md", "ok");
+        writeFile(root, "global/bad.md", "bad");
+        const db = new MockDb();
+        db.upsertImpl = (input) => {
+            if (toForward(input.path).endsWith("/bad.md")) {
+                throw new Error("upsert boom");
+            }
+        };
+        const r = await reconcileMemory(root, db);
+        expect(r.indexed + r.skipped).toBe(2);
+        expect(r.skipped).toBeGreaterThanOrEqual(1);
+        expect(r.indexed).toBeGreaterThanOrEqual(1);
+        expect(db.upsertCalls.some((c) => toForward(c.path).endsWith("/ok.md"))).toBe(true);
+    });
+
+    // wave-227 residual
+    it("14. deleteIndex failure counts as skipped without raising", async () => {
+        const root = makeMemoryRoot();
+        writeFile(root, "global/MEMORY.md", "keep");
+        const db = new MockDb();
+        await db.upsertIndex({
+            path: join(root, "global", "orphan.md"),
+            scope: "global",
+            type: "free",
+            body: "gone",
+            fingerprint: "1-1",
+        });
+        const originalDelete = db.deleteIndex.bind(db);
+        db.deleteIndex = async (path: string) => {
+            if (toForward(path).endsWith("/orphan.md")) {
+                throw new Error("delete boom");
+            }
+            return originalDelete(path);
+        };
+        const r = await reconcileMemory(root, db);
+        expect(r.pruned).toBe(0);
+        expect(r.skipped).toBeGreaterThanOrEqual(1);
+        expect(r.indexed).toBeGreaterThanOrEqual(1);
+    });
+
+    it("15. size change alone reindexes even when mtime forced equal after write", async () => {
+        const root = makeMemoryRoot();
+        const rel = "global/MEMORY.md";
+        writeFile(root, rel, "short");
+        const db = new MockDb();
+        const first = await reconcileMemory(root, db);
+        expect(first.indexed).toBe(1);
+        const abs = join(root, "global", "MEMORY.md");
+        const st0 = require("fs").statSync(abs);
+        writeFile(root, rel, "short-but-longer-body");
+        utimesSync(abs, st0.atime, st0.mtime);
+        const second = await reconcileMemory(root, db);
+        expect(second.indexed).toBe(1);
+        expect(second.skipped).toBe(0);
+        expect(db.upsertCalls.at(-1)?.body).toBe("short-but-longer-body");
+    });
+
+    it("16. upsert body is trimmed of surrounding whitespace", async () => {
+        const root = makeMemoryRoot();
+        writeFile(root, "global/notes.md", "  \n  padded body  \n  ");
+        const db = new MockDb();
+        const r = await reconcileMemory(root, db);
+        expect(r.indexed).toBe(1);
+        expect(db.upsertCalls[0].body).toBe("padded body");
+        expect(db.upsertCalls[0].type).toBe("notes");
+        expect(db.upsertCalls[0].scope).toBe("global");
+    });
 });

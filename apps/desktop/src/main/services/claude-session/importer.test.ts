@@ -193,4 +193,32 @@ describe("ClaudeSessionImporter", () => {
     const after = await importer.scan(projectPath);
     expect(after[0]?.status).toBe("current");
   });
+
+  // wave-230 residual
+  it("scan returns empty for project with no jsonl; empty import is zeroed report", async () => {
+    expect(await importer.scan(projectPath)).toEqual([]);
+    const report = await importer.import(projectPath, []);
+    expect(report).toEqual({ imported: 0, failed: 0, results: [] });
+  });
+
+  it("rejects source paths outside the claude projects root", async () => {
+    const siblingRoot = `${claudeRoot}-sibling`;
+    await mkdir(siblingRoot, { recursive: true });
+    const source = join(siblingRoot, "outside.jsonl");
+    await writeFile(
+      source,
+      JSON.stringify({
+        type: "user",
+        sessionId: "out-1",
+        cwd: projectPath,
+        timestamp: "2026-06-01T00:00:00.000Z",
+        message: { content: "x" },
+      }),
+      "utf8",
+    );
+    const report = await importer.import(projectPath, [source]);
+    expect(report.imported).toBe(0);
+    expect(report.failed).toBe(1);
+    expect(report.results[0].error).toMatch(/outside/i);
+  });
 });

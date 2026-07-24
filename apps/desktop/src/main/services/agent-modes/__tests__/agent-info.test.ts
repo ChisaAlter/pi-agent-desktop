@@ -98,6 +98,37 @@ describe("AgentInfo — primary modes", () => {
             });
             expect(list.map((a) => a.name)).toEqual(["build", "compose"]);
         });
+
+        // wave-138 residual
+        it("omits compose when composeModeEnabled is false", () => {
+            const list = listEnabledAgents({
+                longHorizonEnabled: true,
+                planModeEnabled: true,
+                composeModeEnabled: false,
+            });
+            expect(list.map((a) => a.name)).toEqual(["build", "plan"]);
+        });
+
+        it("defaults to all three agents when options are empty", () => {
+            expect(listEnabledAgents().map((a) => a.name)).toEqual(["build", "plan", "compose"]);
+        });
+    });
+
+    // wave-138 residual
+    describe("getAgentInfo residual mode gates", () => {
+        it("returns null for unknown mode string", () => {
+            expect(getAgentInfo("chat" as never)).toBeNull();
+        });
+
+        it("plan mode null only when planModeEnabled is strictly false", () => {
+            expect(getAgentInfo("plan", { planModeEnabled: undefined })).not.toBeNull();
+            expect(getAgentInfo("plan", { planModeEnabled: false })).toBeNull();
+        });
+
+        it("compose mode null only when composeModeEnabled is strictly false", () => {
+            expect(getAgentInfo("compose", { composeModeEnabled: undefined })).not.toBeNull();
+            expect(getAgentInfo("compose", { composeModeEnabled: false })).toBeNull();
+        });
     });
 });
 
@@ -379,4 +410,280 @@ describe("defaults layer (applied to all primary agents)", () => {
         const rules = runtimePermission(agent);
         expect(evaluate("external_directory", "/random/path", rules).action).toBe("ask");
     });
+});
+
+// wave-149 residual
+describe("agent-info residual (wave-149)", () => {
+    it("runtimePermission treats missing hardPermission as empty tail", () => {
+        const agent = getAgentInfo("build")!;
+        expect(agent.hardPermission).toBeUndefined();
+        const session = [{ permission: "bash", pattern: "echo *", action: "deny" as const }];
+        const rules = runtimePermission(agent, session);
+        expect(rules.length).toBe(agent.permission.length + session.length);
+        expect(evaluate("bash", "echo hi", rules).action).toBe("deny");
+        expect(evaluate("bash", "ls", rules).action).not.toBe("deny");
+    });
+
+    it("listEnabledAgents omits plan and compose when both modes disabled", () => {
+        const list = listEnabledAgents({
+            longHorizonEnabled: true,
+            planModeEnabled: false,
+            composeModeEnabled: false,
+        });
+        expect(list.map((a) => a.name)).toEqual(["build"]);
+        expect(list[0]?.hardPermission).toBeUndefined();
+        expect(list[0]?.interactive).toBe(true);
+    });
+
+    it("plan agent without workspacePath still allows .pi/plans and blocks other edits", () => {
+        const agent = getAgentInfo("plan", { planModeEnabled: true });
+        expect(agent).not.toBeNull();
+        const rules = runtimePermission(agent!);
+        expect(evaluate("edit", ".pi/plans/solo.md", rules).action).toBe("allow");
+        expect(evaluate("edit", "src/index.ts", rules).action).toBe("deny");
+        expect(evaluate("edit", `${MOCK_USER_DATA}/plans/global.md`, rules).action).toBe("allow");
+    });
+
+    it("compose from listEnabledAgents never ships worktree hardPermission", () => {
+        const list = listEnabledAgents({ composeModeEnabled: true, planModeEnabled: true });
+        const compose = list.find((a) => a.name === "compose");
+        expect(compose).toBeDefined();
+        expect(compose!.hardPermission).toBeUndefined();
+        expect(compose!.interactive).toBe(true);
+        expect(compose!.mode).toBe("primary");
+    });
+
+    it("primary agents expose no toolAllowlist so all tools remain schema-visible", () => {
+        for (const mode of ["build", "plan", "compose"] as const) {
+            const agent = getAgentInfo(mode, { planModeEnabled: true, composeModeEnabled: true });
+            expect(agent).not.toBeNull();
+            expect(agent!.toolAllowlist).toBeUndefined();
+            expect(agent!.interactive).toBe(true);
+        }
+    });
+});
+
+// wave-167 residual
+describe("agent-info residual (wave-167)", () => {
+    it("longHorizon disabled returns only build agent and null for other modes", () => {
+        expect(getAgentInfo("build", { longHorizonEnabled: false })?.name).toBe("build");
+        expect(getAgentInfo("plan", { longHorizonEnabled: false, planModeEnabled: true })).toBeNull();
+        expect(getAgentInfo("compose", { longHorizonEnabled: false, composeModeEnabled: true })).toBeNull();
+        expect(
+            listEnabledAgents({
+                longHorizonEnabled: false,
+                planModeEnabled: true,
+                composeModeEnabled: true,
+            }).map((a) => a.name),
+        ).toEqual(["build"]);
+    });
+
+    it("getAgentInfo rejects unknown mode and planMode/composeMode gates", () => {
+        expect(getAgentInfo("unknown" as never)).toBeNull();
+        expect(getAgentInfo("plan", { planModeEnabled: false })).toBeNull();
+        expect(getAgentInfo("compose", { composeModeEnabled: false })).toBeNull();
+        expect(getAgentInfo("plan", { planModeEnabled: true })?.name).toBe("plan");
+        expect(getAgentInfo("compose", { composeModeEnabled: true })?.name).toBe("compose");
+    });
+
+    it("runtimePermission hardPermission wins over session allow for plan edit deny", () => {
+        const agent = getAgentInfo("plan", { planModeEnabled: true });
+        expect(agent).not.toBeNull();
+        const session = [
+            { permission: "edit", pattern: "*", action: "allow" as const },
+            { permission: "edit", pattern: "src/*", action: "allow" as const },
+        ];
+        const rules = runtimePermission(agent!, session);
+        // hardPermission is last merge tail — src edits remain deny
+        expect(evaluate("edit", "src/app.ts", rules).action).toBe("deny");
+        expect(evaluate("edit", ".pi/plans/x.md", rules).action).toBe("allow");
+        expect(evaluate("question", "*", rules).action).toBe("allow");
+    });
+
+    it("listEnabledAgents includes plan and compose when both enabled", () => {
+        const list = listEnabledAgents({
+            longHorizonEnabled: true,
+            planModeEnabled: true,
+            composeModeEnabled: true,
+        });
+        expect(list.map((a) => a.name).sort()).toEqual(["build", "compose", "plan"].sort());
+        for (const agent of list) {
+            expect(agent.mode).toBe("primary");
+            expect(agent.interactive).toBe(true);
+        }
+    });
+
+    // wave-242 residual
+    it("listEnabledAgents longHorizon false returns build only; defaults treat plan/compose as on", () => {
+        expect(listEnabledAgents({ longHorizonEnabled: false }).map((a) => a.name)).toEqual([
+            "build",
+        ]);
+        // omitted plan/compose flags default to enabled when longHorizon on
+        expect(listEnabledAgents({ longHorizonEnabled: true }).map((a) => a.name)).toEqual([
+            "build",
+            "plan",
+            "compose",
+        ]);
+        expect(
+            listEnabledAgents({
+                longHorizonEnabled: true,
+                planModeEnabled: false,
+                composeModeEnabled: true,
+            }).map((a) => a.name),
+        ).toEqual(["build", "compose"]);
+        expect(
+            listEnabledAgents({
+                longHorizonEnabled: true,
+                planModeEnabled: true,
+                composeModeEnabled: false,
+            }).map((a) => a.name),
+        ).toEqual(["build", "plan"]);
+    });
+
+    it("runtimePermission without hardPermission is agent.permission + session only", () => {
+        const build = getAgentInfo("build");
+        expect(build).not.toBeNull();
+        expect(build!.hardPermission).toBeUndefined();
+        const session = [{ permission: "bash", pattern: "*", action: "deny" as const }];
+        const rules = runtimePermission(build!, session);
+        // last-match: session deny for bash should win over defaults allow if present
+        expect(evaluate("bash", "ls", rules).action).toBe("deny");
+        // non-session tools still evaluated
+        expect(evaluate("read", "README.md", rules).action).not.toBe("deny");
+    });
+
+    it("getAgentInfo build always available even when plan/compose disabled", () => {
+        const build = getAgentInfo("build", {
+            longHorizonEnabled: false,
+            planModeEnabled: false,
+            composeModeEnabled: false,
+        });
+        expect(build?.name).toBe("build");
+        expect(getAgentInfo("plan", { longHorizonEnabled: false })).toBeNull();
+        expect(getAgentInfo("compose", { longHorizonEnabled: false })).toBeNull();
+    });
+
+
+    // wave-292 residual
+    it("listEnabledAgents order is build, plan, compose when all enabled", () => {
+        const names = listEnabledAgents({
+            longHorizonEnabled: true,
+            planModeEnabled: true,
+            composeModeEnabled: true,
+        }).map((a) => a.name);
+        expect(names).toEqual(["build", "plan", "compose"]);
+        expect(listEnabledAgents({}).map((a) => a.name)).toEqual(["build", "plan", "compose"]);
+        expect(listEnabledAgents({ longHorizonEnabled: false }).map((a) => a.name)).toEqual([
+            "build",
+        ]);
+    });
+
+    it("getAgentInfo plan/compose null when LH off; build remains interactive primary", () => {
+        expect(getAgentInfo("plan", { longHorizonEnabled: false })).toBeNull();
+        expect(getAgentInfo("compose", { longHorizonEnabled: false })).toBeNull();
+        const build = getAgentInfo("build", { longHorizonEnabled: false });
+        expect(build?.name).toBe("build");
+        expect(build?.mode).toBe("primary");
+        expect(build?.interactive).toBe(true);
+        expect(getAgentInfo("plan", { longHorizonEnabled: true, planModeEnabled: false })).toBeNull();
+        expect(getAgentInfo("compose", { longHorizonEnabled: true, composeModeEnabled: false })).toBeNull();
+        expect(getAgentInfo("plan", { longHorizonEnabled: true, planModeEnabled: true })?.name).toBe(
+            "plan",
+        );
+    });
+
+
+    // wave-299 residual
+    it("listEnabledAgents omits plan/compose independently; build always first", () => {
+        expect(
+            listEnabledAgents({
+                longHorizonEnabled: true,
+                planModeEnabled: false,
+                composeModeEnabled: true,
+            }).map((a) => a.name),
+        ).toEqual(["build", "compose"]);
+        expect(
+            listEnabledAgents({
+                longHorizonEnabled: true,
+                planModeEnabled: true,
+                composeModeEnabled: false,
+            }).map((a) => a.name),
+        ).toEqual(["build", "plan"]);
+        expect(
+            listEnabledAgents({
+                longHorizonEnabled: true,
+                planModeEnabled: false,
+                composeModeEnabled: false,
+            }).map((a) => a.name),
+        ).toEqual(["build"]);
+    });
+
+    it("runtimePermission merges agent then session then hardPermission last-wins", () => {
+        const plan = getAgentInfo("plan", { longHorizonEnabled: true, planModeEnabled: true });
+        expect(plan).not.toBeNull();
+        const session = [
+            { permission: "bash", pattern: "*", action: "allow" as const },
+            { permission: "bash", pattern: "rm *", action: "deny" as const },
+        ];
+        const rules = runtimePermission(plan!, session);
+        // hardPermission (if any) is last in merge(agent, session, hard)
+        expect(Array.isArray(rules)).toBe(true);
+        expect(evaluate("bash", "rm -rf x", rules).action).toBe("deny");
+        expect(evaluate("bash", "ls", rules).action).toBe("allow");
+    });
+
+    it("getAgentInfo plan/compose names and interactive flags when enabled", () => {
+        const plan = getAgentInfo("plan", { longHorizonEnabled: true, planModeEnabled: true });
+        const compose = getAgentInfo("compose", {
+            longHorizonEnabled: true,
+            composeModeEnabled: true,
+        });
+        expect(plan?.name).toBe("plan");
+        expect(plan?.mode).toBe("primary");
+        expect(plan?.interactive).toBe(true);
+        expect(compose?.name).toBe("compose");
+        expect(compose?.mode).toBe("primary");
+        expect(compose?.interactive).toBe(true);
+        expect(compose?.description.toLowerCase()).toContain("compose");
+    });
+
+
+
+
+    // wave-309 residual
+    describe("agent-info residual (wave-309)", () => {
+        it("listEnabledAgents longHorizon off is build-only regardless of plan/compose flags", () => {
+            expect(
+                listEnabledAgents({
+                    longHorizonEnabled: false,
+                    planModeEnabled: true,
+                    composeModeEnabled: true,
+                }).map((a) => a.name),
+            ).toEqual(["build"]);
+        });
+
+        it("getAgentInfo returns null for plan/compose when toggles disabled; build always available", () => {
+            expect(
+                getAgentInfo("plan", { longHorizonEnabled: true, planModeEnabled: false }),
+            ).toBeNull();
+            expect(
+                getAgentInfo("compose", { longHorizonEnabled: true, composeModeEnabled: false }),
+            ).toBeNull();
+            const build = getAgentInfo("build", { longHorizonEnabled: false });
+            expect(build?.name).toBe("build");
+            expect(build?.mode).toBe("primary");
+        });
+
+        it("getAgentInfo unknown mode null; listEnabledAgents order build then plan then compose", () => {
+            expect(getAgentInfo("explore" as never, { longHorizonEnabled: true })).toBeNull();
+            expect(
+                listEnabledAgents({
+                    longHorizonEnabled: true,
+                    planModeEnabled: true,
+                    composeModeEnabled: true,
+                }).map((a) => a.name),
+            ).toEqual(["build", "plan", "compose"]);
+        });
+    });
+
 });

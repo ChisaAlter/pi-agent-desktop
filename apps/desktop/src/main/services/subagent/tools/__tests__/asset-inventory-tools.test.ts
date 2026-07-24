@@ -124,4 +124,60 @@ describe("createAssetInventoryTools", () => {
     expect(details.agents[0].preview.endsWith("...")).toBe(true);
     expect(details.agents[0].preview.length).toBe(503); // PREVIEW_MAX 500 + "..."
   });
+
+  // wave-228 residual
+  it("aggregates commands from multiple extensions and keeps sourcePath in details", async () => {
+    const loader = {
+      getSkills: () => ({ skills: [] }),
+      getExtensions: () => ({
+        extensions: [
+          {
+            path: "/ext/a",
+            commands: new Map([["beta", { description: "b" }]]),
+          },
+          {
+            path: "/ext/b",
+            commands: new Map([["alpha", { description: "a" }]]),
+          },
+        ],
+      }),
+      getAgentsFiles: () => ({ agentsFiles: [] }),
+    } as unknown as ResourceLoader;
+    const [, commandList] = createAssetInventoryTools(loader);
+    const result = await exec(commandList);
+    const body = textOf(result);
+    expect(body).toContain("Found 2 command(s):");
+    // sorted by name: alpha before beta
+    expect(body.indexOf("/alpha")).toBeLessThan(body.indexOf("/beta"));
+    const details = result.details as {
+      commands: Array<{ name: string; sourcePath: string; description?: string }>;
+    };
+    expect(details.commands.map((c) => c.name)).toEqual(["alpha", "beta"]);
+    expect(details.commands.find((c) => c.name === "alpha")?.sourcePath).toBe("/ext/b");
+    expect(details.commands.find((c) => c.name === "beta")?.sourcePath).toBe("/ext/a");
+  });
+
+  it("skill_list details mirror text flags for disableModelInvocation", async () => {
+    const [skillList] = createAssetInventoryTools(
+      mockLoader({
+        skills: [
+          {
+            name: "locked",
+            description: "L",
+            filePath: "/s/locked",
+            disableModelInvocation: true,
+          },
+        ],
+      }),
+    );
+    const result = await exec(skillList);
+    expect(textOf(result)).toContain("- locked (no-model-invocation): L");
+    const details = result.details as {
+      skills: Array<{ name: string; disableModelInvocation: boolean }>;
+    };
+    expect(details.skills[0]).toMatchObject({
+      name: "locked",
+      disableModelInvocation: true,
+    });
+  });
 });

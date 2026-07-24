@@ -129,4 +129,38 @@ describe("createSessionSummaryTools", () => {
     });
     expect(textOf(out)).toContain("USER: find me");
   });
+
+  // wave-228 residual
+  it("forwards sinceMs to searchRecentSessions and returns details.sessions", async () => {
+    const [search] = createSessionSummaryTools(svc);
+    searchRecentSessions.mockResolvedValueOnce([
+      {
+        sessionId: "s-since",
+        title: "T",
+        createdAt: 10,
+        messageCount: 1,
+        lastMessageAt: 20,
+      },
+    ]);
+    const out = await exec(search, { limit: 3, sinceMs: 1_700_000_000_000 });
+    expect(searchRecentSessions).toHaveBeenCalledWith({
+      workspaceId: undefined,
+      limit: 3,
+      sinceMs: 1_700_000_000_000,
+    });
+    expect(out.details).toEqual({
+      sessions: [
+        expect.objectContaining({ sessionId: "s-since", title: "T" }),
+      ],
+    });
+    expect(textOf(out)).toContain("Found 1 session(s):");
+  });
+
+  it("transcript search empty matches yields No messages found", async () => {
+    const [, , searchTranscript] = createSessionSummaryTools(svc);
+    searchSessionTranscript.mockResolvedValueOnce([]);
+    const out = await exec(searchTranscript, { sessionId: "s1", query: "none" });
+    expect(textOf(out)).toBe("No messages found.");
+    expect(out.details).toEqual({ matches: [] });
+  });
 });

@@ -420,3 +420,23 @@ describe("MarkdownMemoryService — listDiskFiles", () => {
         expect(files).toEqual([]);
     });
 });
+
+// wave-237 residual
+describe("MarkdownMemoryService residual (wave-237)", () => {
+    it("search finds disk content after reconcile when enabled", async () => {
+        writeMemoryFile("global/MEMORY.md", "wave237-unique-memory-token");
+        const hits = await service.search("wave237-unique-memory-token", { limit: 5 });
+        expect(hits.length).toBeGreaterThan(0);
+        // FTS5 snippet wraps matched tokens with << >>
+        const plain = hits[0].snippet.replaceAll("<<", "").replaceAll(">>", "");
+        expect(plain).toContain("wave237-unique-memory-token");
+        const full = await service.read(hits[0].path);
+        expect(full?.body).toContain("wave237-unique-memory-token");
+    });
+
+    it("empty search query returns [] without throwing when enabled", async () => {
+        writeMemoryFile("global/MEMORY.md", "present");
+        await expect(service.search("")).resolves.toEqual([]);
+        await expect(service.search("   ")).resolves.toEqual([]);
+    });
+});

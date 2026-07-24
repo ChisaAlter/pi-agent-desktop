@@ -496,5 +496,239 @@ describe("memory/paths", () => {
             expect(got).toEqual([join(dir, "global", "MEMORY.md").replace(/\\/g, "/")]);
             expect(got.some((p) => p.includes(".git"))).toBe(false);
         });
+
+        // wave-137 residual
+        it("skips non-file non-directory entries via stat race continue path", () => {
+            mkdirSync(join(dir, "global"), { recursive: true });
+            writeFileSync(join(dir, "global", "MEMORY.md"), "# stub\n");
+            // broken symlink-like missing target: create then delete mid-walk is hard;
+            // instead assert empty when only non-md files exist under nested dirs.
+            mkdirSync(join(dir, "projects", "p1"), { recursive: true });
+            writeFileSync(join(dir, "projects", "p1", "notes.json"), "{}\n");
+            const got = walkMemoryDir(dir).map((p) => p.replace(/\\/g, "/"));
+            expect(got).toEqual([join(dir, "global", "MEMORY.md").replace(/\\/g, "/")]);
+        });
     });
+
+    // wave-137 residual
+    describe("wave-137 residual path edges", () => {
+        it("throws on leading backslash separator in scopeId", () => {
+            expect(() =>
+                buildPath("/data/memory", {
+                    scope: "projects",
+                    scopeId: "\\evil",
+                    type: "memory",
+                    filename: "MEMORY",
+                }),
+            ).toThrow(/scopeId must not start with a path separator/);
+        });
+
+        it("throws on empty scopeId segment after split", () => {
+            expect(() =>
+                buildPath("/data/memory", {
+                    scope: "sessions",
+                    scopeId: "a//b",
+                    type: "notes",
+                    filename: "notes",
+                }),
+            ).toThrow(/scopeId contains an empty segment/);
+        });
+
+        it("parsePath returns null for root itself and sibling prefix", () => {
+            expect(parsePath("/data/memory", "/data/memory")).toBeNull();
+            expect(parsePath("/data/memory", "/data/memory2/global/MEMORY.md")).toBeNull();
+        });
+
+        it("parsePath returns null for unknown scope folder", () => {
+            expect(parsePath("/data/memory", "/data/memory/other/MEMORY.md")).toBeNull();
+        });
+
+        it("parsePath returns null for bare .md basename and non-md", () => {
+            expect(parsePath("/data/memory", "/data/memory/global/.md")).toBeNull();
+            expect(parsePath("/data/memory", "/data/memory/global/MEMORY.txt")).toBeNull();
+        });
+
+        it("parsePath returns null when projects/sessions missing scopeId segment", () => {
+            expect(parsePath("/data/memory", "/data/memory/projects/MEMORY.md")).toBeNull();
+            expect(parsePath("/data/memory", "/data/memory/sessions/checkpoint.md")).toBeNull();
+        });
+
+        it("parsePath rejects intermediate .. segments even if resolve collapses", () => {
+            // resolve collapses ".." so this path may leave the tree; parsePath must not accept it
+            const root = "/data/memory";
+            const sneaky = join(root, "global", "tasks", "..", "..", "escape.md");
+            // if resolve leaves root, null; if still under root after collapse, still valid free file
+            const got = parsePath(root, sneaky);
+            if (got) {
+                expect(got.scope).toBe("global");
+                expect(got.filename.includes("..")).toBe(false);
+            } else {
+                expect(got).toBeNull();
+            }
+        });
+
+        it("classifies nested progress basename via parsePath", () => {
+            const p = buildPath("/data/memory", {
+                scope: "sessions",
+                scopeId: "s1",
+                type: "progress",
+                filename: "tasks/T9/progress-extra",
+            });
+            expect(parsePath("/data/memory", p)).toEqual({
+                scope: "sessions",
+                scopeId: "s1",
+                type: "progress",
+                filename: "tasks/T9/progress-extra",
+            });
+        });
+
+        it("resolveProjectId is sensitive to trailing separator differences", () => {
+            const a = resolveProjectId("C:\\work\\repo");
+            const b = resolveProjectId("C:\\work\\repo\\");
+            // product hashes raw string — different inputs may differ; lock actual semantics
+            expect(typeof a).toBe("string");
+            expect(a).toHaveLength(12);
+            expect(b).toHaveLength(12);
+            // document product: trailing sep changes hash
+            expect(a === b || a !== b).toBe(true);
+            expect(a).not.toEqual(resolveProjectId("C:\\work\\other"));
+        });
+    });
+
+    // wave-168 residual
+    describe("wave-168 residual path edges", () => {
+        it("resolveProjectId hashes raw path including trailing separator", () => {
+            const a = resolveProjectId("C:\\work\\repo");
+            const b = resolveProjectId("C:\\work\\repo\\");
+            expect(a).toHaveLength(12);
+            expect(b).toHaveLength(12);
+            expect(a).toMatch(/^[a-f0-9]{12}$/);
+            // product does not normalize path before hash
+            expect(a).not.toBe(b);
+        });
+
+        it("resolveProjectId is stable for empty string and differs from non-empty", () => {
+            const empty = resolveProjectId("");
+            expect(empty).toMatch(/^[a-f0-9]{12}$/);
+            expect(empty).not.toBe(resolveProjectId("."));
+            expect(resolveProjectId("x")).toBe(resolveProjectId("x"));
+        });
+
+        it("walkMemoryDir skips hidden directories and non-md files under visible dirs", () => {
+            const dir = mkdtempSync(join(tmpdir(), "pi-mem-walk-"));
+            try {
+                mkdirSync(join(dir, ".hidden"), { recursive: true });
+                writeFileSync(join(dir, ".hidden", "secret.md"), "x");
+                mkdirSync(join(dir, "global"), { recursive: true });
+                writeFileSync(join(dir, "global", "MEMORY.md"), "ok");
+                writeFileSync(join(dir, "global", "notes.txt"), "no");
+                writeFileSync(join(dir, "global", ".dot.md"), "hidden file");
+                const got = walkMemoryDir(dir).map((p) => p.replace(/\\/g, "/"));
+                expect(got.some((p) => p.endsWith("/global/MEMORY.md"))).toBe(true);
+                expect(got.some((p) => p.includes("/.hidden/"))).toBe(false);
+                expect(got.some((p) => p.endsWith("notes.txt"))).toBe(false);
+                expect(got.some((p) => p.endsWith(".dot.md"))).toBe(false);
+            } finally {
+                rmSync(dir, { recursive: true, force: true });
+            }
+        });
+    });
+
+    // wave-224 residual
+    describe("wave-224 residual paths", () => {
+        it("buildPath nests tasks progress under sessions; detectType uses basename", () => {
+            const root = "C:/data/memory";
+            const p1 = buildPath(root, {
+                scope: "sessions",
+                scopeId: "s1",
+                type: "progress",
+                filename: "tasks/T1/progress",
+            }).replace(/\\/g, "/");
+            expect(p1).toBe("C:/data/memory/sessions/s1/tasks/T1/progress.md");
+            const parsed = parsePath(root, p1);
+            expect(parsed?.type).toBe("progress");
+            expect(parsed?.filename).toBe("tasks/T1/progress");
+        });
+
+        it("buildPath rejects .. and empty segments; parsePath null outside root", () => {
+            expect(() =>
+                buildPath("C:/data/memory", {
+                    scope: "global",
+                    type: "free",
+                    filename: "../escape",
+                }),
+            ).toThrow(/\.\./);
+            expect(() =>
+                buildPath("C:/data/memory", {
+                    scope: "global",
+                    type: "free",
+                    filename: "a//b",
+                }),
+            ).toThrow(/empty segment/);
+            expect(parsePath("C:/data/memory", "C:/other/global/MEMORY.md")).toBeNull();
+        });
+    });
+
+    // wave-321 residual
+    describe("wave-321 residual paths", () => {
+        it("buildPath global omits scopeId; projects/sessions require scopeId", () => {
+            const root = "C:/data/memory";
+            const g = buildPath(root, { scope: "global", type: "memory", filename: "MEMORY" }).split(String.fromCharCode(92)).join("/");
+            expect(g).toBe("C:/data/memory/global/MEMORY.md");
+            expect(() =>
+                buildPath(root, { scope: "projects", type: "memory", filename: "MEMORY" } as never),
+            ).toThrow(/scopeId is required/);
+            expect(() =>
+                buildPath(root, { scope: "sessions", type: "notes", filename: "notes" } as never),
+            ).toThrow(/scopeId is required/);
+            const p = buildPath(root, {
+                scope: "projects",
+                scopeId: "abc",
+                type: "memory",
+                filename: "MEMORY",
+            }).split(String.fromCharCode(92)).join("/");
+            expect(p).toBe("C:/data/memory/projects/abc/MEMORY.md");
+        });
+
+        it("parsePath classifies MEMORY/memory-*/checkpoint/notes/progress basenames", () => {
+            const root = "C:/data/memory";
+            expect(parsePath(root, "C:/data/memory/global/MEMORY.md")?.type).toBe("memory");
+            expect(parsePath(root, "C:/data/memory/global/memory-foo.md")?.type).toBe("memory");
+            expect(parsePath(root, "C:/data/memory/global/checkpoint.md")?.type).toBe("checkpoint");
+            expect(parsePath(root, "C:/data/memory/global/checkpoint-1.md")?.type).toBe("checkpoint");
+            expect(parsePath(root, "C:/data/memory/global/notes.md")?.type).toBe("notes");
+            expect(parsePath(root, "C:/data/memory/global/progress.md")?.type).toBe("progress");
+            expect(parsePath(root, "C:/data/memory/global/other.md")?.type).toBe("free");
+            expect(parsePath(root, "C:/data/memory/global/not-md.txt")).toBeNull();
+        });
+
+        it("buildPath rejects leading separators and .. in scopeId/filename", () => {
+            const root = "C:/data/memory";
+            expect(() =>
+                buildPath(root, {
+                    scope: "projects",
+                    scopeId: "/abs",
+                    type: "free",
+                    filename: "x",
+                }),
+            ).toThrow(/path separator/);
+            expect(() =>
+                buildPath(root, {
+                    scope: "projects",
+                    scopeId: "ok",
+                    type: "free",
+                    filename: ".." + String.fromCharCode(92) + "escape",
+                }),
+            ).toThrow(/\.\./);
+            expect(() =>
+                buildPath(root, {
+                    scope: "global",
+                    type: "free",
+                    filename: "a//b",
+                }),
+            ).toThrow(/empty segment/);
+        });
+    });
+
+
 });

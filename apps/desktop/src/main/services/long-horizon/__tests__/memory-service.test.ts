@@ -155,4 +155,30 @@ describe("MemoryService", () => {
         ]);
         expect(existsSync(join(dir, "memory.jsonl.migrated"))).toBe(true);
     });
+
+    // wave-231 residual
+    it("search with no matches returns empty array", async () => {
+        const service = createService();
+        await service.put({
+            scope: "project",
+            workspaceId: "ws1",
+            kind: "note",
+            text: "only known token alpha-beta",
+        });
+        expect(await service.search("zzz-no-such-term-999", { workspaceId: "ws1" })).toEqual([]);
+    });
+
+    it("listRecent on empty workspace returns empty", async () => {
+        const service = createService();
+        expect(await service.listRecent({ workspaceId: "ws-empty", limit: 5 })).toEqual([]);
+    });
+
+    it("listRecent respects limit of 1", async () => {
+        const service = createService();
+        await service.put({ scope: "project", workspaceId: "ws1", kind: "note", text: "older" });
+        await service.put({ scope: "project", workspaceId: "ws1", kind: "note", text: "newer" });
+        const recent = await service.listRecent({ workspaceId: "ws1", limit: 1 });
+        expect(recent).toHaveLength(1);
+        expect(recent[0]).toEqual(expect.objectContaining({ text: "newer" }));
+    });
 });

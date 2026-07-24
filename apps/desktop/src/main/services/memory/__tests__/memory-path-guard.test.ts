@@ -13,6 +13,7 @@ import { describe, it, expect } from "vitest";
 import { join } from "path";
 import {
     assertMemoryWriteAllowed,
+    isInsideMemoryTree,
     memoryRootPath,
     markdownIndexDbPath,
     type AssertMemoryWriteInput,
@@ -331,4 +332,319 @@ describe("memory-path-guard — path helpers", () => {
         expect(markdownIndexDbPath(userData))
             .toBe(join(userData, "memory", "index.sqlite"));
     });
+});
+
+// wave-90 residual
+describe("memory-path-guard — isInsideMemoryTree", () => {
+    it("returns true for the memory root and nested files", () => {
+        expect(isInsideMemoryTree(ROOT, ROOT)).toBe(true);
+        expect(isInsideMemoryTree(`${ROOT}/global/MEMORY.md`, ROOT)).toBe(true);
+        expect(isInsideMemoryTree(`${ROOT}/sessions/${SESSION_ID}/notes.md`, ROOT)).toBe(true);
+    });
+
+    it("returns false for sibling prefix paths and unrelated paths", () => {
+        expect(isInsideMemoryTree(`${ROOT}-extra/global/MEMORY.md`, ROOT)).toBe(false);
+        expect(isInsideMemoryTree("C:/Users/test/projects/x.ts", ROOT)).toBe(false);
+        expect(isInsideMemoryTree("C:/Users/test/AppData/Roaming/Pi-Desktop/other/x.md", ROOT)).toBe(false);
+    });
+
+    it("normalizes backslashes for membership checks", () => {
+        expect(isInsideMemoryTree(`${ROOT.replace(/\//g, "\\")}\\global\\MEMORY.md`, ROOT)).toBe(true);
+    });
+});
+
+describe("memory-path-guard — residual edges", () => {
+    it("denies checkpoint-writer writing under global/", () => {
+        denies(makeInput(`${ROOT}/global/MEMORY.md`, { agentName: "checkpoint-writer" }));
+        denies(makeInput(`${ROOT}/global/notes.md`, { agentName: "checkpoint-writer" }));
+    });
+
+    it("denies checkpoint-writer non-md task files", () => {
+        denies(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/tasks/T1/progress.txt`,
+            { agentName: "checkpoint-writer" },
+        ));
+    });
+
+    it("denies checkpoint-writer nested deeper than tasks/<TID>/<file>.md", () => {
+        denies(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/tasks/T1/nested/progress.md`,
+            { agentName: "checkpoint-writer" },
+        ));
+    });
+
+    it("allows task-bound nested TID forms matching TASK_ID_RE", () => {
+        allows(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/tasks/T10.3.2/progress.md`,
+            { agentName: "explore", taskId: "T10.3.2" },
+        ));
+    });
+
+    it("denies task-bound write when sessionId mismatches", () => {
+        denies(makeInput(
+            `${ROOT}/sessions/other-sid/tasks/T1/progress.md`,
+            { agentName: "explore", taskId: "T1" },
+        ));
+    });
+
+    it("denies general agent writing to scope directory without a file key", () => {
+        // parts = ["sessions"] → length < 2 (memory root / bare scope)
+        denies(makeInput(`${ROOT}/sessions`, { agentName: "main" }));
+        denies(makeInput(`${ROOT}/projects`, { agentName: "main" }));
+        denies(makeInput(`${ROOT}/global`, { agentName: "main" }));
+    });
+
+    it("allows general agent free key under sessions/<sid>/ even without .md suffix", () => {
+        // General rule does not enforce .md; path-safety for file type is caller-side.
+        allows(makeInput(`${ROOT}/sessions/${SESSION_ID}/scratch`, { agentName: "main" }));
+    });
+
+    it("allows Windows-style backslash targets under projects for main", () => {
+        allows(makeInput(
+            `${ROOT.replace(/\//g, "\\")}\\projects\\${PROJECT_ID}\\MEMORY.md`,
+            { agentName: "main" },
+        ));
+    });
+
+    it("denies unknown agent writing into reserved tasks tree", () => {
+        denies(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/tasks/T1/x.md`,
+            { agentName: "custom-extension-agent" },
+        ));
+    });
+
+    // wave-169 residual
+    it("non-memory targets are no-ops (guard has no opinion)", () => {
+        expect(() =>
+            assertMemoryWriteAllowed(makeInput("C:/other/project/src/a.ts", { agentName: "main" })),
+        ).not.toThrow();
+        expect(() =>
+            assertMemoryWriteAllowed(makeInput("C:/Users/x/AppData/Roaming/other.md", { agentName: "main" })),
+        ).not.toThrow();
+    });
+
+    it("denies write to memory root exact path and CC scope", () => {
+        denies(makeInput(ROOT, { agentName: "main" }));
+        denies(makeInput(`${ROOT}/cc/MEMORY.md`, { agentName: "main" }));
+    });
+
+    it("isInsideMemoryTree true for nested targets and false for siblings", () => {
+        expect(isInsideMemoryTree(`${ROOT}/global/MEMORY.md`, ROOT)).toBe(true);
+        expect(isInsideMemoryTree(`${ROOT}-extra/global/x.md`, ROOT)).toBe(false);
+        expect(isInsideMemoryTree(ROOT, ROOT)).toBe(true);
+    });
+
+    it("memoryRootPath and markdownIndexDbPath are under userData", () => {
+        const userData = "C:/Users/test/AppData/Roaming/Pi";
+        expect(memoryRootPath(userData).replace(/\\/g, "/")).toBe(`${userData}/memory`);
+        expect(markdownIndexDbPath(userData).replace(/\\/g, "/")).toBe(`${userData}/memory/index.sqlite`);
+    });
+
+
+    // wave-216 residual
+    it("checkpoint-writer can write reserved session files and tasks; MEMORY.md is denied there", () => {
+        // product allowlist: sessions/<sid>/{checkpoint,notes}.md + tasks/<TID>/*.md
+        // and projects/<pid>/MEMORY.md — not sessions MEMORY.md
+        for (const leaf of ["checkpoint.md", "notes.md"]) {
+            allows(makeInput(`${ROOT}/sessions/${SESSION_ID}/${leaf}`, { agentName: "checkpoint-writer" }));
+        }
+        denies(makeInput(`${ROOT}/sessions/${SESSION_ID}/MEMORY.md`, { agentName: "checkpoint-writer" }));
+        allows(makeInput(
+            `${ROOT}/projects/${PROJECT_ID}/MEMORY.md`,
+            { agentName: "checkpoint-writer" },
+        ));
+        allows(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/tasks/T1/progress.md`,
+            { agentName: "checkpoint-writer" },
+        ));
+    });
+
+    it("task-bound subagent can write own task tree and is denied other task ids", () => {
+        allows(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/tasks/T2/progress.md`,
+            { agentName: "dream", taskId: "T2" },
+        ));
+        denies(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/tasks/T1/progress.md`,
+            { agentName: "dream", taskId: "T2" },
+        ));
+    });
+
+    it("isInsideMemoryTree false for parent path and true for nested under root", () => {
+        expect(isInsideMemoryTree("C:/Users/x", ROOT)).toBe(false);
+        expect(isInsideMemoryTree(`${ROOT}/global/x.md`, ROOT)).toBe(true);
+        expect(isInsideMemoryTree(`${ROOT}/sessions/${SESSION_ID}/notes.md`, ROOT)).toBe(true);
+    });
+
+
+    // wave-224 residual
+    it("non-memory targets are no-ops; memory root and scope dir alone throw", () => {
+        expect(() => assertMemoryWriteAllowed(makeInput("C:/other/file.md"))).not.toThrow();
+        expect(() => assertMemoryWriteAllowed(makeInput(ROOT))).toThrow(/memory root|scope directory/i);
+        expect(() => assertMemoryWriteAllowed(makeInput(`${ROOT}/global`))).toThrow(/memory root|scope directory/i);
+    });
+
+    it("projects scope enforces projectId match; global ignores projectId", () => {
+        allows(makeInput(`${ROOT}/global/prefs.md`, { projectId: "other" }));
+        denies(makeInput(`${ROOT}/projects/other-pid/MEMORY.md`, { projectId: PROJECT_ID }));
+        allows(makeInput(`${ROOT}/projects/${PROJECT_ID}/MEMORY.md`, { projectId: PROJECT_ID }));
+    });
+
+    it("memoryRootPath and markdownIndexDbPath join under userData/memory", () => {
+        const userData = "C:/Users/demo/AppData/Roaming/Pi";
+        expect(memoryRootPath(userData).replace(/\\/g, "/")).toBe(`${userData}/memory`);
+        expect(markdownIndexDbPath(userData).replace(/\\/g, "/")).toBe(`${userData}/memory/index.sqlite`);
+    });
+
+    it("CC scope is not writable; dream cannot write sessions tasks without taskId", () => {
+        denies(makeInput(`${ROOT}/cc/MEMORY.md`));
+        denies(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/tasks/T1/progress.md`,
+            { agentName: "dream" },
+        ));
+        allows(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/notes.md`,
+            { agentName: "dream" },
+        ));
+    });
+
+    // wave-244 residual
+    it("checkpoint-writer can write reserved task files; other agents cannot without matching taskId", () => {
+        allows(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/tasks/T1/progress.md`,
+            { agentName: "checkpoint-writer" },
+        ));
+        allows(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/checkpoint.md`,
+            { agentName: "checkpoint-writer" },
+        ));
+        denies(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/tasks/T1/progress.md`,
+            { agentName: "main" },
+        ));
+        allows(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/tasks/T1/progress.md`,
+            { agentName: "main", taskId: "T1" },
+        ));
+        denies(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/tasks/T1/progress.md`,
+            { agentName: "main", taskId: "T2" },
+        ));
+    });
+
+    it("isInsideMemoryTree is false for sibling prefix paths that share root string prefix", () => {
+        expect(isInsideMemoryTree(`${ROOT}-sibling/x.md`, ROOT)).toBe(false);
+        expect(isInsideMemoryTree(`${ROOT}x/y.md`, ROOT)).toBe(false);
+        // product is pure string-prefix (no path.resolve) — ".." still starts with root/
+        expect(isInsideMemoryTree(`${ROOT}/../escape.md`, ROOT)).toBe(true);
+        expect(isInsideMemoryTree(`${ROOT}/global/../global/MEMORY.md`, ROOT)).toBe(true);
+        expect(isInsideMemoryTree("C:/Users/test/AppData/Roaming/Pi-Desktop", ROOT)).toBe(false);
+    });
+
+    // wave-265 residual
+    it("memoryRootPath and markdownIndexDbPath join under userData", () => {
+        const root = memoryRootPath("C:/Users/test/AppData/Roaming/Pi-Desktop").split("\\").join("/");
+        const db = markdownIndexDbPath("C:/Users/test/AppData/Roaming/Pi-Desktop").split("\\").join("/");
+        expect(root.endsWith("/memory")).toBe(true);
+        expect(root.includes("Pi-Desktop")).toBe(true);
+        expect(db.endsWith("memory/index.sqlite")).toBe(true);
+    });
+
+    it("cc scope is denied; free global key allowed; session tasks require matching taskId", () => {
+        denies(makeInput(`${ROOT}/cc/MEMORY.md`));
+        allows(makeInput(`${ROOT}/global/notes.md`));
+        denies(makeInput(`${ROOT}/sessions/${SESSION_ID}/tasks/T9/progress.md`, { agentName: "main" }));
+        allows(makeInput(`${ROOT}/sessions/${SESSION_ID}/tasks/T9/progress.md`, {
+            agentName: "main",
+            taskId: "T9",
+        }));
+    });
+
+
+    // wave-274 residual
+    it("checkpoint-writer allowlist: memory- prefix, nested projects denied, sessionId isolation", () => {
+        allows(makeInput(
+            `${ROOT}/projects/${PROJECT_ID}/memory-topic.md`,
+            { agentName: "checkpoint-writer" },
+        ));
+        allows(makeInput(
+            `${ROOT}/projects/${PROJECT_ID}/MEMORY.md`,
+            { agentName: "checkpoint-writer" },
+        ));
+        denies(makeInput(
+            `${ROOT}/projects/${PROJECT_ID}/nested/MEMORY.md`,
+            { agentName: "checkpoint-writer" },
+        ));
+        denies(makeInput(
+            `${ROOT}/sessions/other-sess/checkpoint.md`,
+            { agentName: "checkpoint-writer" },
+        ));
+        allows(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/checkpoint-topic.md`,
+            { agentName: "checkpoint-writer" },
+        ));
+        denies(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/random.md`,
+            { agentName: "checkpoint-writer" },
+        ));
+        denies(makeInput(
+            `${ROOT}/global/MEMORY.md`,
+            { agentName: "checkpoint-writer" },
+        ));
+    });
+
+    it("taskId must match TASK_ID_RE; invalid taskId cannot unlock reserved tasks path", () => {
+        denies(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/tasks/T1/progress.md`,
+            { agentName: "main", taskId: "task-1" },
+        ));
+        denies(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/tasks/T1/progress.md`,
+            { agentName: "main", taskId: "1" },
+        ));
+        allows(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/tasks/T10.3.2/progress.md`,
+            { agentName: "main", taskId: "T10.3.2" },
+        ));
+        denies(makeInput(
+            `${ROOT}/sessions/${SESSION_ID}/tasks/T10.3.2/progress.md`,
+            { agentName: "main", taskId: "T10.3" },
+        ));
+    });
+
+    it("denial help names agent and writable targets; isInsideMemoryTree root equality", () => {
+        try {
+            assertMemoryWriteAllowed(makeInput(`${ROOT}/cc/x.md`));
+            expect.unreachable("should deny");
+        } catch (e) {
+            const msg = String(e);
+            expect(msg).toMatch(/memory-path-guard denied write for agent "main"/);
+            expect(msg).toContain(`projects/${PROJECT_ID}/MEMORY.md`);
+            expect(msg).toContain(`sessions/${SESSION_ID}/notes.md`);
+            expect(msg).toMatch(/CC scope is read-only|not writable/i);
+        }
+        expect(isInsideMemoryTree(ROOT, ROOT)).toBe(true);
+        expect(isInsideMemoryTree(`${ROOT}/global/MEMORY.md`, ROOT)).toBe(true);
+        expect(isInsideMemoryTree("C:/other/file.md", ROOT)).toBe(false);
+    });
+
+    // wave-286 residual
+    it("isInsideMemoryTree requires trailing-sep prefix; outside tree allows non-memory write", () => {
+        expect(isInsideMemoryTree(`${ROOT}/global/MEMORY.md`, ROOT)).toBe(true);
+        expect(isInsideMemoryTree(`${ROOT}extra/file.md`, ROOT)).toBe(false);
+        expect(isInsideMemoryTree(ROOT.replace(/\//g, "\\"), ROOT)).toBe(true);
+        // non-memory paths early-allow
+        allows(makeInput("D:/workspace/src/app.ts"));
+        denies(makeInput(`${ROOT}/cc/notes.md`));
+    });
+
+    it("memoryRootPath and markdownIndexDbPath join under userData", () => {
+        expect(memoryRootPath("C:/Users/x/AppData")).toMatch(/memory$/);
+        expect(markdownIndexDbPath("C:/Users/x/AppData").replace(/\\/g, "/")).toBe(
+            "C:/Users/x/AppData/memory/index.sqlite",
+        );
+    });
+
+
+
 });

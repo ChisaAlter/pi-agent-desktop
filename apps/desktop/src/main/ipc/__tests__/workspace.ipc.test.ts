@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, rmSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { isIpcError } from "@shared";
@@ -133,6 +133,110 @@ describe("workspace:create-empty", () => {
         expect(existsSync(join(parentDir, "BlankProject"))).toBe(true);
 
         rmSync(parentDir, { recursive: true, force: true });
+    });
+
+    // wave-101 residual
+    it("rejects invalid empty project names", async () => {
+        const parentDir = mkdtempSync(join(tmpdir(), "pi-desktop-empty-ws-bad-"));
+        const store = makeStore([]);
+        setupWorkspaceIpc({ store, getMainWindow: () => null });
+        const handler = handlers.get("workspace:create-empty")!;
+
+        for (const name of ["", "   ", ".", "..", "a/b", "a\\b"]) {
+            const result = await handler({}, name, parentDir);
+            expect(isIpcError(result), name).toBe(true);
+            if (isIpcError(result)) {
+                expect(result.code).toBe("ipcErrors.workspace.invalidArgs");
+            }
+        }
+        expect(store.raw).toHaveLength(0);
+        rmSync(parentDir, { recursive: true, force: true });
+    });
+
+    it("rejects create-empty when the target directory already exists", async () => {
+        const parentDir = mkdtempSync(join(tmpdir(), "pi-desktop-empty-ws-exists-"));
+        const existing = join(parentDir, "Taken");
+        mkdirSync(existing, { recursive: true });
+        const store = makeStore([]);
+        setupWorkspaceIpc({ store, getMainWindow: () => null });
+        const result = await handlers.get("workspace:create-empty")!({}, "Taken", parentDir);
+        expect(isIpcError(result)).toBe(true);
+        if (isIpcError(result)) {
+            expect(result.code).toBe("ipcErrors.workspace.createFailed");
+            expect(result.fallback).toContain("已存在");
+        }
+        rmSync(parentDir, { recursive: true, force: true });
+    });
+});
+
+describe("workspace:create / list / delete residual (wave-101)", () => {
+    beforeEach(() => {
+        handlers.clear();
+    });
+
+    it("seeds a default workspace when list is empty", async () => {
+        const store = makeStore([]);
+        setupWorkspaceIpc({ store, getMainWindow: () => null });
+        const listed = await handlers.get("workspace:list")!({});
+        expect(Array.isArray(listed)).toBe(true);
+        expect(listed).toHaveLength(1);
+        expect(listed[0]).toMatchObject({ id: "default", name: "Default" });
+        expect(store.raw).toHaveLength(1);
+        expect(store.raw[0]?.id).toBe("default");
+    });
+
+    it("creates a workspace and lists existing entries without reseeding", async () => {
+        const store = makeStore([]);
+        setupWorkspaceIpc({ store, getMainWindow: () => null });
+
+        const created = await handlers.get("workspace:create")!({}, "repo", "C:/repo");
+        expect(isIpcError(created)).toBe(false);
+        expect(created).toMatchObject({ name: "repo", path: "C:/repo" });
+        expect(store.raw).toHaveLength(1);
+
+        const listed = await handlers.get("workspace:list")!({});
+        expect(listed).toHaveLength(1);
+        expect(listed[0].path).toBe("C:/repo");
+    });
+
+    it("rejects empty create args", async () => {
+        const store = makeStore([]);
+        setupWorkspaceIpc({ store, getMainWindow: () => null });
+        const empty = await handlers.get("workspace:create")!({}, "", "");
+        expect(isIpcError(empty)).toBe(true);
+        if (isIpcError(empty)) {
+            expect(empty.code).toBe("ipcErrors.workspace.invalidArgs");
+        }
+    });
+
+    it("deletes workspace and calls disposeWorkspaceSession", async () => {
+        const store = makeStore([
+            { id: "ws-1", name: "repo", path: "C:/repo", createdAt: 1, lastActiveAt: 1 },
+            { id: "ws-2", name: "other", path: "C:/other", createdAt: 2, lastActiveAt: 2 },
+        ]);
+        const disposeWorkspaceSession = vi.fn();
+        setupWorkspaceIpc({ store, getMainWindow: () => null, disposeWorkspaceSession });
+        const result = await handlers.get("workspace:delete")!({}, "ws-1");
+        expect(result).toEqual({ success: true });
+        expect(store.raw.map((w) => w.id)).toEqual(["ws-2"]);
+        expect(disposeWorkspaceSession).toHaveBeenCalledWith("ws-1");
+    });
+
+    it("rejects empty path on select", async () => {
+        const store = makeStore([
+            { id: "ws-1", name: "repo", path: "C:/repo", createdAt: 1 },
+        ]);
+        setupWorkspaceIpc({ store, getMainWindow: () => null });
+        const result = await handlers.get("workspace:select")!({}, "   ");
+        expect(isIpcError(result)).toBe(true);
+        if (isIpcError(result)) {
+            expect(result.code).toBe("ipcErrors.workspace.invalidArgs");
+        }
+    });
+
+    it("select-directory returns null without main window", async () => {
+        setupWorkspaceIpc({ store: makeStore([]), getMainWindow: () => null });
+        await expect(handlers.get("workspace:select-directory")!({})).resolves.toBeNull();
     });
 });
 

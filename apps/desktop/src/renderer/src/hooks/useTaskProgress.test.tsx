@@ -4,23 +4,69 @@ import React from "react";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GoalState, LongHorizonTaskRecord, PlanProgressUpdate } from "@shared";
-import { useTaskProgress } from "./useTaskProgress";
+import { mapTaskStatus, toProgressItem, useTaskProgress } from "./useTaskProgress";
 import { useWorkspaceStore } from "../stores/workspace-store";
 
 let emitPlanProgress: ((update: PlanProgressUpdate) => void) | null = null;
 let emitGoalChanged: ((goal: GoalState) => void) | null = null;
 const taskList = vi.fn<() => Promise<LongHorizonTaskRecord[]>>();
 
-function HookHost({ agentId }: { agentId?: string | null }): React.JSX.Element {
-    const { tasks } = useTaskProgress(agentId);
+function HookHost({
+    agentId,
+    exposeClear,
+}: {
+    agentId?: string | null;
+    exposeClear?: boolean;
+}): React.JSX.Element {
+    const { tasks, clearFinished } = useTaskProgress(agentId);
     return (
-        <ul>
-            {tasks.map((task) => (
-                <li key={task.id}>{task.name}</li>
-            ))}
-        </ul>
+        <div>
+            {exposeClear ? (
+                <button type="button" onClick={clearFinished}>
+                    clear-finished
+                </button>
+            ) : null}
+            <ul>
+                {tasks.map((task) => (
+                    <li key={task.id}>
+                        {task.name}:{task.status}
+                    </li>
+                ))}
+            </ul>
+        </div>
     );
 }
+
+describe("mapTaskStatus / toProgressItem", () => {
+    it("maps long-horizon statuses onto UI progress statuses", () => {
+        expect(mapTaskStatus("running")).toBe("running");
+        expect(mapTaskStatus("completed")).toBe("completed");
+        expect(mapTaskStatus("failed")).toBe("failed");
+        expect(mapTaskStatus("blocked")).toBe("failed");
+        expect(mapTaskStatus("pending")).toBe("pending");
+        expect(mapTaskStatus("waiting")).toBe("pending");
+    });
+
+    it("projects registry rows into progress items", () => {
+        expect(
+            toProgressItem({
+                id: "T9",
+                workspaceId: "ws1",
+                source: "goal",
+                text: "ship",
+                status: "blocked",
+                ordinal: 1,
+                createdAt: 10,
+                updatedAt: 20,
+            }),
+        ).toEqual({
+            id: "T9",
+            name: "ship",
+            status: "failed",
+            timestamp: 20,
+        });
+    });
+});
 
 beforeEach(() => {
     emitPlanProgress = null;
@@ -76,7 +122,7 @@ describe("useTaskProgress", () => {
             render(<HookHost />);
         });
 
-        await screen.findByText("finish migration");
+        await screen.findByText("finish migration:running");
         expect(taskList).toHaveBeenCalledWith({ workspaceId: "ws1", agentId: undefined });
     });
 
@@ -99,7 +145,7 @@ describe("useTaskProgress", () => {
             render(<HookHost agentId="agent-1" />);
         });
 
-        await screen.findByText("agent scoped task");
+        await screen.findByText("agent scoped task:running");
         expect(taskList).toHaveBeenCalledWith({ workspaceId: "ws1", agentId: "agent-1" });
     });
 
@@ -133,7 +179,7 @@ describe("useTaskProgress", () => {
         await act(async () => {
             render(<HookHost />);
         });
-        await screen.findByText("old plan step");
+        await screen.findByText("old plan step:running");
 
         await act(async () => {
             emitPlanProgress?.({
@@ -143,7 +189,7 @@ describe("useTaskProgress", () => {
             });
         });
 
-        await screen.findByText("new plan step");
+        await screen.findByText("new plan step:pending");
         expect(taskList).toHaveBeenCalledTimes(2);
     });
 
@@ -178,8 +224,58 @@ describe("useTaskProgress", () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText("ship desktop build")).toBeTruthy();
+            expect(screen.getByText("ship desktop build:running")).toBeTruthy();
         });
         expect(taskList).toHaveBeenCalledTimes(2);
+    });
+
+    it("clearFinished keeps only running/pending tasks", async () => {
+        taskList.mockResolvedValue([
+            {
+                id: "T1",
+                workspaceId: "ws1",
+                source: "goal",
+                text: "done",
+                status: "completed",
+                ordinal: 0,
+                createdAt: 1,
+                updatedAt: 2,
+            },
+            {
+                id: "T2",
+                workspaceId: "ws1",
+                source: "goal",
+                text: "active",
+                status: "running",
+                ordinal: 1,
+                createdAt: 1,
+                updatedAt: 2,
+            },
+            {
+                id: "T3",
+                workspaceId: "ws1",
+                source: "goal",
+                text: "wait",
+                status: "waiting",
+                ordinal: 2,
+                createdAt: 1,
+                updatedAt: 2,
+            },
+        ]);
+
+        await act(async () => {
+            render(<HookHost exposeClear />);
+        });
+        await screen.findByText("done:completed");
+        await screen.findByText("active:running");
+        await screen.findByText("wait:pending");
+
+        await act(async () => {
+            screen.getByText("clear-finished").click();
+        });
+
+        expect(screen.queryByText("done:completed")).toBeNull();
+        expect(screen.getByText("active:running")).toBeTruthy();
+        expect(screen.getByText("wait:pending")).toBeTruthy();
     });
 });

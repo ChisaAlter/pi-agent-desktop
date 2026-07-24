@@ -193,4 +193,143 @@ describe("EventBridge", () => {
         bridge.handleEvent({ type: "future_sdk_event" } as any);
         expect(send).not.toHaveBeenCalled();
     });
+
+    // wave-95 residual
+    it("forwards tool_execution_update and extension_error", () => {
+        const send = vi.fn();
+        const bridge = createEventBridge("ws_1", send);
+        const update = {
+            type: "tool_execution_update",
+            toolCallId: "tc1",
+            toolName: "bash",
+            partialResult: "out",
+        } as const;
+        const err = {
+            type: "extension_error",
+            error: "watchdog timeout",
+        } as const;
+        bridge.handleEvent(update as never);
+        bridge.handleEvent(err as never);
+        expect(send).toHaveBeenNthCalledWith(1, "pi:event", "ws_1", update);
+        expect(send).toHaveBeenNthCalledWith(2, "pi:event", "ws_1", err);
+    });
+
+    it("normalizes custom message_end with missing fields to safe defaults", () => {
+        const send = vi.fn();
+        const bridge = createEventBridge("ws_1", send);
+        bridge.handleEvent({
+            type: "message_end",
+            message: { role: "custom" },
+        } as never);
+        expect(send).toHaveBeenCalledWith("pi:event", "ws_1", {
+            type: "custom_message",
+            customType: "",
+            content: "",
+            display: true,
+            details: undefined,
+        });
+    });
+
+    it("does not rewrite non-custom message_end", () => {
+        const send = vi.fn();
+        const bridge = createEventBridge("ws_1", send);
+        const event = {
+            type: "message_end",
+            message: { role: "assistant", content: "hi" },
+        } as const;
+        bridge.handleEvent(event as never);
+        expect(send).toHaveBeenCalledWith("pi:event", "ws_1", event);
+    });
+
+
+
+  // wave-306 residual
+  describe("event-bridge residual (wave-306)", () => {
+    it("normalizeCustomMessageEvent maps custom role message_end with non-string fields to safe defaults", async () => {
+      const { normalizeCustomMessageEvent } = await import("../event-bridge");
+      const details = { op: 1 };
+      expect(
+        normalizeCustomMessageEvent({
+          type: "message_end",
+          message: {
+            role: "custom",
+            customType: 42,
+            content: { nested: true },
+            display: "yes",
+            details,
+          },
+        } as never),
+      ).toEqual({
+        type: "custom_message",
+        customType: "",
+        content: "",
+        display: true,
+        details,
+      });
+      // explicit false display is preserved (typeof boolean)
+      expect(
+        normalizeCustomMessageEvent({
+          type: "message_end",
+          message: {
+            role: "custom",
+            customType: "x",
+            content: "body",
+            display: false,
+          },
+        } as never),
+      ).toEqual({
+        type: "custom_message",
+        customType: "x",
+        content: "body",
+        display: false,
+        details: undefined,
+      });
+    });
+
+    it("normalizeCustomMessageEvent is identity for non-message_end and non-custom roles", async () => {
+      const { normalizeCustomMessageEvent } = await import("../event-bridge");
+      const turn = { type: "turn_start" } as const;
+      expect(normalizeCustomMessageEvent(turn as never)).toBe(turn);
+      const plain = {
+        type: "message_end",
+        message: { role: "user", content: "hi" },
+      } as const;
+      expect(normalizeCustomMessageEvent(plain as never)).toBe(plain);
+      const noMsg = { type: "message_end" } as const;
+      expect(normalizeCustomMessageEvent(noMsg as never)).toBe(noMsg);
+      const nullMsg = { type: "message_end", message: null } as const;
+      expect(normalizeCustomMessageEvent(nullMsg as never)).toBe(nullMsg);
+    });
+
+    it("createEventBridge forwards known lifecycle types; onTurnEnd only on turn_end after send", () => {
+      const send = vi.fn();
+      const onTurnEnd = vi.fn();
+      const bridge = createEventBridge("ws-306", send, { onTurnEnd });
+      for (const type of [
+        "turn_start",
+        "agent_end",
+        "compaction_start",
+        "compaction_end",
+        "auto_retry_start",
+        "auto_retry_end",
+        "session_info_changed",
+        "thinking_level_changed",
+        "usage_update",
+        "context_update",
+        "queue_update",
+      ] as const) {
+        bridge.handleEvent({ type } as never);
+      }
+      expect(send).toHaveBeenCalledTimes(11);
+      expect(onTurnEnd).not.toHaveBeenCalled();
+      bridge.handleEvent({ type: "turn_end" } as never);
+      expect(send).toHaveBeenLastCalledWith("pi:event", "ws-306", { type: "turn_end" });
+      expect(onTurnEnd).toHaveBeenCalledTimes(1);
+      expect(onTurnEnd).toHaveBeenCalledWith("ws-306");
+      const sendOrder = send.mock.invocationCallOrder[send.mock.invocationCallOrder.length - 1];
+      const hookOrder = onTurnEnd.mock.invocationCallOrder[0];
+      expect(sendOrder).toBeLessThan(hookOrder);
+    });
+  });
+
 });

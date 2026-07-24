@@ -450,4 +450,146 @@ describe("createApprovalInterceptor", () => {
         await interceptor.handleEvent(undefined);
         expect(abort).not.toHaveBeenCalled();
     });
+
+    it("skips deferred tracking when autoApprove is true", async () => {
+        pendingEdits.autoApprove = true;
+        await interceptor.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_auto",
+            toolName: "write",
+            args: { file_path: "src/auto.ts", content: "x" },
+        });
+        expect(pendingEdits.list()).toHaveLength(0);
+        expect(send).not.toHaveBeenCalled();
+        expect(abort).not.toHaveBeenCalled();
+    });
+
+    it("does not track edit-risk tools with empty file path", async () => {
+        await interceptor.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_empty_path",
+            toolName: "write",
+            args: { content: "no-path" },
+        });
+        expect(pendingEdits.list()).toHaveLength(0);
+        expect(send).not.toHaveBeenCalled();
+    });
+
+    it("tracks edit via path alias keys (path/filePath)", async () => {
+        await interceptor.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_path_alias",
+            toolName: "edit",
+            args: { path: "src/alias.ts", old_string: "a", new_string: "b" },
+        });
+        expect(pendingEdits.list()).toHaveLength(1);
+        expect(pendingEdits.list()[0].filePath).toBe("src/alias.ts");
+        expect(send).toHaveBeenCalledWith(
+            "approval:deferred",
+            "ws_1",
+            expect.objectContaining({ toolCallId: "tc_path_alias", filePath: "src/alias.ts" }),
+        );
+    });
+
+    it("clears plan-card dedupe on turn_end so same toolCallId can emit again", async () => {
+        const args = {
+            title: "回合计划",
+            content: "- step",
+            filename: ".pi/plans/turn.md",
+        };
+        await interceptor.handleEvent({
+            type: "message_update",
+            assistantMessageEvent: {
+                type: "toolcall_start",
+                toolCallId: "tc_reuse",
+                toolName: "plan_write",
+                args,
+            },
+        });
+        await interceptor.handleEvent({
+            type: "message_update",
+            assistantMessageEvent: {
+                type: "toolcall_start",
+                toolCallId: "tc_reuse",
+                toolName: "plan_write",
+                args,
+            },
+        });
+        expect(send.mock.calls.filter((call: unknown[]) => call[0] === "plan:card")).toHaveLength(1);
+
+        await interceptor.handleEvent({ type: "turn_end" } as never);
+        await interceptor.handleEvent({
+            type: "message_update",
+            assistantMessageEvent: {
+                type: "toolcall_start",
+                toolCallId: "tc_reuse",
+                toolName: "plan_write",
+                args,
+            },
+        });
+        expect(send.mock.calls.filter((call: unknown[]) => call[0] === "plan:card")).toHaveLength(2);
+    });
+
+    it("generateUnifiedDiff handles add/remove/equal lines", async () => {
+        const { generateUnifiedDiff } = await import("../interceptor");
+        const diff = generateUnifiedDiff("a\nb\n", "a\nc\n", "src/x.ts");
+        expect(diff).toContain("--- a/x.ts");
+        expect(diff).toContain("+++ b/x.ts");
+        expect(diff).toContain(" a");
+        expect(diff).toContain("-b");
+        expect(diff).toContain("+c");
+
+        const addOnly = generateUnifiedDiff("", "only\n", "new.md");
+        expect(addOnly).toContain("+only");
+        const removeOnly = generateUnifiedDiff("gone\n", "", "old.md");
+        expect(removeOnly).toContain("-gone");
+    });
+
+
+
+    // wave-306 residual
+    it("generateUnifiedDiff residual: basename from path, header counts, equal lines space-prefixed", async () => {
+        const { generateUnifiedDiff } = await import("../interceptor");
+        // product: split keeps trailing empty segment for trailing newline
+        // "a\\n" -> ["a", ""] length 2
+        const win = generateUnifiedDiff("a\n", "a\n", "C:\\repo\\src\\file.ts");
+        expect(win.startsWith("--- a/file.ts\n+++ b/file.ts\n")).toBe(true);
+        expect(win).toContain("@@ -1,2 +1,2 @@");
+        expect(win).toContain(" a");
+
+        // no trailing newline -> length 1 equal line
+        const single = generateUnifiedDiff("only", "only", "path/to/only.txt");
+        expect(single).toContain("--- a/only.txt");
+        expect(single).toContain("@@ -1,1 +1,1 @@");
+        expect(single).toContain(" only");
+
+        const multi = generateUnifiedDiff("x\ny\nz", "x\nY\nz", "dir/sub/name.md");
+        expect(multi).toContain("--- a/name.md");
+        expect(multi).toContain("@@ -1,3 +1,3 @@");
+        expect(multi).toContain(" x");
+        expect(multi).toContain("-y");
+        expect(multi).toContain("+Y");
+        expect(multi).toContain(" z");
+
+        // empty both sides: split gives [""] length 1
+        const empty = generateUnifiedDiff("", "", "empty.txt");
+        expect(empty).toContain("--- a/empty.txt");
+        expect(empty).toContain("@@ -1,1 +1,1 @@");
+        expect(empty.endsWith(" " + String.fromCharCode(10))).toBe(true);
+
+        // longer new side only-add tail
+        const grow = generateUnifiedDiff("1", "1\n2\n3", "grow.txt");
+        expect(grow).toContain(" 1");
+        expect(grow).toContain("+2");
+        expect(grow).toContain("+3");
+        expect(grow).toContain("@@ -1,1 +1,3 @@");
+
+        // bare filename has no path separator -> pop keeps full string
+        const bare = generateUnifiedDiff("a", "b", "readme");
+        expect(bare).toContain("--- a/readme");
+        expect(bare).toContain("+++ b/readme");
+        expect(bare).toContain("-a");
+        expect(bare).toContain("+b");
+    });
+
 });

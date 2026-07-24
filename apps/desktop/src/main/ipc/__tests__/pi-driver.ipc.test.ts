@@ -139,4 +139,72 @@ describe("setupPiDriverIpc (B-004/B-005/B-006 IPC contracts)", () => {
         await handlers.get("pi:cancel-operation")!({});
         expect(driver.cancelOperation).toHaveBeenCalledTimes(1);
     });
+
+    // wave-100 residual
+    it("status and refresh-status success paths call detectSync/detect", async () => {
+        const driver = createDriver({
+            detect: vi.fn(async () => ({ installed: true, localVersion: "2.0.0" })),
+        });
+        setupPiDriverIpc(() => driver as never);
+
+        await expect(handlers.get("pi:status")!({})).resolves.toMatchObject({
+            installed: true,
+            installMethod: "managed",
+        });
+        expect(driver.detectSync).toHaveBeenCalled();
+
+        await expect(handlers.get("pi:refresh-status")!({})).resolves.toMatchObject({
+            installed: true,
+            localVersion: "2.0.0",
+        });
+        expect(driver.detect).toHaveBeenCalledTimes(1);
+    });
+
+    it("status detectSync throw maps to detectFailed", async () => {
+        const driver = createDriver({
+            detectSync: vi.fn(() => {
+                throw new Error("PATH broken");
+            }),
+        });
+        setupPiDriverIpc(() => driver as never);
+        await expect(handlers.get("pi:status")!({})).resolves.toMatchObject({
+            code: "ipcErrors.pi.detectFailed",
+            fallback: expect.stringContaining("PATH broken"),
+        });
+    });
+
+    it("uninstall failure returns uninstallFailed without detectSync", async () => {
+        const driver = createDriver({
+            uninstall: vi.fn(async () => {
+                throw new Error("busy");
+            }),
+        });
+        setupPiDriverIpc(() => driver as never);
+        driver.detectSync.mockClear();
+        await expect(handlers.get("pi:uninstall")!({})).resolves.toMatchObject({
+            code: "ipcErrors.pi.uninstallFailed",
+            fallback: expect.stringContaining("busy"),
+        });
+        expect(driver.detectSync).not.toHaveBeenCalled();
+    });
+
+    it("null driver returns driverNotInitialized for status/update/uninstall", async () => {
+        setupPiDriverIpc(() => null);
+        for (const channel of ["pi:status", "pi:refresh-status", "pi:update", "pi:uninstall"]) {
+            await expect(handlers.get(channel)!({})).resolves.toMatchObject({
+                code: "ipcErrors.pi.driverNotInitialized",
+            });
+        }
+        // cancel-operation remains a silent no-op with null driver
+        await expect(handlers.get("pi:cancel-operation")!({})).resolves.toBeUndefined();
+    });
+
+    it("update success re-detects status after driver.update", async () => {
+        const driver = createDriver();
+        setupPiDriverIpc(() => driver as never);
+        const result = await handlers.get("pi:update")!({});
+        expect(driver.update).toHaveBeenCalledTimes(1);
+        expect(driver.detectSync).toHaveBeenCalled();
+        expect(result).toMatchObject({ installed: true });
+    });
 });

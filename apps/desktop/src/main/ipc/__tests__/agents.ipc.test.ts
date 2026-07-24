@@ -85,4 +85,100 @@ describe("setupAgentsIpc", () => {
             params: undefined,
         });
     });
+
+    // wave-99 residual
+    it("routes abort/restart/messages/runtime-state through the registry", async () => {
+        const registry = {
+            abort: vi.fn(async () => undefined),
+            restart: vi.fn(async () => ({
+                id: "agent_r",
+                workspaceId: "ws_1",
+                title: "R",
+                status: "idle",
+                createdAt: 1,
+                updatedAt: 1,
+            })),
+            getMessages: vi.fn(() => [{ id: "m1", agentId: "agent_1", role: "user", content: "hi", createdAt: 1 }]),
+            getRuntimeState: vi.fn(() => ({ agentId: "agent_1", status: "running", isStreaming: true })),
+        } as unknown as AgentRuntimeRegistry;
+        setupAgentsIpc(registry);
+
+        await handlers.get("agents:abort")?.({}, "agent_1");
+        await expect(handlers.get("agents:restart")?.({}, "agent_1")).resolves.toMatchObject({ id: "agent_r" });
+        await expect(handlers.get("agents:messages")?.({}, "agent_1")).resolves.toHaveLength(1);
+        await expect(handlers.get("agents:runtime-state")?.({}, "agent_1")).resolves.toMatchObject({
+            isStreaming: true,
+        });
+
+        expect(registry.abort).toHaveBeenCalledWith("agent_1");
+        expect(registry.restart).toHaveBeenCalledWith("agent_1");
+        expect(registry.getMessages).toHaveBeenCalledWith("agent_1");
+        expect(registry.getRuntimeState).toHaveBeenCalledWith("agent_1");
+    });
+
+    it("rejects empty agent ids for abort/stop/restart/messages/runtime-state", async () => {
+        const registry = {
+            abort: vi.fn(),
+            stop: vi.fn(),
+            restart: vi.fn(),
+            getMessages: vi.fn(),
+            getRuntimeState: vi.fn(),
+        } as unknown as AgentRuntimeRegistry;
+        setupAgentsIpc(registry);
+
+        for (const channel of [
+            "agents:abort",
+            "agents:stop",
+            "agents:restart",
+            "agents:messages",
+            "agents:runtime-state",
+        ]) {
+            await expect(handlers.get(channel)?.({}, "")).rejects.toThrow();
+        }
+        expect(registry.abort).not.toHaveBeenCalled();
+        expect(registry.stop).not.toHaveBeenCalled();
+        expect(registry.restart).not.toHaveBeenCalled();
+        expect(registry.getMessages).not.toHaveBeenCalled();
+        expect(registry.getRuntimeState).not.toHaveBeenCalled();
+    });
+
+    it("returns invalidThinkingLevel for bad set-thinking input", async () => {
+        const registry = { setThinking: vi.fn() } as unknown as AgentRuntimeRegistry;
+        setupAgentsIpc(registry);
+        await expect(handlers.get("agents:set-thinking")?.({}, "", "off")).resolves.toMatchObject({
+            __brand: "IpcError",
+            code: "ipcErrors.agents.invalidThinkingLevel",
+        });
+        await expect(handlers.get("agents:set-thinking")?.({}, "agent_1", "mega")).resolves.toMatchObject({
+            __brand: "IpcError",
+            code: "ipcErrors.agents.invalidThinkingLevel",
+        });
+        expect(registry.setThinking).not.toHaveBeenCalled();
+    });
+
+    it("returns setThinkingFailed when registry throws", async () => {
+        const registry = {
+            setThinking: vi.fn(() => {
+                throw new Error("session gone");
+            }),
+        } as unknown as AgentRuntimeRegistry;
+        setupAgentsIpc(registry);
+        await expect(handlers.get("agents:set-thinking")?.({}, "agent_1", "high")).resolves.toMatchObject({
+            __brand: "IpcError",
+            code: "ipcErrors.agents.setThinkingFailed",
+            fallback: "session gone",
+        });
+    });
+
+    it("forwards valid set-thinking levels", async () => {
+        const registry = {
+            setThinking: vi.fn(() => ({ agentId: "agent_1", thinkingLevel: "medium" })),
+        } as unknown as AgentRuntimeRegistry;
+        setupAgentsIpc(registry);
+        await expect(handlers.get("agents:set-thinking")?.({}, "agent_1", "medium")).resolves.toEqual({
+            agentId: "agent_1",
+            thinkingLevel: "medium",
+        });
+        expect(registry.setThinking).toHaveBeenCalledWith("agent_1", "medium");
+    });
 });

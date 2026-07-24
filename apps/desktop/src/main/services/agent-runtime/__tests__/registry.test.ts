@@ -1017,6 +1017,45 @@ describe("AgentRuntimeRegistry", () => {
         expect(message).toContain(expected);
         expect(message).toContain(raw);
     });
+
+    // wave-140 residual
+    it.each([
+        ["403 Forbidden", "模型认证失败，请检查 API Key 或登录状态。"],
+        ["invalid api key provided", "模型认证失败，请检查 API Key 或登录状态。"],
+        ["authentication failed for provider", "模型认证失败，请检查 API Key 或登录状态。"],
+        ["rate-limit exceeded", "模型服务请求过于频繁，请稍后重试。"],
+        ["Too Many Requests", "模型服务请求过于频繁，请稍后重试。"],
+        ["ETIMEDOUT waiting for socket", "模型请求超时，请稍后重试或检查网络。"],
+        ["timeout of 60000ms exceeded", "模型请求超时，请稍后重试或检查网络。"],
+        ["ECONNRESET from peer", "无法连接模型服务，请检查网络和服务地址。"],
+        ["ENOTFOUND api.example.test", "无法连接模型服务，请检查网络和服务地址。"],
+        ["network error while fetching", "无法连接模型服务，请检查网络和服务地址。"],
+        ["provider returned internal error", "模型请求失败。"],
+    ])("classifies residual prompt failure %j", (raw, expected) => {
+        const message = formatPromptFailureMessage(new Error(raw));
+        expect(message).toContain(expected);
+        expect(message).toContain(raw);
+    });
+
+    it("includes Error cause chain details without throwing", () => {
+        const root = new Error("ECONNREFUSED");
+        const wrapped = new Error("fetch failed", { cause: root });
+        const message = formatPromptFailureMessage(wrapped);
+        expect(message).toContain("无法连接模型服务，请检查网络和服务地址。");
+        expect(message).toContain("fetch failed");
+        expect(message).toContain("ECONNREFUSED");
+    });
+
+    it("handles non-Error and empty failures with category-only or string details", () => {
+        expect(formatPromptFailureMessage("")).toBe("模型请求失败。");
+        expect(formatPromptFailureMessage(null)).toBe("模型请求失败。");
+        expect(formatPromptFailureMessage(undefined)).toBe("模型请求失败。");
+        expect(formatPromptFailureMessage("rate limit hit")).toContain("模型服务请求过于频繁，请稍后重试。");
+        expect(formatPromptFailureMessage("rate limit hit")).toContain("rate limit hit");
+        const blank = new Error("   ");
+        expect(formatPromptFailureMessage(blank)).toBe("模型请求失败。");
+    });
+
     it("marks the agent as error when prompt fails", async () => {
         const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
         sessions[0].prompt.mockRejectedValueOnce(new Error("network down"));

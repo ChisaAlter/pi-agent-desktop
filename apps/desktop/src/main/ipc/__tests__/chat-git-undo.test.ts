@@ -105,4 +105,56 @@ describe("git:undo security guards", () => {
             { force: true },
         );
     });
+
+    // wave-100 residual
+    it("rejects empty filePath as gitUndoInvalid", async () => {
+        setup();
+        const result = await handlers.get("git:undo")?.({}, "C:/repo", "");
+        expect(result).toMatchObject({ code: "ipcErrors.chat.gitUndoInvalid" });
+        expect(execFileSyncMock).not.toHaveBeenCalled();
+        expect(rmSyncMock).not.toHaveBeenCalled();
+    });
+
+    it("deletes nested untracked files when status is ??", async () => {
+        execFileSyncMock.mockImplementationOnce(() => {
+            throw new Error("not tracked");
+        });
+        execFileSyncMock.mockReturnValueOnce("?? src/deep/new.txt\n");
+        setup();
+        const result = await handlers.get("git:undo")?.({}, "C:/repo", "src/deep/new.txt");
+        expect(result).toBeUndefined();
+        expect(rmSyncMock).toHaveBeenCalledWith(
+            expect.stringMatching(/[\\/]repo[\\/]src[\\/]deep[\\/]new\.txt$/),
+            { force: true },
+        );
+    });
+
+    it("returns gitUndoFailed when status and delete both fail", async () => {
+        execFileSyncMock.mockImplementationOnce(() => {
+            throw new Error("checkout failed");
+        });
+        execFileSyncMock.mockImplementationOnce(() => {
+            throw new Error("status unavailable");
+        });
+        setup();
+        const result = await handlers.get("git:undo")?.({}, "C:/repo", "orphan.txt");
+        expect(result).toMatchObject({
+            code: "ipcErrors.chat.gitUndoFailed",
+            fallback: expect.stringContaining("status unavailable"),
+        });
+        expect(rmSyncMock).not.toHaveBeenCalled();
+    });
+
+    it("succeeds via git checkout without rmSync for tracked files", async () => {
+        execFileSyncMock.mockReturnValueOnce(undefined);
+        setup();
+        const result = await handlers.get("git:undo")?.({}, "C:/repo", "src/app.ts");
+        expect(result).toBeUndefined();
+        expect(execFileSyncMock).toHaveBeenCalledWith(
+            "git",
+            ["checkout", "--", "src/app.ts"],
+            expect.objectContaining({ cwd: expect.stringMatching(/[\\/]repo$/) }),
+        );
+        expect(rmSyncMock).not.toHaveBeenCalled();
+    });
 });

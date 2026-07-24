@@ -328,4 +328,57 @@ describe("SessionSummaryService", () => {
             expect(matches).toEqual([]);
         });
     });
+
+    // wave-232 residual
+    it("combines workspaceId + sinceMs + limit filters", async () => {
+        const sessions = [
+            buildSession({ id: "old-ws1", workspaceId: "ws1", createdAt: 100 }),
+            buildSession({ id: "new-ws1", workspaceId: "ws1", createdAt: 500 }),
+            buildSession({ id: "new-ws2", workspaceId: "ws2", createdAt: 600 }),
+            buildSession({ id: "newer-ws1", workspaceId: "ws1", createdAt: 900 }),
+        ];
+        const svc = new SessionSummaryService(makeSource(sessions));
+        const results = await svc.searchRecentSessions({
+            workspaceId: "ws1",
+            sinceMs: 200,
+            limit: 1,
+        });
+        expect(results).toHaveLength(1);
+        expect(results[0].sessionId).toBe("newer-ws1");
+    });
+
+    it("searchSessionTranscript unknown query returns empty even with messages", async () => {
+        const session = buildSession({
+            id: "s1",
+            messages: [buildMessage({ id: "m1", role: "user", content: "hello world" })],
+        });
+        const svc = new SessionSummaryService(makeSource([session]));
+        expect(
+            await svc.searchSessionTranscript({ sessionId: "s1", query: "zzzz-not-present" }),
+        ).toEqual([]);
+    });
+
+    it("getSessionMessages preserves chronological order for Date timestamps", async () => {
+        const session = buildSession({
+            id: "s1",
+            messages: [
+                buildMessage({
+                    id: "m1",
+                    role: "user",
+                    content: "first",
+                    timestamp: new Date("2026-01-01T00:00:00.000Z"),
+                }),
+                buildMessage({
+                    id: "m2",
+                    role: "assistant",
+                    content: "second",
+                    timestamp: new Date("2026-01-01T01:00:00.000Z"),
+                }),
+            ],
+        });
+        const svc = new SessionSummaryService(makeSource([session]));
+        const out = await svc.getSessionMessages({ sessionId: "s1" });
+        expect(out.map((m) => m.text)).toEqual(["first", "second"]);
+        expect(out[0].createdAt).toBeLessThan(out[1].createdAt);
+    });
 });

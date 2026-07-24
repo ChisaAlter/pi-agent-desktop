@@ -122,4 +122,126 @@ describe("CodexSessionImporter", () => {
         expect(report.failed).toBe(1);
         expect(report.results[0].error).toMatch(/不匹配|cwd/);
     });
+
+    it("scans nested codex session dirs and maps roles/content shapes", async () => {
+        const nested = join(codexRoot, "2026", "06", "01");
+        await mkdir(nested, { recursive: true });
+        const source = join(nested, "nested.jsonl");
+        await writeFile(
+            source,
+            [
+                JSON.stringify({
+                    type: "session_meta",
+                    payload: { id: "nested-1", cwd: "C:\\demo\\project", timestamp: "2026-06-02T00:00:00.000Z" },
+                }),
+                JSON.stringify({
+                    type: "event_msg",
+                    payload: {
+                        type: "user_message",
+                        content: [{ type: "text", text: "array-user" }],
+                    },
+                }),
+                JSON.stringify({
+                    type: "event_msg",
+                    payload: { type: "reasoning", content: "think" },
+                }),
+                JSON.stringify({
+                    type: "event_msg",
+                    payload: { type: "tool_call", content: "tool-payload" },
+                }),
+                JSON.stringify({
+                    type: "event_msg",
+                    payload: { type: "unknown_kind", content: "skip-me" },
+                }),
+            ].join("\n"),
+            "utf8",
+        );
+
+        const sessions = await importer.scan(projectPath);
+        expect(sessions.some((s) => s.id === "nested-1")).toBe(true);
+        const hit = sessions.find((s) => s.id === "nested-1")!;
+        // user + reasoning(assistant) + tool_call(tool); unknown skipped
+        expect(hit.messageCount).toBe(3);
+
+        const report = await importer.import(projectPath, [source]);
+        expect(report.imported).toBe(1);
+        const raw = await readFile(report.results[0].targetPath!, "utf8");
+        expect(raw).toContain("array-user");
+        expect(raw).toContain("\"role\":\"assistant\"");
+        expect(raw).toContain("\"role\":\"tool\"");
+        expect(raw).not.toContain("skip-me");
+    });
+
+    it("marks re-import status current then outdated when source changes", async () => {
+        const source = join(codexRoot, "status.jsonl");
+        await writeFile(
+            source,
+            [
+                JSON.stringify({
+                    type: "session_meta",
+                    payload: { id: "status-1", cwd: projectPath, timestamp: "2026-06-01T00:00:00.000Z" },
+                }),
+                JSON.stringify({ type: "event_msg", payload: { type: "user_message", content: "v1" } }),
+            ].join("\n"),
+            "utf8",
+        );
+
+        await importer.import(projectPath, [source]);
+        const afterImport = await importer.scan(projectPath);
+        expect(afterImport.find((s) => s.id === "status-1")?.status).toBe("current");
+
+        await writeFile(
+            source,
+            [
+                JSON.stringify({
+                    type: "session_meta",
+                    payload: { id: "status-1", cwd: projectPath, timestamp: "2026-06-01T00:00:00.000Z" },
+                }),
+                JSON.stringify({ type: "event_msg", payload: { type: "user_message", content: "v2-changed" } }),
+            ].join("\n"),
+            "utf8",
+        );
+
+        const afterChange = await importer.scan(projectPath);
+        expect(afterChange.find((s) => s.id === "status-1")?.status).toBe("outdated");
+    });
+
+    it("import empty list is zeroed report; missing meta fails without throw", async () => {
+        const emptyReport = await importer.import(projectPath, []);
+        expect(emptyReport).toEqual({ imported: 0, failed: 0, results: [] });
+
+        const missingMeta = join(codexRoot, "no-meta.jsonl");
+        await writeFile(missingMeta, JSON.stringify({ type: "event_msg", payload: { type: "user_message", content: "x" } }), "utf8");
+        const report = await importer.import(projectPath, [missingMeta]);
+        expect(report.imported).toBe(0);
+        expect(report.failed).toBe(1);
+        expect(report.results[0].error).toMatch(/metadata|缺少/);
+    });
+
+    // wave-230 residual
+    it("scan returns empty when no sessions match project cwd", async () => {
+        await writeFile(
+            join(codexRoot, "other-only.jsonl"),
+            JSON.stringify({ type: "session_meta", payload: { id: "s-other", cwd: "C:/other" } }),
+            "utf8",
+        );
+        expect(await importer.scan(projectPath)).toEqual([]);
+    });
+
+    it("skips completely empty jsonl files without failing the scan", async () => {
+        await writeFile(join(codexRoot, "empty.jsonl"), "", "utf8");
+        await writeFile(
+            join(codexRoot, "ok.jsonl"),
+            [
+                JSON.stringify({
+                    type: "session_meta",
+                    payload: { id: "ok-1", cwd: projectPath, timestamp: "2026-06-01T00:00:00.000Z" },
+                }),
+                JSON.stringify({ type: "event_msg", payload: { type: "user_message", content: "hi" } }),
+            ].join("\n"),
+            "utf8",
+        );
+        const sessions = await importer.scan(projectPath);
+        expect(sessions.map((s) => s.id)).toEqual(["ok-1"]);
+    });
 });

@@ -429,3 +429,46 @@ describe("settings-store: Pi 配置变更同步", () => {
         });
     });
 });
+
+// wave-129 residual
+describe("settings-store residual rightRail/fontSize", () => {
+    beforeEach(async () => {
+        vi.resetModules();
+        const { useSettingsStore } = await import("../settings-store");
+        useSettingsStore.setState({
+            rightRailCollapsed: true,
+            lastWriteError: null,
+        });
+        (globalThis as { window?: unknown }).window = {
+            piAPI: {
+                setSettings: vi.fn(async () => undefined),
+            },
+            localStorage: {
+                getItem: vi.fn(() => null),
+                setItem: vi.fn(),
+                removeItem: vi.fn(),
+            },
+        };
+    });
+
+    it("toggleRightRail flips collapsed state without IPC", async () => {
+        const { useSettingsStore } = await import("../settings-store");
+        expect(useSettingsStore.getState().rightRailCollapsed).toBe(true);
+        useSettingsStore.getState().toggleRightRail();
+        expect(useSettingsStore.getState().rightRailCollapsed).toBe(false);
+        useSettingsStore.getState().toggleRightRail();
+        expect(useSettingsStore.getState().rightRailCollapsed).toBe(true);
+    });
+
+    it("updateSettings applies clamped fontSize to DOM but keeps raw settings value", async () => {
+        const { useSettingsStore } = await import("../settings-store");
+        const { normalizeFontSize } = await import("../../utils/theme");
+        // product: optimistic merge stores raw fontSize; only applyAndCacheFontSize clamps for CSS vars
+        useSettingsStore.getState().updateSettings({ fontSize: 99 });
+        expect(useSettingsStore.getState().settings.fontSize).toBe(99);
+        expect(normalizeFontSize(99)).toBe(20);
+        useSettingsStore.getState().updateSettings({ fontSize: 1 });
+        expect(useSettingsStore.getState().settings.fontSize).toBe(1);
+        expect(normalizeFontSize(1)).toBe(12);
+    });
+});

@@ -52,4 +52,34 @@ describe("claude/codex session importer IPC wrappers", () => {
       handlers.get("codex-sessions:import")!({}, "D:/repo", ["b.jsonl"]),
     ).resolves.toEqual({ p: "D:/repo", sources: ["b.jsonl"], kind: "codex" });
   });
+
+  // wave-100 residual: schema throws (not ipcError wrap) for invalid args
+  it("rejects empty workspacePath for claude scan/import", async () => {
+    const importer = { scan: vi.fn(), import: vi.fn() };
+    setupClaudeSessionsIpc(importer as never);
+    await expect(handlers.get("claude-sessions:scan")!({}, "")).rejects.toThrow();
+    await expect(handlers.get("claude-sessions:import")!({}, "", ["a.jsonl"])).rejects.toThrow();
+    expect(importer.scan).not.toHaveBeenCalled();
+    expect(importer.import).not.toHaveBeenCalled();
+  });
+
+  it("rejects empty source path entries and oversized import arrays for codex", async () => {
+    const importer = { scan: vi.fn(), import: vi.fn() };
+    setupCodexSessionsIpc(importer as never);
+    await expect(handlers.get("codex-sessions:import")!({}, "D:/repo", [""])).rejects.toThrow();
+    const tooMany = Array.from({ length: 101 }, (_, i) => `s${i}.jsonl`);
+    await expect(handlers.get("codex-sessions:import")!({}, "D:/repo", tooMany)).rejects.toThrow();
+    expect(importer.import).not.toHaveBeenCalled();
+  });
+
+  it("propagates importer scan failures without wrapping", async () => {
+    const importer = {
+      scan: vi.fn(async () => {
+        throw new Error("scan io failed");
+      }),
+      import: vi.fn(),
+    };
+    setupClaudeSessionsIpc(importer as never);
+    await expect(handlers.get("claude-sessions:scan")!({}, "C:/ws")).rejects.toThrow("scan io failed");
+  });
 });

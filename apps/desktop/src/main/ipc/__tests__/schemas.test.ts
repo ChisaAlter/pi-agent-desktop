@@ -18,6 +18,10 @@ import {
     gitDiffSchema,
     gitDiffStagedSchema,
     gitUndoSchema,
+    gitCheckoutSchema,
+    gitCreateBranchSchema,
+    gitLogSchema,
+    gitStatusSchema,
     packageSourceSchema,
     terminalCreateSchema,
     terminalInputSchema,
@@ -27,6 +31,39 @@ import {
     searchFilesSchema,
     listFilesSchema,
     writeTextFileSchema,
+    archiveSessionSchema,
+    updateSessionMetadataSchema,
+    packageSearchSchema,
+    projectDetectSchema,
+    projectFileTreeSchema,
+    appendMessageSchema,
+    updateToolCallSchema,
+    agentsCreateSchema,
+    agentsPromptSchema,
+    agentsIdSchema,
+    agentsSetThinkingSchema,
+    codexScanSchema,
+    codexImportSchema,
+    claudeScanSchema,
+    claudeImportSchema,
+    workbenchSetActiveFileSchema,
+    PlanCreateSchema,
+    PlanUpdateSchema,
+    PlanListOptionsSchema,
+    PlanFilenameSchema,
+    gitBranchesSchema,
+    gitOriginalContentSchema,
+    gitChangedFilesSchema,
+    updateMessageSchema,
+    TaskCreateSchema,
+    TaskListSchema,
+    TaskGetSchema,
+    TaskStartSchema,
+    TaskRenameSchema,
+    GoalEvaluateSchema,
+    SubagentListTypesSchema,
+    SubagentListInstancesSchema,
+    SubagentCancelSchema,
 } from "../schemas";
 
 describe("workspaceCreateSchema", () => {
@@ -349,5 +386,509 @@ describe("file IPC schemas", () => {
         expect(() => searchFilesSchema.parse(["C:/repo", ""])).toThrow(ZodError);
         expect(() => searchFilesSchema.parse(["C:/repo", "app", { limit: 999 }])).toThrow(ZodError);
         expect(() => listFilesSchema.parse([""])).toThrow(ZodError);
+    });
+});
+
+
+// wave-85 residual: session/package/project IPC schema edges
+describe("archiveSessionSchema", () => {
+    it("accepts session id and boolean flag", () => {
+        expect(() => archiveSessionSchema.parse(["sess_1", true])).not.toThrow();
+        expect(() => archiveSessionSchema.parse(["sess_1", false])).not.toThrow();
+    });
+
+    it("rejects blank session id and non-boolean flag", () => {
+        expect(() => archiveSessionSchema.parse(["", true])).toThrow(ZodError);
+        expect(() => archiveSessionSchema.parse(["sess_1", "yes"])).toThrow(ZodError);
+        expect(() => archiveSessionSchema.parse(["sess_1"])).toThrow(ZodError);
+    });
+});
+
+describe("updateSessionMetadataSchema", () => {
+    it("accepts known metadata fields", () => {
+        expect(() =>
+            updateSessionMetadataSchema.parse([
+                "sess_1",
+                {
+                    summary: "hello",
+                    favorite: true,
+                    tags: ["a", "b"],
+                    usage: {
+                        provider: "mimo",
+                        model: "m",
+                        updatedAt: 1,
+                    },
+                    toolPermissions: { fileRead: true, shell: false },
+                },
+            ]),
+        ).not.toThrow();
+    });
+
+    it("rejects unknown metadata keys (strict) and blank session id", () => {
+        expect(() => updateSessionMetadataSchema.parse(["", { summary: "x" }])).toThrow(ZodError);
+        expect(() =>
+            updateSessionMetadataSchema.parse(["sess_1", { notAField: true }]),
+        ).toThrow(ZodError);
+        expect(() =>
+            updateSessionMetadataSchema.parse([
+                "sess_1",
+                { usage: { updatedAt: 1, compactionStatus: "nope" } },
+            ]),
+        ).toThrow(ZodError);
+    });
+});
+
+describe("packageSearchSchema", () => {
+    it("accepts empty and short queries", () => {
+        expect(() => packageSearchSchema.parse([""])).not.toThrow();
+        expect(() => packageSearchSchema.parse(["pi-"])).not.toThrow();
+    });
+
+    it("rejects oversized queries", () => {
+        expect(() => packageSearchSchema.parse(["q".repeat(257)])).toThrow(ZodError);
+    });
+});
+
+describe("projectDetectSchema / projectFileTreeSchema", () => {
+    it("accepts workspace path and capped depth", () => {
+        expect(() => projectDetectSchema.parse(["C:/repo"])).not.toThrow();
+        expect(() => projectFileTreeSchema.parse(["C:/repo"])).not.toThrow();
+        expect(() => projectFileTreeSchema.parse(["C:/repo", 4])).not.toThrow();
+        expect(() => projectFileTreeSchema.parse(["C:/repo", 20])).not.toThrow();
+    });
+
+    it("rejects blank workspace and depth above 20", () => {
+        expect(() => projectDetectSchema.parse([""])).toThrow(ZodError);
+        expect(() => projectFileTreeSchema.parse([""])).toThrow(ZodError);
+        expect(() => projectFileTreeSchema.parse(["C:/repo", 21])).toThrow(ZodError);
+        expect(() => projectFileTreeSchema.parse(["C:/repo", -1])).toThrow(ZodError);
+    });
+});
+
+describe("appendMessageSchema / updateToolCallSchema", () => {
+    it("accepts minimal valid append payloads", () => {
+        expect(() =>
+            appendMessageSchema.parse([
+                "sess_1",
+                {
+                    id: "m1",
+                    role: "user",
+                    content: "hi",
+                    timestamp: Date.now(),
+                },
+            ]),
+        ).not.toThrow();
+    });
+
+    it("rejects blank session id for append", () => {
+        expect(() =>
+            appendMessageSchema.parse([
+                "",
+                { id: "m1", role: "user", content: "hi", timestamp: 1 },
+            ]),
+        ).toThrow(ZodError);
+    });
+
+    it("accepts tool call status updates and rejects blank ids", () => {
+        expect(() =>
+            updateToolCallSchema.parse([
+                "sess_1",
+                "m1",
+                "tc1",
+                { status: "completed" },
+            ]),
+        ).not.toThrow();
+        expect(() =>
+            updateToolCallSchema.parse(["", "m1", "tc1", { status: "completed" }]),
+        ).toThrow(ZodError);
+        expect(() =>
+            updateToolCallSchema.parse(["sess_1", "", "tc1", { status: "completed" }]),
+        ).toThrow(ZodError);
+    });
+});
+
+// wave-94 residual — Task / Goal / Subagent IPC schemas
+describe("Task IPC schemas", () => {
+    it("accepts TaskCreate with nested parent task ids", () => {
+        expect(() =>
+            TaskCreateSchema.parse({
+                workspaceId: "ws1",
+                summary: "do work",
+                parentId: "T1.2.3",
+                owner: "agent-a",
+            }),
+        ).not.toThrow();
+    });
+
+    it("rejects TaskCreate without summary or invalid task id", () => {
+        expect(() =>
+            TaskCreateSchema.parse({ workspaceId: "ws1", summary: "" }),
+        ).toThrow(ZodError);
+        expect(() =>
+            TaskCreateSchema.parse({
+                workspaceId: "ws1",
+                summary: "x",
+                parentId: "task-1",
+            }),
+        ).toThrow(ZodError);
+        expect(() =>
+            TaskCreateSchema.parse({
+                workspaceId: "ws1",
+                summary: "x",
+                extra: true,
+            } as never),
+        ).toThrow(ZodError);
+    });
+
+    it("accepts TaskList filters and rejects blank workspace", () => {
+        expect(() =>
+            TaskListSchema.parse({
+                workspaceId: "ws1",
+                status: "in_progress",
+                includeTerminal: true,
+            }),
+        ).not.toThrow();
+        expect(() => TaskListSchema.parse({ workspaceId: "" })).toThrow(ZodError);
+        expect(() =>
+            TaskListSchema.parse({ workspaceId: "ws1", status: "running" as never }),
+        ).toThrow(ZodError);
+    });
+
+    it("accepts TaskGet/TaskStart/TaskRename and rejects invalid ids", () => {
+        expect(() => TaskGetSchema.parse({ workspaceId: "ws1", id: "T10" })).not.toThrow();
+        expect(() =>
+            TaskStartSchema.parse({ workspaceId: "ws1", id: "T1", owner: "me" }),
+        ).not.toThrow();
+        expect(() =>
+            TaskRenameSchema.parse({ workspaceId: "ws1", id: "T1", summary: "renamed" }),
+        ).not.toThrow();
+        expect(() => TaskGetSchema.parse({ workspaceId: "ws1", id: "1" })).toThrow(ZodError);
+        expect(() =>
+            TaskRenameSchema.parse({ workspaceId: "ws1", id: "T1", summary: "" }),
+        ).toThrow(ZodError);
+    });
+});
+
+describe("GoalEvaluateSchema", () => {
+    it("accepts workspaceId with optional agentId", () => {
+        expect(() => GoalEvaluateSchema.parse({ workspaceId: "ws1" })).not.toThrow();
+        expect(() =>
+            GoalEvaluateSchema.parse({ workspaceId: "ws1", agentId: "agent-1" }),
+        ).not.toThrow();
+    });
+
+    it("rejects blank workspaceId and unknown keys", () => {
+        expect(() => GoalEvaluateSchema.parse({ workspaceId: "" })).toThrow(ZodError);
+        expect(() =>
+            GoalEvaluateSchema.parse({ workspaceId: "ws1", extra: 1 } as never),
+        ).toThrow(ZodError);
+    });
+});
+
+describe("Subagent IPC schemas", () => {
+    it("accepts empty list-types and optional workspaceId", () => {
+        expect(() => SubagentListTypesSchema.parse({})).not.toThrow();
+        expect(() =>
+            SubagentListTypesSchema.parse({ workspaceId: "ws1" }),
+        ).not.toThrow();
+        expect(() =>
+            SubagentListTypesSchema.parse({ workspaceId: "" }),
+        ).toThrow(ZodError);
+    });
+
+    it("requires non-empty agentId/actorId for list/cancel", () => {
+        expect(() =>
+            SubagentListInstancesSchema.parse({ agentId: "main" }),
+        ).not.toThrow();
+        expect(() =>
+            SubagentCancelSchema.parse({ agentId: "main", actorId: "a1" }),
+        ).not.toThrow();
+        expect(() => SubagentListInstancesSchema.parse({ agentId: "" })).toThrow(ZodError);
+        expect(() =>
+            SubagentCancelSchema.parse({ agentId: "main", actorId: "" }),
+        ).toThrow(ZodError);
+        expect(() =>
+            SubagentCancelSchema.parse({ agentId: "main" } as never),
+        ).toThrow(ZodError);
+    });
+});
+
+// wave-116 residual
+describe("git branch / log schemas residual", () => {
+    it("requires non-empty workspace and branch for checkout/create", () => {
+        expect(() => gitCheckoutSchema.parse(["C:/ws", "main"])).not.toThrow();
+        expect(() => gitCreateBranchSchema.parse(["C:/ws", "feat/x"])).not.toThrow();
+        expect(() => gitCheckoutSchema.parse(["", "main"])).toThrow(ZodError);
+        expect(() => gitCheckoutSchema.parse(["C:/ws", ""])).toThrow(ZodError);
+        expect(() => gitCreateBranchSchema.parse(["C:/ws", ""])).toThrow(ZodError);
+    });
+
+    it("accepts git log count within 1..1000 (tuple still requires 2 slots)", () => {
+        // product: second element is .optional() but Zod tuple still needs length >= 2
+        expect(() => gitLogSchema.parse(["C:/ws"])).toThrow(ZodError);
+        expect(() => gitLogSchema.parse(["C:/ws", undefined])).not.toThrow();
+        expect(() => gitLogSchema.parse(["C:/ws", 20])).not.toThrow();
+        expect(() => gitLogSchema.parse(["C:/ws", 1000])).not.toThrow();
+        expect(() => gitLogSchema.parse(["C:/ws", 0])).toThrow(ZodError);
+        expect(() => gitLogSchema.parse(["C:/ws", 1001])).toThrow(ZodError);
+        expect(() => gitLogSchema.parse(["C:/ws", 1.5])).toThrow(ZodError);
+        expect(() => gitStatusSchema.parse(["C:/ws"])).not.toThrow();
+        expect(() => gitStatusSchema.parse([""])).toThrow(ZodError);
+    });
+});
+
+describe("agents IPC schemas residual", () => {
+    it("requires workspaceId and allows optional model/provider/title", () => {
+        expect(() => agentsCreateSchema.parse({ workspaceId: "ws1" })).not.toThrow();
+        expect(() =>
+            agentsCreateSchema.parse({
+                workspaceId: "ws1",
+                title: "t",
+                model: "m",
+                provider: "p",
+            }),
+        ).not.toThrow();
+        expect(() => agentsCreateSchema.parse({ workspaceId: "" })).toThrow(ZodError);
+        expect(() => agentsCreateSchema.parse({} as never)).toThrow(ZodError);
+    });
+
+    it("validates agentsPrompt streamingBehavior and thinking levels", () => {
+        expect(() =>
+            agentsPromptSchema.parse({ agentId: "a1", message: "hi", streamingBehavior: "steer" }),
+        ).not.toThrow();
+        expect(() =>
+            agentsPromptSchema.parse({ agentId: "a1", message: "hi", streamingBehavior: "followUp" }),
+        ).not.toThrow();
+        expect(() =>
+            agentsPromptSchema.parse({ agentId: "a1", message: "hi", streamingBehavior: "other" as never }),
+        ).toThrow(ZodError);
+        expect(() => agentsPromptSchema.parse({ agentId: "a1", message: "" })).toThrow(ZodError);
+
+        for (const level of ["off", "minimal", "low", "medium", "high", "xhigh"] as const) {
+            expect(() => agentsSetThinkingSchema.parse(["a1", level])).not.toThrow();
+        }
+        expect(() => agentsSetThinkingSchema.parse(["a1", "ultra" as never])).toThrow(ZodError);
+        expect(() => agentsSetThinkingSchema.parse(["", "low"])).toThrow(ZodError);
+    });
+
+    it("caps codex import sourcePaths at 100 non-empty strings", () => {
+        expect(() => codexImportSchema.parse(["C:/ws", ["a.jsonl"]])).not.toThrow();
+        expect(() => codexImportSchema.parse(["C:/ws", [""]])).toThrow(ZodError);
+        expect(() => codexImportSchema.parse(["C:/ws", Array.from({ length: 101 }, (_, i) => `s${i}`)])).toThrow(
+            ZodError,
+        );
+        expect(() => codexImportSchema.parse(["", ["a.jsonl"]])).toThrow(ZodError);
+    });
+});
+
+// wave-117 residual
+describe("agentsId / session import / workbench residual", () => {
+    it("requires a non-empty agentId tuple", () => {
+        expect(() => agentsIdSchema.parse(["agent-1"])).not.toThrow();
+        expect(() => agentsIdSchema.parse([""])).toThrow(ZodError);
+        expect(() => agentsIdSchema.parse([])).toThrow(ZodError);
+        expect(() => agentsIdSchema.parse(["a", "extra"])).toThrow(ZodError);
+    });
+
+    it("accepts codex/claude scan and caps import sourcePaths at 100", () => {
+        expect(() => codexScanSchema.parse(["C:/ws"])).not.toThrow();
+        expect(() => claudeScanSchema.parse(["C:/ws"])).not.toThrow();
+        expect(() => codexScanSchema.parse([""])).toThrow(ZodError);
+        expect(() => claudeScanSchema.parse([""])).toThrow(ZodError);
+
+        expect(() => claudeImportSchema.parse(["C:/ws", ["a.jsonl"]])).not.toThrow();
+        expect(() => claudeImportSchema.parse(["C:/ws", [""]])).toThrow(ZodError);
+        expect(() =>
+            claudeImportSchema.parse(["C:/ws", Array.from({ length: 101 }, (_, i) => `s${i}`)]),
+        ).toThrow(ZodError);
+        expect(() => codexImportSchema.parse(["C:/ws", Array.from({ length: 100 }, (_, i) => `s${i}`)])).not.toThrow();
+    });
+
+    it("allows null active file for workbench while rejecting blank workspace/path", () => {
+        expect(() => workbenchSetActiveFileSchema.parse(["ws1", null])).not.toThrow();
+        expect(() => workbenchSetActiveFileSchema.parse(["ws1", "src/a.ts"])).not.toThrow();
+        expect(() => workbenchSetActiveFileSchema.parse(["", "src/a.ts"])).toThrow(ZodError);
+        expect(() => workbenchSetActiveFileSchema.parse(["ws1", ""])).toThrow(ZodError);
+    });
+});
+
+describe("plan IPC schemas residual", () => {
+    it("enforces slug/title/content length caps and strict objects", () => {
+        expect(() =>
+            PlanCreateSchema.parse({
+                workspaceId: "ws1",
+                slug: "my-plan",
+                title: "t",
+                content: "# plan",
+            }),
+        ).not.toThrow();
+        expect(() =>
+            PlanCreateSchema.parse({
+                workspaceId: "ws1",
+                slug: "x".repeat(201),
+                title: "t",
+                content: "",
+            }),
+        ).toThrow(ZodError);
+        expect(() =>
+            PlanCreateSchema.parse({
+                workspaceId: "ws1",
+                slug: "ok",
+                title: "t".repeat(501),
+                content: "",
+            }),
+        ).toThrow(ZodError);
+        expect(() =>
+            PlanCreateSchema.parse({
+                workspaceId: "ws1",
+                slug: "ok",
+                title: "t",
+                content: "",
+                extra: true,
+            } as never),
+        ).toThrow(ZodError);
+    });
+
+    it("validates plan update status enum and list/filename shapes", () => {
+        expect(() =>
+            PlanUpdateSchema.parse({
+                workspaceId: "ws1",
+                filename: "plan.md",
+                status: "draft",
+            }),
+        ).not.toThrow();
+        expect(() =>
+            PlanUpdateSchema.parse({
+                workspaceId: "ws1",
+                filename: "plan.md",
+                status: "running" as never,
+            }),
+        ).toThrow(ZodError);
+        expect(() =>
+            PlanListOptionsSchema.parse({
+                workspaceId: "ws1",
+                includeCompleted: true,
+                includeCancelled: false,
+            }),
+        ).not.toThrow();
+        expect(() => PlanListOptionsSchema.parse({ workspaceId: "" })).toThrow(ZodError);
+        expect(() => PlanFilenameSchema.parse({ workspaceId: "ws1", filename: "a.md" })).not.toThrow();
+        expect(() => PlanFilenameSchema.parse({ workspaceId: "ws1", filename: "" })).toThrow(ZodError);
+        expect(() =>
+            PlanFilenameSchema.parse({ workspaceId: "ws1", filename: "f".repeat(261) }),
+        ).toThrow(ZodError);
+    });
+});
+
+describe("git branches / original content / update-message residual", () => {
+    it("requires non-empty workspace for branches/changed-files and file path for original content", () => {
+        expect(() => gitBranchesSchema.parse(["C:/ws"])).not.toThrow();
+        expect(() => gitBranchesSchema.parse([""])).toThrow(ZodError);
+        expect(() => gitChangedFilesSchema.parse(["C:/ws"])).not.toThrow();
+        expect(() => gitOriginalContentSchema.parse(["C:/ws", "src/a.ts"])).not.toThrow();
+        expect(() => gitOriginalContentSchema.parse(["C:/ws", ""])).toThrow(ZodError);
+        expect(() => gitOriginalContentSchema.parse(["", "src/a.ts"])).toThrow(ZodError);
+    });
+
+    it("accepts partial updateMessage payloads and rejects blank ids", () => {
+        expect(() =>
+            updateMessageSchema.parse(["s1", "m1", { content: "updated" }]),
+        ).not.toThrow();
+        expect(() =>
+            updateMessageSchema.parse(["s1", "m1", { role: "assistant", thinking: "..." }]),
+        ).not.toThrow();
+        expect(() => updateMessageSchema.parse(["", "m1", {}])).toThrow(ZodError);
+        expect(() => updateMessageSchema.parse(["s1", "", {}])).toThrow(ZodError);
+        expect(() =>
+            updateMessageSchema.parse(["s1", "m1", { role: "tool" as never }]),
+        ).toThrow(ZodError);
+    });
+});
+
+// wave-205 residual
+describe("schemas residual (wave-205)", () => {
+    it("terminalCreate/Resize enforce cols/rows bounds and strict create object", () => {
+        expect(() => terminalCreateSchema.parse([{ cols: 20, rows: 4 }])).not.toThrow();
+        expect(() => terminalCreateSchema.parse([{ cols: 500, rows: 200 }])).not.toThrow();
+        expect(() => terminalCreateSchema.parse([{ cols: 19 }])).toThrow(ZodError);
+        expect(() => terminalCreateSchema.parse([{ rows: 201 }])).toThrow(ZodError);
+        expect(() => terminalCreateSchema.parse([{ id: "t1", extra: true } as never])).toThrow(ZodError);
+        expect(() => terminalResizeSchema.parse(["pty", 20, 4])).not.toThrow();
+        expect(() => terminalResizeSchema.parse(["pty", 500, 200])).not.toThrow();
+        expect(() => terminalResizeSchema.parse(["pty", 501, 40])).toThrow(ZodError);
+        expect(() => terminalResizeSchema.parse(["pty", 80, 3])).toThrow(ZodError);
+    });
+
+    it("TaskCreate parentId regex and TaskList status enum", () => {
+        expect(() =>
+            TaskCreateSchema.parse({ workspaceId: "ws", summary: "s", parentId: "T1.2.3" }),
+        ).not.toThrow();
+        expect(() =>
+            TaskCreateSchema.parse({ workspaceId: "ws", summary: "s", parentId: "task-1" }),
+        ).toThrow(ZodError);
+        expect(() =>
+            TaskCreateSchema.parse({ workspaceId: "ws", summary: "s", parentId: "T" }),
+        ).toThrow(ZodError);
+        for (const status of ["open", "in_progress", "blocked", "done", "abandoned"] as const) {
+            expect(() => TaskListSchema.parse({ workspaceId: "ws", status })).not.toThrow();
+        }
+        expect(() => TaskListSchema.parse({ workspaceId: "ws", status: "pending" as never })).toThrow(
+            ZodError,
+        );
+    });
+
+    it("GoalEvaluate and SubagentCancel strict shapes", () => {
+        expect(() => GoalEvaluateSchema.parse({ workspaceId: "ws", agentId: "a1" })).not.toThrow();
+        expect(() => GoalEvaluateSchema.parse({ workspaceId: "ws", agentId: "" })).not.toThrow();
+        expect(() =>
+            SubagentCancelSchema.parse({ agentId: "main", actorId: "actor-1" }),
+        ).not.toThrow();
+        expect(() =>
+            SubagentCancelSchema.parse({ agentId: "", actorId: "actor-1" }),
+        ).toThrow(ZodError);
+        expect(() =>
+            SubagentCancelSchema.parse({ agentId: "main", actorId: "a", extra: 1 } as never),
+        ).toThrow(ZodError);
+    });
+
+    it("updateToolCall status enum subset and agentsSetThinking levels", () => {
+        for (const status of ["pending", "running", "completed", "error"] as const) {
+            expect(() =>
+                updateToolCallSchema.parse(["s", "m", "tc", { status }]),
+            ).not.toThrow();
+        }
+        expect(() =>
+            updateToolCallSchema.parse(["s", "m", "tc", { status: "success" as never }]),
+        ).toThrow(ZodError);
+        for (const level of ["off", "minimal", "low", "medium", "high", "xhigh"] as const) {
+            expect(() => agentsSetThinkingSchema.parse(["agent", level])).not.toThrow();
+        }
+        expect(() => agentsSetThinkingSchema.parse(["", "low"])).toThrow(ZodError);
+    });
+
+    it("PlanUpdate allows content-only and rejects unknown status", () => {
+        expect(() =>
+            PlanUpdateSchema.parse({
+                workspaceId: "ws",
+                filename: "p.md",
+                content: "# updated",
+            }),
+        ).not.toThrow();
+        expect(() =>
+            PlanUpdateSchema.parse({
+                workspaceId: "ws",
+                filename: "p.md",
+                status: "executing",
+            }),
+        ).not.toThrow();
+        expect(() =>
+            PlanUpdateSchema.parse({
+                workspaceId: "ws",
+                filename: "p.md",
+                status: "failed" as never,
+            }),
+        ).toThrow(ZodError);
+        expect(() => archiveSessionSchema.parse(["sess", true])).not.toThrow();
+        expect(() => archiveSessionSchema.parse(["sess", 1 as never])).toThrow(ZodError);
     });
 });

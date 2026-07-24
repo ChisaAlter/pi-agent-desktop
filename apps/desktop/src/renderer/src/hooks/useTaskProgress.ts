@@ -3,7 +3,7 @@ import { isIpcError, type GoalState, type LongHorizonTaskRecord, type PlanProgre
 import type { TaskProgressItem, TaskStatus } from "../components/MiniMaxCode/TaskProgressPanel";
 import { useWorkspaceStore } from "../stores/workspace-store";
 
-function mapTaskStatus(status: LongHorizonTaskRecord["status"]): TaskStatus {
+export function mapTaskStatus(status: LongHorizonTaskRecord["status"]): TaskStatus {
     switch (status) {
         case "running":
             return "running";
@@ -19,7 +19,7 @@ function mapTaskStatus(status: LongHorizonTaskRecord["status"]): TaskStatus {
     }
 }
 
-function toProgressItem(task: LongHorizonTaskRecord): TaskProgressItem {
+export function toProgressItem(task: LongHorizonTaskRecord): TaskProgressItem {
     return {
         id: task.id,
         name: task.text,

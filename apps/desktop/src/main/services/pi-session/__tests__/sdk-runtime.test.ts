@@ -67,4 +67,69 @@ describe("sdk-runtime", () => {
     const thirdMod = await loadPiSdk(baseDir);
     expect(thirdMod).toBeTruthy();
   });
+
+  // wave-232 residual
+  it("resolvePiSdkEntry walks candidates outer-first; first existing wins", () => {
+    const root = join(tmpdir(), `pi-sdk-runtime-near-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+    roots.push(root);
+    const baseDir = join(root, "a", "b", "c", "d");
+    mkdirSync(baseDir, { recursive: true });
+    const outer = join(root, "node_modules", "@earendil-works", "pi-coding-agent", "dist", "index.js");
+    const inner = join(root, "a", "b", "node_modules", "@earendil-works", "pi-coding-agent", "dist", "index.js");
+    mkdirSync(join(outer, ".."), { recursive: true });
+    mkdirSync(join(inner, ".."), { recursive: true });
+    writeFileSync(outer, "export const outer = true;\n", "utf8");
+    writeFileSync(inner, "export const inner = true;\n", "utf8");
+    // product candidate order starts at ../../../../ so outer wins even if inner exists
+    expect(resolvePiSdkEntry(baseDir)).toBe(outer);
+  });
+
+  it("resetPiSdkForTests allows loadPiSdk to throw again for missing entry", async () => {
+    const root = join(tmpdir(), `pi-sdk-runtime-reset-throw-${Date.now()}`);
+    roots.push(root);
+    const baseDir = join(root, "x");
+    mkdirSync(baseDir, { recursive: true });
+    await expect(loadPiSdk(baseDir)).rejects.toThrow(/Pi SDK runtime entry not found/);
+    resetPiSdkForTests();
+    await expect(loadPiSdk(baseDir)).rejects.toThrow(/Pi SDK runtime entry not found/);
+  });
+
+
+
+  // wave-306 residual
+  describe("sdk-runtime residual (wave-306)", () => {
+    it("resolvePiSdkEntry finds middle candidate ../../../ when outer missing", () => {
+      const root = join(tmpdir(), `pi-sdk-runtime-mid-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+      roots.push(root);
+      // baseDir depth: root/a/b/c so ../../../ = root, ../../../../ = parent of root
+      const baseDir = join(root, "a", "b", "c");
+      mkdirSync(baseDir, { recursive: true });
+      const mid = join(root, "node_modules", "@earendil-works", "pi-coding-agent", "dist", "index.js");
+      mkdirSync(join(mid, ".."), { recursive: true });
+      writeFileSync(mid, "export const mid = true;\n", "utf8");
+      expect(resolvePiSdkEntry(baseDir)).toBe(mid);
+    });
+
+    it("resolvePiSdkEntry finds innermost ../../ candidate when outer two missing", () => {
+      const root = join(tmpdir(), `pi-sdk-runtime-inner-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+      roots.push(root);
+      const baseDir = join(root, "a", "b");
+      mkdirSync(baseDir, { recursive: true });
+      // ../../ from a/b = root
+      const inner = join(root, "node_modules", "@earendil-works", "pi-coding-agent", "dist", "index.js");
+      mkdirSync(join(inner, ".."), { recursive: true });
+      writeFileSync(inner, "export const inner = true;\n", "utf8");
+      expect(resolvePiSdkEntry(baseDir)).toBe(inner);
+    });
+
+    it("loadPiSdk reuses cached promise across concurrent callers before reset", async () => {
+      const { baseDir } = makeTree("concurrent");
+      const [a, b] = await Promise.all([loadPiSdk(baseDir), loadPiSdk(baseDir)]);
+      expect(a).toBe(b);
+      resetPiSdkForTests();
+      const c = await loadPiSdk(baseDir);
+      expect(c).toBeTruthy();
+    });
+  });
+
 });

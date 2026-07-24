@@ -269,4 +269,37 @@ describe("setupPlanIpc", () => {
         expect(typeof result.fallback).toBe("string");
         expect(result.fallback.length).toBeGreaterThan(0);
     });
+
+    // wave-102 residual
+    it("returns completeFailed when completing a missing plan file", async () => {
+        const result = await handlers.get("plan:complete")!({}, {
+            workspaceId: "ws_1",
+            filename: "missing-plan.md",
+        });
+        expect(result).toMatchObject({ code: "ipcErrors.plan.completeFailed" });
+    });
+
+    it("rejects invalid plan:delete input and deletes an existing plan", async () => {
+        const invalid = await handlers.get("plan:delete")!({}, {
+            workspaceId: "",
+            filename: "x.md",
+        });
+        expect(invalid).toMatchObject({ code: "ipcErrors.plan.invalidInput" });
+
+        const created = (await handlers.get("plan:create")!({}, {
+            workspaceId: "ws_1",
+            slug: "to-delete",
+            title: "del",
+            content: "body",
+        })) as PlanRecord;
+        expect(existsSync(created.path)).toBe(true);
+        const deleted = await handlers.get("plan:delete")!({}, {
+            workspaceId: "ws_1",
+            filename: created.filename,
+        });
+        expect(deleted).toBeUndefined();
+        expect(existsSync(created.path)).toBe(false);
+        const listed = (await handlers.get("plan:list")!({}, { workspaceId: "ws_1" })) as PlanRecord[];
+        expect(listed).toHaveLength(0);
+    });
 });

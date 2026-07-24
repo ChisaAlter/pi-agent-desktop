@@ -106,6 +106,8 @@ describe("preload surface audit", () => {
     });
 
     it("invoke allowlist contains only channels without dedicated piAPI methods", () => {
+        // Historical contract list mixed invoke+send channels. Product ALLOWED_INVOKE
+        // is the set enforced by piAPI.invoke; send-only channels live on piAPI.send.
         const INVOKE_ONLY_CHANNELS = [
             "settings:load-pi-config",
             "pi:get-full-config",
@@ -126,5 +128,98 @@ describe("preload surface audit", () => {
         // Task 24.4: pi:describe-images now has a dedicated describeImages method,
         // so it must NOT be routed through the generic send allowlist.
         expect(INVOKE_ONLY_CHANNELS).not.toContain("pi:describe-images");
+    });
+
+    // wave-140 residual
+    it("forwards memorySearch / memoryListRecent / describeImages on dedicated channels", async () => {
+        const memorySearch = piAPI.memorySearch as (input: { query: string }) => Promise<unknown>;
+        const memoryListRecent = piAPI.memoryListRecent as (input: {
+            limit?: number;
+        }) => Promise<unknown>;
+        const describeImages = piAPI.describeImages as (
+            images: Array<{ mimeType: string; data: string }>,
+        ) => Promise<unknown>;
+
+        await memorySearch({ query: "plan" });
+        await memoryListRecent({ limit: 5 });
+        await describeImages([{ mimeType: "image/png", data: "abc" }]);
+
+        expect(ipcRenderer.invoke).toHaveBeenCalledWith("pi:memory-search", { query: "plan" });
+        expect(ipcRenderer.invoke).toHaveBeenCalledWith("pi:memory-list-recent", { limit: 5 });
+        expect(ipcRenderer.invoke).toHaveBeenCalledWith("pi:describe-images", [
+            { mimeType: "image/png", data: "abc" },
+        ]);
+    });
+
+    it("enforces product invoke allowlist and rejects high-risk channels", async () => {
+        const invoke = piAPI.invoke as (channel: string, ...args: unknown[]) => Promise<unknown>;
+        const allowed = [
+            "settings:load-pi-config",
+            "pi:get-full-config",
+            "config:save-raw",
+            "config:export",
+            "config:import",
+            "goal:set",
+            "goal:clear",
+            "goal:get",
+        ];
+        for (const channel of allowed) {
+            vi.mocked(ipcRenderer.invoke).mockClear();
+            await invoke(channel, { ok: true });
+            expect(ipcRenderer.invoke).toHaveBeenCalledWith(channel, { ok: true });
+        }
+
+        await expect(invoke("pi:send", "ws", "hi")).rejects.toThrow(/Channel not allowed/);
+        await expect(invoke("session:list")).rejects.toThrow(/Channel not allowed/);
+        await expect(invoke("shell:exec")).rejects.toThrow(/Channel not allowed/);
+        // Rejected channels must not reach ipcRenderer.invoke
+        const invokeChannels = vi
+            .mocked(ipcRenderer.invoke)
+            .mock.calls.map((c) => c[0] as string);
+        expect(invokeChannels).not.toContain("pi:send");
+        expect(invokeChannels).not.toContain("session:list");
+        expect(invokeChannels).not.toContain("shell:exec");
+    });
+
+    it("enforces product send allowlist and drops blocked fire-and-forget channels", () => {
+        const send = piAPI.send as (channel: string, ...args: unknown[]) => void;
+        const allowedSend = [
+            "log:write",
+            "workbench:set-active-file",
+            "approval:respond",
+            "approval:set-auto-approve",
+            "plan:respond",
+            "permission:respond",
+            "desktop-overlay:set-main-context",
+            "desktop-overlay:set-window-state",
+        ];
+        for (const channel of allowedSend) {
+            vi.mocked(ipcRenderer.send).mockClear();
+            send(channel, { x: 1 });
+            expect(ipcRenderer.send).toHaveBeenCalledWith(channel, { x: 1 });
+        }
+
+        vi.mocked(ipcRenderer.send).mockClear();
+        send("pi:send", "ws", "nope");
+        send("shell:exec", "rm -rf /");
+        expect(ipcRenderer.send).not.toHaveBeenCalled();
+    });
+
+    it("exposes long-horizon / goal / diagnostics dedicated methods", () => {
+        for (const method of [
+            "memorySearch",
+            "memoryListRecent",
+            "legacyTaskList",
+            "taskCreate",
+            "taskList",
+            "goalSet",
+            "goalGet",
+            "goalClear",
+            "diagnosticsExport",
+            "describeImages",
+        ]) {
+            expect(piAPI).toHaveProperty(method);
+            expect(typeof piAPI[method]).toBe("function");
+        }
     });
 });

@@ -157,4 +157,37 @@ describe("setupPackagesIpc", () => {
       expect(result.params).toEqual({ source: "npm:demo" });
     }
   });
+
+  // wave-100 residual
+  it("remove/update map adapter rejections to removeFailed/updateFailed", async () => {
+    removePackageMock.mockRejectedValueOnce(new Error("unlink denied"));
+    const removeResult = await handlers.get("packages:remove")!({}, "npm:demo");
+    expect(isIpcError(removeResult)).toBe(true);
+    if (isIpcError(removeResult)) {
+      expect(removeResult.code).toBe("ipcErrors.packages.removeFailed");
+      expect(removeResult.fallback).toContain("unlink denied");
+      expect(removeResult.params).toEqual({ source: "npm:demo" });
+    }
+
+    updatePackageMock.mockRejectedValueOnce(new Error("etag mismatch"));
+    const updateResult = await handlers.get("packages:update")!({}, "npm:demo");
+    expect(isIpcError(updateResult)).toBe(true);
+    if (isIpcError(updateResult)) {
+      expect(updateResult.code).toBe("ipcErrors.packages.updateFailed");
+      expect(updateResult.fallback).toContain("etag mismatch");
+      expect(updateResult.params).toEqual({ source: "npm:demo" });
+    }
+  });
+
+  it("search allows empty query but rejects non-string", async () => {
+    searchPackagesMock.mockResolvedValueOnce([]);
+    await expect(handlers.get("packages:search")!({}, "")).resolves.toEqual([]);
+    expect(searchPackagesMock).toHaveBeenCalledWith("");
+
+    const invalid = await handlers.get("packages:search")!({}, 42);
+    expect(isIpcError(invalid)).toBe(true);
+    if (isIpcError(invalid)) {
+      expect(invalid.code).toBe("ipcErrors.packages.searchInvalid");
+    }
+  });
 });

@@ -95,4 +95,41 @@ describe("TaskService", () => {
             expect.objectContaining({ id: "P1", source: "plan", text: "other agent plan" }),
         ]);
     });
+
+    // wave-232 residual
+    it("list and getActive return empty/null for unknown workspace", async () => {
+        const service = createService();
+        await service.setSourceTasks("ws1", undefined, "plan", [
+            { id: "P1", text: "only ws1", status: "running" },
+        ]);
+        expect(await service.list({ workspaceId: "ws-missing" })).toEqual([]);
+        expect(await service.getActive({ workspaceId: "ws-missing" })).toBeNull();
+    });
+
+    it("getActive returns null when all tasks are completed", async () => {
+        const service = createService();
+        await service.setSourceTasks("ws1", undefined, "plan", [
+            { id: "P1", text: "done a", status: "completed" },
+            { id: "P2", text: "done b", status: "completed" },
+        ]);
+        expect(await service.list({ workspaceId: "ws1" })).toHaveLength(2);
+        expect(await service.getActive({ workspaceId: "ws1" })).toBeNull();
+    });
+
+    it("list without agentId returns only unbound (default agent) tasks", async () => {
+        const service = createService();
+        await service.setSourceTasks("ws1", undefined, "plan", [
+            { id: "P1", text: "no agent", status: "pending" },
+        ]);
+        await service.setSourceTasks("ws1", "agent-1", "plan", [
+            { id: "P2", text: "with agent", status: "running" },
+        ]);
+        // product scopes unbound list to default agent key; agent-bound tasks need agentId filter
+        expect(await service.list({ workspaceId: "ws1" })).toEqual([
+            expect.objectContaining({ id: "P1", text: "no agent" }),
+        ]);
+        expect(await service.list({ workspaceId: "ws1", agentId: "agent-1" })).toEqual([
+            expect.objectContaining({ id: "P2", text: "with agent" }),
+        ]);
+    });
 });

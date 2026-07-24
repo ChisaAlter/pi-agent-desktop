@@ -232,4 +232,233 @@ describe("workspace-store: getCurrentWorkspace", () => {
         const cur = useWorkspaceStore.getState().getCurrentWorkspace();
         expect(cur?.id).toBe(a.id);
     });
+
+    // wave-97 residual
+    it("currentWorkspaceId 指向已删除 id → null", () => {
+        useWorkspaceStore.setState({
+            workspaces: [],
+            currentWorkspaceId: "ghost",
+        });
+        expect(useWorkspaceStore.getState().getCurrentWorkspace()).toBeNull();
+    });
+});
+
+describe("workspace-store: clearError / no-op updates", () => {
+    // wave-97 residual
+    it("clearError 清掉 lastError", () => {
+        useWorkspaceStore.setState({ lastError: "boom" });
+        useWorkspaceStore.getState().clearError();
+        expect(useWorkspaceStore.getState().lastError).toBeNull();
+    });
+
+    it("updateWorkspace 未知 id 不改动数组", () => {
+        const a = { id: "a", name: "a", path: "/a", createdAt: new Date(), lastActiveAt: new Date() };
+        useWorkspaceStore.setState({ workspaces: [a], currentWorkspaceId: "a" });
+        useWorkspaceStore.getState().updateWorkspace("missing", { name: "x" });
+        expect(useWorkspaceStore.getState().workspaces).toEqual([a]);
+    });
+
+    it("updateGitStatus 未知 id 不抛且不写 gitStatus", () => {
+        const a = { id: "a", name: "a", path: "/a", createdAt: new Date(), lastActiveAt: new Date() };
+        useWorkspaceStore.setState({ workspaces: [a], currentWorkspaceId: "a" });
+        expect(() =>
+            useWorkspaceStore.getState().updateGitStatus("missing", {
+                branch: "main",
+                modified: [],
+                added: [],
+                deleted: [],
+                untracked: [],
+                ahead: 0,
+                behind: 0,
+            }),
+        ).not.toThrow();
+        expect(useWorkspaceStore.getState().workspaces[0].gitStatus).toBeUndefined();
+    });
+
+    it("removeWorkspace 未知 id 保持列表", () => {
+        const a = { id: "a", name: "a", path: "/a", createdAt: new Date(), lastActiveAt: new Date() };
+        useWorkspaceStore.setState({ workspaces: [a], currentWorkspaceId: "a", lastError: null });
+        useWorkspaceStore.getState().removeWorkspace("missing");
+        expect(useWorkspaceStore.getState().workspaces).toEqual([a]);
+        expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("a");
+    });
+
+    it("addWorkspace 同 path 会覆盖 id/name 而不是重复插入", () => {
+        useWorkspaceStore.setState({ workspaces: [], currentWorkspaceId: null });
+        const first = useWorkspaceStore.getState().addWorkspace("old", "/same");
+        const second = useWorkspaceStore.getState().addWorkspace("new", "/same", "ws-fixed");
+        const state = useWorkspaceStore.getState();
+        expect(state.workspaces).toHaveLength(1);
+        expect(state.workspaces[0]).toMatchObject({ id: "ws-fixed", name: "new", path: "/same" });
+        expect(state.currentWorkspaceId).toBe("ws-fixed");
+        expect(first.path).toBe(second.path);
+    });
+});
+
+describe("workspace-store: createEmptyWorkspace", () => {
+    // wave-97 residual
+    it("通过主进程创建空白工作区后写入本地状态", async () => {
+        useWorkspaceStore.setState({ workspaces: [], currentWorkspaceId: null, lastError: null });
+        (mockApi as { createEmptyWorkspace?: ReturnType<typeof vi.fn> }).createEmptyWorkspace = vi
+            .fn()
+            .mockResolvedValueOnce({
+                id: "ws-empty",
+                name: "blank",
+                path: "C:/parent/blank",
+                createdAt: Date.now(),
+            });
+
+        const ws = await useWorkspaceStore.getState().createEmptyWorkspace("blank", "C:/parent");
+
+        expect(mockApi.createEmptyWorkspace).toHaveBeenCalledWith("blank", "C:/parent");
+        expect(ws?.id).toBe("ws-empty");
+        expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("ws-empty");
+        expect(useWorkspaceStore.getState().lastError).toBeNull();
+    });
+
+    it("createEmptyWorkspace 返回 IpcError 时不污染本地状态", async () => {
+        useWorkspaceStore.setState({ workspaces: [], currentWorkspaceId: null, lastError: null });
+        (mockApi as { createEmptyWorkspace?: ReturnType<typeof vi.fn> }).createEmptyWorkspace = vi
+            .fn()
+            .mockResolvedValueOnce({
+                code: "ipcErrors.workspace.createEmptyFailed",
+                fallback: "创建空白工作区失败: disk full",
+            });
+
+        const ws = await useWorkspaceStore.getState().createEmptyWorkspace("blank", "C:/parent");
+        expect(ws).toBeNull();
+        expect(useWorkspaceStore.getState().workspaces).toEqual([]);
+        expect(useWorkspaceStore.getState().lastError).toBe("创建空白工作区失败: disk full");
+    });
+
+    it("createEmptyWorkspace 无 API 时本地拼接 path", async () => {
+        useWorkspaceStore.setState({ workspaces: [], currentWorkspaceId: null, lastError: null });
+        delete (mockApi as { createEmptyWorkspace?: unknown }).createEmptyWorkspace;
+
+        const ws = await useWorkspaceStore.getState().createEmptyWorkspace("blank", "C:/parent\\");
+        expect(ws?.name).toBe("blank");
+        expect(ws?.path).toBe("C:/parent\\blank");
+        expect(useWorkspaceStore.getState().workspaces).toHaveLength(1);
+    });
+});
+
+describe("workspace-store residual (wave-123)", () => {
+    it("createWorkspace without createWorkspace API falls back to local addWorkspace", async () => {
+        useWorkspaceStore.setState({ workspaces: [], currentWorkspaceId: null, lastError: null });
+        delete (mockApi as { createWorkspace?: unknown }).createWorkspace;
+
+        const ws = await useWorkspaceStore.getState().createWorkspace("local-only", "C:/local/repo");
+        expect(ws?.name).toBe("local-only");
+        expect(ws?.path).toBe("C:/local/repo");
+        expect(useWorkspaceStore.getState().currentWorkspaceId).toBe(ws?.id);
+        expect(useWorkspaceStore.getState().lastError).toBeNull();
+
+        // restore for later suites
+        (mockApi as { createWorkspace: ReturnType<typeof vi.fn> }).createWorkspace = vi
+            .fn()
+            .mockResolvedValue({});
+    });
+
+    it("removeWorkspace keeps current id when deleting a non-current workspace", () => {
+        const a = { id: "a", name: "a", path: "/a", createdAt: new Date(), lastActiveAt: new Date() };
+        const b = { id: "b", name: "b", path: "/b", createdAt: new Date(), lastActiveAt: new Date() };
+        useWorkspaceStore.setState({ workspaces: [a, b], currentWorkspaceId: "a", lastError: "stale" });
+        useWorkspaceStore.getState().removeWorkspace("b");
+        const state = useWorkspaceStore.getState();
+        expect(state.workspaces.map((w) => w.id)).toEqual(["a"]);
+        expect(state.currentWorkspaceId).toBe("a");
+        expect(state.lastError).toBeNull();
+    });
+
+    it("setCurrentWorkspace updates only the selected workspace lastActiveAt", () => {
+        const past = new Date(2000, 0, 1);
+        const a = { id: "a", name: "a", path: "/a", createdAt: past, lastActiveAt: past };
+        const b = { id: "b", name: "b", path: "/b", createdAt: past, lastActiveAt: past };
+        useWorkspaceStore.setState({ workspaces: [a, b], currentWorkspaceId: "a" });
+        useWorkspaceStore.getState().setCurrentWorkspace("b");
+        const state = useWorkspaceStore.getState();
+        expect(state.currentWorkspaceId).toBe("b");
+        expect(state.workspaces.find((w) => w.id === "a")?.lastActiveAt.getTime()).toBe(past.getTime());
+        expect(state.workspaces.find((w) => w.id === "b")!.lastActiveAt.getTime()).toBeGreaterThan(past.getTime());
+    });
+
+    it("updateGitStatus replaces previous gitStatus object for the workspace", () => {
+        const a = { id: "a", name: "a", path: "/a", createdAt: new Date(), lastActiveAt: new Date() };
+        useWorkspaceStore.setState({ workspaces: [a], currentWorkspaceId: "a" });
+        useWorkspaceStore.getState().updateGitStatus("a", {
+            branch: "main",
+            modified: ["x"],
+            added: [],
+            deleted: [],
+            untracked: [],
+            ahead: 1,
+            behind: 0,
+        });
+        useWorkspaceStore.getState().updateGitStatus("a", {
+            branch: "feature",
+            modified: [],
+            added: ["y"],
+            deleted: [],
+            untracked: [],
+            ahead: 0,
+            behind: 2,
+        });
+        expect(useWorkspaceStore.getState().workspaces[0].gitStatus).toEqual({
+            branch: "feature",
+            modified: [],
+            added: ["y"],
+            deleted: [],
+            untracked: [],
+            ahead: 0,
+            behind: 2,
+        });
+    });
+});
+
+// wave-130 residual
+describe("workspace-store residual clearError/add id/remove first", () => {
+    beforeEach(() => {
+        useWorkspaceStore.setState({
+            workspaces: [],
+            currentWorkspaceId: null,
+            lastError: null,
+            loaded: true,
+        });
+        mockApi.deleteWorkspace.mockReset();
+        mockApi.deleteWorkspace.mockResolvedValue(undefined);
+    });
+
+    it("addWorkspace accepts explicit id", () => {
+        const ws = useWorkspaceStore.getState().addWorkspace("named", "/tmp/named", "ws-fixed");
+        expect(ws.id).toBe("ws-fixed");
+        expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("ws-fixed");
+        expect(useWorkspaceStore.getState().workspaces[0]?.id).toBe("ws-fixed");
+    });
+
+    it("removeWorkspace of current picks first remaining and clears lastError", () => {
+        useWorkspaceStore.setState({
+            workspaces: [
+                { id: "a", name: "a", path: "/a", createdAt: new Date(1), lastActiveAt: new Date(1) },
+                { id: "b", name: "b", path: "/b", createdAt: new Date(2), lastActiveAt: new Date(2) },
+            ],
+            currentWorkspaceId: "a",
+            lastError: "stale",
+        });
+        useWorkspaceStore.getState().removeWorkspace("a");
+        expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("b");
+        expect(useWorkspaceStore.getState().workspaces.map((w) => w.id)).toEqual(["b"]);
+        expect(useWorkspaceStore.getState().lastError).toBeNull();
+    });
+
+    it("clearError only clears lastError", () => {
+        useWorkspaceStore.setState({
+            workspaces: [{ id: "a", name: "a", path: "/a", createdAt: new Date(), lastActiveAt: new Date() }],
+            currentWorkspaceId: "a",
+            lastError: "boom",
+        });
+        useWorkspaceStore.getState().clearError();
+        expect(useWorkspaceStore.getState().lastError).toBeNull();
+        expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("a");
+        expect(useWorkspaceStore.getState().workspaces).toHaveLength(1);
+    });
 });

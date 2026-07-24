@@ -89,4 +89,37 @@ describe("PiDriver detectSync when Pi CLI is missing (B-002)", () => {
         expect(() => driver.detectSync()).not.toThrow();
         expect(driver.detectSync().installed).toBe(false);
     });
+
+    // wave-231 residual
+    it("repeated detectSync stays installed=false without mutating executablePath", () => {
+        const driver = new PiDriver();
+        const a = driver.detectSync();
+        const b = driver.detectSync();
+        expect(a.installed).toBe(false);
+        expect(b.installed).toBe(false);
+        expect(a.executablePath).toBeNull();
+        expect(b.executablePath).toBeNull();
+        expect(a.updateAvailable).toBe(false);
+        expect(b.updateAvailable).toBe(false);
+    });
+
+
+  // wave-303 residual
+  it("detectSync missing CLI: installed false, null path/version, updateAvailable false", () => {
+    const driver = new PiDriver();
+    const status = driver.detectSync();
+    expect(status.installed).toBe(false);
+    expect(status.executablePath).toBeNull();
+    expect(status.localVersion).toBeNull();
+    expect(status.updateAvailable).toBe(false);
+  });
+
+  it("detectSync is idempotent when all probes throw/miss", () => {
+    const driver = new PiDriver();
+    const first = driver.detectSync();
+    const second = driver.detectSync();
+    expect(first).toMatchObject({ installed: false, executablePath: null, updateAvailable: false });
+    expect(second).toMatchObject({ installed: false, executablePath: null, updateAvailable: false });
+  });
+
 });

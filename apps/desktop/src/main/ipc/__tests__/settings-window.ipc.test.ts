@@ -152,4 +152,109 @@ describe("setupSettingsWindowIpc", () => {
     expect(event.preventDefault).toHaveBeenCalledTimes(1);
     expect(mockWindow.hide).toHaveBeenCalledTimes(1);
   });
+
+  // wave-100 residual
+  it("ignores unknown tabs when buffering/selecting", async () => {
+    const openWindow = handlers.get("settings:open-window");
+    await openWindow?.({}, "not-a-real-tab");
+    const rendererReady = handlers.get("settings:renderer-ready");
+    expect(rendererReady?.({ sender: webContents })).toBeUndefined();
+  });
+
+  it("rejects renderer-ready from a non-settings sender", async () => {
+    const openWindow = handlers.get("settings:open-window");
+    await openWindow?.({}, "model");
+    const rendererReady = handlers.get("settings:renderer-ready");
+    expect(rendererReady?.({ sender: { id: "other" } })).toBeUndefined();
+    // Legitimate sender still works afterward
+    expect(rendererReady?.({ sender: webContents })).toBe("model");
+  });
+
+  it("close-window is a no-op when no settings window exists", () => {
+    const closeWindow = handlers.get("settings:close-window");
+    expect(closeWindow?.({})).toBeUndefined();
+    expect(mockWindow.hide).not.toHaveBeenCalled();
+  });
+
+  it("re-open after closed creates a new BrowserWindow", async () => {
+    const openWindow = handlers.get("settings:open-window");
+    await openWindow?.({}, "general");
+    expect(BrowserWindowMock).toHaveBeenCalledTimes(1);
+    windowListeners.get("closed")?.();
+    await openWindow?.({}, "model");
+    expect(BrowserWindowMock).toHaveBeenCalledTimes(2);
+  });
+
+  // wave-136 residual — multi-display placement
+  it("clamps settings window into multi-monitor workArea (positive offset)", async () => {
+    const { screen } = await import("electron");
+    const getDisplayMatching = vi.mocked(screen.getDisplayMatching);
+    getDisplayMatching.mockReturnValueOnce({
+      workArea: { x: 1920, y: 100, width: 1280, height: 720 },
+    } as ReturnType<typeof screen.getDisplayMatching>);
+
+    const mainWindow = {
+      isDestroyed: () => false,
+      getBounds: () => ({ x: 2000, y: 120, width: 1400, height: 900 }),
+    };
+    setupSettingsWindowIpc(() => mainWindow as never);
+
+    const openWindow = handlers.get("settings:open-window");
+    await openWindow?.({}, "general");
+
+    expect(getDisplayMatching).toHaveBeenCalled();
+    expect(mockWindow.setBounds).toHaveBeenCalled();
+    const bounds = mockWindow.setBounds.mock.calls.at(-1)?.[0] as {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+    // SETTINGS_WINDOW_WIDTH=1067, HEIGHT=800; workArea height 720 < 800 → maxY = workArea.y
+    expect(bounds.x).toBeGreaterThanOrEqual(1920);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(1920 + 1280);
+    expect(bounds.y).toBe(100);
+    expect(bounds.width).toBe(1067);
+    expect(bounds.height).toBe(800);
+  });
+
+  it("clamps settings window into negative multi-monitor workArea origin", async () => {
+    const { screen } = await import("electron");
+    const getDisplayMatching = vi.mocked(screen.getDisplayMatching);
+    getDisplayMatching.mockReturnValueOnce({
+      workArea: { x: -1920, y: 0, width: 1920, height: 1080 },
+    } as ReturnType<typeof screen.getDisplayMatching>);
+
+    const mainWindow = {
+      isDestroyed: () => false,
+      getBounds: () => ({ x: -1800, y: 40, width: 1600, height: 900 }),
+    };
+    setupSettingsWindowIpc(() => mainWindow as never);
+
+    const openWindow = handlers.get("settings:open-window");
+    await openWindow?.({}, "model");
+
+    const bounds = mockWindow.setBounds.mock.calls.at(-1)?.[0] as {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+    expect(bounds.x).toBeGreaterThanOrEqual(-1920);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(0);
+    expect(bounds.y).toBeGreaterThanOrEqual(0);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(1080);
+  });
+
+  it("skips setBounds when main window is destroyed", async () => {
+    mockWindow.setBounds.mockClear();
+    const mainWindow = {
+      isDestroyed: () => true,
+      getBounds: () => ({ x: 0, y: 0, width: 1200, height: 800 }),
+    };
+    setupSettingsWindowIpc(() => mainWindow as never);
+    const openWindow = handlers.get("settings:open-window");
+    await openWindow?.({}, "general");
+    expect(mockWindow.setBounds).not.toHaveBeenCalled();
+  });
 });

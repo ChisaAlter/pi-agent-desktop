@@ -224,4 +224,185 @@ describe("shortcuts/registry", () => {
             expect(getShortcutById("nope")).toBeUndefined();
         });
     });
+
+    // wave-136 residual — overrides / editable / parse edges
+    describe("wave-136 residual overrides and editable targets", () => {
+        it("ignores corrupt override JSON without breaking defaults", () => {
+            window.localStorage.setItem("pi-desktop-shortcut-overrides", "{not-json");
+            expect(findMatchingShortcut(makeKeyEvent({ ctrlKey: true, key: "k" }))?.id).toBe(
+                "open-command-palette",
+            );
+        });
+
+        it("ignores non-array override payload", () => {
+            window.localStorage.setItem(
+                "pi-desktop-shortcut-overrides",
+                JSON.stringify({ id: "open-command-palette", keys: "Ctrl+Shift+Z" }),
+            );
+            expect(findMatchingShortcut(makeKeyEvent({ ctrlKey: true, key: "k" }))?.id).toBe(
+                "open-command-palette",
+            );
+            expect(
+                findMatchingShortcut(makeKeyEvent({ ctrlKey: true, shiftKey: true, key: "z" })),
+            ).toBeNull();
+        });
+
+        it("skips invalid override entries and keeps valid ones", () => {
+            window.localStorage.setItem(
+                "pi-desktop-shortcut-overrides",
+                JSON.stringify([
+                    null,
+                    42,
+                    { id: "open-command-palette" },
+                    { keys: "Ctrl+Y" },
+                    { id: "open-command-palette", keys: "Ctrl+Shift+Y" },
+                ]),
+            );
+            expect(
+                findMatchingShortcut(makeKeyEvent({ ctrlKey: true, shiftKey: true, key: "Y" }))
+                    ?.id,
+            ).toBe("open-command-palette");
+            expect(findMatchingShortcut(makeKeyEvent({ ctrlKey: true, key: "k" }))).toBeNull();
+        });
+
+        it("rejects unparseable override keys (empty / multi-key) and keeps default", () => {
+            window.localStorage.setItem(
+                "pi-desktop-shortcut-overrides",
+                JSON.stringify([{ id: "new-chat", keys: "Ctrl+Shift" }]),
+            );
+            expect(findMatchingShortcut(makeKeyEvent({ ctrlKey: true, key: "n" }))?.id).toBe(
+                "new-chat",
+            );
+        });
+
+        it("ignoreInEditable skips textarea and contenteditable targets for ?", () => {
+            const textarea = document.createElement("textarea");
+            document.body.appendChild(textarea);
+            const taEvent = makeKeyEvent({ shiftKey: true, key: "?" });
+            Object.defineProperty(taEvent, "target", { value: textarea, configurable: true });
+            expect(findMatchingShortcut(taEvent)).toBeNull();
+            document.body.removeChild(textarea);
+
+            const editable = document.createElement("div");
+            Object.defineProperty(editable, "isContentEditable", {
+                configurable: true,
+                get: () => true,
+            });
+            document.body.appendChild(editable);
+            const edEvent = makeKeyEvent({ shiftKey: true, key: "?" });
+            Object.defineProperty(edEvent, "target", { value: editable, configurable: true });
+            expect(findMatchingShortcut(edEvent)).toBeNull();
+            document.body.removeChild(editable);
+
+            // mod combos still match inside editable
+            const again = document.createElement("textarea");
+            document.body.appendChild(again);
+            const ctrlEvent = makeKeyEvent({ ctrlKey: true, key: "k" });
+            Object.defineProperty(ctrlEvent, "target", { value: again, configurable: true });
+            expect(findMatchingShortcut(ctrlEvent)?.id).toBe("open-command-palette");
+            document.body.removeChild(again);
+        });
+
+        it("matchesCombo rejects alt when combo has no alt, and requires alt when set", () => {
+            const plain: ShortcutCombo = { mod: true, key: "k" };
+            expect(
+                matchesCombo(makeKeyEvent({ ctrlKey: true, altKey: true, key: "k" }), plain),
+            ).toBe(false);
+            const withAlt: ShortcutCombo = { mod: true, alt: true, key: "k" };
+            expect(
+                matchesCombo(makeKeyEvent({ ctrlKey: true, altKey: true, key: "k" }), withAlt),
+            ).toBe(true);
+            expect(matchesCombo(makeKeyEvent({ ctrlKey: true, key: "k" }), withAlt)).toBe(false);
+        });
+
+        it("dispatchShortcut does not fire when matching but handler missing after unregister", () => {
+            const handler = vi.fn();
+            const off = registerShortcutHandler("toggle-sidebar", handler);
+            off();
+            const e = makeKeyEvent({ ctrlKey: true, key: "b" });
+            expect(dispatchShortcut(e)).toBe(false);
+            expect(handler).not.toHaveBeenCalled();
+            expect(e.defaultPrevented).toBe(false);
+        });
+    });
+
+    // wave-237 residual
+    describe("wave-237 residual group/id/esc", () => {
+        it("groupByCategory preserves fixed order and only known categories", () => {
+            const groups = groupByCategory(SHORTCUTS);
+            const cats = groups.map((g) => g.category);
+            const order = ["nav", "chat", "panel", "edit", "help"] as const;
+            expect(cats).toEqual(order.filter((c) => cats.includes(c)));
+            expect(cats.every((c) => order.includes(c))).toBe(true);
+            const total = groups.reduce((n, g) => n + g.items.length, 0);
+            expect(total).toBe(SHORTCUTS.length);
+        });
+
+        it("getShortcutById returns effective defs and undefined for unknown", () => {
+            expect(getShortcutById("open-command-palette")?.combo).toEqual({ mod: true, key: "k" });
+            expect(getShortcutById("does-not-exist")).toBeUndefined();
+        });
+
+        it("matchesCombo normalizes Esc and Escape for escape-key shortcuts", () => {
+            const escapeCombo: ShortcutCombo = { key: "escape" };
+            expect(matchesCombo(makeKeyEvent({ key: "Escape" }), escapeCombo)).toBe(true);
+            expect(matchesCombo(makeKeyEvent({ key: "Esc" }), escapeCombo)).toBe(true);
+            expect(matchesCombo(makeKeyEvent({ key: "escape" }), escapeCombo)).toBe(true);
+            expect(matchesCombo(makeKeyEvent({ key: "Enter" }), escapeCombo)).toBe(false);
+        });
+    });
+
+
+
+    // wave-307 residual
+    describe("wave-307 residual matchesCombo/dispatch/register", () => {
+        it("matchesCombo requires mod when set; rejects extra ctrl/meta when mod false", () => {
+            const noMod: ShortcutCombo = { key: "a" };
+            expect(matchesCombo(makeKeyEvent({ key: "a" }), noMod)).toBe(true);
+            expect(matchesCombo(makeKeyEvent({ ctrlKey: true, key: "a" }), noMod)).toBe(false);
+            expect(matchesCombo(makeKeyEvent({ metaKey: true, key: "a" }), noMod)).toBe(false);
+            const modOnly: ShortcutCombo = { mod: true, key: "n" };
+            expect(matchesCombo(makeKeyEvent({ ctrlKey: true, key: "n" }), modOnly)).toBe(true);
+            expect(matchesCombo(makeKeyEvent({ metaKey: true, key: "N" }), modOnly)).toBe(true);
+            expect(matchesCombo(makeKeyEvent({ key: "n" }), modOnly)).toBe(false);
+        });
+
+        it("matchesCombo shift exactness: shift required vs forbidden", () => {
+            const needShift: ShortcutCombo = { shift: true, key: "?" };
+            expect(matchesCombo(makeKeyEvent({ shiftKey: true, key: "?" }), needShift)).toBe(true);
+            expect(matchesCombo(makeKeyEvent({ key: "?" }), needShift)).toBe(false);
+            const noShift: ShortcutCombo = { mod: true, key: "b" };
+            expect(matchesCombo(makeKeyEvent({ ctrlKey: true, shiftKey: true, key: "b" }), noShift)).toBe(false);
+            expect(matchesCombo(makeKeyEvent({ ctrlKey: true, key: "b" }), noShift)).toBe(true);
+        });
+
+        it("registerShortcutHandler overwrite: later handler wins; early unregister does not drop later", () => {
+            const first = vi.fn();
+            const second = vi.fn();
+            const off1 = registerShortcutHandler("open-command-palette", first);
+            const off2 = registerShortcutHandler("open-command-palette", second);
+            const e = makeKeyEvent({ ctrlKey: true, key: "k" });
+            expect(dispatchShortcut(e)).toBe(true);
+            expect(first).not.toHaveBeenCalled();
+            expect(second).toHaveBeenCalledTimes(1);
+            expect(e.defaultPrevented).toBe(true);
+            // early unregister must not remove second
+            off1();
+            const e2 = makeKeyEvent({ ctrlKey: true, key: "k" });
+            expect(dispatchShortcut(e2)).toBe(true);
+            expect(second).toHaveBeenCalledTimes(2);
+            off2();
+            const e3 = makeKeyEvent({ ctrlKey: true, key: "k" });
+            expect(dispatchShortcut(e3)).toBe(false);
+        });
+
+        it("findMatchingShortcut returns first effective match; empty key event does not match", () => {
+            expect(findMatchingShortcut(makeKeyEvent({ key: "" }))).toBeNull();
+            expect(findMatchingShortcut(makeKeyEvent({ ctrlKey: true, key: "k" }))?.id).toBe(
+                "open-command-palette",
+            );
+            expect(getShortcutById("open-command-palette")?.keys).toBe("Ctrl+K");
+        });
+    });
+
 });

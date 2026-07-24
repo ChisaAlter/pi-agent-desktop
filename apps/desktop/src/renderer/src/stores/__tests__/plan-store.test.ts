@@ -499,3 +499,85 @@ describe("IPC failure rollback", () => {
     expect(usePlanStore.getState().status).toBe("executing");
   });
 });
+
+// wave-129 residual
+describe("plan-store residual phase helpers", () => {
+  it("setCard strips inline thinking and caps markdown steps at 12", () => {
+    const lines = Array.from({ length: 15 }, (_, i) => `- step ${i + 1}`).join("\n");
+    usePlanStore.getState().setCard({
+      id: "plan_think",
+      title: "With Think",
+      content: `<think>secret</think>\n${lines}`,
+      createdAt: 1,
+    });
+    const state = usePlanStore.getState();
+    expect(state.activeCard?.content).not.toContain("<think>");
+    expect(state.activeCard?.content).toContain("step 1");
+    expect(state.steps).toHaveLength(12);
+    expect(state.steps[0]?.text).toBe("step 1");
+    expect(state.steps[11]?.text).toBe("step 12");
+  });
+
+  it("markPausing/markPaused/markFailed and setGoal cleared semantics", () => {
+    usePlanStore.setState({
+      activeExecution: {
+        activePlanId: "p1",
+        title: "T",
+        filename: "t.md",
+        phase: "executing",
+      },
+      status: "executing",
+      goal: { id: "g1", title: "G", status: "active" } as never,
+    });
+    usePlanStore.getState().markPausing();
+    expect(usePlanStore.getState().activeExecution?.phase).toBe("pausing");
+    expect(usePlanStore.getState().status).toBe("executing");
+    usePlanStore.getState().markPaused();
+    expect(usePlanStore.getState().activeExecution?.phase).toBe("paused");
+    expect(usePlanStore.getState().status).toBe("waiting_decision");
+    usePlanStore.getState().markFailed();
+    expect(usePlanStore.getState().activeExecution?.phase).toBe("failed");
+    expect(usePlanStore.getState().status).toBe("idle");
+
+    usePlanStore.getState().setGoal({ id: "g2", title: "Keep", status: "running" } as never);
+    expect(usePlanStore.getState().goal).toMatchObject({ id: "g2", status: "running" });
+    usePlanStore.getState().setGoal({ id: "g2", title: "Keep", status: "cleared" } as never);
+    expect(usePlanStore.getState().goal).toBeNull();
+  });
+
+  it("markPlanCardRendered is idempotent and reset clears rendered ids", () => {
+    usePlanStore.getState().markPlanCardRendered("card-a");
+    usePlanStore.getState().markPlanCardRendered("card-a");
+    usePlanStore.getState().markPlanCardRendered("card-b");
+    expect(usePlanStore.getState().renderedPlanCardIds).toEqual(["card-a", "card-b"]);
+    usePlanStore.getState().reset();
+    expect(usePlanStore.getState()).toMatchObject({
+      activeCard: null,
+      decisionRequest: null,
+      pendingPlanClarification: null,
+      renderedPlanCardIds: [],
+      activeExecution: null,
+      goal: null,
+      steps: [],
+      status: "idle",
+    });
+  });
+
+  it("setProgress preserves steps when update.items is empty", () => {
+    usePlanStore.setState({
+      steps: [
+        { id: "s1", text: "a", status: "completed" },
+        { id: "s2", text: "b", status: "pending" },
+      ],
+      status: "executing",
+      activeExecution: {
+        activePlanId: "p1",
+        title: "T",
+        phase: "executing",
+      },
+    });
+    usePlanStore.getState().setProgress({ status: "executing", items: [] });
+    expect(usePlanStore.getState().steps).toHaveLength(2);
+    expect(usePlanStore.getState().status).toBe("executing");
+  });
+});

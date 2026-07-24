@@ -124,4 +124,59 @@ describe("pi-packages-store", () => {
     expect(usePiPackagesStore.getState().results).toEqual([]);
     expect(usePiPackagesStore.getState().error).toBeNull();
   });
+
+
+  // wave-230 residual
+  it("setQuery only updates query without searching", () => {
+    usePiPackagesStore.getState().setQuery("  pi-git ");
+    expect(usePiPackagesStore.getState().query).toBe("  pi-git ");
+    expect(usePiPackagesStore.getState().results).toEqual([]);
+    expect(usePiPackagesStore.getState().loading).toBe(false);
+  });
+
+  it("successful install clears error and refreshes installed list", async () => {
+    const packagesInstall = vi.fn(async () => ({ ok: true }));
+    const packagesListInstalled = vi.fn(async () => [
+      { name: "pi-git", source: "npm:pi-git", version: "1.0.0" },
+    ]);
+    // install success path also re-runs search() after refreshInstalled
+    const packagesSearch = vi.fn(async () => [
+      { name: "pi-git", source: "npm:pi-git", description: "Git", url: "https://pi.dev/packages/pi-git" },
+    ]);
+    (globalThis as { window: unknown }).window = {
+      piAPI: { packagesInstall, packagesListInstalled, packagesSearch },
+    };
+    usePiPackagesStore.setState({
+      error: "stale",
+      lastFailedAction: { kind: "install", source: "npm:old", label: "安装" },
+      query: "pi-git",
+    });
+    await usePiPackagesStore.getState().install("npm:pi-git");
+    expect(packagesInstall).toHaveBeenCalledWith("npm:pi-git");
+    expect(packagesListInstalled).toHaveBeenCalled();
+    expect(packagesSearch).toHaveBeenCalled();
+    expect(usePiPackagesStore.getState().error).toBeNull();
+    expect(usePiPackagesStore.getState().lastFailedAction).toBeNull();
+    expect(usePiPackagesStore.getState().actionSource).toBeNull();
+    expect(usePiPackagesStore.getState().installed.map((p) => p.source)).toEqual(["npm:pi-git"]);
+  });
+
+  it("remove failure records lastFailedAction with remove kind", async () => {
+    (globalThis as { window: unknown }).window = {
+      piAPI: {
+        packagesRemove: vi.fn(async () => ({
+          code: "ipcErrors.packages.removeFailed",
+          fallback: "卸载失败",
+        })),
+      },
+    };
+    await usePiPackagesStore.getState().remove("npm:pi-git");
+    expect(usePiPackagesStore.getState().error).toBe("卸载失败");
+    expect(usePiPackagesStore.getState().lastFailedAction).toEqual({
+      kind: "remove",
+      source: "npm:pi-git",
+      label: "卸载",
+    });
+    expect(usePiPackagesStore.getState().retryAction).toBeTruthy();
+  });
 });

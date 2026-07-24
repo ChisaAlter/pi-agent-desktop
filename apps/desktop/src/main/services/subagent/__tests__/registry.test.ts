@@ -175,3 +175,34 @@ describe("SubagentRegistry", () => {
         });
     });
 });
+
+// wave-230 residual
+describe("SubagentRegistry residual (wave-230)", () => {
+    it("listAll names are unique and equal BUILTIN_SUBAGENTS names", () => {
+        const all = listAll().map((s) => s.name).sort();
+        const builtin = BUILTIN_SUBAGENTS.map((s) => s.name).sort();
+        expect(all).toEqual(builtin);
+        expect(new Set(all).size).toBe(all.length);
+    });
+
+    it("listSpawnable is a strict subset of listAll (explore only)", () => {
+        const all = new Set(listAll().map((s) => s.name));
+        const spawnable = listSpawnable().map((s) => s.name);
+        expect(spawnable).toEqual(["explore"]);
+        expect(spawnable.every((n) => all.has(n))).toBe(true);
+        expect(isSpawnable("explore")).toBe(true);
+        for (const hidden of ["dream", "distill", "checkpoint-writer"]) {
+            expect(isSpawnable(hidden)).toBe(false);
+            expect(get(hidden)?.hidden).toBe(true);
+        }
+    });
+
+    it("every prompt is multi-line and free of mimocode.db references", () => {
+        for (const sub of listAll()) {
+            expect(sub.prompt.split("\n").length).toBeGreaterThan(1);
+            expect(sub.prompt).not.toContain("mimocode.db");
+            expect(sub.description.trim().length).toBeGreaterThan(0);
+        }
+    });
+});
+

@@ -150,3 +150,168 @@ describe("pi-status-store: refreshStatus", () => {
         expect(usePiStatusStore.getState().error).toEqual(err);
     });
 });
+
+// wave-104 residual
+describe("pi-status-store residual", () => {
+    it("install throw path records string error and clears isOperating", async () => {
+        mockApi.installPi.mockRejectedValue(new Error("spawn failed"));
+        usePiStatusStore.setState({ isOperating: false, error: null, status: null });
+        await usePiStatusStore.getState().install();
+        const s = usePiStatusStore.getState();
+        expect(s.isOperating).toBe(false);
+        expect(String(s.error)).toContain("spawn failed");
+        expect(mockApi.refreshPiStatus).not.toHaveBeenCalled();
+    });
+
+    it("cancelOperation is safe when already idle", async () => {
+        mockApi.cancelPiOperation.mockResolvedValue(undefined);
+        usePiStatusStore.setState({ isOperating: false, progress: null, error: null });
+        await usePiStatusStore.getState().cancelOperation();
+        expect(mockApi.cancelPiOperation).toHaveBeenCalled();
+        expect(usePiStatusStore.getState().isOperating).toBe(false);
+        expect(usePiStatusStore.getState().progress).toBeNull();
+    });
+
+    it("refreshStatus success updates status and clears error", async () => {
+        mockApi.refreshPiStatus.mockResolvedValue(fakeStatus);
+        usePiStatusStore.setState({
+            error: ipcError("ipcErrors.pi.detectFailed", "old", { message: "old" }),
+            status: null,
+        });
+        await usePiStatusStore.getState().refreshStatus();
+        expect(usePiStatusStore.getState().status).toEqual(fakeStatus);
+        expect(usePiStatusStore.getState().error).toBeNull();
+    });
+});
+
+// wave-125 residual
+describe("pi-status-store residual (wave-125)", () => {
+    it("update IpcError clears isOperating without refreshStatus", async () => {
+        const err = ipcError("ipcErrors.pi.updateFailed", "更新失败", { message: "EPERM" });
+        mockApi.updatePi.mockResolvedValue(err);
+        usePiStatusStore.setState({ isOperating: false, error: null, status: fakeStatus });
+        await usePiStatusStore.getState().update();
+        const s = usePiStatusStore.getState();
+        expect(s.isOperating).toBe(false);
+        expect(s.error).toEqual(err);
+        expect(s.status).toEqual(fakeStatus);
+        expect(mockApi.refreshPiStatus).not.toHaveBeenCalled();
+    });
+
+    it("uninstall success clears isOperating and refreshes", async () => {
+        mockApi.uninstallPi.mockResolvedValue(fakeStatus);
+        mockApi.refreshPiStatus.mockResolvedValue({ ...fakeStatus, installed: false });
+        usePiStatusStore.setState({ isOperating: false, error: null, status: fakeStatus });
+        await usePiStatusStore.getState().uninstall();
+        expect(mockApi.uninstallPi).toHaveBeenCalledTimes(1);
+        expect(mockApi.refreshPiStatus).toHaveBeenCalledTimes(1);
+        expect(usePiStatusStore.getState().isOperating).toBe(false);
+        expect(usePiStatusStore.getState().status?.installed).toBe(false);
+    });
+
+    it("missing piAPI is a no-op for checkStatus/install", async () => {
+        (globalThis as { window: unknown }).window = {};
+        usePiStatusStore.setState({
+            status: fakeStatus,
+            loading: false,
+            error: null,
+            isOperating: false,
+            progress: { stage: "downloading", message: "x" },
+        });
+        await usePiStatusStore.getState().checkStatus();
+        await usePiStatusStore.getState().install();
+        const s = usePiStatusStore.getState();
+        expect(s.status).toEqual(fakeStatus);
+        expect(s.loading).toBe(false);
+        expect(s.isOperating).toBe(false);
+        expect(s.error).toBeNull();
+    });
+
+    it("_setProgress done triggers refreshStatus without flipping isOperating", async () => {
+        mockApi.refreshPiStatus.mockResolvedValue(fakeStatus);
+        usePiStatusStore.setState({ isOperating: true, progress: null, status: null });
+        usePiStatusStore.getState()._setProgress({ stage: "done", message: "完成" });
+        expect(usePiStatusStore.getState().progress).toMatchObject({ stage: "done" });
+        expect(usePiStatusStore.getState().isOperating).toBe(true);
+        await vi.waitFor(() => {
+            expect(mockApi.refreshPiStatus).toHaveBeenCalled();
+        });
+    });
+});
+
+// wave-130 residual
+describe("pi-status-store residual update/cancel/listeners", () => {
+    beforeEach(() => {
+        (globalThis as { window: unknown }).window = { piAPI: mockApi };
+        vi.clearAllMocks();
+        usePiStatusStore.setState({
+            status: fakeStatus,
+            loading: false,
+            error: null,
+            progress: null,
+            isOperating: false,
+        });
+        usePiStatusStore.getState().cleanupListeners();
+    });
+
+    it("update records IpcError and clears isOperating without refresh", async () => {
+        mockApi.updatePi.mockResolvedValueOnce(ipcError("ipcErrors.pi.updateFailed", "更新失败"));
+        await usePiStatusStore.getState().update();
+        expect(usePiStatusStore.getState().isOperating).toBe(false);
+        expect(usePiStatusStore.getState().error).toMatchObject({
+            code: "ipcErrors.pi.updateFailed",
+        });
+        expect(mockApi.refreshPiStatus).not.toHaveBeenCalled();
+    });
+
+    it("update transport throw stringifies error", async () => {
+        mockApi.updatePi.mockRejectedValueOnce(new Error("network"));
+        await usePiStatusStore.getState().update();
+        expect(usePiStatusStore.getState().isOperating).toBe(false);
+        expect(String(usePiStatusStore.getState().error)).toContain("network");
+    });
+
+    it("cancelOperation clears progress and isOperating", async () => {
+        mockApi.cancelPiOperation.mockResolvedValueOnce(undefined);
+        usePiStatusStore.setState({
+            isOperating: true,
+            progress: { stage: "downloading", message: "x" },
+        });
+        await usePiStatusStore.getState().cancelOperation();
+        expect(mockApi.cancelPiOperation).toHaveBeenCalled();
+        expect(usePiStatusStore.getState().isOperating).toBe(false);
+        expect(usePiStatusStore.getState().progress).toBeNull();
+    });
+
+    it("setupListeners is idempotent", () => {
+        mockApi.onPiStatusChanged.mockReturnValue(vi.fn());
+        mockApi.onPiInstallProgress.mockReturnValue(vi.fn());
+        usePiStatusStore.getState().setupListeners();
+        usePiStatusStore.getState().setupListeners();
+        expect(mockApi.onPiStatusChanged).toHaveBeenCalledTimes(1);
+        usePiStatusStore.getState().cleanupListeners();
+    });
+
+    // wave-239 residual
+    it("cleanupListeners is safe when never setup and after double cleanup", () => {
+        expect(() => usePiStatusStore.getState().cleanupListeners()).not.toThrow();
+        mockApi.onPiStatusChanged.mockReturnValue(vi.fn());
+        mockApi.onPiInstallProgress.mockReturnValue(vi.fn());
+        usePiStatusStore.getState().setupListeners();
+        usePiStatusStore.getState().cleanupListeners();
+        usePiStatusStore.getState().cleanupListeners();
+        expect(() => usePiStatusStore.getState().cleanupListeners()).not.toThrow();
+    });
+
+    it("_setProgress done stage triggers refreshStatus without clearing isOperating here", async () => {
+        mockApi.refreshPiStatus.mockResolvedValueOnce(fakeStatus);
+        usePiStatusStore.setState({ isOperating: true, progress: null });
+        usePiStatusStore.getState()._setProgress({ stage: "done", message: "ok" });
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(mockApi.refreshPiStatus).toHaveBeenCalled();
+        // product: isOperating reset is action-owned, not _setProgress
+        expect(usePiStatusStore.getState().isOperating).toBe(true);
+        expect(usePiStatusStore.getState().progress?.stage).toBe("done");
+    });
+});

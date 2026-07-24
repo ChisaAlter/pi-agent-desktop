@@ -757,3 +757,45 @@ describe("session-store (2026-06-06 hotfix): loadSessions 行为", () => {
         expect(piAPI.listSessions).not.toHaveBeenCalled();
     });
 });
+
+// wave-129 residual
+describe("session-store residual rename/setDefault", () => {
+    beforeEach(() => {
+        useSessionStore.setState({ sessions: [], currentSessionId: null, persistErrorCount: 0 });
+    });
+
+    it("renameSession ignores empty/whitespace titles without IPC", () => {
+        seedSession("s1", "Keep Me");
+        useSessionStore.getState().renameSession("s1", "   ");
+        useSessionStore.getState().renameSession("s1", "");
+        expect(useSessionStore.getState().sessions[0]?.title).toBe("Keep Me");
+        expect(piAPI.renameSession).not.toHaveBeenCalled();
+    });
+
+    it("renameSession trims and updates title + updatedAt", () => {
+        seedSession("s1", "Old");
+        const before = useSessionStore.getState().sessions[0]!.updatedAt;
+        useSessionStore.getState().renameSession("s1", "  New Title  ");
+        const next = useSessionStore.getState().sessions[0]!;
+        expect(next.title).toBe("New Title");
+        expect(next.updatedAt.getTime()).toBeGreaterThanOrEqual(before.getTime());
+        expect(piAPI.renameSession).toHaveBeenCalledWith("s1", "New Title");
+    });
+
+    it("setDefaultSession sets current without loading transcript", () => {
+        seedSession("s1", "A");
+        seedSession("s2", "B");
+        useSessionStore.setState({ currentSessionId: "s1" });
+        useSessionStore.getState().setDefaultSession("s2");
+        expect(useSessionStore.getState().currentSessionId).toBe("s2");
+        useSessionStore.getState().setDefaultSession(null);
+        expect(useSessionStore.getState().currentSessionId).toBeNull();
+    });
+
+    it("setCurrentSession ignores missing session ids", () => {
+        seedSession("s1", "A");
+        useSessionStore.setState({ currentSessionId: "s1" });
+        useSessionStore.getState().setCurrentSession("missing");
+        expect(useSessionStore.getState().currentSessionId).toBe("s1");
+    });
+});

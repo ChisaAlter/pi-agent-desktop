@@ -161,4 +161,47 @@ describe("PtyManager", () => {
         expect(list[0].id).toBe("p1");
         expect(list[1].id).toBe("p2");
     });
+
+    // wave-92 residual
+    it("size tracks open ptys", async () => {
+        expect(mgr.size()).toBe(0);
+        await mgr.create({ id: "p1" });
+        await mgr.create({ id: "p2" });
+        expect(mgr.size()).toBe(2);
+        mgr.close("p1");
+        expect(mgr.size()).toBe(1);
+    });
+
+    it("get returns entry metadata after create", async () => {
+        const entry = await mgr.create({ id: "meta", cwd: "C:/tmp/ws", cols: 120, rows: 40 });
+        expect(entry.cwd).toBe("C:/tmp/ws");
+        expect(mgr.get("meta")?.title).toBe("meta");
+        expect(mgr.get("missing")).toBeUndefined();
+    });
+
+    it("onOutput unsubscribe stops further delivery", async () => {
+        const listener = vi.fn();
+        const off = mgr.onOutput(listener);
+        await mgr.create({ id: "p1" });
+        fakePtys[0]._emit("a");
+        expect(listener).toHaveBeenCalledWith("p1", "a");
+        off();
+        fakePtys[0]._emit("b");
+        expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it("onExit unsubscribe stops further delivery", async () => {
+        const listener = vi.fn();
+        const off = mgr.onExit(listener);
+        await mgr.create({ id: "p1" });
+        off();
+        fakePtys[0]._exit(1);
+        expect(listener).not.toHaveBeenCalled();
+        expect(mgr.has("p1")).toBe(false);
+    });
+
+    it("generateId includes counter suffix uniqueness under same clock", () => {
+        const ids = new Set(Array.from({ length: 20 }, () => mgr.generateId()));
+        expect(ids.size).toBe(20);
+    });
 });

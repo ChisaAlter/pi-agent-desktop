@@ -104,4 +104,74 @@ describe("tasksFromListItems / GeneratedUi / messages", () => {
     ]);
     expect(tasksFromMessages([])).toEqual([]);
   });
+
+  // wave-139 residual
+  it("mapUiStatus covers progress/success/skipped/blocked and mixed case", () => {
+    expect(mapUiStatus("PROGRESS")).toBe("running");
+    expect(mapUiStatus("Success")).toBe("completed");
+    expect(mapUiStatus("SKIPPED")).toBe("completed");
+    expect(mapUiStatus("Blocked")).toBe("failed");
+    expect(mapUiStatus("  ")).toBe("pending");
+  });
+
+  it("collects file_list sections and ignores empty cards", () => {
+    const card: GeneratedUiCard = {
+      version: "v1",
+      id: "files",
+      sections: [
+        {
+          id: "files-sec",
+          kind: "file_list",
+          items: [
+            { id: "f1", label: "src/a.ts", status: "done" },
+            { id: "f2", label: "  ", status: "running" },
+          ],
+        },
+        {
+          id: "kv",
+          kind: "key_value",
+          items: [{ id: "k", key: "x", value: "y" }],
+        },
+      ],
+    };
+    expect(tasksFromGeneratedUi(card)).toEqual([
+      { id: "f1", name: "src/a.ts", status: "completed" },
+    ]);
+    expect(tasksFromGeneratedUi({ version: "v1", id: "empty", sections: [] })).toEqual([]);
+  });
+
+  it("tasksFromMessages walks past empty cards to older non-empty card", () => {
+    const messages = [
+      {
+        generatedUi: {
+          version: "v1" as const,
+          id: "has",
+          sections: [
+            {
+              id: "s",
+              kind: "steps" as const,
+              items: [{ id: "only", label: "Only", status: "pending" }],
+            },
+          ],
+        } satisfies GeneratedUiCard,
+      },
+      {
+        generatedUi: {
+          version: "v1" as const,
+          id: "empty-steps",
+          sections: [
+            {
+              id: "s2",
+              kind: "steps" as const,
+              items: [{ id: "", label: "   ", status: "running" }],
+            },
+          ],
+        } satisfies GeneratedUiCard,
+      },
+    ];
+    // newest card has only blank labels → empty; fall back to older card
+    expect(tasksFromMessages(messages)).toEqual([
+      { id: "only", name: "Only", status: "pending" },
+    ]);
+  });
 });

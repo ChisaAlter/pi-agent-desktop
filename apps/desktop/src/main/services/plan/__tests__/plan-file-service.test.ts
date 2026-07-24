@@ -1,7 +1,7 @@
 // PlanFileService 单测: 覆盖 create/read/update/complete/delete/list + slug sanitize
 // 用 mkdtempSync 创建独立 tmpdir 作为 workspacePath,避免相互污染.
 
-import { existsSync, mkdtempSync, rmSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -405,6 +405,57 @@ describe("PlanFileService", () => {
             expect(() => service.update(workspacePath, "nope.md", { content: "x" })).toThrow();
             expect(() => service.complete(workspacePath, "nope.md")).toThrow();
             expect(() => service.delete(workspacePath, "nope.md")).not.toThrow();
+        });
+    });
+
+    // wave-171 residual
+    describe("parse / path residual", () => {
+        it("read returns null for corrupt frontmatter and missing required fields", () => {
+            const plans = join(workspacePath, ".pi", "plans");
+            mkdirSync(plans, { recursive: true });
+            writeFileSync(join(plans, "no-fm.md"), "# just body\n", "utf8");
+            writeFileSync(
+                join(plans, "partial.md"),
+                "---\nid: x\ntitle: t\n---\nbody\n",
+                "utf8",
+            );
+            writeFileSync(
+                join(plans, "bad-status.md"),
+                "---\nid: y\ntitle: t\nstatus: weird\ncreated_at: 1\nupdated_at: 2\n---\nbody\n",
+                "utf8",
+            );
+            expect(service.read(workspacePath, "no-fm.md")).toBeNull();
+            expect(service.read(workspacePath, "partial.md")).toBeNull();
+            expect(service.read(workspacePath, "bad-status.md")).toBeNull();
+        });
+
+        it("read/update use basename so path separators cannot escape plans dir", () => {
+            const created = service.create(workspacePath, {
+                slug: "safe",
+                title: "Safe",
+                content: "body",
+            });
+            // Traversal-style filename must resolve via basename to the real plan file.
+            const sneaky = `../${created.filename}`;
+            const got = service.read(workspacePath, sneaky);
+            expect(got?.id).toBe(created.id);
+            const updated = service.update(workspacePath, sneaky, { content: "patched" });
+            expect(updated.content).toBe("patched");
+            expect(service.read(workspacePath, created.filename)?.content).toBe("patched");
+        });
+
+        it("complete throws when destination already exists in completed/", () => {
+            const created = service.create(workspacePath, {
+                slug: "dup",
+                title: "Dup",
+                content: "c",
+            });
+            const completed = join(workspacePath, ".pi", "plans", "completed");
+            mkdirSync(completed, { recursive: true });
+            writeFileSync(join(completed, created.filename), "already there", "utf8");
+            expect(() => service.complete(workspacePath, created.filename)).toThrow(
+                /already exists in completed/,
+            );
         });
     });
 });

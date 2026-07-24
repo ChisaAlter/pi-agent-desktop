@@ -55,4 +55,20 @@ describe("IPC handlers: duplicate registration regression", () => {
         expect(content).toContain("['diff', '--staged']");
         expect(content).not.toContain("['diff-staged']");
     });
+
+    // wave-108 residual
+    it("registers a non-empty set of known handle channels", () => {
+        const content = getAllIpcSource();
+        const matches = [...content.matchAll(/ipcMain\.handle\(\s*['"]([^'"]+)['"]/g)].map((m) => m[1]);
+        expect(matches.length).toBeGreaterThan(20);
+        for (const required of [
+            "diagnostics:export",
+            "updater:get-state",
+            "updater:check",
+            "workspace:list",
+            "settings:get",
+        ]) {
+            expect(matches).toContain(required);
+        }
+    });
 });

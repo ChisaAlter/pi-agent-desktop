@@ -150,4 +150,91 @@ describe("LongHorizonSettings.memory → MarkdownMemoryService bridge", () => {
         });
         service.close();
     });
+
+    // wave-143 residual
+    it("high searchScoreFloor can filter weak matches while keeping strong ones", async () => {
+        const loose = new MarkdownMemoryService({
+            userData: tempRoot,
+            dbPath: join(tempRoot, "loose.sqlite"),
+            settings: { enabled: true, ccIndex: false, reconcileOnSearch: true, searchScoreFloor: 0 },
+        });
+        mkdirSync(join(memoryRoot, "global"), { recursive: true });
+        writeFileSync(join(memoryRoot, "global", "strong.md"), "unique-token unique-token unique-token");
+        writeFileSync(join(memoryRoot, "global", "weak.md"), "unique-token filler filler filler filler");
+        const looseHits = await loose.search("unique-token");
+        expect(looseHits.length).toBeGreaterThan(0);
+        loose.close();
+
+        const strict = new MarkdownMemoryService({
+            userData: tempRoot,
+            dbPath: join(tempRoot, "strict.sqlite"),
+            settings: { enabled: true, ccIndex: false, reconcileOnSearch: true, searchScoreFloor: 0.99 },
+        });
+        // re-seed under same memoryRoot (shared)
+        const strictHits = await strict.search("unique-token");
+        // floor near 1 should not exceed the loose hit count
+        expect(strictHits.length).toBeLessThanOrEqual(looseHits.length);
+        strict.close();
+    });
+
+    it("enabled master switch short-circuits even when score floor is zero", async () => {
+        const service = new MarkdownMemoryService({
+            userData: tempRoot,
+            dbPath,
+            settings: { enabled: false, ccIndex: true, reconcileOnSearch: true, searchScoreFloor: 0 },
+        });
+        mkdirSync(join(memoryRoot, "global"), { recursive: true });
+        writeFileSync(join(memoryRoot, "global", "x.md"), "find-me-please");
+        expect(await service.search("find-me-please")).toEqual([]);
+        expect(service.settingsSnapshot.ccIndex).toBe(true);
+        service.close();
+    });
+
+    it("reconcileOnSearch=true indexes disk files so search can hit them", async () => {
+        const service = new MarkdownMemoryService({
+            userData: tempRoot,
+            dbPath,
+            settings: { enabled: true, ccIndex: false, reconcileOnSearch: true, searchScoreFloor: 0 },
+        });
+        mkdirSync(join(memoryRoot, "global"), { recursive: true });
+        writeFileSync(join(memoryRoot, "global", "note.md"), "bridge-contract-token");
+        const hits = await service.search("bridge-contract-token");
+        expect(hits.length).toBeGreaterThan(0);
+        expect(
+            hits.some(
+                (h) =>
+                    h.path.includes("note.md") ||
+                    (typeof h.snippet === "string" && h.snippet.includes("bridge-contract-token")),
+            ),
+        ).toBe(true);
+        service.close();
+    });
+
+    // wave-229 residual
+    it("reconcileOnSearch=false does not pick up newly written disk files", async () => {
+        const service = new MarkdownMemoryService({
+            userData: tempRoot,
+            dbPath,
+            settings: { enabled: true, ccIndex: false, reconcileOnSearch: false, searchScoreFloor: 0 },
+        });
+        mkdirSync(join(memoryRoot, "global"), { recursive: true });
+        writeFileSync(join(memoryRoot, "global", "late.md"), "late-token-xyz");
+        // no reconcile before search → empty unless previously indexed
+        expect(await service.search("late-token-xyz")).toEqual([]);
+        service.close();
+    });
+
+    it("searchScoreFloor 0 keeps hits when reconcile indexes content", async () => {
+        const service = new MarkdownMemoryService({
+            userData: tempRoot,
+            dbPath: join(tempRoot, "floor0.sqlite"),
+            settings: { enabled: true, ccIndex: false, reconcileOnSearch: true, searchScoreFloor: 0 },
+        });
+        mkdirSync(join(memoryRoot, "global"), { recursive: true });
+        writeFileSync(join(memoryRoot, "global", "hit.md"), "floor-zero-token");
+        const hits = await service.search("floor-zero-token");
+        expect(hits.length).toBeGreaterThan(0);
+        service.close();
+    });
+
 });

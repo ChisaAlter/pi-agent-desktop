@@ -2,12 +2,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 const webContentsSend = vi.fn();
-const { createMock, generateIdMock, hasMock, writeMock, resizeMock, onOutputMock, onExitMock } = vi.hoisted(() => ({
+const {
+    createMock,
+    generateIdMock,
+    hasMock,
+    writeMock,
+    resizeMock,
+    closeMock,
+    listMock,
+    onOutputMock,
+    onExitMock,
+} = vi.hoisted(() => ({
     createMock: vi.fn(),
     generateIdMock: vi.fn(() => "pty_generated"),
     hasMock: vi.fn(() => false),
     writeMock: vi.fn(),
     resizeMock: vi.fn(),
+    closeMock: vi.fn(),
+    listMock: vi.fn(() => [] as Array<{ id: string; cwd: string; title?: string }>),
     onOutputMock: vi.fn(),
     onExitMock: vi.fn(),
 }));
@@ -44,8 +56,8 @@ vi.mock("../../services/shell/pty-manager", () => ({
         has: hasMock,
         write: writeMock,
         resize: resizeMock,
-        close: vi.fn(),
-        list: vi.fn(() => []),
+        close: closeMock,
+        list: listMock,
     },
 }));
 
@@ -58,6 +70,9 @@ describe("setupTerminalIpc", () => {
         createMock.mockReset();
         writeMock.mockReset();
         resizeMock.mockReset();
+        closeMock.mockReset();
+        listMock.mockReset();
+        listMock.mockReturnValue([]);
         onOutputMock.mockClear();
         onExitMock.mockClear();
         generateIdMock.mockClear();
@@ -184,5 +199,27 @@ describe("setupTerminalIpc", () => {
             code: "ipcErrors.terminal.resizeFailed",
             fallback: "调整终端尺寸失败: pty is closed",
         });
+    });
+
+    // wave-102 residual
+    it("writes valid terminal input and resizes successfully", () => {
+        expect(handlers.get("terminal:input")!({}, "pty_1", "pnpm test\n")).toBeUndefined();
+        expect(writeMock).toHaveBeenCalledWith("pty_1", "pnpm test\n");
+
+        expect(handlers.get("terminal:resize")!({}, "pty_1", 120, 40)).toBeUndefined();
+        expect(resizeMock).toHaveBeenCalledWith("pty_1", 120, 40);
+    });
+
+    it("closes terminals and lists open sessions", () => {
+        listMock.mockReturnValueOnce([
+            { id: "pty_1", cwd: "C:/repo", title: "repo" },
+            { id: "pty_2", cwd: "C:/other" },
+        ]);
+        expect(handlers.get("terminal:close")!({}, "pty_1")).toBeUndefined();
+        expect(closeMock).toHaveBeenCalledWith("pty_1");
+        expect(handlers.get("terminal:list")!({})).toEqual([
+            { id: "pty_1", cwd: "C:/repo", title: "repo" },
+            { id: "pty_2", cwd: "C:/other", title: undefined },
+        ]);
     });
 });

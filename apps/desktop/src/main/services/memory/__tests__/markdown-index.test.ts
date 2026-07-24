@@ -387,3 +387,122 @@ describe("MarkdownIndex persistence", () => {
         expect(existsSync(dbPath)).toBe(true);
     });
 });
+
+describe("MarkdownIndex residual edges", () => {
+    it("deleteIndex on unknown path is a no-op and empty body remains searchable by path", async () => {
+        await expect(index.deleteIndex("/tmp/does-not-exist.md")).resolves.toBeUndefined();
+
+        await index.upsertIndex({
+            path: "/tmp/empty.md",
+            scope: "global",
+            type: "free",
+            body: "",
+            fingerprint: "empty-fp",
+        });
+        const row = await index.getByPath("/tmp/empty.md");
+        expect(row).toMatchObject({ path: "/tmp/empty.md", body: "", type: "free" });
+
+        await index.deleteIndex("/tmp/empty.md");
+        expect(await index.getByPath("/tmp/empty.md")).toBeNull();
+    });
+
+    it("combines scope + type filters and tolerates blank FTS tokens", async () => {
+        await seedIndex(tempRoot, [
+            {
+                rel: "projects/p1/MEMORY.md",
+                scope: "projects",
+                scopeId: "p1",
+                type: "memory",
+                body: "alpha project memory token",
+            },
+            {
+                rel: "projects/p1/notes.md",
+                scope: "projects",
+                scopeId: "p1",
+                type: "notes",
+                body: "alpha project notes token",
+            },
+            {
+                rel: "global/MEMORY.md",
+                scope: "global",
+                type: "memory",
+                body: "alpha global memory token",
+            },
+        ]);
+
+        const hits = await index.search(
+            buildFtsQuery("alpha")!,
+            { scope: "projects", scopeId: "p1", type: "notes" },
+            { limit: 10, scoreFloor: 0 },
+        );
+        expect(hits).toHaveLength(1);
+        expect(hits[0].type).toBe("notes");
+        expect(hits[0].scopeId).toBe("p1");
+
+        // operator-only / empty query already covered; whitespace-built query → []
+        const blank = buildFtsQuery("   ");
+        expect(blank).toBeNull();
+        await expect(index.search(null as never, {}, { limit: 5 })).resolves.toEqual([]);
+    });
+});
+
+// wave-237 residual
+describe("MarkdownIndex residual (wave-237)", () => {
+    it("loadIndexedPaths / count / getByPath track upserts and deletes", async () => {
+        expect(await index.count()).toBe(0);
+        expect(await index.loadIndexedPaths()).toEqual(new Map());
+
+        const abs = seedMarkdownFile(tempRoot, "global/MEMORY.md", "hello residual token");
+        await index.upsertIndex({
+            path: abs,
+            scope: "global",
+            type: "memory",
+            body: "hello residual token",
+            fingerprint: "fp-1",
+        });
+
+        expect(await index.count()).toBe(1);
+        const paths = await index.loadIndexedPaths();
+        expect(paths.get(abs)).toBe("fp-1");
+        expect(await index.getByPath(abs)).toMatchObject({
+            path: abs,
+            scope: "global",
+            type: "memory",
+            body: "hello residual token",
+            fingerprint: "fp-1",
+        });
+        expect(await index.getByPath(join(tempRoot, "missing.md"))).toBeNull();
+
+        await index.deleteIndex(abs);
+        expect(await index.count()).toBe(0);
+        expect(await index.getByPath(abs)).toBeNull();
+    });
+
+    it("upsertIndex updates body/fingerprint for the same path without duplicating rows", async () => {
+        const abs = seedMarkdownFile(tempRoot, "projects/p1/notes.md", "v1 body");
+        await index.upsertIndex({
+            path: abs,
+            scope: "projects",
+            scopeId: "p1",
+            type: "notes",
+            body: "v1 body",
+            fingerprint: "fp-v1",
+        });
+        await index.upsertIndex({
+            path: abs,
+            scope: "projects",
+            scopeId: "p1",
+            type: "notes",
+            body: "v2 body unique-residual-xyz",
+            fingerprint: "fp-v2",
+        });
+        expect(await index.count()).toBe(1);
+        const row = await index.getByPath(abs);
+        expect(row?.body).toBe("v2 body unique-residual-xyz");
+        expect(row?.fingerprint).toBe("fp-v2");
+
+        const hits = await index.search(buildFtsQuery("unique-residual-xyz")!, {}, { limit: 5, scoreFloor: 0 });
+        expect(hits).toHaveLength(1);
+        expect(hits[0].path).toBe(abs);
+    });
+});

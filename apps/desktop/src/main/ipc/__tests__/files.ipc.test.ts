@@ -280,4 +280,44 @@ describe("files IPC", () => {
         expect(isIpcError(result)).toBe(false);
         expect(readFileSync(file, "utf-8")).toBe("fresh");
     });
+
+    // wave-103 residual
+    it("lists and filters workspace files", async () => {
+        const workspace = makeWorkspace();
+        writeFileSync(join(workspace, "alpha.ts"), "a", "utf-8");
+        writeFileSync(join(workspace, "beta.md"), "b", "utf-8");
+        mkdirSync(join(workspace, "src"), { recursive: true });
+        writeFileSync(join(workspace, "src", "gamma.ts"), "g", "utf-8");
+
+        const listHandler = handlers.get("files:list")!;
+        const all = await listHandler({}, workspace);
+        expect(isIpcError(all)).toBe(false);
+        if (!isIpcError(all)) {
+            const names = (all as Array<{ name: string }>).map((f) => f.name);
+            expect(names).toEqual(expect.arrayContaining(["alpha.ts", "beta.md", "gamma.ts"]));
+        }
+
+        const filtered = await listHandler({}, workspace, "gamma");
+        expect(isIpcError(filtered)).toBe(false);
+        if (!isIpcError(filtered)) {
+            expect(filtered).toEqual([
+                expect.objectContaining({ name: "gamma.ts" }),
+            ]);
+        }
+    });
+
+    it("returns empty select results without a main window", async () => {
+        const result = await handlers.get("files:select")!({}, { multiSelections: true });
+        expect(result).toEqual([]);
+    });
+
+    it("returns IPC error when reading a missing file", async () => {
+        const workspace = makeWorkspace();
+        const missing = join(workspace, "nope.txt");
+        const result = await handlers.get("files:readTextFile")!({}, missing, workspace);
+        expect(isIpcError(result)).toBe(true);
+        if (isIpcError(result)) {
+            expect(result.code).toMatch(/ipcErrors\.files\./);
+        }
+    });
 });

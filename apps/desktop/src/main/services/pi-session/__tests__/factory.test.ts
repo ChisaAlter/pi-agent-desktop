@@ -1,5 +1,7 @@
 import { beforeEach, describe, it, expect, vi } from "vitest";
 import { join } from "path";
+import { mkdirSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import {
     createWorkspaceSession,
     resolveBundledComposeExtensionPath,
@@ -620,4 +622,54 @@ describe("createWorkspaceSession", () => {
         expect(composePath).toBe(join(desktopRoot, "extensions/compose-mode/index.ts"));
         expect(generatedUiPath).toBe(join(desktopRoot, "extensions/generated-ui/index.ts"));
     });
+
+
+
+    // wave-307 residual
+    describe("resolveBundledDesktopExtensionPaths residual (wave-307)", () => {
+        it("empty options yields []; flags compose and plan and generatedUi independently", () => {
+            expect(resolveBundledDesktopExtensionPaths({})).toEqual([]);
+            expect(resolveBundledDesktopExtensionPaths()).toEqual([]);
+            // workflow uses compose path helper with workflow-extension.ts entry
+            const wf = resolveBundledDesktopExtensionPaths({ workflowEnabled: true });
+            const cwf = resolveBundledDesktopExtensionPaths({ composeWorkflowEnabled: true });
+            // both may resolve same candidate set — Set dedupes
+            if (wf.length && cwf.length) {
+                expect(new Set([...wf, ...cwf]).size).toBeGreaterThanOrEqual(1);
+            }
+            const both = resolveBundledDesktopExtensionPaths({
+                workflowEnabled: true,
+                composeWorkflowEnabled: true,
+            });
+            // Set dedupe: both flags push same resolve path → length 1 when found
+            expect(both.length).toBeLessThanOrEqual(1);
+        });
+
+        it("resolveBundledComposeExtensionPath prefers resourcesDir when file exists", () => {
+            const root = join(tmpdir(), `pi-factory-res-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+            const resources = join(root, "resources");
+            const entry = join(resources, "extensions", "compose-mode", "index.ts");
+            mkdirSync(join(entry, ".."), { recursive: true });
+            writeFileSync(entry, "export {};" + String.fromCharCode(10), "utf8");
+            const missingBase = join(root, "missing", "base");
+            mkdirSync(missingBase, { recursive: true });
+            expect(resolveBundledComposeExtensionPath(missingBase, "index.ts", resources)).toBe(entry);
+            // generated-ui similar
+            const gui = join(resources, "extensions", "generated-ui", "index.ts");
+            mkdirSync(join(gui, ".."), { recursive: true });
+            writeFileSync(gui, "export {};" + String.fromCharCode(10), "utf8");
+            expect(resolveBundledGeneratedUiExtensionPath(missingBase, resources)).toBe(gui);
+            rmSync(root, { recursive: true, force: true });
+        });
+
+        it("resolveBundledComposeExtensionPath returns undefined when no candidate exists", () => {
+            const root = join(tmpdir(), `pi-factory-miss-${Date.now()}`);
+            const base = join(root, "a", "b", "c");
+            mkdirSync(base, { recursive: true });
+            expect(resolveBundledComposeExtensionPath(base, "index.ts", join(root, "no-resources"))).toBeUndefined();
+            expect(resolveBundledGeneratedUiExtensionPath(base, join(root, "no-resources"))).toBeUndefined();
+            rmSync(root, { recursive: true, force: true });
+        });
+    });
+
 });

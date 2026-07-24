@@ -640,4 +640,52 @@ describe("TaskRegistry", () => {
             expect(await service.getTask("s1", "T1")).toEqual(created);
         });
     });
+
+    describe("residual list/archive and lifecycle edges", () => {
+        it("lists empty session as [] and includes archived when requested", async () => {
+            const { registry, db } = createRegistry();
+            expect(await registry.list({ sessionId: "empty" })).toEqual([]);
+
+            const created = await registry.create({ sessionId: "s-arch", summary: "archive me" });
+            await registry.done({ sessionId: "s-arch", id: created.id });
+            db.getDb()
+                .prepare("UPDATE task SET cleanup_after = ? WHERE session_id = ? AND id = ?")
+                .run(1, "s-arch", created.id);
+
+            const hidden = await registry.list({ sessionId: "s-arch", includeTerminal: true });
+            expect(hidden).toHaveLength(0);
+
+            const shown = await registry.list({
+                sessionId: "s-arch",
+                includeTerminal: true,
+                includeArchived: true,
+            });
+            expect(shown).toHaveLength(1);
+            expect(shown[0].id).toBe(created.id);
+            expect(shown[0].status).toBe("done");
+        });
+
+        it("start with eventSummary and block→done keep event stream coherent", async () => {
+            const { registry, db } = createRegistry();
+            const t = await registry.create({ sessionId: "s-flow", summary: "flow" });
+            await registry.start({ sessionId: "s-flow", id: t.id, eventSummary: "kickoff" });
+            await registry.block({ sessionId: "s-flow", id: t.id, eventSummary: "waiting" });
+            await registry.done({ sessionId: "s-flow", id: t.id, eventSummary: "shipped" });
+
+            const raw = openRaw(db);
+            try {
+                const events = raw.events("session_id = ? AND task_id = ?", ["s-flow", "T1"]);
+                expect(eventKinds(events)).toEqual(["created", "started", "blocked", "done"]);
+                expect(events[1].summary).toBe("kickoff");
+                expect(events[2].summary).toBe("waiting");
+                expect(events[3].summary).toBe("shipped");
+            } finally {
+                raw.close();
+            }
+
+            const done = await registry.get("s-flow", "T1");
+            expect(done?.status).toBe("done");
+            expect(done?.endedAt).toBeTypeOf("number");
+        });
+    });
 });

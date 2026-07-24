@@ -164,4 +164,68 @@ describe("setupConfigIpc", () => {
             { name: "settings.png", dataUrl: "data:image/png;base64,Zm9v", mimeType: "image/png" },
         ]);
     });
+
+    // wave-101 residual
+    it("returns invalidImages for malformed describe-images payloads", async () => {
+        const manager = createManagerStub();
+        setupConfigIpc(manager as ConfigManager);
+        const result = await handlers.get("pi:describe-images")!({}, "not-an-array");
+        expect(result).toMatchObject({
+            code: "ipcErrors.config.invalidImages",
+        });
+        expect(manager.describeImages).not.toHaveBeenCalled();
+    });
+
+    it("allows safe https fetch-models and test-provider URLs", async () => {
+        const manager = createManagerStub();
+        setupConfigIpc(manager as ConfigManager);
+
+        await handlers.get("config:fetch-models")!({}, "https://api.openai.com/v1", "sk-test");
+        expect(manager.fetchModels).toHaveBeenCalledWith("https://api.openai.com/v1", "sk-test", undefined);
+
+        await handlers.get("config:test-provider")!({}, {
+            baseUrl: "https://api.openai.com/v1",
+            providerId: "openai",
+            apiKey: "sk-test",
+            modelId: "gpt-4o",
+        });
+        expect(manager.testProviderConnection).toHaveBeenCalled();
+    });
+
+    it("blocks metadata hostnames on fetch-models and test-provider", async () => {
+        const manager = createManagerStub();
+        setupConfigIpc(manager as ConfigManager);
+        for (const url of [
+            "http://metadata.google.internal/computeMetadata/v1/",
+            "https://169.254.169.254/latest/meta-data",
+        ]) {
+            const fetchResult = await handlers.get("config:fetch-models")!({}, url);
+            expect(fetchResult).toMatchObject({ code: "ipcErrors.config.unsafeUrl" });
+            const testResult = await handlers.get("config:test-provider")!({}, { baseUrl: url });
+            expect(testResult).toMatchObject({ code: "ipcErrors.config.unsafeUrl" });
+        }
+        expect(manager.fetchModels).not.toHaveBeenCalled();
+        expect(manager.testProviderConnection).not.toHaveBeenCalled();
+    });
+
+    it("reads models/auth/settings and exports config", async () => {
+        const manager = createManagerStub();
+        setupConfigIpc(manager as ConfigManager);
+        await expect(handlers.get("config:get-models")!({})).resolves.toMatchObject({ raw: "{}" });
+        await expect(handlers.get("config:get-auth")!({})).resolves.toMatchObject({ raw: "{}" });
+        await expect(handlers.get("config:get-settings")!({})).resolves.toMatchObject({ raw: "{}" });
+        await expect(handlers.get("config:export")!({})).resolves.toBe("{}");
+        expect(manager.getModelsConfig).toHaveBeenCalled();
+        expect(manager.getAuthConfig).toHaveBeenCalled();
+        expect(manager.getSettingsConfig).toHaveBeenCalled();
+        expect(manager.exportConfig).toHaveBeenCalled();
+    });
+
+    it("broadcasts pi-config:changed after set-default-model success", async () => {
+        const manager = createManagerStub();
+        setupConfigIpc(manager as ConfigManager);
+        await handlers.get("config:set-default-model")!({}, "openai", "gpt-4o");
+        expect(manager.setDefaultModel).toHaveBeenCalledWith("openai", "gpt-4o");
+        expect(webContentsSend).toHaveBeenCalledWith("pi-config:changed");
+    });
 });

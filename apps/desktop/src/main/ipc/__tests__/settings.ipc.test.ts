@@ -352,4 +352,59 @@ describe("setupSettingsIpc", () => {
             expect(result.params).toMatchObject({ id: "missing-workspace" });
         }
     });
+
+    // wave-102 residual
+    it("returns current settings via settings:get", async () => {
+        const store = createStore({ theme: "dark", fontSize: 16 });
+        setupSettingsIpc({
+            store,
+            getPiAgentConfig: () => null,
+            piAgentDir: "C:/Users/demo/.pi/agent",
+        } as never);
+        await expect(handlers.get("settings:get")!({})).resolves.toMatchObject({
+            theme: "dark",
+            fontSize: 16,
+        });
+    });
+
+    it("rejects empty settings:set payloads", async () => {
+        const store = createStore();
+        setupSettingsIpc({
+            store,
+            getPiAgentConfig: () => null,
+            piAgentDir: "C:/Users/demo/.pi/agent",
+        } as never);
+        const result = await handlers.get("settings:set")!({}, {});
+        expect(isIpcError(result)).toBe(true);
+        if (isIpcError(result)) {
+            expect(result.code).toBe("ipcErrors.settings.invalidArgs");
+        }
+        expect(store.set).not.toHaveBeenCalled();
+    });
+
+    it("returns google defaults when pi:get-full-config has no agent config", async () => {
+        const store = createStore();
+        setupSettingsIpc({
+            store,
+            getPiAgentConfig: () => null,
+            piAgentDir: "C:/Users/demo/.pi/agent",
+        } as never);
+        await expect(handlers.get("pi:get-full-config")!({})).resolves.toEqual({
+            configPath: "C:/Users/demo/.pi/agent",
+            defaultProvider: "google",
+            defaultModel: "",
+            providers: [],
+        });
+    });
+
+    it("returns empty skills list when no workspaces exist and no workspace id is given", async () => {
+        const store = createStore();
+        setupSettingsIpc({
+            store,
+            getPiAgentConfig: () => null,
+            piAgentDir: "C:/Users/demo/.pi/agent",
+        } as never);
+        await expect(handlers.get("pi:list-skills")!({}, undefined)).resolves.toEqual([]);
+        expect(listLocalSkillsMock).not.toHaveBeenCalled();
+    });
 });

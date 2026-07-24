@@ -49,4 +49,27 @@ describe("setupWorkbenchIpc (F-011)", () => {
         const listener = listeners.get("workbench:set-active-file")!;
         expect(() => listener({}, "ws_1", "")).toThrow();
     });
+
+    // wave-99 residual
+    it("isolates active files across workspaces", () => {
+        const listener = listeners.get("workbench:set-active-file")!;
+        listener({}, "ws_a", "C:/a/file.ts");
+        listener({}, "ws_b", "C:/b/file.ts");
+        expect(getWorkbenchContext("ws_a")).toBe("C:/a/file.ts");
+        expect(getWorkbenchContext("ws_b")).toBe("C:/b/file.ts");
+        listener({}, "ws_a", null);
+        expect(getWorkbenchContext("ws_a")).toBeNull();
+        expect(getWorkbenchContext("ws_b")).toBe("C:/b/file.ts");
+    });
+
+    it("overwrites previous active file for the same workspace", () => {
+        const listener = listeners.get("workbench:set-active-file")!;
+        listener({}, "ws_1", "C:/repo/old.ts");
+        listener({}, "ws_1", "C:/repo/new.ts");
+        expect(getWorkbenchContext("ws_1")).toBe("C:/repo/new.ts");
+    });
+
+    it("returns null for unknown workspaces", () => {
+        expect(getWorkbenchContext("never-set")).toBeNull();
+    });
 });

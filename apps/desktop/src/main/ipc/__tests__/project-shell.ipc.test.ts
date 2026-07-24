@@ -23,9 +23,10 @@ vi.mock("electron", () => ({
 vi.mock("electron-log/main", () => ({
     default: {
         error: vi.fn(),
+        warn: vi.fn(),
+        info: vi.fn(),
     },
 }));
-
 import { setupProjectShellIpc } from "../project-shell.ipc";
 
 describe("setupProjectShellIpc", () => {
@@ -137,5 +138,37 @@ describe("setupProjectShellIpc", () => {
 
         expect(result).toBeUndefined();
         expect(showItemInFolderMock).toHaveBeenCalledWith("C:/repo/src/app.ts");
+    });
+
+    // wave-102 residual
+    it("rejects empty project:detect paths", async () => {
+        const result = await handlers.get("project:detect")!({}, "");
+        expect(result).toMatchObject({ code: "ipcErrors.project.detectInvalid" });
+    });
+
+    it("rejects oversized project:file-tree maxDepth", async () => {
+        const result = await handlers.get("project:file-tree")!({}, "C:/repo", 99);
+        expect(result).toMatchObject({ code: "ipcErrors.project.fileTreeInvalid" });
+    });
+
+    it("blocks non-http URL schemes on shell:open-path", async () => {
+        for (const target of [
+            "file:///C:/Windows/System32/calc.exe",
+            "javascript:alert(1)",
+            "data:text/html,hi",
+            "ms-msdt:something",
+        ]) {
+            const result = await handlers.get("shell:open-path")!({}, target);
+            expect(result, target).toMatchObject({ code: "ipcErrors.shell.invalidScheme" });
+        }
+        expect(openPathMock).not.toHaveBeenCalled();
+        expect(openExternalMock).not.toHaveBeenCalled();
+    });
+
+    it("still opens Windows drive paths with a colon", async () => {
+        openPathMock.mockResolvedValueOnce("");
+        const result = await handlers.get("shell:open-path")!({}, "C:/repo/readme.txt");
+        expect(result).toBe("");
+        expect(openPathMock).toHaveBeenCalledWith("C:/repo/readme.txt");
     });
 });
