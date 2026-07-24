@@ -205,7 +205,7 @@ export function TaskProgressPanel({
                                                     : undefined
                                             }
                                             aria-label={`task ${t.name} ${t.status}`}
-                                            className="group block w-full p-3 text-left transition-colors hover:bg-[var(--mm-bg-hover)] focus:bg-[var(--mm-bg-hover)] focus:outline-none"
+                                            className="group block w-full p-3 text-left transition-colors hover:bg-[var(--mm-bg-hover)] focus:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                                         >
                                             <div className="flex min-w-0 items-center gap-2">
                                                 <StatusIcon status={t.status} />

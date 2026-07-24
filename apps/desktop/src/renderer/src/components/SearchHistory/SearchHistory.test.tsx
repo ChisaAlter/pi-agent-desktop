@@ -2,9 +2,39 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SearchHistory } from "./SearchHistory";
+import { compareSearchResults, SearchHistory, sliceMatchWindow } from "./SearchHistory";
 import { useSessionStore } from "../../stores/session-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
+
+describe("sliceMatchWindow", () => {
+    it("windows before/match/after around the hit", () => {
+        const text = "abcdefghijklmnopqrstuvwxyz";
+        expect(sliceMatchWindow(text, 10, 3, 2)).toEqual({
+            before: "ij",
+            match: "klm",
+            after: "no",
+        });
+    });
+
+    it("clamps the start of the before window", () => {
+        expect(sliceMatchWindow("hello world", 0, 5, 30)).toEqual({
+            before: "",
+            match: "hello",
+            after: " world",
+        });
+    });
+});
+
+describe("compareSearchResults", () => {
+    it("prefers the current workspace then newer timestamps", () => {
+        const olderLocal = { workspaceId: "ws1", timestamp: new Date(1) };
+        const newerOther = { workspaceId: "ws2", timestamp: new Date(99) };
+        const newerLocal = { workspaceId: "ws1", timestamp: new Date(50) };
+        expect(compareSearchResults(olderLocal, newerOther, "ws1")).toBeLessThan(0);
+        expect(compareSearchResults(newerOther, olderLocal, "ws1")).toBeGreaterThan(0);
+        expect(compareSearchResults(olderLocal, newerLocal, "ws1")).toBeGreaterThan(0);
+    });
+});
 
 describe("SearchHistory", () => {
     beforeEach(() => {
@@ -117,4 +147,37 @@ describe("SearchHistory", () => {
         expect(screen.getAllByRole("button", { name: /Active Session/ }).length).toBeGreaterThan(0);
         expect(screen.getByText(/docs\/report\.md/)).toBeTruthy();
     });
+
+    it("exposes close and result focus-visible rings and empty query hint", () => {
+        const onClose = vi.fn();
+        render(<SearchHistory isOpen onClose={onClose} onNavigate={vi.fn()} />);
+
+        expect(screen.getByText("输入关键词搜索所有对话")).toBeTruthy();
+        const close = screen.getByRole("button", { name: "关闭搜索" });
+        expect(close.className).toContain("focus-visible:ring-2");
+        fireEvent.click(close);
+        expect(onClose).toHaveBeenCalled();
+
+        fireEvent.change(screen.getByRole("textbox", { name: "搜索对话历史" }), {
+            target: { value: "alpha" },
+        });
+        const result = screen.getByRole("button", { name: /Active Session/ });
+        expect(result.className).toContain("focus-visible:ring-2");
+    });
+
+    it("shows no-match empty state for unknown phrases", () => {
+        render(<SearchHistory isOpen onClose={vi.fn()} onNavigate={vi.fn()} />);
+        fireEvent.change(screen.getByRole("textbox", { name: "搜索对话历史" }), {
+            target: { value: "zzz-not-present" },
+        });
+        expect(screen.getByText("没有找到匹配的对话")).toBeTruthy();
+    });
+
+
+    it("wave-88 residual: search input keeps focus-visible ring", () => {
+        render(<SearchHistory isOpen onClose={vi.fn()} onNavigate={vi.fn()} />);
+        const input = screen.getByRole("textbox", { name: "搜索对话历史" });
+        expect(input.className).toContain("focus-visible:ring-2");
+    });
+
 });

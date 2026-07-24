@@ -123,7 +123,7 @@ function UpdaterActionRow(): React.JSX.Element {
                     type="button"
                     onClick={() => void checkForUpdates()}
                     disabled={loading || state?.phase === "checking" || state?.phase === "downloading"}
-                    className="rounded-lg bg-[var(--mm-accent-blue)] px-3 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-lg bg-[var(--mm-accent-blue)] px-3 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#2563eb]"
                 >
                     {t("settings.about.updater.actions.check")}
                 </button>
@@ -133,7 +133,7 @@ function UpdaterActionRow(): React.JSX.Element {
                         type="button"
                         onClick={() => void downloadUpdate()}
                         disabled={loading}
-                        className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-3 py-2 text-sm text-[var(--mm-text-primary)] transition hover:bg-[var(--mm-bg-sidebar)] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-3 py-2 text-sm text-[var(--mm-text-primary)] transition hover:bg-[var(--mm-bg-sidebar)] disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                     >
                         {t("settings.about.updater.actions.download")}
                     </button>
@@ -144,7 +144,7 @@ function UpdaterActionRow(): React.JSX.Element {
                         type="button"
                         onClick={() => void installUpdate()}
                         disabled={loading}
-                        className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-3 py-2 text-sm text-[var(--mm-text-primary)] transition hover:bg-[var(--mm-bg-sidebar)] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-3 py-2 text-sm text-[var(--mm-text-primary)] transition hover:bg-[var(--mm-bg-sidebar)] disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                     >
                         {t("settings.about.updater.actions.install")}
                     </button>
@@ -153,7 +153,7 @@ function UpdaterActionRow(): React.JSX.Element {
                 <button
                     type="button"
                     onClick={() => void openReleasePage()}
-                    className="rounded-lg border border-[var(--mm-border)] bg-transparent px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)]"
+                    className="rounded-lg border border-[var(--mm-border)] bg-transparent px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 >
                     {t("settings.about.updater.actions.openReleasePage")}
                 </button>
@@ -198,7 +198,7 @@ function DiagnosticsSection(): React.JSX.Element {
                 type="button"
                 onClick={() => void exportDiagnostics()}
                 disabled={exporting}
-                className="mt-4 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-3 py-2 text-sm text-[var(--mm-text-primary)] transition hover:bg-[var(--mm-bg-sidebar)] disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-4 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-3 py-2 text-sm text-[var(--mm-text-primary)] transition hover:bg-[var(--mm-bg-sidebar)] disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
             >
                 {exporting ? t("settings.about.diagnostics.exporting") : t("settings.about.diagnostics.export")}
             </button>

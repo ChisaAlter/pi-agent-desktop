@@ -5,7 +5,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { useSessionStore } from "../../stores/session-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
-import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
+import { basename, WorkspaceSwitcher } from "./WorkspaceSwitcher";
+
+describe("basename", () => {
+  it("returns the last segment for Windows and Unix paths", () => {
+    expect(basename("C:\\Ai\\pi-desktop")).toBe("pi-desktop");
+    expect(basename("/home/user/project")).toBe("project");
+    expect(basename("single")).toBe("single");
+    expect(basename("C:\\Ai\\pi-desktop\\")).toBe("pi-desktop");
+  });
+});
 
 describe("WorkspaceSwitcher", () => {
   const createWorkspace = vi.fn(async (name: string, path: string) => {
@@ -161,5 +170,40 @@ describe("WorkspaceSwitcher", () => {
       expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("ws_hermes");
     });
     expect(useSessionStore.getState().currentSessionId).toBeNull();
+  });
+
+  it("exposes menu a11y and focus-visible rings on actions", () => {
+    render(
+      <I18nProvider>
+        <WorkspaceSwitcher variant="strip" />
+      </I18nProvider>,
+    );
+
+    const trigger = screen.getByRole("button", { name: /切换工作区/ });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("menu")).toBeTruthy();
+
+    const blank = screen.getByRole("menuitem", { name: "新增空白项目" });
+    const existing = screen.getByRole("menuitem", { name: "使用现有文件夹" });
+    const hermes = screen.getByRole("menuitem", { name: /HermesCoWork/ });
+    expect(blank.className).toContain("focus-visible:ring-2");
+    expect(existing.className).toContain("focus-visible:ring-2");
+    expect(hermes.className).toContain("focus-visible:ring-2");
+  });
+
+  it("shows empty state when search has no matches", () => {
+    render(
+      <I18nProvider>
+        <WorkspaceSwitcher variant="strip" />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /切换工作区/ }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索项目" }), {
+      target: { value: "zzz-no-match" },
+    });
+    expect(screen.getByText("没有匹配的项目")).toBeTruthy();
   });
 });

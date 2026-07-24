@@ -71,4 +71,31 @@ describe("UsageTab", () => {
     expect(screen.getByText("30 天内活跃 1 天")).toBeTruthy();
     expect(screen.getByTestId("usage-heatmap").querySelectorAll("button")).toHaveLength(30);
   });
+
+  it("exposes range toggle focus-visible rings for keyboard a11y", async () => {
+    render(<UsageTab />, { wrapper: I18nProvider });
+    await waitFor(() => {
+      expect(window.piAPI.listSessionSummaries).toHaveBeenCalled();
+    });
+    for (const name of ["最近 7 天", "最近 30 天", "当前工作区", "全部工作区", "活跃", "含归档"]) {
+      const btn = screen.getByRole("button", { name });
+      expect(btn.className).toContain("focus-visible:ring-2");
+      expect(btn.getAttribute("type")).toBe("button");
+    }
+  });
+
+  it("exposes heatmap/model/session control focus-visible rings for keyboard a11y", async () => {
+    render(<UsageTab />, { wrapper: I18nProvider });
+    await waitFor(() => {
+      expect(window.piAPI.listSessionSummaries).toHaveBeenCalled();
+    });
+    const heatmapBtn = screen.getByTestId("usage-heatmap").querySelector("button");
+    expect(heatmapBtn?.className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: /模型用量详情/ }).className).toContain(
+      "focus-visible:ring-2",
+    );
+    expect(screen.getByRole("button", { name: /Usage session/ }).className).toContain(
+      "focus-visible:ring-2",
+    );
+  });
 });

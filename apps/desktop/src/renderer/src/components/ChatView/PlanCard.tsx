@@ -257,7 +257,7 @@ export function PlanCard({
             type="button"
             onClick={openPlanFile}
             data-testid="plan-filename"
-            className="shrink-0 inline-flex items-center gap-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-0.5 text-[10px] font-mono text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] transition-colors"
+            className="shrink-0 inline-flex items-center gap-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-0.5 text-[10px] font-mono text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
             title={filename}
           >
             <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
@@ -285,7 +285,7 @@ export function PlanCard({
               <button
                 type="button"
                 onClick={() => setExpanded(true)}
-                className="mt-1 text-xs text-[var(--mm-text-tertiary)] hover:text-[var(--mm-text-secondary)] transition-colors"
+                className="mt-1 text-xs text-[var(--mm-text-tertiary)] transition-colors hover:text-[var(--mm-text-secondary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
               >
                 {t("planCard.expandDetails")}
               </button>
@@ -296,7 +296,7 @@ export function PlanCard({
           <button
             type="button"
             onClick={() => setExpanded(false)}
-            className="mt-1 text-xs text-[var(--mm-text-tertiary)] hover:text-[var(--mm-text-secondary)] transition-colors"
+            className="mt-1 text-xs text-[var(--mm-text-tertiary)] transition-colors hover:text-[var(--mm-text-secondary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
           >
             {t("planCard.collapse")}
           </button>
@@ -349,7 +349,7 @@ export function PlanCard({
                 data-testid="plan-option"
                 aria-label={t("planCard.optionAria", { label: opt.label, value: opt.value })}
                 onClick={() => setSelectedOption(opt.value)}
-                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${
+                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] ${
                   selectedOption === opt.value
                     ? "border-[var(--mm-bg-active)] bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)]"
                     : "border-[var(--mm-border-subtle)] bg-transparent text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
@@ -374,7 +374,7 @@ export function PlanCard({
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 placeholder={hasOptions ? t("planCard.feedbackPlaceholderWithOptions") : t("planCard.feedbackPlaceholder")}
-                className="flex-1 rounded-lg border border-[var(--mm-border-subtle)] bg-[var(--mm-bg-control)] px-3 py-1.5 text-xs focus:border-[var(--mm-border-strong)] focus:outline-none focus:ring-0"
+                className="flex-1 rounded-lg border border-[var(--mm-border-subtle)] bg-[var(--mm-bg-control)] px-3 py-1.5 text-xs focus:border-[var(--mm-border-strong)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
@@ -390,7 +390,7 @@ export function PlanCard({
                 type="button"
                 onClick={handleExecute}
                 data-testid="plan-execute-button"
-                className="h-8 rounded-full bg-[var(--mm-bg-active)] px-3 text-xs font-medium text-[var(--mm-text-on-active)] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="h-8 rounded-full bg-[var(--mm-bg-active)] px-3 text-xs font-medium text-[var(--mm-text-on-active)] hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={isWriteFailure || Boolean(hasOptions && !selectedOption)}
               >
                 {hasOptions ? (selectedOption ? t("planCard.confirmAndExecute") : t("planCard.selectOptionPrompt")) : t("planCard.executePlan")}
@@ -399,14 +399,14 @@ export function PlanCard({
                 type="button"
                 onClick={handleRefine}
                 disabled={!feedback.trim()}
-                className="h-8 rounded-full border border-[var(--mm-border-subtle)] bg-transparent px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
+                className="h-8 rounded-full border border-[var(--mm-border-subtle)] bg-transparent px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {t("planCard.sendSupplement")}
               </button>
               <button
                 type="button"
                 onClick={onCancel}
-                className="h-8 rounded-full px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
+                className="h-8 rounded-full px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
               >
                 {t("planCard.cancel")}
               </button>
@@ -425,7 +425,7 @@ export function PlanCard({
                       type="button"
                       data-testid="plan-retry-button"
                       onClick={onRetry}
-                      className="font-medium underline underline-offset-2 hover:opacity-80"
+                      className="font-medium underline underline-offset-2 hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                     >
                       {t("planCard.retry")}
                     </button>
@@ -442,7 +442,7 @@ export function PlanCard({
               type="button"
               onClick={onPause}
               disabled={status === "pausing"}
-              className="h-8 rounded-full border border-[var(--mm-border-subtle)] bg-transparent px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:opacity-60"
+              className="h-8 rounded-full border border-[var(--mm-border-subtle)] bg-transparent px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:opacity-60"
             >
               {status === "pausing" ? t("planCard.pausing") : t("planCard.pauseExecution")}
             </button>
@@ -459,14 +459,14 @@ export function PlanCard({
             <button
               type="button"
               onClick={onResume}
-              className="h-8 rounded-full bg-[var(--mm-bg-active)] px-3 text-xs font-medium text-[var(--mm-text-on-active)] hover:opacity-90"
+              className="h-8 rounded-full bg-[var(--mm-bg-active)] px-3 text-xs font-medium text-[var(--mm-text-on-active)] hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
             >
               {t("planCard.resumeExecution")}
             </button>
             <button
               type="button"
               onClick={onCancel}
-              className="h-8 rounded-full px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
+              className="h-8 rounded-full px-3 text-xs font-medium text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
             >
               {t("planCard.cancel")}
             </button>

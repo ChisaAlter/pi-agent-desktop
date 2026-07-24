@@ -245,4 +245,20 @@ describe("TerminalPanel", () => {
         expect(screen.getByRole("button", { name: "新建终端" })).toBeTruthy();
         expect(screen.getByRole("button", { name: "收起终端" })).toBeTruthy();
     });
+
+    it("exposes focus-visible rings on tab-bar toolbar controls", async () => {
+        render(<TerminalPanel isOpen workspacePath="C:/demo" onClose={vi.fn()} />);
+        const createBtn = screen.getByRole("button", { name: "新建终端" });
+        expect(createBtn.className).toContain("focus-visible:ring-2");
+        expect(screen.getByRole("button", { name: "收起终端" }).className).toContain("focus-visible:ring-2");
+        expect(screen.getByTitle("当前终端暂无输出").className).toContain("focus-visible:ring-2");
+        expect(screen.getByTitle("清空当前终端屏幕和输出缓存").className).toContain("focus-visible:ring-2");
+
+        fireEvent.click(createBtn);
+        await waitFor(() => expect(window.piAPI.createTerminal).toHaveBeenCalledTimes(1));
+        expect(screen.getByRole("button", { name: "关闭终端 Terminal 1" }).className).toContain(
+            "focus-visible:ring-2",
+        );
+        expect(screen.getByTitle("Terminal 1 - C:/demo").className).toContain("focus-visible:ring-2");
+    });
 });

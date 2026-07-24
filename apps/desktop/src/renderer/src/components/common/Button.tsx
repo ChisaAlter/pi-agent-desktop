@@ -32,17 +32,17 @@ export function Button({
   type = 'button',
   ...props
 }: ButtonProps): React.JSX.Element {
-  const baseClasses = 'inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2';
+  const baseClasses = 'inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2';
   
   const variantClasses = {
-    primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500',
-    secondary: 'bg-gray-600 text-white hover:bg-gray-700 focus:ring-gray-500',
-    danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
-    ghost: 'bg-transparent text-gray-300 hover:bg-gray-700 focus:ring-gray-500',
+    primary: 'bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-500',
+    secondary: 'bg-gray-600 text-white hover:bg-gray-700 focus-visible:ring-gray-500',
+    danger: 'bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-500',
+    ghost: 'bg-transparent text-gray-300 hover:bg-gray-700 focus-visible:ring-gray-500',
     // 边框 + 透明背景 + hover 浅灰;适合次要操作(取消/返回)
-    outline: 'bg-transparent text-gray-700 border border-gray-300 hover:bg-[var(--mm-bg-hover)] focus:ring-gray-400',
+    outline: 'bg-transparent text-gray-700 border border-gray-300 hover:bg-[var(--mm-bg-hover)] focus-visible:ring-gray-400',
     // 无边框 + 透明背景 + hover 浅灰;适合行内/低权重操作,替代硬编码主题色按钮
-    subtle: 'bg-transparent text-gray-600 hover:bg-[var(--mm-bg-hover)] focus:ring-gray-400'
+    subtle: 'bg-transparent text-gray-600 hover:bg-[var(--mm-bg-hover)] focus-visible:ring-gray-400'
   };
   
   const sizeClasses = {

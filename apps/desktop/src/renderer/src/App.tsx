@@ -841,8 +841,9 @@ function AppShell(): React.ReactElement {
                 <h2 className="text-sm font-semibold text-[#1a1a1a] mb-1">{t("app.panelLoadFailed", { name })}</h2>
                 <p className="text-xs text-[#666] mb-3">{error.message}</p>
                 <button
+                    type="button"
                     onClick={reset}
-                    className="px-3 py-1.5 bg-[#1a1a1a] text-white rounded text-xs hover:bg-[#333] transition-colors"
+                    className="px-3 py-1.5 bg-[#1a1a1a] text-white rounded text-xs hover:bg-[#333] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 >
                     {t("common.retry")}
                 </button>

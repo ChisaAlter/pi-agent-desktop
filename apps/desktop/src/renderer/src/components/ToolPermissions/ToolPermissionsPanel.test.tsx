@@ -228,6 +228,13 @@ describe("ToolPermissionsPanel", () => {
     });
   });
 
+  it("exposes preset button focus-visible rings for keyboard a11y", () => {
+    renderWithI18n(<ToolPermissionsPanel workspaceId="w1" />);
+    const minimal = screen.getByRole("button", { name: "最小权限" });
+    expect(minimal.getAttribute("type")).toBe("button");
+    expect(minimal.className).toContain("focus-visible:ring-2");
+  });
+
   it("reflects workspace checkbox changes immediately and can toggle them back", () => {
     renderWithI18n(<ToolPermissionsPanel workspaceId="w1" />);
 

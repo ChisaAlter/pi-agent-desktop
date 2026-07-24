@@ -57,16 +57,18 @@ function ToastItem({
       <div className="flex items-center gap-1 flex-shrink-0">
         {toast.retryAction && (
           <button
+            type="button"
             onClick={() => { void toast.retryAction?.(); onDismiss(); }}
-            className="px-2 py-0.5 text-xs font-medium rounded hover:opacity-80 underline"
+            className="rounded px-2 py-0.5 text-xs font-medium underline hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
           >
             重试
           </button>
         )}
         <button
+          type="button"
           onClick={onDismiss}
           aria-label="关闭通知"
-          className="px-1 py-0.5 text-xs rounded hover:opacity-80 opacity-60"
+          className="rounded px-1 py-0.5 text-xs opacity-60 hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
         >
           ✕
         </button>

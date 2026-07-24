@@ -36,11 +36,12 @@ export function MySkills(): React.JSX.Element {
                     curl -fsSL https://skillhub.cn/install/install.sh | bash
                 </code>
                 <button
+                    type="button"
                     onClick={() => {
                         void checkAvailability();
                         void refreshInstalled();
                     }}
-                    className="px-3 py-1.5 bg-[#1a1a1a] text-white text-xs rounded hover:bg-[#333] transition-colors"
+                    className="px-3 py-1.5 bg-[#1a1a1a] text-white text-xs rounded hover:bg-[#333] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 >
                     重新检测
                 </button>
@@ -61,8 +62,9 @@ export function MySkills(): React.JSX.Element {
                         <p className="text-xs text-[var(--mm-text-secondary)] truncate font-mono">{error}</p>
                     </div>
                     <button
+                    type="button"
                         onClick={() => void refreshInstalled()}
-                        className="px-3 py-1.5 bg-[var(--color-error)] text-white text-xs rounded hover:bg-[var(--color-error)] transition-colors flex-shrink-0"
+                        className="px-3 py-1.5 bg-[var(--color-error)] text-white text-xs rounded hover:bg-[var(--color-error)] transition-colors flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500"
                     >
                         重试
                     </button>
@@ -74,7 +76,7 @@ export function MySkills(): React.JSX.Element {
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="过滤已装技能..."
-                    className="w-full px-3 py-1.5 bg-[var(--mm-bg-sidebar)] border border-[var(--mm-border)] rounded text-sm text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus:border-[#1a1a1a]"
+                    className="w-full px-3 py-1.5 bg-[var(--mm-bg-sidebar)] border border-[var(--mm-border)] rounded text-sm text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus:border-[#1a1a1a] focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 />
             </div>
 
@@ -97,13 +99,14 @@ export function MySkills(): React.JSX.Element {
                         打开 SkillHub 市场选一个
                     </p>
                     <button
+                    type="button"
                         onClick={() => {
                             // 通过自定义事件让 SkillsPanel 切到"市场" tab
                             window.dispatchEvent(
                                 new CustomEvent("skills-panel:set-tab", { detail: "market" })
                             );
                         }}
-                        className="px-3 py-1.5 bg-[#1a1a1a] text-white text-xs rounded hover:bg-[#333] transition-colors"
+                        className="px-3 py-1.5 bg-[#1a1a1a] text-white text-xs rounded hover:bg-[#333] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                     >
                         打开 SkillHub 市场
                     </button>
@@ -131,14 +134,16 @@ export function MySkills(): React.JSX.Element {
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0">
                                 <button
+                    type="button"
                                     onClick={() => toggleSkill(s.slug, !s.enabled)}
-                                    className="text-xs px-3 py-1 text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] rounded transition-colors"
+                                    className="text-xs px-3 py-1 text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] rounded transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                                 >
                                     {s.enabled ? "禁用" : "启用"}
                                 </button>
                                 <button
+                    type="button"
                                     onClick={() => setPendingUninstall(s.slug)}
-                                    className="text-xs px-3 py-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                                    className="text-xs px-3 py-1 text-red-600 hover:bg-red-50 rounded transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-500"
                                 >
                                     卸载
                                 </button>
@@ -164,7 +169,7 @@ export function MySkills(): React.JSX.Element {
                             <button
                                 type="button"
                                 onClick={() => setPendingUninstall(null)}
-                                className="rounded-lg px-3 py-1.5 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
+                                className="rounded-lg px-3 py-1.5 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                             >
                                 取消
                             </button>
@@ -175,7 +180,7 @@ export function MySkills(): React.JSX.Element {
                                     setPendingUninstall(null);
                                     void uninstallSkill(slug);
                                 }}
-                                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700"
+                                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500"
                             >
                                 卸载
                             </button>

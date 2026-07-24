@@ -400,6 +400,39 @@ describe("ChatInput", () => {
     expect(thinkingButton.className).toContain("h-full");
     expect(thinkingButton.className).toContain("leading-none");
     expect(thinkingButton.querySelector("svg")).toBeNull();
+    // residual a11y: composer triggers keep keyboard focus ring (wave-84)
+    for (const btn of [agentModeButton, permissionButton, modelButton, thinkingButton]) {
+      expect(btn.className).toContain("focus-visible:ring-2");
+      expect(btn.className).toContain("focus-visible:ring-[#2563eb]");
+    }
+  });
+
+  it("keeps focus-visible rings on default-layout plus/workspace triggers and menu items", () => {
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    const plus = screen.getByTestId("chat-input-plus-trigger");
+    const workspace = screen.getByTestId("chat-input-workspace-trigger");
+    expect(plus.className).toContain("focus-visible:ring-2");
+    expect(plus.className).toContain("focus-visible:ring-inset");
+    expect(workspace.className).toContain("focus-visible:ring-2");
+    expect(workspace.className).toContain("focus-visible:ring-[#2563eb]");
+
+    fireEvent.click(plus);
+    const addFile = screen.getByRole("menuitem", { name: "添加文件或图片" });
+    const openTools = screen.getByRole("menuitem", { name: "打开工具面板" });
+    expect(addFile.className).toContain("focus-visible:ring-2");
+    expect(openTools.className).toContain("focus-visible:ring-2");
   });
 
   it("allows changing permission mode from the reference composer", () => {
@@ -1574,4 +1607,86 @@ describe("ChatInput", () => {
     expect(onSend).not.toHaveBeenCalled();
     expect(useAttachmentsStore.getState().list("ws1")).toHaveLength(1);
   });
+
+  it("exposes reference composer toolbar focus-visible rings for keyboard a11y", () => {
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn()}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+    expect(screen.getByRole("button", { name: "添加文件或图片" }).className).toContain(
+      "focus-visible:ring-2",
+    );
+    expect(screen.getByRole("button", { name: "打开 Slash 命令" }).className).toContain(
+      "focus-visible:ring-2",
+    );
+  });
+
+  it("exposes primary send focus-visible rings for keyboard a11y", () => {
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn()}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+    const sendButtons = screen.getAllByRole("button", { name: "发送" });
+    expect(sendButtons.some((btn) => btn.className.includes("focus-visible:ring-2"))).toBe(true);
+  });
+
+  it("exposes reference primary send focus-visible rings for keyboard a11y", () => {
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn()}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+    const sendButtons = screen.getAllByRole("button", { name: "发送" });
+    expect(sendButtons.some((btn) => btn.className.includes("focus-visible:ring-2"))).toBe(true);
+  });
+
+  it("exposes composer trigger focus-visible rings for keyboard a11y", () => {
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn()}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+    expect(screen.getByTestId("chat-input-permission-trigger").className).toContain(
+      "focus-visible:ring-2",
+    );
+    expect(screen.getByTestId("chat-input-plus-trigger").className).toContain(
+      "focus-visible:ring-2",
+    );
+    expect(screen.getByTestId("chat-input-workspace-trigger").className).toContain(
+      "focus-visible:ring-2",
+    );
+  });
+
 });

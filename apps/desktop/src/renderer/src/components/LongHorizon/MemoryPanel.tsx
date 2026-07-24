@@ -105,7 +105,7 @@ export function MemoryPanel(): React.JSX.Element {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder={t("memoryPanel.searchPlaceholder")}
-            className="w-full rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-accent-blue)]"
+            className="w-full rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-accent-blue)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
           />
         </label>
       </div>

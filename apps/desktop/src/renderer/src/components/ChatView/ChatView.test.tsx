@@ -1613,4 +1613,15 @@ describe("ChatView", () => {
     fireEvent.click(screen.getByText("pause-plan"));
     expect(stopStreaming).toHaveBeenCalledWith("ws1");
   });
+
+  it("exposes session title rename focus-visible ring for keyboard a11y", () => {
+    mockedStreamError = null;
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+    const titleBtn = screen.getByRole("button", { name: "Session 1" });
+    expect(titleBtn.className).toContain("focus-visible:ring-2");
+  });
 });

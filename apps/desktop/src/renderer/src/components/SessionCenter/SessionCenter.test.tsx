@@ -147,6 +147,25 @@ describe("SessionCenter", () => {
     expect(screen.getByText(/分支自 Fix source control/)).toBeTruthy();
   });
 
+  it("exposes session action focus-visible rings for keyboard a11y", () => {
+    render(
+      <I18nProvider>
+        <SessionCenter />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByRole("button", { name: "批量导出" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getAllByRole("button", { name: "收藏" })[0].className).toContain("focus-visible:ring-2");
+    for (const name of ["打开", "只读", "继续", "导出", "归档", "删除"] as const) {
+      expect(screen.getAllByRole("button", { name })[0].className).toContain("focus-visible:ring-2");
+    }
+
+    fireEvent.click(screen.getAllByRole("button", { name: "删除" })[0]);
+    expect(screen.getByRole("button", { name: "取消删除" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "确认删除" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "确认删除" }).className).toContain("focus-visible:ring-red-500");
+  });
+
   it("sorts sessions by updated time without promoting the selected last-opened session", () => {
     useSessionStore.setState({
       sessions: [

@@ -41,4 +41,29 @@ describe("DesktopOverlayWindow", () => {
 
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
+
+  it("exposes progress stop action focus-visible ring for keyboard a11y", async () => {
+    const agentsList = vi.fn(async () => [
+      {
+        id: "agent-1",
+        workspaceId: "ws1",
+        status: "running",
+        title: "running task",
+      },
+    ]);
+    Object.defineProperty(window, "piAPI", {
+      value: {
+        agentsList,
+        onAgentsState: vi.fn(() => () => undefined),
+        onPlanProgress: vi.fn(() => () => undefined),
+        send: vi.fn(),
+      },
+      configurable: true,
+    });
+
+    render(<DesktopOverlayWindow />);
+
+    const stop = await screen.findByRole("button", { name: /停止|暂停/ });
+    expect(stop.className).toContain("focus-visible:ring-2");
+  });
 });

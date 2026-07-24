@@ -40,7 +40,7 @@ export function ThinkingBlock({
         onClick={() => setIsExpanded(!isExpanded)}
         aria-expanded={isExpanded}
         aria-label={`${label}，${isStreaming ? '思考中' : `思考 ${Math.max(1, count)} 次 · ${content.length} 字符`}`}
-        className="flex w-full items-center justify-between py-1 text-left text-[var(--mm-text-tertiary)] transition-colors duration-150 hover:text-[var(--mm-text-secondary)]"
+        className="flex w-full items-center justify-between py-1 text-left text-[var(--mm-text-tertiary)] transition-colors duration-150 hover:text-[var(--mm-text-secondary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
       >
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="text-xs">

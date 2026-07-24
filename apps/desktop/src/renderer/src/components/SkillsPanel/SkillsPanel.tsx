@@ -184,7 +184,7 @@ export function SkillsPanel(): React.JSX.Element {
                                 aria-controls={`skills-tabpanel-${id}`}
                                 id={`skills-tab-${id}`}
                                 onClick={() => setTab(id)}
-                                className={`whitespace-nowrap px-3 py-1.5 text-sm rounded-md transition-colors ${
+                                className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] ${
                                     isActive
                                         ? "bg-[var(--mm-bg-panel)] text-[var(--mm-text-primary)] shadow-sm"
                                         : "text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
@@ -203,7 +203,7 @@ export function SkillsPanel(): React.JSX.Element {
                         value={packageQuery}
                         onChange={(e) => setPackageQuery(e.target.value)}
                         aria-label="搜索 Pi 插件"
-                        className="min-w-[140px] max-w-[220px] flex-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] py-1.5 pl-3 pr-3 text-sm text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:border-[#1a1a1a] focus:outline-none"
+                        className="min-w-[140px] max-w-[220px] flex-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] py-1.5 pl-3 pr-3 text-sm text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:border-[#1a1a1a] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                     />
                 )}
                 <SkillCreateDropdown
@@ -240,7 +240,7 @@ export function SkillsPanel(): React.JSX.Element {
                             value={githubDialog.url}
                             onChange={(e) => setGithubDialog((d) => ({ ...d, url: e.target.value, result: "" }))}
                             placeholder="https://github.com/user/repo"
-                            className="mb-3 w-full rounded border border-[var(--color-border)] bg-[var(--color-hover)] px-3 py-2 text-sm text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)]"
+                            className="mb-3 w-full rounded border border-[var(--color-border)] bg-[var(--color-hover)] px-3 py-2 text-sm text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                         />
                         {githubDialog.result && (
                             <p
@@ -258,7 +258,7 @@ export function SkillsPanel(): React.JSX.Element {
                             <button
                                 type="button"
                                 onClick={() => setGithubDialog({ open: false, url: "", result: "", importing: false })}
-                                className="px-3 py-2 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] rounded"
+                                className="rounded px-3 py-2 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                                 aria-label="关闭"
                             >
                                 关闭
@@ -267,7 +267,7 @@ export function SkillsPanel(): React.JSX.Element {
                                 type="button"
                                 onClick={() => void handleImportFromGitHub(githubDialog.url)}
                                 disabled={githubDialog.importing}
-                                className="rounded bg-[var(--mm-bg-active)] px-4 py-2 text-sm text-[var(--mm-text-on-active)] disabled:opacity-50"
+                                className="rounded bg-[var(--mm-bg-active)] px-4 py-2 text-sm text-[var(--mm-text-on-active)] disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#2563eb]"
                             >
                                 {githubDialog.importing ? "导入中..." : "导入"}
                             </button>
@@ -296,7 +296,7 @@ export function SkillsPanel(): React.JSX.Element {
                             value={writeDialog.name}
                             onChange={(e) => setWriteDialog((d) => ({ ...d, name: e.target.value, error: null }))}
                             placeholder="my-skill"
-                            className="w-full mb-3 px-3 py-2 bg-[var(--color-hover)] border border-[var(--color-border)] rounded text-sm text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)]"
+                            className="w-full mb-3 px-3 py-2 bg-[var(--color-hover)] border border-[var(--color-border)] rounded text-sm text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                         />
 
                         <label className="block text-xs text-[var(--mm-text-secondary)] mb-1">何时使用 (description)</label>
@@ -305,7 +305,7 @@ export function SkillsPanel(): React.JSX.Element {
                             onChange={(e) => setWriteDialog((d) => ({ ...d, description: e.target.value, error: null }))}
                             placeholder="一句话说明 Pi 何时该调这个 skill"
                             rows={2}
-                            className="w-full mb-3 px-3 py-2 bg-[var(--color-hover)] border border-[var(--color-border)] rounded text-sm font-mono text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)]"
+                            className="w-full mb-3 px-3 py-2 bg-[var(--color-hover)] border border-[var(--color-border)] rounded text-sm font-mono text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                         />
 
                         <label className="block text-xs text-[var(--mm-text-secondary)] mb-1">操作步骤 (body)</label>
@@ -314,7 +314,7 @@ export function SkillsPanel(): React.JSX.Element {
                             onChange={(e) => setWriteDialog((d) => ({ ...d, body: e.target.value, error: null }))}
                             placeholder="Pi 应该按什么步骤执行"
                             rows={6}
-                            className="w-full flex-1 mb-4 px-3 py-2 bg-[var(--color-hover)] border border-[var(--color-border)] rounded text-sm font-mono text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)]"
+                            className="w-full flex-1 mb-4 px-3 py-2 bg-[var(--color-hover)] border border-[var(--color-border)] rounded text-sm font-mono text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                         />
 
                         {writeDialog.error && (
@@ -327,14 +327,14 @@ export function SkillsPanel(): React.JSX.Element {
                             <button
                                 type="button"
                                 onClick={() => setWriteDialog({ open: false, name: "", description: "", body: "", copied: false, error: null })}
-                                className="px-3 py-1.5 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] rounded"
+                                className="rounded px-3 py-1.5 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                             >
                                 取消
                             </button>
                             <button
                                 type="button"
                                 onClick={() => void handleSaveSkillMd()}
-                                className="px-4 py-1.5 bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)] text-sm rounded hover:bg-[#333]"
+                                className="rounded bg-[var(--mm-bg-active)] px-4 py-1.5 text-sm text-[var(--mm-text-on-active)] hover:bg-[#333] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#2563eb]"
                             >
                                 {writeDialog.copied ? "✓ 已保存" : "保存 SKILL.md"}
                             </button>

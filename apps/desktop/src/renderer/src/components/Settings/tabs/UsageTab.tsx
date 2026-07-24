@@ -88,7 +88,7 @@ function RangeButton({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-[7px] px-3 py-1 text-[12px] transition-colors ${
+      className={`rounded-[7px] px-3 py-1 text-[12px] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] ${
         active ? "bg-[var(--settings-bg-active)] font-medium text-[var(--settings-text-primary)]" : "text-[var(--settings-text-secondary)] hover:bg-[var(--settings-bg-control-hover)] hover:text-[var(--settings-text-primary)]"
       }`}
     >
@@ -182,7 +182,7 @@ function Heatmap({
                     onMouseEnter={(event) => moveTooltip(event, day.tooltip, setTooltip)}
                     onMouseMove={(event) => moveTooltip(event, day.tooltip, setTooltip)}
                     onMouseLeave={clearTooltip}
-                    className="h-[22px] w-[22px] rounded-[4px] border border-black/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.16)] transition-[transform,box-shadow] hover:z-10 hover:scale-110 hover:shadow-md focus:z-10 focus:outline-none focus:ring-2 focus:ring-[#1683f7]/35"
+                    className="h-[22px] w-[22px] rounded-[4px] border border-black/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.16)] transition-[transform,box-shadow] hover:z-10 hover:scale-110 hover:shadow-md focus:z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1683f7]/35"
                     style={{ backgroundColor: usageColor(usageLevel(day.totalTokens, positiveValues)) }}
                   />
                 ) : (
@@ -253,7 +253,7 @@ function TrendChart({
                     onMouseEnter={(event) => moveTooltip(event, tooltip, setTooltip)}
                     onMouseMove={(event) => moveTooltip(event, tooltip, setTooltip)}
                     onMouseLeave={clearTooltip}
-                    className="w-[9px] rounded-t-[2px] transition-opacity hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-[#1683f7]/30"
+                    className="w-[9px] rounded-t-[2px] transition-opacity hover:opacity-80 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1683f7]/30"
                     style={{
                       height: `${height}%`,
                       minHeight: value > 0 ? 4 : 0,
@@ -326,7 +326,7 @@ function ModelUsage({
               onMouseEnter={(event) => moveTooltip(event, model.tooltip, setTooltip)}
               onMouseMove={(event) => moveTooltip(event, model.tooltip, setTooltip)}
               onMouseLeave={clearTooltip}
-              className="grid w-full grid-cols-[1fr_auto] items-center gap-5 border-b border-[var(--settings-border)] pb-3 text-left last:border-b-0 focus:outline-none focus:ring-2 focus:ring-[#1683f7]/30"
+              className="grid w-full grid-cols-[1fr_auto] items-center gap-5 border-b border-[var(--settings-border)] pb-3 text-left last:border-b-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1683f7]/30"
             >
               <span className="min-w-0">
                 <span className="flex items-center gap-2 text-[12px] font-semibold text-[var(--settings-text-primary)]">
@@ -461,7 +461,7 @@ export function UsageTab(): React.JSX.Element {
                   onMouseEnter={(event) => moveTooltip(event, session.tooltip, setTooltip)}
                   onMouseMove={(event) => moveTooltip(event, session.tooltip, setTooltip)}
                   onMouseLeave={clearTooltip}
-                  className="grid w-full grid-cols-[1fr_120px_100px_90px] items-center gap-4 px-4 py-3 text-left text-[12px] transition-colors hover:bg-[var(--settings-bg-control-hover)] focus:outline-none focus:ring-2 focus:ring-[#1683f7]/30"
+                  className="grid w-full grid-cols-[1fr_120px_100px_90px] items-center gap-4 px-4 py-3 text-left text-[12px] transition-colors hover:bg-[var(--settings-bg-control-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1683f7]/30"
                 >
                   <span className="min-w-0 truncate font-medium text-[var(--settings-text-primary)]">{session.title}</span>
                   <span className="truncate text-[var(--settings-text-secondary)]">{session.model}</span>

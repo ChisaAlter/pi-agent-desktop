@@ -67,7 +67,7 @@ function ShortcutRecorder({
       <button
         type="button"
         onClick={onCancel}
-        className="ml-auto rounded px-2 py-1 text-[10px] text-[var(--mm-text-tertiary)] hover:bg-[var(--mm-bg-panel)] hover:text-[var(--mm-text-primary)]"
+        className="ml-auto rounded px-2 py-1 text-[10px] text-[var(--mm-text-tertiary)] hover:bg-[var(--mm-bg-panel)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
       >
         取消
       </button>

@@ -143,7 +143,7 @@ export function SessionExportDialog({ isOpen, onClose, sessionId }: SessionExpor
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-[var(--mm-border)] px-4 py-2 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
+            className="rounded-lg border border-[var(--mm-border)] px-4 py-2 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
           >
             取消
           </button>

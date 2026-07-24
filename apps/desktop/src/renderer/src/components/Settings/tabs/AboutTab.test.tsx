@@ -159,6 +159,19 @@ describe("AboutTab updater card", () => {
         expect(screen.getByText("最新版本: 0.2.0")).toBeTruthy();
     });
 
+    it("exposes updater and diagnostics focus-visible rings for keyboard a11y", () => {
+        render(
+            <I18nProvider>
+                <AboutTab />
+            </I18nProvider>,
+        );
+
+        expect(screen.getByRole("button", { name: "检查更新" }).className).toContain("focus-visible:ring-2");
+        expect(screen.getByRole("button", { name: "下载更新" }).className).toContain("focus-visible:ring-2");
+        expect(screen.getByRole("button", { name: "打开 GitHub Releases" }).className).toContain("focus-visible:ring-2");
+        expect(screen.getByRole("button", { name: "导出诊断报告" }).className).toContain("focus-visible:ring-2");
+    });
+
     it("shows updater state errors from the main process", () => {
         useUpdaterStore.setState({
             state: {

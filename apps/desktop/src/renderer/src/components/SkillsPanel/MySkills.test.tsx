@@ -60,4 +60,28 @@ describe("MySkills", () => {
     });
     expect(reload).not.toHaveBeenCalled();
   });
+
+  it("exposes uninstall dialog cancel/confirm focus-visible rings", async () => {
+    render(<MySkills />);
+    fireEvent.click(await screen.findByRole("button", { name: "卸载" }));
+    const cancel = screen.getByRole("button", { name: "取消" });
+    const confirm = screen.getAllByRole("button", { name: "卸载" })[1];
+    expect(cancel.className).toContain("focus-visible:ring-2");
+    expect(confirm.className).toContain("focus-visible:ring-2");
+  });
+
+  it("exposes installed-skills filter focus-visible ring for keyboard a11y", async () => {
+    render(<MySkills />);
+    const input = await screen.findByPlaceholderText("过滤已装技能...");
+    expect(input.className).toContain("focus-visible:ring-2");
+  });
+
+
+  it("exposes row action focus-visible rings for keyboard a11y", async () => {
+    render(<MySkills />);
+    const disableBtn = await screen.findByRole("button", { name: "禁用" });
+    expect(disableBtn.className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "卸载" }).className).toContain("focus-visible:ring-2");
+  });
+
 });

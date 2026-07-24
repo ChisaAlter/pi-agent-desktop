@@ -294,7 +294,7 @@ export function PiStatusPanel(): React.JSX.Element {
               <button
                 type="button"
                 onClick={() => setConfirmUninstall(false)}
-                className="rounded-lg px-3 py-1.5 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
+                className="rounded-lg px-3 py-1.5 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
               >
                 取消
               </button>
@@ -304,7 +304,7 @@ export function PiStatusPanel(): React.JSX.Element {
                   setConfirmUninstall(false);
                   void uninstall();
                 }}
-                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700"
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
               >
                 卸载
               </button>

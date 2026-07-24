@@ -89,7 +89,7 @@ function ActionButtons<T extends { id: string; label: string }>({ actions, runAc
           setActive(action.id);
           setStatus(null);
           void runAction(action).then((message) => { if (message) setStatus({ message, error: false }); }).catch((error: unknown) => setStatus({ message: error instanceof Error ? error.message : String(error), error: true })).finally(() => setActive(null));
-        }} className="h-9 rounded-[6px] border border-[var(--mm-border-strong)] bg-[var(--mm-bg-main)] px-3 text-[11px] font-medium text-[var(--mm-text-secondary)] shadow-[0_1px_1px_rgba(15,23,42,0.04)] transition-[background-color,border-color,color] hover:border-[var(--mm-accent-blue)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] disabled:cursor-not-allowed disabled:opacity-50">
+        }} className="h-9 rounded-[6px] border border-[var(--mm-border-strong)] bg-[var(--mm-bg-main)] px-3 text-[11px] font-medium text-[var(--mm-text-secondary)] shadow-[0_1px_1px_rgba(15,23,42,0.04)] transition-[background-color,border-color,color] hover:border-[var(--mm-accent-blue)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:cursor-not-allowed disabled:opacity-50">
           {active === action.id ? "处理中..." : action.label}
         </button>
       ))}

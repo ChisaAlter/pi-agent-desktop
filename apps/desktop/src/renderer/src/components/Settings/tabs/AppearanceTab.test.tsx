@@ -49,4 +49,18 @@ describe("AppearanceTab", () => {
     fireEvent.change(slider, { target: { value: "18" } });
     expect(updateSettings).toHaveBeenCalledWith({ fontSize: 18 });
   });
+
+  it("exposes theme card focus-visible rings for keyboard a11y", () => {
+    render(
+      <I18nProvider>
+        <AppearanceTab />
+      </I18nProvider>,
+    );
+    const buttons = screen.getAllByRole("button");
+    expect(buttons.length).toBeGreaterThanOrEqual(3);
+    for (const btn of buttons.slice(0, 3)) {
+      expect(btn.className).toContain("focus-visible:ring-2");
+      expect(btn.getAttribute("type")).toBe("button");
+    }
+  });
 });

@@ -294,7 +294,7 @@ export function TerminalPanel({
                             <button
                                 type="button"
                                 onClick={() => setActiveId(t.id)}
-                                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                className="flex min-w-0 flex-1 items-center gap-2 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                                 title={`${t.title} - ${t.cwd || "workspace"}`}
                             >
                                 <span className="font-mono">▣</span>
@@ -306,7 +306,7 @@ export function TerminalPanel({
                                     e.stopPropagation();
                                     closeTab(t.id);
                                 }}
-                                className="text-[var(--mm-text-tertiary)] hover:text-red-500 ml-1"
+                                className="ml-1 text-[var(--mm-text-tertiary)] hover:text-red-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                                 aria-label={`关闭终端 ${t.title}`}
                                 title={`关闭 ${t.title}`}
                             >
@@ -327,7 +327,7 @@ export function TerminalPanel({
                     type="button"
                     onClick={() => void copyActiveOutput()}
                     disabled={!activeTab?.output}
-                    className="rounded px-2 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:text-[var(--mm-text-tertiary)] disabled:hover:bg-transparent"
+                    className="rounded px-2 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:text-[var(--mm-text-tertiary)] disabled:hover:bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                     title={activeTab?.output ? "复制当前终端最近输出" : "当前终端暂无输出"}
                 >
                     {copiedOutput ? "已复制" : "复制输出"}
@@ -336,7 +336,7 @@ export function TerminalPanel({
                     type="button"
                     onClick={clearActiveTerminal}
                     disabled={!activeTab}
-                    className="rounded px-2 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:text-[var(--mm-text-tertiary)] disabled:hover:bg-transparent"
+                    className="rounded px-2 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:text-[var(--mm-text-tertiary)] disabled:hover:bg-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                     title="清空当前终端屏幕和输出缓存"
                 >
                     清屏
@@ -344,7 +344,7 @@ export function TerminalPanel({
                 <button
                     type="button"
                     onClick={() => void createTab()}
-                    className="text-xs px-2 py-1 text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] rounded"
+                    className="rounded px-2 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                     title="新建终端"
                     aria-label="新建终端"
                 >
@@ -354,7 +354,7 @@ export function TerminalPanel({
                     <button
                         type="button"
                         onClick={onClose}
-                        className="text-xs px-2 py-1 text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] rounded ml-1"
+                        className="ml-1 rounded px-2 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                         title="收起终端"
                         aria-label="收起终端"
                     >

@@ -771,4 +771,11 @@ describe("App sidebar session navigation", () => {
         expect(globalsCss).not.toContain('[data-mm-window-kind="main"] [data-testid="chat-view-root"]');
         expect(globalsCss).not.toContain('[data-theme="dark"] [data-testid="chat-view-root"]');
     });
+
+    it("exposes panel-load fallback retry focus-visible classes for keyboard a11y", () => {
+        const appSource = readFileSync(resolve(process.cwd(), "src/renderer/src/App.tsx"), "utf8");
+        expect(appSource).toContain("focus-visible:ring-2");
+        expect(appSource).toContain("focus-visible:ring-[#2563eb]");
+        expect(appSource).toMatch(/panelLoadFailed[\s\S]*type="button"/);
+    });
 });

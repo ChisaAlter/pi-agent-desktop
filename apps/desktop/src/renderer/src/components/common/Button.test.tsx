@@ -35,4 +35,12 @@ describe("Button", () => {
     expect(btn.getAttribute("type")).toBe("submit");
     expect(btn).toHaveProperty("disabled", true);
   });
+
+  it("exposes focus-visible ring classes for keyboard a11y", () => {
+    render(<Button>Focus me</Button>);
+    const btn = screen.getByRole("button", { name: "Focus me" });
+    expect(btn.className).toContain("focus-visible:ring-2");
+    expect(btn.className).toContain("focus-visible:ring-offset-2");
+    expect(btn.className).toContain("focus-visible:ring-blue-500");
+  });
 });

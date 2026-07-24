@@ -150,7 +150,7 @@ export function ToolPermissionsPanel({ workspaceId }: ToolPermissionsPanelProps)
             type="button"
             disabled={!canApply}
             onClick={() => void applyPermissions(TOOL_PERMISSION_PRESETS[preset.id])}
-            className="rounded-[2px] border border-[var(--mm-border)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45"
+            className="rounded-[2px] border border-[var(--mm-border)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
           >
             {t(`toolPermissions.preset.${preset.id}`)}
           </button>

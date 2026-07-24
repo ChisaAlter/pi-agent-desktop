@@ -177,4 +177,15 @@ describe("ApprovalPanel", () => {
     expect(approveChange).toHaveBeenCalledWith("a");
     expect(rejectChange).toHaveBeenCalledWith("a");
   });
+
+  it("exposes close control focus-visible ring for keyboard a11y", () => {
+    render(
+      <I18nProvider>
+        <ApprovalPanel isOpen onToggle={vi.fn()} />
+      </I18nProvider>,
+    );
+    expect(screen.getByRole("button", { name: "关闭审批面板" }).className).toContain(
+      "focus-visible:ring-2",
+    );
+  });
 });

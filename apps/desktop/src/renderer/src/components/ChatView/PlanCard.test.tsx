@@ -433,4 +433,45 @@ describe("PlanCard", () => {
 
     expect(screen.getByText(/背景说明/)).toBeTruthy();
   });
+
+  it("exposes plan action focus-visible rings for keyboard a11y", () => {
+    render(
+      <I18nProvider>
+        <PlanCard
+          title="a11y plan"
+          content={"行1\n行2\n行3\n行4\n行5"}
+          status="pending"
+          onExecute={vi.fn()}
+          onRefine={vi.fn()}
+          onCancel={vi.fn()}
+          filename="docs/plan.md"
+        />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByTestId("plan-filename").className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: /展开计划详情/ }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "执行计划" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "发送补充" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "取消" }).className).toContain("focus-visible:ring-2");
+  });
+
+  it("exposes feedback input focus-visible ring for keyboard a11y", () => {
+    render(
+      <I18nProvider>
+        <PlanCard
+          title="a11y plan"
+          content={"行1\n行2\n行3\n行4\n行5"}
+          status="pending"
+          onExecute={vi.fn()}
+          onRefine={vi.fn()}
+          onCancel={vi.fn()}
+          filename="docs/plan.md"
+        />
+      </I18nProvider>,
+    );
+    expect(screen.getByPlaceholderText("有补充就写在这里").className).toContain(
+      "focus-visible:ring-2",
+    );
+  });
 });

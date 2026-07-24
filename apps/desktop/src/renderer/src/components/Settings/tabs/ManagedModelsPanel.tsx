@@ -262,7 +262,7 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
             >
                 <div className="flex shrink-0 items-center justify-between border-b border-[var(--mm-border)] px-5 py-4">
                     <div className="text-sm font-semibold text-[var(--mm-text-primary)]">{displayedForm.originalModelId ? '编辑模型' : '新增模型'}</div>
-                    <button type="button" onClick={() => setForm(null)} className="settings-pressable rounded-md px-2 py-1 text-sm transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)]">关闭</button>
+                    <button type="button" onClick={() => setForm(null)} className="settings-pressable rounded-md px-2 py-1 text-sm transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">关闭</button>
                 </div>
                 <div className="grid min-h-0 grid-cols-2 gap-4 overflow-y-auto p-5">
                     <FormInput inputRef={providerIdInputRef} label="Provider ID" value={displayedForm.providerId} onChange={(providerId) => setForm({ ...displayedForm, providerId })} />
@@ -273,7 +273,7 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                         <select
                             value={displayedForm.api}
                             onChange={(event) => setForm({ ...displayedForm, api: event.target.value })}
-                            className="mt-1 w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-primary)]"
+                            className="mt-1 w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                         >
                             {providerApiOptions.map((option) => (
                                 <option key={option.value} value={option.value}>{option.label}</option>
@@ -302,8 +302,8 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                     </label>
                 </div>
                 <div className="flex shrink-0 justify-end gap-2 border-t border-[var(--mm-border)] px-5 py-4">
-                    <button type="button" onClick={() => setForm(null)} className="settings-pressable rounded-lg px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)]">取消</button>
-                    <button type="button" onClick={() => void saveModel()} className="settings-pressable rounded-lg bg-[var(--mm-accent-blue)] px-3 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:opacity-90">保存模型</button>
+                    <button type="button" onClick={() => setForm(null)} className="settings-pressable rounded-lg px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">取消</button>
+                    <button type="button" onClick={() => void saveModel()} className="settings-pressable rounded-lg bg-[var(--mm-accent-blue)] px-3 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#2563eb]">保存模型</button>
                 </div>
             </div>
         </div>
@@ -340,7 +340,7 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                     <button
                         type="button"
                         onClick={() => setPendingDeleteModel(null)}
-                        className="settings-pressable rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]"
+                        className="settings-pressable rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                     >
                         取消
                     </button>
@@ -348,7 +348,7 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                         ref={deleteConfirmButtonRef}
                         type="button"
                         onClick={() => void deleteModel(displayedDeleteModel)}
-                        className="settings-pressable rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:bg-red-700"
+                        className="settings-pressable rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500"
                     >
                         确认删除
                     </button>
@@ -368,7 +368,7 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                     type="button"
                     aria-label="新增模型"
                     onClick={() => setForm(emptyModelForm)}
-                    className="settings-pressable shrink-0 rounded-[10px] border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-3 py-2 text-xs font-medium text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)]"
+                    className="settings-pressable shrink-0 rounded-[10px] border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-3 py-2 text-xs font-medium text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 >
                     + 添加 Provider
                 </button>
@@ -446,13 +446,13 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                                                 </span>
                                             </div>
                                             <div className="mt-[22px] flex flex-nowrap items-center gap-[6px]">
-                                                <button type="button" onClick={() => void testModel(model)} disabled={testingKey === key} aria-label={`测试 ${model.modelName}`} className="settings-pressable shrink-0 whitespace-nowrap rounded border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-1.5 py-1 text-[9px] text-[var(--mm-text-secondary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50">
+                                                <button type="button" onClick={() => void testModel(model)} disabled={testingKey === key} aria-label={`测试 ${model.modelName}`} className="settings-pressable shrink-0 whitespace-nowrap rounded border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-1.5 py-1 text-[9px] text-[var(--mm-text-secondary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">
                                                     {testingKey === key ? '测试中' : '测试'}
                                                 </button>
-                                                <button type="button" onClick={() => setForm(modelToForm(model))} aria-label={`编辑 ${model.modelName}`} className="settings-pressable shrink-0 whitespace-nowrap rounded border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-1.5 py-1 text-[9px] text-[var(--mm-text-secondary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50">
+                                                <button type="button" onClick={() => setForm(modelToForm(model))} aria-label={`编辑 ${model.modelName}`} className="settings-pressable shrink-0 whitespace-nowrap rounded border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-1.5 py-1 text-[9px] text-[var(--mm-text-secondary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">
                                                     编辑
                                                 </button>
-                                                <button type="button" onClick={() => setPendingDeleteModel(model)} aria-label={`删除 ${model.modelName}`} className="settings-pressable shrink-0 whitespace-nowrap rounded border border-transparent px-1 py-1 text-[9px] leading-none text-[var(--mm-text-tertiary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50">
+                                                <button type="button" onClick={() => setPendingDeleteModel(model)} aria-label={`删除 ${model.modelName}`} className="settings-pressable shrink-0 whitespace-nowrap rounded border border-transparent px-1 py-1 text-[9px] leading-none text-[var(--mm-text-tertiary)] transition-[transform,background-color,opacity] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500">
                                                     删除
                                                 </button>
                                             </div>
@@ -496,7 +496,7 @@ function FormInput({
                 value={value}
                 placeholder={placeholder}
                 onChange={(event) => onChange(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-accent-blue)]"
+                className="mt-1 w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-accent-blue)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
             />
         </label>
     );

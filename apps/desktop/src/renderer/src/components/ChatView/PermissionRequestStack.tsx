@@ -113,7 +113,7 @@ export function PermissionRequestStack({
                     key={option}
                     type="button"
                     onClick={() => respondValue(request.requestId, option)}
-                    className="min-h-9 w-full rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-3 py-2 text-left text-xs leading-relaxed text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-panel)]"
+                    className="min-h-9 w-full rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-3 py-2 text-left text-xs leading-relaxed text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-panel)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                   >
                     {option}
                   </button>
@@ -133,11 +133,11 @@ export function PermissionRequestStack({
                   value={drafts[request.requestId] ?? ""}
                   onChange={(event) => setDrafts((current) => ({ ...current, [request.requestId]: event.target.value }))}
                   placeholder={request.placeholder}
-                  className="h-9 min-w-0 flex-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-3 text-xs text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-bg-active)]"
+                  className="h-9 min-w-0 flex-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-3 text-xs text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-bg-active)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 />
                 <button
                   type="submit"
-                  className="h-9 rounded-md bg-[#262626] px-3 text-xs font-medium text-white hover:bg-[#111]"
+                  className="h-9 rounded-md bg-[#262626] px-3 text-xs font-medium text-white hover:bg-[#111] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 >
                   提交
                 </button>
@@ -147,14 +147,14 @@ export function PermissionRequestStack({
               <button
                 type="button"
                 onClick={() => isPermission ? respond(request.requestId, "deny") : respondValue(request.requestId, "")}
-                className="rounded-lg px-3 py-1.5 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)]"
+                className="rounded-lg px-3 py-1.5 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
               >
                 {isPermission ? "拒绝 Esc" : "跳过 Esc"}
               </button>
               {isPermission && <button
                 type="button"
                 onClick={() => respond(request.requestId, "allow_session")}
-                className="rounded-lg bg-[#262626] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#111]"
+                className="rounded-lg bg-[#262626] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#111] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
               >
                 仅本对话
               </button>}
@@ -164,7 +164,7 @@ export function PermissionRequestStack({
                 trigger={
                   <button
                     type="button"
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2.5 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)]"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2.5 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                     aria-label="更多权限决策"
                   >
                     <span>更多</span>
@@ -185,7 +185,7 @@ export function PermissionRequestStack({
                           respond(request.requestId, item.value);
                           close();
                         }}
-                        className="flex h-8 w-full items-center justify-between gap-3 px-3 text-left text-xs text-[var(--mm-text-secondary)] hover:bg-[#f4f4f3]"
+                        className="flex h-8 w-full items-center justify-between gap-3 px-3 text-left text-xs text-[var(--mm-text-secondary)] hover:bg-[#f4f4f3] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                       >
                         <span>{item.label}</span>
                         {item.value === "allow_always" && (

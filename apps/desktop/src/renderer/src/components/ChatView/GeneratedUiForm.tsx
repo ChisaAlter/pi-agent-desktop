@@ -103,11 +103,11 @@ export function GeneratedUiForm({ cardId, cardTitle, section, disabled, onSend }
               </label>
             ) : null}
             {field.kind === "textarea" ? (
-              <textarea id={`${cardId}-${section.id}-${field.id}`} value={String(value)} placeholder={field.placeholder} aria-describedby={describedBy} onChange={(event) => update(field.id, event.target.value)} className="min-h-24 w-full resize-y rounded-[6px] border border-[var(--mm-border-strong)] bg-[var(--mm-bg-main)] px-3 py-2.5 text-xs outline-none transition-colors focus:border-[var(--mm-accent-blue)]" />
+              <textarea id={`${cardId}-${section.id}-${field.id}`} value={String(value)} placeholder={field.placeholder} aria-describedby={describedBy} onChange={(event) => update(field.id, event.target.value)} className="min-h-24 w-full resize-y rounded-[6px] border border-[var(--mm-border-strong)] bg-[var(--mm-bg-main)] px-3 py-2.5 text-xs outline-none transition-colors focus:border-[var(--mm-accent-blue)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]" />
             ) : field.kind === "text" || field.kind === "number" ? (
-              <input id={`${cardId}-${section.id}-${field.id}`} type={field.kind} value={String(value)} min={field.kind === "number" ? field.min : undefined} max={field.kind === "number" ? field.max : undefined} step={field.kind === "number" ? field.step : undefined} placeholder={field.kind === "text" ? field.placeholder : undefined} aria-describedby={describedBy} onChange={(event) => update(field.id, event.target.value)} className="h-10 w-full rounded-[6px] border border-[var(--mm-border-strong)] bg-[var(--mm-bg-main)] px-3 text-xs outline-none transition-colors focus:border-[var(--mm-accent-blue)]" />
+              <input id={`${cardId}-${section.id}-${field.id}`} type={field.kind} value={String(value)} min={field.kind === "number" ? field.min : undefined} max={field.kind === "number" ? field.max : undefined} step={field.kind === "number" ? field.step : undefined} placeholder={field.kind === "text" ? field.placeholder : undefined} aria-describedby={describedBy} onChange={(event) => update(field.id, event.target.value)} className="h-10 w-full rounded-[6px] border border-[var(--mm-border-strong)] bg-[var(--mm-bg-main)] px-3 text-xs outline-none transition-colors focus:border-[var(--mm-accent-blue)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]" />
             ) : field.kind === "select" ? (
-              <select id={`${cardId}-${section.id}-${field.id}`} value={String(value)} aria-describedby={describedBy} onChange={(event) => update(field.id, event.target.value)} className="h-10 w-full rounded-[6px] border border-[var(--mm-border-strong)] bg-[var(--mm-bg-main)] px-3 text-xs outline-none transition-colors focus:border-[var(--mm-accent-blue)]">
+              <select id={`${cardId}-${section.id}-${field.id}`} value={String(value)} aria-describedby={describedBy} onChange={(event) => update(field.id, event.target.value)} className="h-10 w-full rounded-[6px] border border-[var(--mm-border-strong)] bg-[var(--mm-bg-main)] px-3 text-xs outline-none transition-colors focus:border-[var(--mm-accent-blue)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">
                 <option value="">请选择</option>
                 {field.options.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
               </select>
@@ -146,7 +146,7 @@ export function GeneratedUiForm({ cardId, cardTitle, section, disabled, onSend }
         );
       })}
       <div className="mt-5 flex items-center gap-2 border-t border-[var(--mm-border)] pt-4" data-generated-ui-form-actions>
-        <button type="submit" disabled={disabled || submitting} className="h-9 rounded-[6px] bg-[var(--mm-bg-active)] px-4 text-xs font-medium text-[var(--mm-text-on-active)] shadow-[0_1px_2px_rgba(15,23,42,0.12)] transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+        <button type="submit" disabled={disabled || submitting} className="h-9 rounded-[6px] bg-[var(--mm-bg-active)] px-4 text-xs font-medium text-[var(--mm-text-on-active)] shadow-[0_1px_2px_rgba(15,23,42,0.12)] transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:cursor-not-allowed disabled:opacity-50">
           {submitting ? "提交中..." : section.submitLabel ?? "提交"}
         </button>
         {submitError ? <span role="alert" className="text-[11px] text-[var(--color-error)]">{submitError}</span> : null}

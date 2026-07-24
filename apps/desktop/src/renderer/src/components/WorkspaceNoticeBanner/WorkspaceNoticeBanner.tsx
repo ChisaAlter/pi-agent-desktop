@@ -41,7 +41,7 @@ export function WorkspaceNoticeBanner(): React.JSX.Element | null {
             <button
                 type="button"
                 onClick={() => setNotice(null)}
-                className="shrink-0 rounded-[var(--mm-radius-sm)] px-2 py-1 text-xs opacity-70 hover:bg-[var(--mm-bg-panel)]/60 hover:opacity-100"
+                className="shrink-0 rounded-[var(--mm-radius-sm)] px-2 py-1 text-xs opacity-70 hover:bg-[var(--mm-bg-panel)]/60 hover:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 aria-label="关闭工作区提示"
             >
                 x

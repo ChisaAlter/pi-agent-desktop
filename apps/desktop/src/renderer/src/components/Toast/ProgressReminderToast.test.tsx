@@ -100,4 +100,22 @@ describe("ProgressReminderToast", () => {
       expect(screen.queryByRole("status", { name: "任务运行中提醒" })).toBeNull();
     });
   });
+
+  it("exposes stop button focus-visible ring for keyboard a11y", async () => {
+    render(
+      <I18nProvider>
+        <ProgressReminderToast workspaceId="ws1" />
+      </I18nProvider>,
+    );
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("pi:stream-start", {
+        detail: { runContext: "task" },
+      }));
+    });
+
+    const stopBtn = await screen.findByRole("button", { name: "停止生成" });
+    expect(stopBtn.getAttribute("type")).toBe("button");
+    expect(stopBtn.className).toContain("focus-visible:ring-2");
+  });
 });

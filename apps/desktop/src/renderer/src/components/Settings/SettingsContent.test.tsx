@@ -236,4 +236,20 @@ describe("SettingsContent", () => {
             expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
         });
     });
+
+    it("exposes close and done focus-visible rings when onClose is provided", () => {
+        const onClose = vi.fn();
+        render(
+            <I18nProvider>
+                <SettingsContent onClose={onClose} />
+            </I18nProvider>,
+        );
+
+        const close = screen.getByRole("button", { name: "关闭" });
+        const done = screen.getByRole("button", { name: "关闭设置" });
+        expect(close.className).toContain("focus-visible:ring-2");
+        expect(done.className).toContain("focus-visible:ring-2");
+        fireEvent.click(done);
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
 });

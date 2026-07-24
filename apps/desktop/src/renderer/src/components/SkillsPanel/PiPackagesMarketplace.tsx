@@ -82,7 +82,7 @@ export function PiPackagesMarketplace(): React.JSX.Element {
           type="button"
           onClick={() => void refreshCatalog()}
           disabled={loading || Boolean(actionSource)}
-          className="shrink-0 whitespace-nowrap rounded-md border border-[var(--mm-border)] px-2 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-50"
+          className="shrink-0 whitespace-nowrap rounded-md border border-[var(--mm-border)] px-2 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
         >
           {loading ? "刷新中..." : "刷新目录"}
         </button>
@@ -110,7 +110,7 @@ export function PiPackagesMarketplace(): React.JSX.Element {
               type="button"
               onClick={() => void retryAction()}
               disabled={Boolean(actionSource) || loading}
-              className="shrink-0 rounded-md bg-red-700 px-2 py-1 text-xs text-white hover:bg-red-800 disabled:opacity-50"
+              className="shrink-0 rounded-md bg-red-700 px-2 py-1 text-xs text-white hover:bg-red-800 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500"
             >
               {lastFailedAction ? `重试${lastFailedAction.label}` : "重试"}
             </button>
@@ -156,7 +156,7 @@ export function PiPackagesMarketplace(): React.JSX.Element {
                         // 非法 URL 忽略
                       }
                     }}
-                    className="min-w-[52px] whitespace-nowrap rounded px-2 py-1 text-center text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
+                    className="min-w-[52px] whitespace-nowrap rounded px-2 py-1 text-center text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                   >
                     详情
                   </button>
@@ -166,7 +166,7 @@ export function PiPackagesMarketplace(): React.JSX.Element {
                       aria-label={`卸载 ${pkg.name}`}
                       disabled={busy}
                       onClick={() => void remove(pkg.source)}
-                      className="min-w-[64px] whitespace-nowrap rounded border border-red-200 px-2 py-1 text-center text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      className="min-w-[64px] whitespace-nowrap rounded border border-red-200 px-2 py-1 text-center text-xs text-red-600 hover:bg-red-50 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                     >
                       {busy ? "处理中..." : "卸载"}
                     </button>
@@ -176,7 +176,7 @@ export function PiPackagesMarketplace(): React.JSX.Element {
                       aria-label={`安装 ${pkg.name}`}
                       disabled={busy}
                       onClick={() => setPendingInstall(pkg)}
-                      className="min-w-[64px] whitespace-nowrap rounded bg-[#1a1a1a] px-2 py-1 text-center text-xs text-white hover:bg-[#333] disabled:opacity-50"
+                      className="min-w-[64px] whitespace-nowrap rounded bg-[#1a1a1a] px-2 py-1 text-center text-xs text-white hover:bg-[#333] disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                     >
                       {busy ? "安装中..." : "安装"}
                     </button>
@@ -210,7 +210,7 @@ export function PiPackagesMarketplace(): React.JSX.Element {
               <button
                 type="button"
                 onClick={() => setPendingInstall(null)}
-                className="rounded-lg px-3 py-1.5 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
+                className="rounded-lg px-3 py-1.5 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
               >
                 取消
               </button>
@@ -221,7 +221,7 @@ export function PiPackagesMarketplace(): React.JSX.Element {
                   setPendingInstall(null);
                   void install(source);
                 }}
-                className="rounded-lg bg-[#1a1a1a] px-3 py-1.5 text-sm text-white hover:bg-[#333]"
+                className="rounded-lg bg-[#1a1a1a] px-3 py-1.5 text-sm text-white hover:bg-[#333] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#2563eb]"
               >
                 确认安装
               </button>

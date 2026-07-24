@@ -22,7 +22,7 @@ export function GeneralTab(): React.JSX.Element {
                         id="settings-language"
                         value={locale}
                         onChange={(e) => setLocale(e.target.value as Locale)}
-                        className="w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2.5 text-sm text-[var(--mm-text-primary)] focus:border-[var(--mm-accent-blue)] focus:outline-none"
+                        className="w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2.5 text-sm text-[var(--mm-text-primary)] focus:border-[var(--mm-accent-blue)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                     >
                         {SUPPORTED_LOCALES.map((l) => (
                             <option key={l} value={l}>
@@ -99,7 +99,7 @@ export function GeneralTab(): React.JSX.Element {
                                             setSoundVolumeState(vol);
                                             setSoundVolume(vol);
                                         }}
-                                        className="w-full"
+                                        className="w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                                         aria-label={t('settings.general.notifications.volume.aria')}
                                     />
                                 </div>

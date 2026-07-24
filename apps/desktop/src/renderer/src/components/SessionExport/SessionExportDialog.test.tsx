@@ -104,4 +104,9 @@ describe("SessionExportDialog", () => {
       expect(downloadFile).toHaveBeenCalledWith("{}", "My_Session.json", "application/json");
     });
   });
+
+  it("exposes cancel control focus-visible ring for keyboard a11y", () => {
+    render(<SessionExportDialog isOpen onClose={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "取消" }).className).toContain("focus-visible:ring-2");
+  });
 });

@@ -120,7 +120,7 @@ export function PiConfigEditor(): React.JSX.Element {
                     value={raw}
                     onChange={(event) => setRaw(event.target.value)}
                     spellCheck={false}
-                    className="mt-4 min-h-[300px] w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3 font-mono text-xs text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-accent-blue)]"
+                    className="mt-4 min-h-[300px] w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3 font-mono text-xs text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-accent-blue)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                     aria-label="Pi 配置 JSON"
                 />
                 {[message, fetchStatus, testStatus].filter(Boolean).map((status) => (
@@ -132,9 +132,9 @@ export function PiConfigEditor(): React.JSX.Element {
             <SettingsCard anchorId="config-actions" className="px-5 py-4">
                 <SectionTitle title="维护动作" description="保存、导入导出配置，并直接从当前默认 Provider 拉取模型或测试连接。" />
                 <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={save} className="settings-pressable rounded-md bg-[var(--mm-accent-blue)] px-3 py-2 text-sm text-white transition-[transform,background-color] duration-150 ease-out hover:opacity-90">保存当前文件</button>
-                    <button type="button" onClick={exportConfig} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">导出配置包</button>
-                    <button type="button" onClick={importConfig} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">从编辑区导入配置包</button>
+                    <button type="button" onClick={save} className="settings-pressable rounded-md bg-[var(--mm-accent-blue)] px-3 py-2 text-sm text-white transition-[transform,background-color] duration-150 ease-out hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">保存当前文件</button>
+                    <button type="button" onClick={exportConfig} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">导出配置包</button>
+                    <button type="button" onClick={importConfig} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">从编辑区导入配置包</button>
                     <button type="button" onClick={async () => {
                         setFetchStatus("拉取中...");
                         try {
@@ -149,7 +149,7 @@ export function PiConfigEditor(): React.JSX.Element {
                         } catch (e) {
                             setFetchStatus(`拉取失败: ${e instanceof Error ? e.message : String(e)}`);
                         }
-                    }} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">拉取模型列表</button>
+                    }} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">拉取模型列表</button>
                     <button type="button" onClick={async () => {
                         setTestStatus("测试中...");
                         try {
@@ -164,7 +164,7 @@ export function PiConfigEditor(): React.JSX.Element {
                         } catch (e) {
                             setTestStatus(`测试失败: ${e instanceof Error ? e.message : String(e)}`);
                         }
-                    }} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)]">测试 Provider</button>
+                    }} className="settings-pressable rounded-md bg-[var(--settings-bg-control)] px-3 py-2 text-sm text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">测试 Provider</button>
                 </div>
             </SettingsCard>
         </SettingsPage>

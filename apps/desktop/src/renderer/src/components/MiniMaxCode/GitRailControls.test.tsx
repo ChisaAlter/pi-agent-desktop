@@ -138,4 +138,29 @@ describe("GitRailControls", () => {
     await waitFor(() => expect(gitPush).toHaveBeenCalledWith("C:/repo"));
     expect(gitCommit).not.toHaveBeenCalled();
   });
+
+  it("exposes row and dialog action focus-visible rings for keyboard a11y", async () => {
+    renderControls();
+
+    expect(screen.getByRole("button", { name: "查看变更文件，打开 Git 面板" }).className).toContain(
+      "focus-visible:ring-2",
+    );
+    expect(screen.getByRole("button", { name: "提交或推送" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByText("master").closest("button")?.className).toContain("focus-visible:ring-2");
+
+    fireEvent.click(screen.getByText("master").closest("button")!);
+    const branchDialog = await screen.findByRole("dialog", { name: "分支管理" });
+    expect(within(branchDialog).getByRole("button", { name: "develop" }).className).toContain(
+      "focus-visible:ring-2",
+    );
+    expect(within(branchDialog).getByRole("button", { name: "创建并检出" }).className).toContain(
+      "focus-visible:ring-2",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "提交或推送" }));
+    const commitDialog = await screen.findByRole("dialog", { name: "提交或推送" });
+    for (const name of ["提交", "提交并推送", "推送"] as const) {
+      expect(within(commitDialog).getByRole("button", { name }).className).toContain("focus-visible:ring-2");
+    }
+  });
 });

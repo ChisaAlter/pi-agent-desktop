@@ -765,7 +765,7 @@ export function ChatView({
                     if (event.key === "Escape") setEditingTitle(false);
                   }}
                   autoFocus
-                  className="h-7 min-w-0 max-w-[420px] flex-1 rounded-[4px] border border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-2 text-[13px] font-medium text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-bg-active)]"
+                  className="h-7 min-w-0 max-w-[420px] flex-1 rounded-[4px] border border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-2 text-[13px] font-medium text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-bg-active)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                   aria-label={t("chatView.session.renameAria")}
                 />
               ) : (
@@ -775,7 +775,7 @@ export function ChatView({
                     setTitleDraft(currentSession?.title || t("chatView.session.untitled"));
                     setEditingTitle(true);
                   }}
-                  className="h-7 min-w-0 max-w-[420px] truncate rounded-[4px] px-1.5 text-left text-[13px] font-medium transition-colors hover:bg-[var(--mm-bg-hover)] active:scale-[0.96]"
+                  className="h-7 min-w-0 max-w-[420px] truncate rounded-[4px] px-1.5 text-left text-[13px] font-medium transition-colors hover:bg-[var(--mm-bg-hover)] active:scale-[0.96] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                   title={t("chatView.session.renameTitle")}
                 >
                   {currentSession?.title || t("chatView.session.untitled")}
@@ -844,12 +844,13 @@ export function ChatView({
                 </div>
                 <p className="text-xs text-[var(--mm-text-secondary)] break-all font-mono">{streamError || sendError || sessionActionError}</p>
                 <button
+                  type="button"
                   onClick={() => {
                     clearError();
                     setSendError(null);
                     setSessionActionError(null);
                   }}
-                    className="px-4 py-2 bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)] rounded-md hover:opacity-90 transition-colors text-sm font-medium self-start"
+                    className="px-4 py-2 bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)] rounded-md hover:opacity-90 transition-colors text-sm font-medium self-start focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 >
                   {t('chatView.sendFailed.retry')}
                 </button>
@@ -933,7 +934,7 @@ export function ChatView({
                     setSendError(null);
                     setSessionActionError(null);
                   }}
-                  className="mt-2 rounded-md bg-[var(--mm-bg-active)] px-3 py-1.5 text-xs font-medium text-[var(--mm-text-on-active)] hover:opacity-90"
+                  className="mt-2 rounded-md bg-[var(--mm-bg-active)] px-3 py-1.5 text-xs font-medium text-[var(--mm-text-on-active)] hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 >
                   {t('chatView.sendFailed.retry')}
                 </button>
@@ -951,7 +952,7 @@ export function ChatView({
                   isNearBottomRef.current = true;
                   setShowScrollToBottom(false);
                 }}
-                className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] shadow-sm text-[var(--mm-text-secondary)] hover:text-[var(--mm-text-primary)] transition-[background-color,border-color,color,opacity,box-shadow,transform]"
+                className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] shadow-sm text-[var(--mm-text-secondary)] hover:text-[var(--mm-text-primary)] transition-[background-color,border-color,color,opacity,box-shadow,transform] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 aria-label={t("chatView.scrollBottom")}
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -973,7 +974,7 @@ export function ChatView({
               <button
                 type="button"
                 onClick={() => void handleContinueReadOnly()}
-                className="rounded-md bg-[var(--mm-bg-active)] px-2.5 py-1.5 text-[var(--mm-text-on-active)]"
+                className="rounded-md bg-[var(--mm-bg-active)] px-2.5 py-1.5 text-[var(--mm-text-on-active)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
               >
                 {t("chatView.readOnly.continue")}
               </button>

@@ -84,4 +84,19 @@ describe("InstalledAddons", () => {
 
     expect((await screen.findByRole("alert")).textContent).toContain("toggle failed");
   });
+
+  it("exposes action and dialog focus-visible rings for keyboard a11y", async () => {
+    render(<InstalledAddons />);
+
+    const update = await screen.findByRole("button", { name: "更新 pi-git" });
+    const remove = screen.getByRole("button", { name: "卸载 pi-git" });
+    const toggle = screen.getByRole("button", { name: "禁用 web-search" });
+    expect(update.className).toContain("focus-visible:ring-2");
+    expect(remove.className).toContain("focus-visible:ring-2");
+    expect(toggle.className).toContain("focus-visible:ring-2");
+
+    fireEvent.click(remove);
+    expect(screen.getByRole("button", { name: "取消" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "卸载" }).className).toContain("focus-visible:ring-2");
+  });
 });

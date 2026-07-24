@@ -438,4 +438,26 @@ diff --git a/src/staged.ts b/src/staged.ts
     expect(refresh).not.toHaveBeenCalled();
     expect(screen.queryByText("Git 状态已更新")).toBeNull();
   });
+
+  it("exposes primary control focus-visible rings for keyboard a11y", async () => {
+    render(<GitPanel workspacePath="C:/repo" />);
+
+    expect(screen.getByRole("button", { name: "刷新 Git 状态" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "切换分支" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "提交" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "全部暂存" }).className).toContain("focus-visible:ring-2");
+    expect((await screen.findByRole("button", { name: "打开 src/a.ts diff" })).className).toContain(
+      "focus-visible:ring-2",
+    );
+    expect(screen.getByRole("button", { name: "暂存 src/a.ts" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "丢弃 src/a.ts" }).className).toContain("focus-visible:ring-2");
+  });
+
+  it("exposes new branch input focus-visible ring for keyboard a11y", async () => {
+    render(<GitPanel workspacePath="C:/repo" />);
+    fireEvent.click(screen.getByRole("button", { name: "切换分支" }));
+    const input = await screen.findByRole("textbox", { name: "新分支名" });
+    expect(input.className).toContain("focus-visible:ring-2");
+  });
+
 });

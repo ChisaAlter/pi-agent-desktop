@@ -83,4 +83,14 @@ describe("GeneratedUiCard v2", () => {
       visibleContent: "已选择「继续」",
     })));
   });
+
+  it("exposes generated-ui action focus-visible rings for keyboard a11y", () => {
+    render(<GeneratedUiCard card={cardWith([{
+      id: "actions",
+      kind: "action_bar",
+      actions: [{ id: "copy", label: "复制摘要", kind: "copy-text", value: "summary" }],
+    }])} />);
+
+    expect(screen.getByRole("button", { name: "复制摘要" }).className).toContain("focus-visible:ring-2");
+  });
 });

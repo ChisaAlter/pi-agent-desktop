@@ -110,7 +110,7 @@ export function ProgressReminderToast({
             <button
               type="button"
               onClick={() => void handleAction()}
-              className="shrink-0 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-xs text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
+              className="shrink-0 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-xs text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
               aria-label={actionAria}
             >
               {actionText}

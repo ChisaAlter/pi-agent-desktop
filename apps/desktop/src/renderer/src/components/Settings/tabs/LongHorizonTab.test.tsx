@@ -96,4 +96,14 @@ describe("LongHorizonTab", () => {
     };
     expect(arg.longHorizon.planMode.enabled).toBe(false);
   });
+
+  it("exposes default mode select focus-visible ring for keyboard a11y", () => {
+    render(
+      <I18nProvider>
+        <LongHorizonTab />
+      </I18nProvider>,
+    );
+    expect(screen.getByRole("combobox").className).toContain("focus-visible:ring-2");
+  });
+
 });

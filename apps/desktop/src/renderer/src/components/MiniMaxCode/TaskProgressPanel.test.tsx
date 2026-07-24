@@ -51,6 +51,16 @@ describe("TaskProgressPanel", () => {
         expect(buttons).toHaveLength(2);
     });
 
+    it("exposes task row focus-visible rings for keyboard a11y", () => {
+        const tasks: TaskProgressItem[] = [
+            { id: "t-1", name: "alpha", status: "running" },
+        ];
+        render(<TaskProgressPanel tasks={tasks} />);
+        expect(screen.getByRole("button", { name: "task alpha running" }).className).toContain(
+            "focus-visible:ring-2",
+        );
+    });
+
     it("4 种 status 都能渲染(icon 组件不抛)", () => {
         const tasks: TaskProgressItem[] = [
             { id: "t-1", name: "待办", status: "pending" },

@@ -47,7 +47,7 @@ export function ModelSelector({ className }: ModelSelectorProps): React.JSX.Elem
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-xs text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
+        className="flex items-center gap-1.5 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-xs text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
         aria-label="选择模型"
         aria-expanded={isOpen}
         aria-haspopup="listbox"
@@ -87,7 +87,7 @@ export function ModelSelector({ className }: ModelSelectorProps): React.JSX.Elem
                         updateSettings({ model: model.id, provider: model.provider });
                         setIsOpen(false);
                       }}
-                      className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--mm-bg-hover)] ${
+                      className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb] ${
                         isSelected ? "bg-[var(--mm-bg-selected)] text-[var(--mm-text-primary)]" : "text-[var(--mm-text-secondary)]"
                       }`}
                     >

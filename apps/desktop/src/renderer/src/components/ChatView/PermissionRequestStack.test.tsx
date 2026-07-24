@@ -165,4 +165,14 @@ describe("PermissionRequestStack", () => {
       value: "提供 Git 地址",
     });
   });
+
+  it("exposes permission decision focus-visible rings for keyboard a11y", () => {
+    render(<PermissionRequestStack workspaceId="ws1" />);
+
+    expect(screen.getByRole("button", { name: /拒绝/ }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "仅本对话" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "更多权限决策" }).className).toContain("focus-visible:ring-2");
+    fireEvent.click(screen.getByRole("button", { name: "更多权限决策" }));
+    expect(screen.getByRole("menuitem", { name: /始终授权/ }).className).toContain("focus-visible:ring-2");
+  });
 });

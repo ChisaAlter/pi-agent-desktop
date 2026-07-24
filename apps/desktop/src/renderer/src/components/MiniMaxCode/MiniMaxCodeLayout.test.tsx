@@ -97,6 +97,8 @@ describe("MiniMaxCode window chrome interactivity", () => {
         for (const className of MINIMAX_CHROME_ICON_BUTTON_CLASSNAME.split(" ")) {
             expect(rightToggleClassName).toContain(className);
         }
+        expect(rightToggleClassName).toContain("focus-visible:ring-2");
+        expect(rightToggleClassName).toContain("focus-visible:ring-[#2563eb]");
         expect(rightToggleClassName).not.toContain("rounded-md");
         expect(rightToggleClassName).not.toContain("bg-[var(--mm-bg-main)]");
         expect(screen.queryByRole("button", { name: "折叠左侧栏" })).toBeNull();
@@ -116,7 +118,10 @@ describe("MiniMaxCode window chrome interactivity", () => {
             />,
         );
 
-        expect(screen.getByRole("button", { name: "展开左侧栏" }).className).toContain("left-3");
+        const leftToggleClassName = screen.getByRole("button", { name: "展开左侧栏" }).className;
+        expect(leftToggleClassName).toContain("left-3");
+        expect(leftToggleClassName).toContain("focus-visible:ring-2");
+        expect(leftToggleClassName).toContain("focus-visible:ring-[#2563eb]");
         expect(screen.queryByRole("button", { name: "展开右侧栏" })).toBeNull();
         expect(document.querySelector('[data-mmcode-region="left"]')?.className ?? "").toContain("pi-motion-rail");
         expect(document.querySelector('[data-mmcode-region="left"]')?.getAttribute("data-collapsed")).toBe("true");

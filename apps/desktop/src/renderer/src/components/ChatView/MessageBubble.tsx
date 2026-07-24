@@ -207,7 +207,7 @@ function ToolActivity({
       <button
         type="button"
         onClick={() => setIsExpanded((v) => !v)}
-        className="mt-2 flex w-full items-center justify-between rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2.5 py-1.5 text-left text-xs text-[var(--mm-text-tertiary)] transition-colors hover:border-[#deded9] hover:text-[var(--mm-text-secondary)]"
+        className="mt-2 flex w-full items-center justify-between rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2.5 py-1.5 text-left text-xs text-[var(--mm-text-tertiary)] transition-colors hover:border-[#deded9] hover:text-[var(--mm-text-secondary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
       >
         <span className="flex min-w-0 items-center gap-1.5 truncate">
           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${running ? "pi-motion-running-dot bg-[#f59e0b]" : "bg-[var(--color-success)]"}`} aria-hidden />
@@ -459,7 +459,7 @@ function MessageBubbleImpl({
                   <button
                     type="button"
                     onClick={() => void handleCopy()}
-                    className="text-[#aaa] hover:text-[var(--mm-text-secondary)] transition-colors"
+                    className="rounded text-[#aaa] transition-colors hover:text-[var(--mm-text-secondary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                     aria-label={copied ? "已复制" : "复制内容"}
                     title={copied ? "已复制" : "复制"}
                   >

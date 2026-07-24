@@ -19,7 +19,7 @@ export function SmallActionButton({
         event.stopPropagation();
         onClick();
       }}
-      className="pointer-events-none flex h-7 w-7 shrink-0 items-center justify-center rounded text-[var(--mm-text-primary)] transition-[background-color,color,transform] duration-75 hover:bg-[var(--mm-bg-hover)] active:scale-[0.96] focus:pointer-events-auto group-hover:pointer-events-auto"
+      className="pointer-events-none flex h-7 w-7 shrink-0 items-center justify-center rounded text-[var(--mm-text-primary)] transition-[background-color,color,transform] duration-75 hover:bg-[var(--mm-bg-hover)] active:scale-[0.96] focus:pointer-events-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] group-hover:pointer-events-auto"
     >
       {children}
     </button>
@@ -92,7 +92,7 @@ export function SessionRow({
   const menuRef = useRef<HTMLDivElement>(null);
   const title = session.title || t("sidebar.sessions.unnamed");
   const baseClasses =
-    "flex w-full items-center gap-2 rounded-[var(--mm-radius-sm)] py-0 pr-0 text-[13px] leading-relaxed transition-[background-color,color,box-shadow] focus:outline-none";
+    "flex w-full items-center gap-2 rounded-[var(--mm-radius-sm)] py-0 pr-0 text-[13px] leading-relaxed transition-[background-color,color,box-shadow] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]";
   const stateClasses = active
     ? "bg-[var(--mm-bg-selected)] font-medium text-[var(--mm-text-primary)] shadow-[0_4px_14px_rgba(37,99,235,0.16)] hover:bg-[var(--mm-bg-selected)]"
     : "bg-transparent font-normal text-[var(--mm-text-primary)] shadow-none hover:bg-[var(--mm-bg-hover)]";
@@ -143,14 +143,14 @@ export function SessionRow({
           <button
             type="button"
             onClick={() => setConfirming(false)}
-            className="rounded px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
+            className="rounded px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
           >
             {t("common.cancel")}
           </button>
           <button
             type="button"
             onClick={onDelete}
-            className="rounded bg-[var(--color-error)] px-2 py-1 text-[11px] text-white hover:opacity-90"
+            className="rounded bg-[var(--color-error)] px-2 py-1 text-[11px] text-white hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500"
           >
             {t("common.confirm")}
           </button>
@@ -176,7 +176,7 @@ export function SessionRow({
               setRenaming(false);
             }
           }}
-          className="h-9 min-w-0 flex-1 rounded-[var(--mm-radius-sm)] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 text-[13px] text-[var(--mm-text-primary)] outline-none"
+          className="h-9 min-w-0 flex-1 rounded-[var(--mm-radius-sm)] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 text-[13px] text-[var(--mm-text-primary)] outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
         />
       </div>
     );
@@ -237,7 +237,7 @@ export function SessionRow({
               setDraftTitle(session.title);
               setRenaming(true);
             }}
-            className="flex w-full items-center px-3 py-1.5 text-left text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
+            className="flex w-full items-center px-3 py-1.5 text-left text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
           >
             {t("sidebar.sessions.rename")}
           </button>
@@ -249,7 +249,7 @@ export function SessionRow({
               setContextMenuOpen(false);
               setConfirming(true);
             }}
-            className="flex w-full items-center px-3 py-1.5 text-left text-[var(--color-error)] hover:bg-[var(--mm-bg-hover)]"
+            className="flex w-full items-center px-3 py-1.5 text-left text-[var(--color-error)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-500"
           >
             {t("sidebar.sessions.delete")}
           </button>

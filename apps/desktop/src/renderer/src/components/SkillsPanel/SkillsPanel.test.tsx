@@ -107,4 +107,32 @@ describe("SkillsPanel", () => {
     expect(alert.textContent).toContain("保存错误: disk denied");
     expect(alert.textContent).toContain("复制错误: clipboard denied");
   });
+
+  it("exposes tab and dialog focus-visible rings for keyboard a11y", () => {
+    render(<SkillsPanel />);
+    const piTab = screen.getByRole("tab", { name: "Pi 插件" });
+    const installedTab = screen.getByRole("tab", { name: "已安装" });
+    expect(piTab.className).toContain("focus-visible:ring-2");
+    expect(installedTab.className).toContain("focus-visible:ring-2");
+
+    fireEvent.click(screen.getByRole("button", { name: "创建技能" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /从 Github 导入/ }));
+    expect(screen.getByRole("button", { name: "关闭" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "导入" }).className).toContain("focus-visible:ring-2");
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
+    fireEvent.click(screen.getByRole("button", { name: "创建技能" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /编写技能/ }));
+    expect(screen.getByRole("button", { name: "取消" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "保存 SKILL.md" }).className).toContain("focus-visible:ring-2");
+  });
+
+  it("exposes Pi plugin search input focus-visible ring for keyboard a11y", () => {
+    render(<SkillsPanel />);
+    fireEvent.click(screen.getByRole("tab", { name: "Pi 插件" }));
+    expect(screen.getByRole("textbox", { name: "搜索 Pi 插件" }).className).toContain(
+      "focus-visible:ring-2",
+    );
+  });
+
 });

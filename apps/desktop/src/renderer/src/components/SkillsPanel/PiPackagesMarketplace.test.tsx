@@ -187,4 +187,21 @@ describe("PiPackagesMarketplace", () => {
     expect(await screen.findByRole("button", { name: "安装 pi-subagents" })).toBeTruthy();
     expect(window.piAPI?.packagesRefreshCatalog).toHaveBeenCalledTimes(2);
   });
+
+  it("exposes catalog and install dialog focus-visible rings", async () => {
+    await renderMarketplace();
+
+    const refresh = await screen.findByRole("button", { name: "刷新目录" });
+    expect(refresh.className).toContain("focus-visible:ring-2");
+    const install = await screen.findByRole("button", { name: "安装 pi-git" });
+    expect(install.className).toContain("focus-visible:ring-2");
+    expect(screen.getAllByRole("button", { name: "详情" })[0]?.className).toContain("focus-visible:ring-2");
+
+    await act(async () => {
+      fireEvent.click(install);
+    });
+    const dialog = await screen.findByRole("dialog", { name: "确认安装 Pi 插件" });
+    expect(within(dialog).getByRole("button", { name: "取消" }).className).toContain("focus-visible:ring-2");
+    expect(within(dialog).getByRole("button", { name: "确认安装" }).className).toContain("focus-visible:ring-2");
+  });
 });

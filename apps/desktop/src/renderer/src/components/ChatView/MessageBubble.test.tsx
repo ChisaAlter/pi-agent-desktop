@@ -231,6 +231,23 @@ describe("MessageBubble", () => {
     expect(screen.getByRole("button", { name: "复制内容" })).toBeTruthy();
   });
 
+  it("exposes assistant copy focus-visible ring for keyboard a11y", () => {
+    const message: Message = {
+      id: "m-a11y-copy",
+      role: "assistant",
+      content: "copy focus",
+      timestamp: new Date(0),
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByRole("button", { name: "复制内容" }).className).toContain("focus-visible:ring-2");
+  });
+
   it("folds inline think tags instead of rendering them as assistant content", () => {
     const message: Message = {
       id: "m-think",

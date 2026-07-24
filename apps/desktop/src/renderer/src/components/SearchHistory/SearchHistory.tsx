@@ -23,10 +23,32 @@ interface SearchHistoryProps {
   onNavigate: (sessionId: string, messageId: string) => void;
 }
 
-function highlightMatch(text: string, matchIndex: number, matchLength: number): React.JSX.Element {
-  const before = text.slice(Math.max(0, matchIndex - 30), matchIndex);
+/** Exported for unit tests — windowed match snippet used in result rows. */
+export function sliceMatchWindow(
+  text: string,
+  matchIndex: number,
+  matchLength: number,
+  radius = 30,
+): { before: string; match: string; after: string } {
+  const before = text.slice(Math.max(0, matchIndex - radius), matchIndex);
   const match = text.slice(matchIndex, matchIndex + matchLength);
-  const after = text.slice(matchIndex + matchLength, matchIndex + matchLength + 30);
+  const after = text.slice(matchIndex + matchLength, matchIndex + matchLength + radius);
+  return { before, match, after };
+}
+
+/** Exported for unit tests — prefer current workspace, then newer timestamps. */
+export function compareSearchResults(
+  a: { workspaceId: string; timestamp: Date },
+  b: { workspaceId: string; timestamp: Date },
+  currentWorkspaceId?: string,
+): number {
+  const workspacePriority =
+    Number(b.workspaceId === currentWorkspaceId) - Number(a.workspaceId === currentWorkspaceId);
+  return workspacePriority || b.timestamp.getTime() - a.timestamp.getTime();
+}
+
+function highlightMatch(text: string, matchIndex: number, matchLength: number): React.JSX.Element {
+  const { before, match, after } = sliceMatchWindow(text, matchIndex, matchLength);
 
   return (
     <span className="text-xs text-[var(--mm-text-secondary)]">
@@ -78,10 +100,7 @@ export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProp
           }
         }
       }
-      localResults.sort((a, b) => {
-        const workspacePriority = Number(b.workspaceId === currentWorkspace?.id) - Number(a.workspaceId === currentWorkspace?.id);
-        return workspacePriority || b.timestamp.getTime() - a.timestamp.getTime();
-      });
+      localResults.sort((a, b) => compareSearchResults(a, b, currentWorkspace?.id));
       return localResults.slice(0, 20);
     };
 
@@ -124,10 +143,7 @@ export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProp
             matchLength: trimmed.length,
           };
         });
-        mapped.sort((a, b) => {
-          const workspacePriority = Number(b.workspaceId === currentWorkspace?.id) - Number(a.workspaceId === currentWorkspace?.id);
-          return workspacePriority || b.timestamp.getTime() - a.timestamp.getTime();
-        });
+        mapped.sort((a, b) => compareSearchResults(a, b, currentWorkspace?.id));
         setSearchResults(mapped.slice(0, 20));
       }).catch(() => {
         if (!disposed) setSearchResults(buildLocalResults());
@@ -160,14 +176,14 @@ export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProp
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="搜索所有对话..."
-            className="flex-1 bg-transparent text-sm text-[var(--mm-text-primary)] outline-none placeholder:text-[var(--mm-text-tertiary)]"
+            className="flex-1 bg-transparent text-sm text-[var(--mm-text-primary)] outline-none placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
             autoFocus
             aria-label="搜索对话历史"
           />
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-[var(--mm-text-tertiary)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
+            className="rounded p-1 text-[var(--mm-text-tertiary)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
             aria-label="关闭搜索"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -188,7 +204,7 @@ export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProp
                   <button
                     type="button"
                     onClick={() => handleSelect(result)}
-                    className={`flex w-full flex-col gap-1 px-4 py-2.5 text-left transition-colors hover:bg-[var(--mm-bg-hover)] ${
+                    className={`flex w-full flex-col gap-1 px-4 py-2.5 text-left transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb] ${
                       selectedId === result.messageId ? "bg-[var(--mm-bg-selected)]" : ""
                     }`}
                   >

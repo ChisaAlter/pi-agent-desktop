@@ -85,4 +85,12 @@ describe("PiConfigEditor", () => {
     });
     expect(await screen.findByText(/已保存/)).toBeTruthy();
   });
+
+  it("exposes primary config actions focus-visible rings for keyboard a11y", async () => {
+    render(<PiConfigEditor />);
+    await waitFor(() => expect(configGetModels).toHaveBeenCalled());
+    for (const name of ["保存当前文件", "导出配置包", "从编辑区导入配置包"]) {
+      expect(screen.getByRole("button", { name }).className).toContain("focus-visible:ring-2");
+    }
+  });
 });

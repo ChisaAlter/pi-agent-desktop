@@ -51,7 +51,7 @@ function NavTabButton({
             aria-label={tab.label}
             id={`settings-tab-${tab.id}`}
             onClick={onClick}
-            className={`settings-pressable flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-[transform,background-color,color,box-shadow] duration-150 ease-out ${
+            className={`settings-pressable flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-[transform,background-color,color,box-shadow] duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb] ${
                 active
                     ? 'bg-[var(--mm-bg-selected)] text-[var(--mm-accent-blue)] shadow-[inset_0_0_0_1px_rgba(10,104,196,0.08)]'
                     : 'text-[var(--settings-text-secondary)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]'
@@ -86,7 +86,7 @@ function SearchResultButton({
             aria-label={`${result.pageLabel} · ${result.label}`}
             id={`settings-tab-${result.tabId}-search-${result.anchor}`}
             onClick={onClick}
-            className={`settings-pressable flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-[transform,background-color,color,box-shadow] duration-150 ease-out ${
+            className={`settings-pressable flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-[transform,background-color,color,box-shadow] duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb] ${
                 active
                     ? 'bg-[var(--mm-bg-selected)] text-[var(--mm-accent-blue)] shadow-[inset_0_0_0_1px_rgba(10,104,196,0.08)]'
                     : 'text-[var(--settings-text-secondary)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]'
@@ -139,7 +139,7 @@ export function SettingsNav({
                         type="search"
                         value={searchQuery}
                         onChange={(event) => onSearchQueryChange(event.target.value)}
-                        className="w-full bg-transparent text-sm text-[var(--mm-text-primary)] outline-none placeholder:text-[var(--mm-text-tertiary)]"
+                        className="w-full bg-transparent text-sm text-[var(--mm-text-primary)] outline-none placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                         placeholder={t('settings.nav.searchPlaceholder')}
                         aria-label={t('settings.nav.searchPlaceholder')}
                     />

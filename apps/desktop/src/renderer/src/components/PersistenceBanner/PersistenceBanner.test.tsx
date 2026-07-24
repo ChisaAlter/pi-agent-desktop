@@ -37,4 +37,22 @@ describe("PersistenceBanner", () => {
 
     expect(useSessionStore.getState().persistErrorCount).toBe(0);
   });
+
+  it("stays hidden when there are no persist errors", () => {
+    render(<PersistenceBanner />);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("exposes dismiss button type and focus-visible ring", () => {
+    useSessionStore.setState({
+      persistErrorCount: 3,
+      lastPersistError: "ENOSPC",
+    });
+    render(<PersistenceBanner />);
+    const dismiss = screen.getByRole("button", { name: "关闭持久化失败提示" });
+    expect(dismiss.getAttribute("type")).toBe("button");
+    expect(dismiss.className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("alert").textContent).toContain("ENOSPC");
+    expect(screen.getByRole("alert").textContent).toContain("3 次");
+  });
 });

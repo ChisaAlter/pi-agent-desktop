@@ -203,25 +203,28 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                         <div className="flex gap-2">
                             {!piInstalled && (
                                 <button
+                                    type="button"
                                     onClick={() => void handleInstall()}
                                     disabled={installing || isOperating}
-                                    className="flex-1 px-4 py-2.5 bg-[#1a1a1a] text-white rounded-lg hover:bg-[#333] transition-colors text-sm font-medium disabled:opacity-50"
+                                    className="flex-1 rounded-lg bg-[#1a1a1a] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#333] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:opacity-50"
                                 >
                                     {installing || isOperating ? t("onboarding.step1.installing") : t("onboarding.step1.install")}
                                 </button>
                             )}
                             {piInstalled && (
                                 <button
+                                    type="button"
                                     onClick={handleStep1Next}
-                                    className="flex-1 px-4 py-2.5 bg-[#1a1a1a] text-white rounded-lg hover:bg-[#333] transition-colors text-sm font-medium"
+                                    className="flex-1 rounded-lg bg-[#1a1a1a] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#333] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                                 >
                                     {t("common.next")}
                                 </button>
                             )}
                             <button
+                                type="button"
                                 onClick={() => void refreshStatus()}
                                 disabled={loading || isOperating}
-                                className="px-4 py-2.5 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] text-[var(--mm-text-secondary)] rounded-lg hover:bg-[var(--mm-bg-sidebar)] transition-colors text-sm"
+                                className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-2.5 text-sm text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                                 title={t("onboarding.step1.refresh")}
                             >
                                 {t("onboarding.step1.refresh")}
@@ -267,21 +270,24 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
 
                         <div className="flex gap-2">
                             <button
+                                type="button"
                                 onClick={() => void handleSelectWorkspace()}
-                                className="flex-1 px-4 py-2.5 bg-[#1a1a1a] text-white rounded-lg hover:bg-[#333] transition-colors text-sm font-medium"
+                                className="flex-1 rounded-lg bg-[#1a1a1a] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#333] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                             >
                                 {t("onboarding.step2.select")}
                             </button>
                             <button
+                                type="button"
                                 onClick={() => setStep(1)}
-                                className="px-4 py-2.5 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] text-[var(--mm-text-secondary)] rounded-lg hover:bg-[var(--mm-bg-sidebar)] transition-colors text-sm"
+                                className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-2.5 text-sm text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                             >
                                 {t("common.back")}
                             </button>
                             <button
+                                type="button"
                                 onClick={() => setStep(3)}
                                 disabled={!currentWorkspace}
-                                className="px-4 py-2.5 bg-[#1a1a1a] text-white rounded-lg hover:bg-[#333] transition-colors text-sm font-medium disabled:opacity-50"
+                                className="rounded-lg bg-[#1a1a1a] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#333] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:opacity-50"
                             >
                                 {t("common.next")}
                             </button>
@@ -316,14 +322,16 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
 
                         <div className="flex gap-2">
                             <button
+                                type="button"
                                 onClick={() => setStep(2)}
-                                className="px-4 py-2.5 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] text-[var(--mm-text-secondary)] rounded-lg hover:bg-[var(--mm-bg-sidebar)] transition-colors text-sm"
+                                className="rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-2.5 text-sm text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                             >
                                 {t("common.back")}
                             </button>
                             <button
+                                type="button"
                                 onClick={handleFinish}
-                                className="flex-1 px-4 py-2.5 bg-[#1a1a1a] text-white rounded-lg hover:bg-[#333] transition-colors text-sm font-medium"
+                                className="flex-1 rounded-lg bg-[#1a1a1a] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#333] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                             >
                                 {t("common.done")}
                             </button>
@@ -335,8 +343,9 @@ export function Onboarding({ onComplete, forceSkipPiCheck = false }: OnboardingP
                     escape hatch subtle, not the primary affordance */}
                 <div className="mt-6 pt-4 border-t border-[#f0f0f0] text-right">
                     <button
+                        type="button"
                         onClick={handleFinish}
-                        className="text-xs text-[var(--mm-text-tertiary)] hover:text-[var(--mm-text-secondary)] transition-colors"
+                        className="text-xs text-[var(--mm-text-tertiary)] transition-colors hover:text-[var(--mm-text-secondary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                     >
                         {t("onboarding.skip")}
                     </button>

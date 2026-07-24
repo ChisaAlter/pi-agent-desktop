@@ -54,7 +54,7 @@ function FileTreeRow({
           if (isDirectory) onToggle(node);
           onSelect(node);
         }}
-        className={`flex h-8 w-full min-w-0 items-center gap-2 px-2 text-left text-xs transition-colors hover:bg-[var(--mm-bg-sidebar)] ${
+        className={`flex h-8 w-full min-w-0 items-center gap-2 px-2 text-left text-xs transition-colors hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb] ${
           selectedPath === node.path ? "bg-[#eef3ff] text-[var(--color-info)]" : "text-[var(--mm-text-primary)]"
         }`}
         style={{ paddingLeft: 8 + depth * 14 }}
@@ -114,7 +114,7 @@ function SearchResultRow({
       <button
         type="button"
         onClick={() => void onOpen(file)}
-        className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-xs hover:bg-[var(--mm-bg-sidebar)]"
+        className="flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
         title={file.path}
       >
         <span className="shrink-0 font-mono text-[11px] text-[var(--mm-text-tertiary)]">
@@ -780,7 +780,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
             <button
               type="button"
               onClick={() => void loadTree()}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
               aria-label={t("fileWorkspace.refreshTree")}
               title={t("fileWorkspace.refresh")}
             >
@@ -790,7 +790,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="mt-3 h-8 w-full rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 text-xs outline-none focus:border-[#999]"
+            className="mt-3 h-8 w-full rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 text-xs outline-none focus:border-[#999] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
             placeholder={t("fileWorkspace.searchFiles")}
             aria-label={t("fileWorkspace.searchFiles")}
           />
@@ -808,7 +808,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
                   <button
                     type="button"
                     onClick={() => setSearchReloadKey((key) => key + 1)}
-                    className="mt-2 rounded-md bg-[#b91c1c] px-2 py-1 text-[11px] text-white hover:bg-[#991b1b]"
+                    className="mt-2 rounded-md bg-[#b91c1c] px-2 py-1 text-[11px] text-white hover:bg-[#991b1b] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500"
                   >
                     {t("common.retry")}
                   </button>
@@ -830,7 +830,7 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
               <button
                 type="button"
                 onClick={() => void loadTree()}
-                className="mt-2 rounded-md bg-[#b91c1c] px-2 py-1 text-[11px] text-white hover:bg-[#991b1b]"
+                className="mt-2 rounded-md bg-[#b91c1c] px-2 py-1 text-[11px] text-white hover:bg-[#991b1b] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500"
               >
                 {t("common.retry")}
               </button>
@@ -876,12 +876,12 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
               {canEdit && viewMode !== "diff" && viewMode !== "conflict" && (
                 <>
                   {viewMode === "preview" ? (
-                    <button type="button" onClick={() => setViewMode("edit")} className="rounded-md bg-[#1f1f1f] px-2 py-1 text-xs text-white hover:bg-[#333]">{t("fileWorkspace.actions.edit")}</button>
+                    <button type="button" onClick={() => setViewMode("edit")} className="rounded-md bg-[#1f1f1f] px-2 py-1 text-xs text-white hover:bg-[#333] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">{t("fileWorkspace.actions.edit")}</button>
                   ) : (
                     <>
-                      <button type="button" onClick={() => setViewMode("preview")} disabled={isDirty} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-40">{t("fileWorkspace.actions.readOnly")}</button>
-                      <button type="button" onClick={discardDraft} disabled={!isDirty} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-40">{t("fileWorkspace.actions.discard")}</button>
-                      <button type="button" onClick={() => void saveDraft()} disabled={!isDirty || saveState === "loading"} className="rounded-md bg-[#1f1f1f] px-2 py-1 text-xs text-white hover:bg-[#333] disabled:opacity-40">
+                      <button type="button" onClick={() => setViewMode("preview")} disabled={isDirty} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:opacity-40">{t("fileWorkspace.actions.readOnly")}</button>
+                      <button type="button" onClick={discardDraft} disabled={!isDirty} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:opacity-40">{t("fileWorkspace.actions.discard")}</button>
+                      <button type="button" onClick={() => void saveDraft()} disabled={!isDirty || saveState === "loading"} className="rounded-md bg-[#1f1f1f] px-2 py-1 text-xs text-white hover:bg-[#333] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:opacity-40">
                         {saveState === "loading" ? t("fileWorkspace.actions.saving") : t("fileWorkspace.actions.save")}
                       </button>
                     </>
@@ -889,22 +889,22 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
                 </>
               )}
               {selectedGitMark && (
-                <button type="button" onClick={() => void openSelectedDiff()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">{t("fileWorkspace.actions.viewDiff")}</button>
+                <button type="button" onClick={() => void openSelectedDiff()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">{t("fileWorkspace.actions.viewDiff")}</button>
               )}
               {viewMode === "diff" && (
-                <button type="button" onClick={() => setViewMode("preview")} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">{t("fileWorkspace.actions.backToPreview")}</button>
+                <button type="button" onClick={() => setViewMode("preview")} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">{t("fileWorkspace.actions.backToPreview")}</button>
               )}
               {viewMode === "conflict" && saveConflict && (
-                <button type="button" onClick={continueEditingDraft} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">{t("fileWorkspace.actions.continueEditing")}</button>
+                <button type="button" onClick={continueEditingDraft} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">{t("fileWorkspace.actions.continueEditing")}</button>
               )}
               {saveConflict && viewMode !== "conflict" && (
-                <button type="button" onClick={showConflictDiff} className="rounded-md px-2 py-1 text-xs text-[var(--color-error)] hover:bg-[var(--mm-bg-hover)]">{t("fileWorkspace.actions.viewConflict")}</button>
+                <button type="button" onClick={showConflictDiff} className="rounded-md px-2 py-1 text-xs text-[var(--color-error)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500">{t("fileWorkspace.actions.viewConflict")}</button>
               )}
-              <button type="button" onClick={() => void openSelectedPath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">{t("fileWorkspace.actions.open")}</button>
-              <button type="button" onClick={() => void revealSelectedPath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">{t("fileWorkspace.actions.reveal")}</button>
-              <button type="button" onClick={() => void copySelectedPath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">{copied ? t("fileWorkspace.actions.copied") : t("fileWorkspace.actions.copyPath")}</button>
-              <button type="button" onClick={() => void copySelectedRelativePath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">{t("fileWorkspace.actions.copyRelativePath")}</button>
-              <button type="button" onClick={sendToChat} className="rounded-md bg-[#1f1f1f] px-2 py-1 text-xs text-white hover:bg-[#333]">{t("fileWorkspace.actions.quoteToChat")}</button>
+              <button type="button" onClick={() => void openSelectedPath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">{t("fileWorkspace.actions.open")}</button>
+              <button type="button" onClick={() => void revealSelectedPath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">{t("fileWorkspace.actions.reveal")}</button>
+              <button type="button" onClick={() => void copySelectedPath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">{copied ? t("fileWorkspace.actions.copied") : t("fileWorkspace.actions.copyPath")}</button>
+              <button type="button" onClick={() => void copySelectedRelativePath()} className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">{t("fileWorkspace.actions.copyRelativePath")}</button>
+              <button type="button" onClick={sendToChat} className="rounded-md bg-[#1f1f1f] px-2 py-1 text-xs text-white hover:bg-[#333] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">{t("fileWorkspace.actions.quoteToChat")}</button>
             </div>
           )}
         </div>
@@ -934,13 +934,13 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
                 {t("fileWorkspace.conflict.warning")}
               </div>
               <div className="mb-3 flex flex-wrap items-center gap-2">
-                <button type="button" onClick={continueEditingDraft} className="rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">
+                <button type="button" onClick={continueEditingDraft} className="rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">
                   {t("fileWorkspace.conflict.continueDraft")}
                 </button>
-                <button type="button" onClick={useDiskVersion} className="rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">
+                <button type="button" onClick={useDiskVersion} className="rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">
                   {t("fileWorkspace.actions.useDiskVersion")}
                 </button>
-                <button type="button" onClick={() => void copyDraft()} className="rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]">
+                <button type="button" onClick={() => void copyDraft()} className="rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">
                   {t("fileWorkspace.actions.copyDraft")}
                 </button>
               </div>
@@ -1061,29 +1061,29 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
             <div>
               <dt className="text-[var(--mm-text-tertiary)]">{saveConflict ? t("fileWorkspace.details.conflictHandling") : t("fileWorkspace.details.recovery")}</dt>
               <dd className="m-0 mt-2 flex flex-wrap gap-1">
-                <button type="button" onClick={() => void saveDraft()} disabled={saveState === "loading" || !isDirty} className="rounded-md border border-[#1f1f1f] bg-[#1f1f1f] px-2 py-1 text-white disabled:opacity-40">
+                <button type="button" onClick={() => void saveDraft()} disabled={saveState === "loading" || !isDirty} className="rounded-md border border-[#1f1f1f] bg-[#1f1f1f] px-2 py-1 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:opacity-40">
                   {t("fileWorkspace.actions.retrySave")}
                 </button>
                 {saveConflict && (
                   <>
-                    <button type="button" onClick={useDiskVersion} className="rounded-md border border-[var(--mm-border)] px-2 py-1">
+                    <button type="button" onClick={useDiskVersion} className="rounded-md border border-[var(--mm-border)] px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">
                       {t("fileWorkspace.actions.useDiskVersion")}
                     </button>
-                    <button type="button" onClick={continueEditingDraft} className="rounded-md border border-[var(--mm-border)] px-2 py-1">
+                    <button type="button" onClick={continueEditingDraft} className="rounded-md border border-[var(--mm-border)] px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">
                       {t("fileWorkspace.actions.continueEditing")}
                     </button>
-                    <button type="button" onClick={showConflictDiff} className="rounded-md border border-[var(--mm-border)] px-2 py-1">
+                    <button type="button" onClick={showConflictDiff} className="rounded-md border border-[var(--mm-border)] px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">
                       {t("fileWorkspace.actions.viewConflict")}
                     </button>
                   </>
                 )}
-                <button type="button" onClick={() => void copySaveError()} className="rounded-md border border-[var(--mm-border)] px-2 py-1">
+                <button type="button" onClick={() => void copySaveError()} className="rounded-md border border-[var(--mm-border)] px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">
                   {t("fileWorkspace.actions.copyError")}
                 </button>
-                <button type="button" onClick={() => void copyDraft()} className="rounded-md border border-[var(--mm-border)] px-2 py-1">
+                <button type="button" onClick={() => void copyDraft()} className="rounded-md border border-[var(--mm-border)] px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">
                   {t("fileWorkspace.actions.copyDraft")}
                 </button>
-                <button type="button" onClick={() => void reloadSelectedFile()} className="rounded-md border border-[var(--mm-border)] px-2 py-1">
+                <button type="button" onClick={() => void reloadSelectedFile()} className="rounded-md border border-[var(--mm-border)] px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">
                   {t("fileWorkspace.actions.reloadFile")}
                 </button>
               </dd>
@@ -1092,13 +1092,13 @@ export function FileWorkspace({ workspacePath, workspaceId, initialTarget }: Fil
           <div>
             <dt className="text-[var(--mm-text-tertiary)]">{t("fileWorkspace.details.actions")}</dt>
             <dd className="m-0 mt-2 flex flex-wrap gap-1">
-              <button type="button" disabled={!selectedPath} onClick={() => void copySelectedPath()} className="rounded-md border border-[var(--mm-border)] px-2 py-1 disabled:opacity-40">
+              <button type="button" disabled={!selectedPath} onClick={() => void copySelectedPath()} className="rounded-md border border-[var(--mm-border)] px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:opacity-40">
                 {copied ? t("fileWorkspace.actions.copied") : t("fileWorkspace.actions.copyPath")}
               </button>
-              <button type="button" disabled={!selectedPath} onClick={() => void copySelectedRelativePath()} className="rounded-md border border-[var(--mm-border)] px-2 py-1 disabled:opacity-40">
+              <button type="button" disabled={!selectedPath} onClick={() => void copySelectedRelativePath()} className="rounded-md border border-[var(--mm-border)] px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:opacity-40">
                 {t("fileWorkspace.actions.copyRelativePath")}
               </button>
-              <button type="button" disabled={!selectedPath} onClick={sendToChat} className="rounded-md border border-[#1f1f1f] bg-[#1f1f1f] px-2 py-1 text-white disabled:opacity-40">
+              <button type="button" disabled={!selectedPath} onClick={sendToChat} className="rounded-md border border-[#1f1f1f] bg-[#1f1f1f] px-2 py-1 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:opacity-40">
                 {t("fileWorkspace.actions.quote")}
               </button>
             </dd>

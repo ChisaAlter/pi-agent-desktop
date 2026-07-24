@@ -38,4 +38,20 @@ describe("ToastContainer motion", () => {
     act(() => vi.advanceTimersByTime(120));
     expect(screen.queryByRole("status")).toBeNull();
   });
+
+  it("exposes retry and dismiss focus-visible rings for keyboard a11y", () => {
+    useToastStore.setState({
+      toasts: [{
+        id: "toast_a11y",
+        message: "Need focus rings",
+        tone: "info",
+        createdAt: 1,
+        retryAction: vi.fn(),
+      }],
+    });
+
+    render(<ToastContainer />);
+    expect(screen.getByRole("button", { name: "重试" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "关闭通知" }).className).toContain("focus-visible:ring-2");
+  });
 });

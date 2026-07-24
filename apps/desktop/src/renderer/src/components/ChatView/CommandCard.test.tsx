@@ -99,4 +99,25 @@ describe("CommandCard", () => {
     expect(screen.getByText("需手动确认执行")).toBeTruthy();
     window.removeEventListener("terminal:run-command", runCommandSpy);
   });
+
+  it("exposes expand and action focus-visible rings for keyboard a11y", () => {
+    render(
+      <CommandCard
+        toolCall={{
+          id: "tc-a11y",
+          name: "bash",
+          input: { command: "pnpm test" },
+          output: "ok",
+          status: "completed",
+        }}
+      />,
+    );
+
+    const expand = screen.getByRole("button", { name: /运行命令/ });
+    expect(expand.className).toContain("focus-visible:ring-2");
+    fireEvent.click(expand);
+    expect(screen.getByRole("button", { name: "在终端运行" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "复制命令" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "复制输出" }).className).toContain("focus-visible:ring-2");
+  });
 });

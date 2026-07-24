@@ -147,4 +147,15 @@ describe("Onboarding", () => {
         expect(onComplete).toHaveBeenCalled();
         expect(window.localStorage.getItem("pi-desktop:firstLaunchDone")).toBe("true");
     });
+
+    it("exposes primary onboarding action focus-visible rings for keyboard a11y", async () => {
+        installMockPiAPI({ installed: true });
+        renderWithI18n(<Onboarding onComplete={vi.fn()} />);
+
+        const next = await screen.findByRole("button", { name: "下一步" });
+        expect(next.className).toContain("focus-visible:ring-2");
+        expect(screen.getByRole("button", { name: "跳过引导" }).className).toContain(
+            "focus-visible:ring-2",
+        );
+    });
 });

@@ -31,4 +31,11 @@ describe("ThinkingBlock", () => {
       "true",
     );
   });
+
+  it("exposes thinking toggle focus-visible ring for keyboard a11y", () => {
+    render(<ThinkingBlock content="step one" />);
+    expect(screen.getByRole("button", { name: /展开思考/ }).className).toContain(
+      "focus-visible:ring-2",
+    );
+  });
 });

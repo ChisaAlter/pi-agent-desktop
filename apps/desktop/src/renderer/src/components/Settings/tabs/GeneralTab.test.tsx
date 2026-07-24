@@ -63,4 +63,14 @@ describe("GeneralTab", () => {
     await useSettingsStore.getState().flushPendingSettingsWrite();
     expect(setSettings).toHaveBeenCalledWith({ generatedUiEnabled: false });
   });
+
+  it("exposes language select focus-visible ring for keyboard a11y", () => {
+    render(
+      <I18nProvider>
+        <GeneralTab />
+      </I18nProvider>,
+    );
+    expect(screen.getByRole("combobox").className).toContain("focus-visible:ring-2");
+  });
+
 });

@@ -516,7 +516,7 @@ export function CommandPalette({
                                 aria-controls={`command-panel-tabpanel-${m}`}
                                 id={`command-panel-tab-${m}`}
                                 onClick={() => setMode(m)}
-                                className={`px-3 py-1.5 text-sm rounded-t-md transition-colors ${
+                                className={`px-3 py-1.5 text-sm rounded-t-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb] ${
                                     isActive
                                         ? "bg-[#1a1a1a] text-white"
                                         : "text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
@@ -547,7 +547,7 @@ export function CommandPalette({
                                 ? t("commandPalette.placeholders.history")
                                 : t("commandPalette.placeholders.command")
                         }
-                        className="w-full px-3 py-2 bg-[var(--mm-bg-sidebar)] border border-[var(--mm-border)] rounded-lg text-sm focus:outline-none focus:border-[#1a1a1a]"
+                        className="w-full px-3 py-2 bg-[var(--mm-bg-sidebar)] border border-[var(--mm-border)] rounded-lg text-sm focus:outline-none focus:border-[#1a1a1a] focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                         aria-label={t("commandPalette.aria.search")}
                         autoComplete="off"
                         role="combobox"
@@ -598,8 +598,9 @@ export function CommandPalette({
                                 {filesError}
                             </p>
                             <button
+                                type="button"
                                 onClick={retryFileSearch}
-                                className="px-3 py-1.5 bg-[var(--color-error)] text-white text-xs rounded hover:bg-[var(--color-error)] transition-colors"
+                                className="px-3 py-1.5 bg-[var(--color-error)] text-white text-xs rounded hover:bg-[var(--color-error)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500"
                             >
                                 {t("common.retry")}
                             </button>
@@ -638,7 +639,7 @@ export function CommandPalette({
                                         <button
                                             type="button" aria-label={r.primary} title={r.primary}
                                             onClick={() => runResult(r)}
-                                            className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 transition-colors ${
+                                            className={`w-full text-left px-3 py-2 rounded-md text-sm flex items-center gap-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb] ${
                                                 isSelected
                                                     ? "bg-[var(--mm-bg-hover)]"
                                                     : "hover:bg-[var(--mm-bg-sidebar)]"

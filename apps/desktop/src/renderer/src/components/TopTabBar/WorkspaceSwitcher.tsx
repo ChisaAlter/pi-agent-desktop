@@ -36,7 +36,8 @@ function IconPlus(): React.JSX.Element {
     );
 }
 
-function basename(path: string): string {
+/** Exported for unit tests — last path segment for Windows/Unix paths. */
+export function basename(path: string): string {
     return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
 }
 
@@ -180,7 +181,7 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
                             value={query}
                             onChange={(event) => setQuery(event.target.value)}
                             placeholder={t("workspaceSwitcher.search")}
-                            className="min-w-0 flex-1 border-0 bg-transparent text-[12px] text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] outline-none"
+                            className="min-w-0 flex-1 border-0 bg-transparent text-[12px] text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                             autoFocus
                         />
                     </div>
@@ -191,7 +192,7 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
                                 type="button"
                                 role="menuitem"
                                 onClick={() => void selectWorkspace(ws.id)}
-                                className={`flex w-full min-w-0 items-start gap-2 px-3 py-2 text-left text-[12px] transition-colors hover:bg-[var(--mm-bg-hover)] ${
+                                className={`flex w-full min-w-0 items-start gap-2 px-3 py-2 text-left text-[12px] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb] ${
                                     ws.id === currentWorkspaceId
                                         ? "font-medium text-[var(--mm-text-primary)]"
                                         : "text-[var(--mm-text-secondary)]"
@@ -213,7 +214,7 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
                             type="button"
                             role="menuitem"
                             onClick={() => void addBlankWorkspace()}
-                            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[12px] text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
+                            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[12px] text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                         >
                             <IconPlus />
                             <span>{t("workspaceSwitcher.newBlankProject")}</span>
@@ -222,7 +223,7 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
                             type="button"
                             role="menuitem"
                             onClick={() => void addExistingFolder()}
-                            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[12px] text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
+                            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[12px] text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                         >
                             <IconFolder />
                             <span>{t("workspaceSwitcher.useExistingFolder")}</span>

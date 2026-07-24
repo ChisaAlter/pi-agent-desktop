@@ -98,8 +98,9 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
   return (
     <div className="border-l border-[var(--mm-border)] pl-3">
       <button
+        type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex w-full items-center justify-between py-1 text-left text-[#a0a0a0] transition-colors duration-150 hover:text-[var(--mm-text-tertiary)]"
+        className="flex w-full items-center justify-between py-1 text-left text-[#a0a0a0] transition-colors duration-150 hover:text-[var(--mm-text-tertiary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
       >
         <div className="flex min-w-0 items-center gap-1.5">
           {getStatusIcon()}
@@ -139,7 +140,7 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
                 <button
                   type="button"
                   onClick={runInTerminal}
-                  className="rounded-md border border-[#d8d8d2] bg-[var(--mm-bg-panel)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)]"
+                  className="rounded-md border border-[#d8d8d2] bg-[var(--mm-bg-panel)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                   title={commandMode === "draft" ? "高风险命令只填入终端，不自动执行" : "在终端中执行此命令"}
                 >
                   {commandMode === "draft" ? "填入终端" : "在终端运行"}
@@ -147,7 +148,7 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
                 <button
                   type="button"
                   onClick={() => void copyText("input", commandText)}
-                  className="rounded-md border border-[var(--mm-border)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] hover:text-[#222]"
+                  className="rounded-md border border-[var(--mm-border)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] hover:text-[#222] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 >
                   {copied === "input" ? "已复制命令" : "复制命令"}
                 </button>
@@ -162,7 +163,7 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
               <button
                 type="button"
                 onClick={() => void copyText("output", outputStr)}
-                className="rounded-md border border-[var(--mm-border)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] hover:text-[#222]"
+                className="rounded-md border border-[var(--mm-border)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] hover:text-[#222] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
               >
                 {copied === "output" ? "已复制输出" : "复制输出"}
               </button>
@@ -172,7 +173,7 @@ export function CommandCard({ toolCall }: CommandCardProps): React.JSX.Element {
                 key={path}
                 type="button"
                 onClick={() => openOutputPath(path)}
-                className="max-w-[220px] truncate rounded-md border border-[var(--mm-border)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] hover:text-[#222]"
+                className="max-w-[220px] truncate rounded-md border border-[var(--mm-border)] px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] hover:text-[#222] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 title={`在文件工作区打开 ${path}`}
               >
                 打开 {basename(path)}

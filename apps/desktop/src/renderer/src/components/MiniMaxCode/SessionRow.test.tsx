@@ -104,4 +104,32 @@ describe("SessionRow", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认" }));
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
+
+  it("exposes select, action, menu and confirm focus-visible rings", () => {
+    const { container } = render(
+      <SessionRow
+        session={makeSession()}
+        active={false}
+        depth={0}
+        archived={false}
+        onSelect={vi.fn()}
+        onArchive={vi.fn()}
+        onToggleFavorite={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+        t={t}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Demo Session" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "置顶 Demo Session" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "归档 Demo Session" }).className).toContain("focus-visible:ring-2");
+
+    fireEvent.contextMenu(container.firstElementChild as HTMLElement);
+    expect(screen.getByRole("menuitem", { name: "重命名" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("menuitem", { name: "删除" }).className).toContain("focus-visible:ring-2");
+    fireEvent.click(screen.getByRole("menuitem", { name: "删除" }));
+    expect(screen.getByRole("button", { name: "取消" }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "确认" }).className).toContain("focus-visible:ring-2");
+  });
 });

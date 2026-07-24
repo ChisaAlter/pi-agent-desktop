@@ -757,8 +757,8 @@ export function ChatInput({
         <button
           type="button"
           className={referenceFrame
-            ? "flex h-6 items-center gap-1 rounded-[4px] px-1.5 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)]"
-            : "flex h-[22px] items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-[background-color,border-color,color,opacity,box-shadow,transform] hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"}
+            ? "flex h-6 items-center gap-1 rounded-[4px] px-1.5 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
+            : "flex h-[22px] items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-[background-color,border-color,color,opacity,box-shadow,transform] hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"}
           aria-label={t("chatInput.permissionAria", { label: currentPermissionLabel })}
           data-testid="chat-input-permission-trigger"
         >
@@ -781,7 +781,7 @@ export function ChatInput({
                 handlePermissionSelect(opt.value);
                 close();
               }}
-              className="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
+              className="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
             >
               <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[var(--mm-text-tertiary)]" aria-hidden>
                 <PermissionModeIcon mode={opt.value} />
@@ -963,7 +963,7 @@ export function ChatInput({
                     type="button"
                     role="option"
                     aria-selected={i === highlightIndex}
-                    className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 ${
+                    className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb] ${
                       i === highlightIndex
                         ? "bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)]"
                         : "text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
@@ -1007,7 +1007,7 @@ export function ChatInput({
                     role="option"
                     aria-selected={i === slashHighlightIndex}
                     title={`/${candidate.command.name} ${candidate.command.description ?? candidate.command.source}`}
-                    className={`flex h-9 w-full items-center gap-2 overflow-hidden px-3 text-left text-sm ${
+                    className={`flex h-9 w-full items-center gap-2 overflow-hidden px-3 text-left text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb] ${
                       i === slashHighlightIndex
                         ? "bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)]"
                         : "text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
@@ -1041,7 +1041,7 @@ export function ChatInput({
             type="button"
             onClick={handlePrimaryAction}
             disabled={primaryActionDisabled}
-            className={`${referenceFrame ? "hidden" : "flex"} h-7 w-8 flex-shrink-0 items-center justify-center self-end rounded-[5px] transition-[background-color,color,opacity,transform] ${
+            className={`${referenceFrame ? "hidden" : "flex"} h-7 w-8 flex-shrink-0 items-center justify-center self-end rounded-[5px] transition-[background-color,color,opacity,transform] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] ${
               showStopAction
                 ? "border border-[var(--mm-bg-active)] bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)] hover:opacity-90"
                 : "bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)] hover:opacity-90 disabled:cursor-not-allowed disabled:bg-[var(--mm-bg-selected)] disabled:text-[var(--mm-text-tertiary)]"
@@ -1093,12 +1093,12 @@ export function ChatInput({
         {referenceFrame ? (
           <div className="relative z-20 flex h-[34px] shrink-0 items-center justify-between px-3 pb-2 pt-0" data-testid="chat-input-reference-controls">
             <div className="flex items-center gap-3 text-[var(--mm-text-secondary)]">
-              <button type="button" onClick={() => void handlePickFiles()} className="flex h-6 w-6 items-center justify-center rounded-[3px] hover:bg-[var(--mm-bg-hover)]" aria-label={t("chatInput.addFileOrImage")}>
+              <button type="button" onClick={() => void handlePickFiles()} className="flex h-6 w-6 items-center justify-center rounded-[3px] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]" aria-label={t("chatInput.addFileOrImage")}>
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3 3 0 1 1 4 4L8.5 18.5a1.5 1.5 0 1 1-2-2L15 8" />
                 </svg>
               </button>
-              <button type="button" onClick={openSlashCommands} className="flex h-6 w-6 items-center justify-center rounded-[3px] hover:bg-[var(--mm-bg-hover)]" aria-label={t("chatInput.openSlashCommands")}>
+              <button type="button" onClick={openSlashCommands} className="flex h-6 w-6 items-center justify-center rounded-[3px] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]" aria-label={t("chatInput.openSlashCommands")}>
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="m8 9-4 3 4 3m8-6 4 3-4 3M14 5l-4 14" />
                 </svg>
@@ -1107,7 +1107,7 @@ export function ChatInput({
                 align="start"
                 contentClassName="w-[246px] rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-popover)] p-1.5"
                 trigger={
-                  <button type="button" className="flex h-6 items-center rounded-[4px] px-1.5 text-[11px] hover:bg-[var(--mm-bg-hover)]" aria-label={t("chatInput.agentMode.aria")}>
+                  <button type="button" className="flex h-6 items-center rounded-[4px] px-1.5 text-[11px] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]" aria-label={t("chatInput.agentMode.aria")}>
                     <span className="font-medium text-[var(--mm-text-primary)]">
                       {agentModeOptions.find((mode) => mode.value === currentAgentMode)?.label ?? "Build"}
                     </span>
@@ -1126,7 +1126,7 @@ export function ChatInput({
                           handleAgentModeSelect(mode.value);
                           close();
                         }}
-                        className={`flex w-full items-start gap-2 rounded-[7px] px-2 py-2 text-left hover:bg-[var(--mm-bg-hover)] ${
+                        className={`flex w-full items-start gap-2 rounded-[7px] px-2 py-2 text-left hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb] ${
                           currentAgentMode === mode.value ? "bg-[var(--mm-bg-popover-selected)]" : ""
                         }`}
                       >
@@ -1150,7 +1150,7 @@ export function ChatInput({
                 trigger={
                   <button
                     type="button"
-                    className="flex h-full w-[190px] items-center justify-center gap-1.5 px-2 text-center text-[10px] leading-none text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
+                    className="flex h-full w-[190px] items-center justify-center gap-1.5 px-2 text-center text-[10px] leading-none text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                     aria-label={t("chatInput.model.current", { model: currentModelLabel })}
                   >
                     <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--mm-accent-blue)]" aria-hidden />
@@ -1175,7 +1175,7 @@ export function ChatInput({
                               handleModelSelect({ id: m.id, name: m.name, provider: m.provider });
                               close();
                             }}
-                            className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-[var(--mm-bg-hover)]"
+                            className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                           >
                             <span
                               className={`mt-0.5 inline-block h-3 w-3 flex-shrink-0 rounded-full border-2 ${
@@ -1204,7 +1204,7 @@ export function ChatInput({
                 trigger={
                   <button
                     type="button"
-                    className="flex h-full items-center border-l border-[var(--mm-border)] px-2 text-[10px] leading-none text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
+                    className="flex h-full items-center border-l border-[var(--mm-border)] px-2 text-[10px] leading-none text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                     aria-label={t("chatInput.thinking.aria", { label: currentThinkingLabel })}
                   >
                     <span className="font-medium text-[var(--mm-text-primary)]">{currentThinkingLabel}</span>
@@ -1226,7 +1226,7 @@ export function ChatInput({
                           handleThinkingSelect(option.value);
                           close();
                         }}
-                        className={`flex h-8 w-full items-center justify-between rounded-[7px] px-2 text-left text-[12px] hover:bg-[var(--mm-bg-hover)] ${
+                        className={`flex h-8 w-full items-center justify-between rounded-[7px] px-2 text-left text-[12px] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb] ${
                           currentThinking === option.value ? "bg-[var(--mm-bg-popover-selected)] text-[var(--mm-text-primary)]" : "text-[var(--mm-text-secondary)]"
                         }`}
                       >
@@ -1246,7 +1246,7 @@ export function ChatInput({
                 type="button"
                 onClick={handlePrimaryAction}
                 disabled={primaryActionDisabled}
-                className={`flex h-[32px] items-center justify-center rounded-[5px] shadow-[0_1px_2px_rgba(10,35,80,0.14)] transition-opacity ${
+                className={`flex h-[32px] items-center justify-center rounded-[5px] shadow-[0_1px_2px_rgba(10,35,80,0.14)] transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] ${
                   showStopAction
                     ? "w-[32px] bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)] hover:opacity-90"
                     : "w-[51px] bg-[var(--mm-accent-blue)] text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-35"
@@ -1275,7 +1275,7 @@ export function ChatInput({
               trigger={
                 <button
                   type="button"
-                  className="flex h-[22px] w-[22px] items-center justify-center rounded-[4px] border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] text-base leading-none text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus-visible:!outline-none focus-visible:!shadow-none"
+                  className="flex h-[22px] w-[22px] items-center justify-center rounded-[4px] border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] text-base leading-none text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                   aria-label={t("chatInput.addAttachmentAndTools")}
                   data-testid="chat-input-plus-trigger"
                 >
@@ -1293,7 +1293,7 @@ export function ChatInput({
                       void handlePickFiles();
                     }}
                     disabled={!workspaceId}
-                    className="flex min-h-8 w-full items-center justify-between gap-3 rounded-[9px] px-2 text-left text-sm text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="flex min-h-8 w-full items-center justify-between gap-3 rounded-[9px] px-2 text-left text-sm text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb] disabled:cursor-not-allowed disabled:opacity-50"
                     aria-label={t("chatInput.addFileOrImage")}
                   >
                     <span className="flex min-w-0 items-center gap-2">
@@ -1310,7 +1310,7 @@ export function ChatInput({
                       close();
                       window.dispatchEvent(new CustomEvent("app:switch-section", { detail: { section: "tools" } }));
                     }}
-                    className="flex min-h-8 w-full items-center justify-between gap-3 rounded-[9px] px-2 text-left text-sm text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
+                    className="flex min-h-8 w-full items-center justify-between gap-3 rounded-[9px] px-2 text-left text-sm text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                     aria-label={t("chatInput.openTools")}
                   >
                     <span className="flex min-w-0 items-center gap-2">
@@ -1330,7 +1330,7 @@ export function ChatInput({
               contentClassName="min-w-[220px]"
               trigger={
                 <div
-                  className="flex h-[22px] max-w-[110px] cursor-pointer items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-[background-color,border-color,color,opacity,box-shadow,transform] hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"
+                  className="flex h-[22px] max-w-[110px] cursor-pointer items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-[background-color,border-color,color,opacity,box-shadow,transform] hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                   role="button"
                   tabIndex={0}
                   aria-label={currentWorkspace ? t("chatInput.workspace.current", { name: currentWorkspace.name }) : t("chatInput.workspace.select")}
@@ -1361,7 +1361,7 @@ export function ChatInput({
                             void handleSwitchWorkspace(ws.id);
                             close();
                           }}
-                          className="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
+                          className="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                           title={ws.path}
                         >
                           <svg className="h-3.5 w-3.5 shrink-0 text-[var(--mm-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -1385,7 +1385,7 @@ export function ChatInput({
                       void handleSelectNewWorkspace();
                       close();
                     }}
-                    className="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)]"
+                    className="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                   >
                     <svg className="h-3.5 w-3.5 shrink-0 text-[var(--mm-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="M12 5v14m-7-7h14" />
@@ -1417,7 +1417,7 @@ export function ChatInput({
               contentClassName="min-w-[220px]"
               trigger={
                 <div
-                  className="flex h-[22px] max-w-[96px] cursor-pointer items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-[background-color,border-color,color,opacity,box-shadow,transform] hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus-visible:!outline-none focus-visible:!shadow-none"
+                  className="flex h-[22px] max-w-[96px] cursor-pointer items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-[background-color,border-color,color,opacity,box-shadow,transform] hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                   role="button"
                   tabIndex={0}
                   aria-label={currentModel ? t("chatInput.model.current", { model: currentModel }) : t("chatInput.model.notSelected")}
@@ -1447,7 +1447,7 @@ export function ChatInput({
                           handleModelSelect({ id: m.id, name: m.name, provider: m.provider });
                           close();
                         }}
-                        className="w-full text-left px-3 py-2 hover:bg-[var(--mm-bg-hover)] flex items-start gap-2"
+                        className="w-full text-left px-3 py-2 hover:bg-[var(--mm-bg-hover)] flex items-start gap-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                       >
                         <span
                           className={`mt-0.5 inline-block w-3 h-3 rounded-full border-2 flex-shrink-0 ${

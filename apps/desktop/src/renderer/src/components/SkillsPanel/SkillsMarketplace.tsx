@@ -151,7 +151,7 @@ export function SkillsMarketplace(): React.JSX.Element {
                 <select
                     value={sort}
                     onChange={(e) => setSort(e.target.value as "热门" | "最新")}
-                    className="text-xs px-2 py-1 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] rounded text-[var(--mm-text-secondary)]"
+                    className="text-xs px-2 py-1 bg-[var(--mm-bg-panel)] border border-[var(--mm-border)] rounded text-[var(--mm-text-secondary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 >
                     <option value="热门">热门</option>
                     <option value="最新">最新</option>

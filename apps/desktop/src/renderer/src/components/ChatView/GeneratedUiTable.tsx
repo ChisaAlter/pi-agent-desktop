@@ -41,7 +41,7 @@ export function GeneratedUiTable({ section }: GeneratedUiTableProps): React.JSX.
                   {column.sortable ? (
                     <button
                       type="button"
-                      className="inline-flex items-center gap-1 hover:text-[var(--mm-text-primary)]"
+                      className="inline-flex items-center gap-1 hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                       onClick={() => setSort((current) => current?.key === column.key
                         ? { key: column.key, direction: current.direction === "asc" ? "desc" : "asc" }
                         : { key: column.key, direction: "asc" })}

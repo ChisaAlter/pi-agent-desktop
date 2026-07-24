@@ -165,6 +165,22 @@ describe("FileWorkspace", () => {
     expect(screen.getByText("1")).toBeTruthy();
   });
 
+  it("exposes tree and toolbar focus-visible rings for keyboard a11y", async () => {
+    render(<FileWorkspace workspacePath="C:/repo" />);
+
+    expect(screen.getByRole("button", { name: "刷新文件树" }).className).toContain("focus-visible:ring-2");
+    const fileRow = await screen.findByRole("button", { name: /app\.ts/ });
+    expect(fileRow.className).toContain("focus-visible:ring-2");
+    fireEvent.click(fileRow);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "编辑" }).className).toContain("focus-visible:ring-2");
+    });
+    for (const name of ["打开", "定位", "复制路径", "复制相对路径", "引用到聊天"] as const) {
+      expect(screen.getAllByRole("button", { name })[0].className).toContain("focus-visible:ring-2");
+    }
+  });
+
   it("respects disabled line numbers and word wrap in file preview", async () => {
     useSettingsStore.setState((state) => ({
       settings: {

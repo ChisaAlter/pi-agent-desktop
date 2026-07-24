@@ -99,4 +99,10 @@ describe("ShortcutsSettings", () => {
     fireEvent.click(screen.getByLabelText("重置 open-command-palette"));
     expect(updateSettings).toHaveBeenCalledWith({ shortcutOverrides: [] });
   });
+
+  it("exposes recorder cancel focus-visible ring for keyboard a11y", () => {
+    render(<ShortcutsSettings />);
+    fireEvent.click(screen.getByLabelText("修改 open-command-palette"));
+    expect(screen.getByRole("button", { name: "取消" }).className).toContain("focus-visible:ring-2");
+  });
 });

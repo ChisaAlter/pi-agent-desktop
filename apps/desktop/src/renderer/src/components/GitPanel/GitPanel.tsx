@@ -58,7 +58,7 @@ function ChangeRow({
                 type="button"
                 disabled={disabled}
                 onClick={() => onOpen(item)}
-                className="flex h-full min-w-0 flex-1 items-center gap-2 rounded px-1 text-left text-xs disabled:cursor-not-allowed"
+                className="flex h-full min-w-0 flex-1 items-center gap-2 rounded px-1 text-left text-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb] disabled:cursor-not-allowed"
                 title={item.file}
                 aria-label={`打开 ${item.file} diff`}
             >
@@ -71,7 +71,7 @@ function ChangeRow({
                 type="button"
                 disabled={disabled}
                 onClick={() => onPrimary(item)}
-                className="hidden h-7 shrink-0 rounded px-1.5 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:inline-flex group-hover:inline-flex disabled:cursor-not-allowed"
+                className="hidden h-7 shrink-0 rounded px-1.5 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:inline-flex group-hover:inline-flex focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:cursor-not-allowed"
                 aria-label={`${item.group === "staged" ? "取消暂存" : "暂存"} ${item.file}`}
             >
                 {item.group === "staged" ? "取消暂存" : "暂存"}
@@ -81,7 +81,7 @@ function ChangeRow({
                     type="button"
                     disabled={disabled}
                     onClick={() => onDiscard(item)}
-                    className="hidden h-7 shrink-0 rounded px-1.5 text-[11px] text-[var(--color-error)] hover:bg-[var(--mm-bg-hover)] focus:inline-flex group-hover:inline-flex disabled:cursor-not-allowed"
+                    className="hidden h-7 shrink-0 rounded px-1.5 text-[11px] text-[var(--color-error)] hover:bg-[var(--mm-bg-hover)] focus:inline-flex group-hover:inline-flex focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:cursor-not-allowed"
                     aria-label={`丢弃 ${item.file}`}
                 >
                     丢弃
@@ -472,7 +472,7 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
             <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
                 <div className="text-sm font-medium">Git 暂不可用</div>
                 <div className="max-w-md text-xs leading-5 text-[var(--mm-text-secondary)]">{error ?? "当前工作区不是 Git 仓库。"}</div>
-                <button type="button" onClick={() => void refreshAll()} className="rounded-md bg-[#1f1f1f] px-3 py-1.5 text-xs text-white">重试</button>
+                <button type="button" onClick={() => void refreshAll()} className="rounded-md bg-[#1f1f1f] px-3 py-1.5 text-xs text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]">重试</button>
             </div>
         );
     }
@@ -493,7 +493,7 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                                         type="button"
                                         disabled={branchBusy}
                                         onClick={() => setBranchDropdownOpen((v) => !v)}
-                                        className="flex items-center gap-1 rounded-md bg-[var(--mm-bg-sidebar)] px-2 py-0.5 font-mono text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] disabled:opacity-45"
+                                        className="flex items-center gap-1 rounded-md bg-[var(--mm-bg-sidebar)] px-2 py-0.5 font-mono text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:opacity-45"
                                         aria-label="切换分支"
                                         aria-expanded={branchDropdownOpen}
                                     >
@@ -510,7 +510,7 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                                                         key={b.name}
                                                         type="button"
                                                         onClick={() => void handleCheckout(b.name)}
-                                                        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--mm-bg-sidebar)] ${b.isCurrent ? "font-medium text-[var(--mm-text-primary)]" : "text-[var(--mm-text-secondary)]"}`}
+                                                        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb] ${b.isCurrent ? "font-medium text-[var(--mm-text-primary)]" : "text-[var(--mm-text-secondary)]"}`}
                                                         role="option"
                                                         aria-selected={b.isCurrent}
                                                     >
@@ -526,14 +526,14 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                                                     onChange={(e) => setNewBranchName(e.target.value)}
                                                     onKeyDown={(e) => { if (e.key === "Enter") void handleCreateBranch(); }}
                                                     placeholder="新分支名..."
-                                                    className="w-full rounded border border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-2 py-1 text-xs text-[var(--mm-text-primary)] focus:outline-none focus:border-[#999]"
+                                                    className="w-full rounded border border-[var(--mm-border)] bg-[var(--mm-bg-main)] px-2 py-1 text-xs text-[var(--mm-text-primary)] focus:outline-none focus:border-[#999] focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                                                     aria-label="新分支名"
                                                 />
                                                 <button
                                                     type="button"
                                                     onClick={() => void handleCreateBranch()}
                                                     disabled={!newBranchName.trim() || branchBusy}
-                                                    className="mt-1.5 w-full rounded bg-[#1f1f1f] px-2 py-1 text-xs text-white disabled:opacity-35"
+                                                    className="mt-1.5 w-full rounded bg-[#1f1f1f] px-2 py-1 text-xs text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:opacity-35"
                                                 >
                                                     创建并切换
                                                 </button>
@@ -550,7 +550,7 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                             type="button"
                             disabled={busy}
                             onClick={() => void runOperation("refresh", refreshAll)}
-                            className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-[var(--mm-bg-sidebar)] disabled:cursor-not-allowed disabled:opacity-45"
+                            className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:cursor-not-allowed disabled:opacity-45"
                             title="刷新"
                             aria-label="刷新 Git 状态"
                         >
@@ -569,7 +569,7 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                             <button
                                 type="button"
                                 onClick={() => void refreshAll()}
-                                className="mt-2 rounded bg-[#b91c1c] px-2 py-1 text-white hover:bg-[#991b1b]"
+                                className="mt-2 rounded bg-[#b91c1c] px-2 py-1 text-white hover:bg-[#991b1b] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500"
                             >
                                 重试
                             </button>
@@ -582,7 +582,7 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                                 <button
                                     type="button"
                                     onClick={() => void copyCommitSummary()}
-                                    className="shrink-0 rounded px-1.5 py-0.5 text-[var(--color-success)] hover:bg-[#dcfce7]"
+                                    className="shrink-0 rounded px-1.5 py-0.5 text-[var(--color-success)] hover:bg-[#dcfce7] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                                 >
                                     {copiedSummary ? "已复制" : "复制摘要"}
                                 </button>
@@ -621,7 +621,7 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                                         type="button"
                                         disabled={busy || unstagedChanges.length === 0}
                                         onClick={() => void stageAll()}
-                                        className="rounded px-1.5 py-1 text-[11px] hover:bg-[var(--mm-bg-sidebar)] disabled:cursor-not-allowed disabled:opacity-40"
+                                        className="rounded px-1.5 py-1 text-[11px] hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:cursor-not-allowed disabled:opacity-40"
                                     >
                                         {operation === "stage" ? "暂存中" : "全部暂存"}
                                     </button>
@@ -642,14 +642,14 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                         onChange={(event) => setCommitMessage(event.target.value)}
                         placeholder="提交信息"
                         aria-label="提交信息"
-                        className="h-20 w-full resize-none rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm outline-none focus:border-[#999]"
+                        className="h-20 w-full resize-none rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm outline-none focus:border-[#999] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                     />
                     <button
                         type="button"
                         aria-label="提交"
                         onClick={() => void commit()}
                         disabled={busy || !commitMessage.trim() || stagedChanges.length === 0}
-                        className="mt-2 h-9 w-full rounded-md bg-[#1f1f1f] text-sm text-white disabled:cursor-not-allowed disabled:opacity-35"
+                        className="mt-2 h-9 w-full rounded-md bg-[#1f1f1f] text-sm text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:cursor-not-allowed disabled:opacity-35"
                     >
                         {operation === "commit" ? "提交中..." : stagedChanges.length > 0 ? `提交 ${stagedChanges.length} 个暂存文件` : "提交暂存文件"}
                     </button>
@@ -671,7 +671,7 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                                 type="button"
                                 onClick={cancelDiscard}
                                 disabled={busy}
-                                className="rounded-md border border-[var(--mm-border)] px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-40"
+                                className="rounded-md border border-[var(--mm-border)] px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:opacity-40"
                             >
                                 取消
                             </button>
@@ -679,7 +679,7 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                                 type="button"
                                 onClick={() => void confirmDiscard()}
                                 disabled={busy}
-                                className="rounded-md bg-[#b91c1c] px-2 py-1 text-xs text-white hover:bg-[#991b1b] disabled:opacity-40"
+                                className="rounded-md bg-[#b91c1c] px-2 py-1 text-xs text-white hover:bg-[#991b1b] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500 disabled:opacity-40"
                             >
                                 {operation === "discard" ? "丢弃中..." : "确认丢弃"}
                             </button>
@@ -703,7 +703,7 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                                     <button
                                         type="button"
                                         onClick={() => void requestDiscard(discardCandidate)}
-                                        className="mt-3 rounded-md bg-[#b91c1c] px-3 py-1.5 text-xs text-white hover:bg-[#991b1b]"
+                                        className="mt-3 rounded-md bg-[#b91c1c] px-3 py-1.5 text-xs text-white hover:bg-[#991b1b] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500"
                                     >
                                         重试
                                     </button>
@@ -729,7 +729,7 @@ export function GitPanel({ workspacePath, initialTarget }: GitPanelProps): React
                                     <button
                                         type="button"
                                         onClick={() => void openChange(selected)}
-                                        className="mt-3 rounded-md bg-[#b91c1c] px-3 py-1.5 text-xs text-white hover:bg-[#991b1b]"
+                                        className="mt-3 rounded-md bg-[#b91c1c] px-3 py-1.5 text-xs text-white hover:bg-[#991b1b] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500"
                                     >
                                         重试
                                     </button>

@@ -237,7 +237,7 @@ export function RightRail({ workspacePath, tasks = [] }: RightRailProps): React.
           <button
             type="button"
             onClick={openFilesPanel}
-            className="flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--right-rail-muted)] hover:bg-[var(--right-rail-hover)] hover:text-[var(--right-rail-text)]"
+            className="flex h-8 w-8 items-center justify-center rounded-[6px] text-[var(--right-rail-muted)] hover:bg-[var(--right-rail-hover)] hover:text-[var(--right-rail-text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
             aria-label={t("rightRail.browseAllFiles")}
             title={t("rightRail.browseAllFiles")}
           >
@@ -265,7 +265,7 @@ export function RightRail({ workspacePath, tasks = [] }: RightRailProps): React.
                   <button
                     type="button"
                     onClick={() => openWorkspaceFile(item.path)}
-                    className="min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left font-mono text-[var(--right-rail-secondary)] hover:bg-[var(--right-rail-hover)] hover:text-[var(--right-rail-text)]"
+                    className="min-w-0 flex-1 truncate rounded px-1 py-0.5 text-left font-mono text-[var(--right-rail-secondary)] hover:bg-[var(--right-rail-hover)] hover:text-[var(--right-rail-text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                     title={t("rightRail.openFile", { path: item.path })}
                   >
                     {item.path}
@@ -273,7 +273,7 @@ export function RightRail({ workspacePath, tasks = [] }: RightRailProps): React.
                   <button
                     type="button"
                     onClick={() => openGitDiff(item.path)}
-                    className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-[var(--right-rail-muted)] hover:bg-[var(--right-rail-hover)] hover:text-[var(--right-rail-text)]"
+                    className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-[var(--right-rail-muted)] hover:bg-[var(--right-rail-hover)] hover:text-[var(--right-rail-text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                     title={t("rightRail.viewDiff", { path: item.path })}
                   >
                     Diff
@@ -284,7 +284,7 @@ export function RightRail({ workspacePath, tasks = [] }: RightRailProps): React.
                 <button
                   type="button"
                   onClick={() => setFilesExpanded((value) => !value)}
-                  className="mt-1 rounded-md px-1.5 py-1 text-[11px] text-[var(--right-rail-secondary)] transition-colors hover:bg-[var(--right-rail-hover)] hover:text-[var(--right-rail-text)]"
+                  className="mt-1 rounded-md px-1.5 py-1 text-[11px] text-[var(--right-rail-secondary)] transition-colors hover:bg-[var(--right-rail-hover)] hover:text-[var(--right-rail-text)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 >
                   {filesExpanded
                     ? t("rightRail.collapseFiles")
@@ -350,7 +350,7 @@ export function RightRail({ workspacePath, tasks = [] }: RightRailProps): React.
                   <button
                     type="button"
                     onClick={() => jumpToSession(item.sessionId)}
-                    className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md px-1.5 text-left text-xs hover:bg-[var(--mm-bg-panel)]"
+                    className="flex h-9 w-full min-w-0 items-center gap-2 rounded-md px-1.5 text-left text-xs hover:bg-[var(--mm-bg-panel)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                     title={item.label}
                   >
                     <ProgressStatusIcon status={item.status} />

@@ -55,7 +55,7 @@ export function InstalledAddons(): React.JSX.Element {
               type="button"
               onClick={() => void packageRetryAction()}
               disabled={Boolean(actionSource)}
-              className="shrink-0 rounded-md bg-red-700 px-2 py-1 text-xs text-white hover:bg-red-800 disabled:opacity-50"
+              className="shrink-0 rounded-md bg-red-700 px-2 py-1 text-xs text-white hover:bg-red-800 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500"
             >
               重试
             </button>
@@ -87,7 +87,7 @@ export function InstalledAddons(): React.JSX.Element {
                   aria-label={`更新 ${item.name}`}
                   disabled={actionSource === item.source}
                   onClick={() => void updatePackage(item.source)}
-                  className="rounded px-3 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-50"
+                  className="rounded px-3 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 >
                   {actionSource === item.source ? "处理中..." : "更新"}
                 </button>
@@ -96,7 +96,7 @@ export function InstalledAddons(): React.JSX.Element {
                   aria-label={`卸载 ${item.name}`}
                   disabled={actionSource === item.source}
                   onClick={() => setPendingRemove({ type: "package", id: item.source })}
-                  className="rounded px-3 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  className="rounded px-3 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                 >
                   {actionSource === item.source ? "处理中..." : "卸载"}
                 </button>
@@ -116,7 +116,7 @@ export function InstalledAddons(): React.JSX.Element {
                   aria-label={`${skill.enabled ? "禁用" : "启用"} ${skill.slug}`}
                   disabled={skillAction === skill.slug}
                   onClick={() => void runSkillAction(skill.slug, () => toggleSkill(skill.slug, !skill.enabled))}
-                  className="rounded px-3 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-50"
+                  className="rounded px-3 py-1 text-xs text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 >
                   {skillAction === skill.slug ? "处理中..." : skill.enabled ? "禁用" : "启用"}
                 </button>
@@ -125,7 +125,7 @@ export function InstalledAddons(): React.JSX.Element {
                   aria-label={`卸载 ${skill.slug}`}
                   disabled={skillAction === skill.slug}
                   onClick={() => setPendingRemove({ type: "skill", id: skill.slug })}
-                  className="rounded px-3 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  className="rounded px-3 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                 >
                   {skillAction === skill.slug ? "处理中..." : "卸载"}
                 </button>
@@ -155,7 +155,7 @@ export function InstalledAddons(): React.JSX.Element {
               <button
                 type="button"
                 onClick={() => setPendingRemove(null)}
-                className="rounded-lg px-3 py-1.5 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)]"
+                className="rounded-lg px-3 py-1.5 text-sm text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
               >
                 取消
               </button>
@@ -170,7 +170,7 @@ export function InstalledAddons(): React.JSX.Element {
                     void runSkillAction(next.id, () => uninstallSkill(next.id));
                   }
                 }}
-                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700"
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500"
               >
                 卸载
               </button>

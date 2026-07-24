@@ -28,7 +28,7 @@ export function AppearanceTab(): React.JSX.Element {
                                     key={theme}
                                     type="button"
                                     onClick={() => useSettingsStore.getState().setTheme(theme)}
-                                    className={`settings-pressable rounded-xl border p-3 text-left transition-[transform,background-color,border-color,box-shadow] duration-150 ease-out ${
+                                    className={`settings-pressable rounded-xl border p-3 text-left transition-[transform,background-color,border-color,box-shadow] duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] ${
                                         active ? 'border-[var(--mm-accent-blue)] bg-[var(--mm-bg-panel)]' : 'border-[var(--mm-border)] bg-[var(--mm-bg-panel)] hover:border-[var(--mm-border-strong)]'
                                     }`}
                                 >
@@ -52,7 +52,7 @@ export function AppearanceTab(): React.JSX.Element {
                         max="20"
                         value={settings.fontSize}
                         onChange={(e) => updateNumberSetting('fontSize', e.target.value)}
-                        className="w-full"
+                        className="w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                         aria-label={t('settings.fontSize.aria')}
                     />
                 </FieldRow>

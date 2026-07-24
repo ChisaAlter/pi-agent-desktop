@@ -112,7 +112,7 @@ export function SwitchControl({
             aria-checked={checked}
             aria-label={label}
             onClick={onChange}
-            className={`settings-pressable relative h-6 w-11 shrink-0 overflow-hidden rounded-full transition-[transform,background-color] duration-150 ease-out ${checked ? 'bg-[var(--mm-accent-blue)]' : 'bg-[var(--settings-border)]'}`}
+            className={`settings-pressable relative h-6 w-11 shrink-0 overflow-hidden rounded-full transition-[transform,background-color] duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#2563eb] ${checked ? 'bg-[var(--mm-accent-blue)]' : 'bg-[var(--settings-border)]'}`}
         >
             <span
                 aria-hidden="true"

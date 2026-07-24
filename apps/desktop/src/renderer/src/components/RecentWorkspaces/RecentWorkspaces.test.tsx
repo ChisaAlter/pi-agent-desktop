@@ -74,4 +74,23 @@ describe("RecentWorkspaces", () => {
     fireEvent.click(buttons[0]!);
     expect(onSelect).toHaveBeenCalledWith(newer);
   });
+
+  it("applies focus-visible rings on workspace rows", () => {
+    useWorkspaceStore.mockReturnValue({
+      workspaces: [
+        { id: "cur", name: "Current", path: "C:/cur", lastActiveAt: new Date() },
+        {
+          id: "other",
+          name: "Other",
+          path: "C:/other",
+          lastActiveAt: new Date("2026-07-21T10:00:00Z"),
+        },
+      ],
+      currentWorkspaceId: "cur",
+    });
+    render(<RecentWorkspaces onSelect={vi.fn()} />);
+    const row = screen.getByRole("button", { name: /Other/ });
+    expect(row.getAttribute("type")).toBe("button");
+    expect(row.className).toContain("focus-visible:ring-2");
+  });
 });

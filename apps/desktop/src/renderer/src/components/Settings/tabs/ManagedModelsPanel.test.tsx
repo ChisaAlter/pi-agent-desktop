@@ -143,4 +143,29 @@ describe("ManagedModelsPanel model actions", () => {
         act(() => vi.advanceTimersByTime(180));
         expect(screen.queryByRole("dialog", { name: "模型编辑" })).toBeNull();
     });
+
+    it("exposes list and dialog focus-visible rings for keyboard a11y", async () => {
+        render(
+            <I18nProvider>
+                <ManagedModelsPanel onPiConfigChanged={vi.fn(async () => undefined)} />
+            </I18nProvider>,
+        );
+
+        await waitFor(() => expect(screen.getByRole("button", { name: "新增模型" })).toBeTruthy());
+        expect(screen.getByRole("button", { name: "新增模型" }).className).toContain("focus-visible:ring-2");
+        expect(screen.getByRole("button", { name: "测试 MiniMax-M3" }).className).toContain("focus-visible:ring-2");
+        expect(screen.getByRole("button", { name: "编辑 MiniMax-M3" }).className).toContain("focus-visible:ring-2");
+        expect(screen.getByRole("button", { name: "删除 MiniMax-M3" }).className).toContain("focus-visible:ring-2");
+
+        fireEvent.click(screen.getByRole("button", { name: "新增模型" }));
+        const editDialog = screen.getByRole("dialog", { name: "模型编辑" });
+        expect(within(editDialog).getByRole("button", { name: "关闭" }).className).toContain("focus-visible:ring-2");
+        expect(within(editDialog).getByRole("button", { name: "保存模型" }).className).toContain("focus-visible:ring-2");
+        fireEvent.click(within(editDialog).getByRole("button", { name: "取消" }));
+
+        fireEvent.click(screen.getByRole("button", { name: "删除 MiniMax-M3" }));
+        const deleteDialog = await screen.findByRole("dialog", { name: "删除模型确认" });
+        expect(within(deleteDialog).getByRole("button", { name: "取消" }).className).toContain("focus-visible:ring-2");
+        expect(within(deleteDialog).getByRole("button", { name: "确认删除" }).className).toContain("focus-visible:ring-2");
+    });
 });

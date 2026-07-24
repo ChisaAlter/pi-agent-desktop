@@ -95,4 +95,27 @@ describe("SettingsNav", () => {
     fireEvent.click(resultTab);
     expect(props.onSelectSearchResult).toHaveBeenCalledWith(searchResults[0]);
   });
+
+  it("exposes tab and search-result focus-visible rings", () => {
+    renderNav();
+    const appearance = screen.getByRole("tab", { name: "界面" });
+    expect(appearance.getAttribute("type")).toBe("button");
+    expect(appearance.className).toContain("focus-visible:ring-2");
+
+    renderNav({
+      searchQuery: "主题",
+      searchResults,
+      activeTab: "appearance",
+      activeAnchor: "theme",
+    });
+    const resultTab = screen.getByRole("tab", { name: "界面 · 主题" });
+    expect(resultTab.className).toContain("focus-visible:ring-2");
+  });
+
+  it("wave-88 residual: settings search input keeps focus-visible ring", () => {
+    renderNav();
+    const input = screen.getByRole("searchbox");
+    expect(input.className).toContain("focus-visible:ring-2");
+  });
+
 });

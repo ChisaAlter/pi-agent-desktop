@@ -275,7 +275,7 @@ export function MiniMaxCodeSidebar({
                             onClick={() => onSectionChange("new-task")}
                             aria-label={t("sidebar.newConversation")}
                             aria-current={currentSection === "new-task" ? "page" : undefined}
-                            className="flex h-7 min-w-0 flex-1 items-center rounded-[2px] border border-[var(--mm-border)] bg-[var(--mm-bg-control)] px-2 text-left text-[11px] text-[var(--mm-text-tertiary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-secondary)] focus:outline-none"
+                            className="flex h-7 min-w-0 flex-1 items-center rounded-[2px] border border-[var(--mm-border)] bg-[var(--mm-bg-control)] px-2 text-left text-[11px] text-[var(--mm-text-tertiary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-secondary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                             data-mmcode-section="new-task"
                         >
                             <span className="truncate">{t("sidebar.newConversation")}</span>

@@ -67,7 +67,7 @@ export function ModelSelector(): React.JSX.Element {
           step="0.1"
           value={settings.temperature}
           onChange={(e) => updateSettings({ temperature: parseFloat(e.target.value) })}
-          className="w-full"
+          className="w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
           aria-label="温度参数"
         />
         <div className="mt-1 flex justify-between text-xs text-[var(--mm-text-tertiary)]">
@@ -82,7 +82,7 @@ export function ModelSelector(): React.JSX.Element {
         <select
           value={settings.maxTokens}
           onChange={(e) => updateSettings({ maxTokens: parseInt(e.target.value) })}
-          className="w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-[var(--mm-text-primary)]"
+          className="w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
         >
           <option value="1024">1,024</option>
           <option value="2048">2,048</option>

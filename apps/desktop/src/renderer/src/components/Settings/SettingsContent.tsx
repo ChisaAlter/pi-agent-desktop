@@ -131,7 +131,7 @@ export function SettingsContent({ onClose }: SettingsContentProps = {}): React.J
                         {writeErrorMessage ? (
                             <div className="mx-0 flex min-w-0 flex-1 items-center justify-between rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
                                 <span className="truncate">{writeErrorMessage}</span>
-                                <button type="button" onClick={clearWriteError} className="settings-pressable ml-3 flex h-5 w-5 shrink-0 items-center justify-center rounded text-red-500 transition-[transform,background-color,color] duration-150 ease-out hover:bg-red-100 hover:text-red-700" aria-label="Dismiss">
+                                <button type="button" onClick={clearWriteError} className="settings-pressable ml-3 flex h-5 w-5 shrink-0 items-center justify-center rounded text-red-500 transition-[transform,background-color,color] duration-150 ease-out hover:bg-red-100 hover:text-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]" aria-label="Dismiss">
                                     <CloseIcon />
                                 </button>
                             </div>
@@ -140,7 +140,7 @@ export function SettingsContent({ onClose }: SettingsContentProps = {}): React.J
                             <button
                                 type="button"
                                 onClick={onClose}
-                                className="settings-pressable ml-4 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--mm-text-tertiary)] transition-[transform,background-color,color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)]"
+                                className="settings-pressable ml-4 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--mm-text-tertiary)] transition-[transform,background-color,color] duration-150 ease-out hover:bg-[var(--mm-bg-sidebar)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                                 aria-label={t('common.close')}
                                 title={t('common.close')}
                             >
@@ -170,7 +170,7 @@ export function SettingsContent({ onClose }: SettingsContentProps = {}): React.J
                         <button
                             type="button"
                             onClick={onClose}
-                            className="settings-pressable rounded-lg bg-[var(--mm-accent-blue)] px-4 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:opacity-90"
+                            className="settings-pressable rounded-lg bg-[var(--mm-accent-blue)] px-4 py-2 text-sm font-medium text-white transition-[transform,background-color] duration-150 ease-out hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#2563eb]"
                             aria-label={t('settings.closeAria')}
                         >
                             {t('common.done')}

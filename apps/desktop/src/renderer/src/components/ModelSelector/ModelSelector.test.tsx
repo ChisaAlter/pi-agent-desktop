@@ -91,4 +91,13 @@ describe("ModelSelector", () => {
     const selected = screen.getByRole("option", { name: /Model One/ });
     expect(selected.getAttribute("aria-selected")).toBe("true");
   });
+
+  it("exposes trigger and option focus-visible rings for keyboard a11y", () => {
+    render(<ModelSelector />);
+    const trigger = screen.getByRole("button", { name: "选择模型" });
+    expect(trigger.className).toContain("focus-visible:ring-2");
+    fireEvent.click(trigger);
+    expect(screen.getByRole("option", { name: /Model One/ }).className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("option", { name: /Model Three/ }).className).toContain("focus-visible:ring-2");
+  });
 });

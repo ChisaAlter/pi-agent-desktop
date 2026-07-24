@@ -57,4 +57,11 @@ describe("GeneratedUiForm", () => {
     expect(payload.transportContent).toContain('"name":"alpha"');
     expect(payload.visibleContent).toContain("alpha");
   });
+
+  it("exposes submit focus-visible ring for keyboard a11y", () => {
+    render(
+      <GeneratedUiForm cardId="card1" cardTitle="Demo" section={section} onSend={vi.fn()} />,
+    );
+    expect(screen.getByRole("button", { name: /提交/ }).className).toContain("focus-visible:ring-2");
+  });
 });

@@ -65,7 +65,7 @@ export function ApprovalPanel({ isOpen, onToggle }: ApprovalPanelProps): React.J
         <button
           type="button"
           onClick={onToggle}
-          className="p-1 rounded hover:bg-[var(--mm-bg-hover)] transition-colors text-[var(--mm-text-tertiary)]"
+          className="p-1 rounded hover:bg-[var(--mm-bg-hover)] transition-colors text-[var(--mm-text-tertiary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
           title={t("approvalPanel.closeAria")}
           aria-label={t("approvalPanel.closePanel")}
         >

@@ -104,6 +104,21 @@ describe("CommandPalette", () => {
     expect(screen.getByText("敏感配置或凭据文件暂不允许直接读取")).toBeTruthy();
   });
 
+  it("exposes mode tab and retry focus-visible rings for keyboard a11y", async () => {
+    filesList.mockResolvedValueOnce({
+      code: "ipcErrors.files.protectedPath",
+      fallback: "敏感配置或凭据文件暂不允许直接读取",
+      params: { path: "C:/repo/.env" },
+    });
+
+    renderPalette();
+
+    for (const name of ["文件", "历史", "命令"] as const) {
+      expect(screen.getByRole("tab", { name }).className).toContain("focus-visible:ring-2");
+    }
+    expect((await screen.findByRole("button", { name: "重试" })).className).toContain("focus-visible:ring-2");
+  });
+
   it("loads project scripts in command mode and runs them in the terminal", async () => {
     const runCommandSpy = vi.fn();
     window.addEventListener("terminal:run-command", runCommandSpy);
@@ -526,4 +541,12 @@ describe("CommandPalette", () => {
     expect(searchSessionMessages).toHaveBeenCalledWith({ query: "history-needle", workspaceId: "ws1", limit: 30 });
     expect(onSelectHistory).toHaveBeenCalledWith("s-older", "m-older");
   });
+
+  it("exposes search combobox focus-visible ring for keyboard a11y", () => {
+    renderPalette();
+    expect(screen.getByRole("combobox", { name: "搜索命令" }).className).toContain(
+      "focus-visible:ring-2",
+    );
+  });
+
 });

@@ -473,4 +473,29 @@ describe("RightRail", () => {
 
     window.removeEventListener("app:switch-section", switchSpy);
   });
+
+  it("exposes browse/file/diff focus-visible rings for keyboard a11y", async () => {
+    getGitStatus.mockResolvedValue({
+      branch: "master",
+      modified: ["a.ts", "b.ts", "c.ts", "d.ts"],
+      added: [],
+      deleted: [],
+      untracked: [],
+      ahead: 0,
+      behind: 0,
+    });
+    gitDiff.mockResolvedValue("");
+
+    renderWithI18n(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
+
+    const browse = await screen.findByRole("button", { name: "浏览全部文件" });
+    expect(browse.className).toContain("focus-visible:ring-2");
+
+    await waitFor(() => {
+      expect(screen.getByTitle("在文件工作区打开 a.ts")).toBeTruthy();
+    });
+    expect(screen.getByTitle("在文件工作区打开 a.ts").className).toContain("focus-visible:ring-2");
+    expect(screen.getByTitle("查看 a.ts 的 Git diff").className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: /展开其余/ }).className).toContain("focus-visible:ring-2");
+  });
 });

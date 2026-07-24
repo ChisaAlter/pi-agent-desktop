@@ -39,4 +39,9 @@ describe("GeneratedUiTable", () => {
     fireEvent.click(nameHeader);
     expect(th?.getAttribute("aria-sort")).toBe("descending");
   });
+
+  it("exposes sortable header focus-visible ring for keyboard a11y", () => {
+    render(<GeneratedUiTable section={section} />);
+    expect(screen.getByRole("button", { name: /Name/ }).className).toContain("focus-visible:ring-2");
+  });
 });

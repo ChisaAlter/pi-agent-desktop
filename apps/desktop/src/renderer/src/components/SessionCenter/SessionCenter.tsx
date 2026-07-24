@@ -219,7 +219,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
           <button
             type="button"
             onClick={() => setExportRequest({})}
-            className="min-w-[72px] shrink-0 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-xs text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-sidebar)]"
+            className="min-w-[72px] shrink-0 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-xs text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
           >
             <span className="block whitespace-nowrap [word-break:keep-all]">批量导出</span>
           </button>
@@ -229,7 +229,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="搜索标题、消息、标签"
-              className="h-9 w-[280px] border-0 bg-transparent text-sm outline-none"
+              className="h-9 w-[280px] border-0 bg-transparent text-sm outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
               aria-label="搜索会话"
             />
           </div>
@@ -252,7 +252,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                 notice.undo?.();
                 setNotice(null);
               }}
-              className="shrink-0 rounded-md px-2 py-1 text-xs text-[var(--color-success)] hover:bg-[#e5f2dc]"
+              className="shrink-0 rounded-md px-2 py-1 text-xs text-[var(--color-success)] hover:bg-[#e5f2dc] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
             >
               撤销
             </button>
@@ -275,7 +275,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                 if (wid) void createSession(wid).then((s) => { useSessionStore.getState().setCurrentSession(s.id); onOpenChat?.(); });
               }}
               disabled={!currentWorkspaceId && workspaces.length === 0}
-              className="rounded-md bg-[#1f1f1f] px-4 py-2 text-sm text-white hover:bg-[#333] disabled:opacity-40"
+              className="rounded-md bg-[#1f1f1f] px-4 py-2 text-sm text-white hover:bg-[#333] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:opacity-40"
             >
               新建会话
             </button>
@@ -310,7 +310,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                           <button
                             type="button"
                             onClick={() => toggleFavorite(session.id)}
-                            className={`h-7 w-7 rounded-md text-sm ${session.favorite ? "bg-[#1f1f1f] text-white" : "border border-[var(--mm-border)] text-[var(--mm-text-tertiary)]"}`}
+                            className={`h-7 w-7 rounded-md text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] ${session.favorite ? "bg-[#1f1f1f] text-white" : "border border-[var(--mm-border)] text-[var(--mm-text-tertiary)]"}`}
                             aria-label={session.favorite ? "取消收藏" : "收藏"}
                           >
                             ★
@@ -330,7 +330,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                                 }
                               }}
                               aria-label={`重命名会话 ${session.title}`}
-                              className="w-full border-0 bg-transparent p-0 text-sm font-medium outline-none"
+                              className="w-full border-0 bg-transparent p-0 text-sm font-medium outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                             />
                             <p className="m-0 mt-1 line-clamp-2 text-xs leading-5 text-[var(--mm-text-secondary)]">
                               {session.summary || session.firstUserMessagePreview || session.messages.find((message) => message.role === "user")?.content || "暂无摘要"}
@@ -345,7 +345,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                                     type="button"
                                     onClick={() => void continueAndOpen(session, matchingMessage.id)}
                                     disabled={continuingKey != null}
-                                    className="rounded px-1.5 py-0.5 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] hover:text-[var(--mm-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="rounded px-1.5 py-0.5 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-panel)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     {continuingKey === `${session.id}:${matchingMessage.id}` ? "继续中" : "从这里继续"}
                                   </button>
@@ -372,7 +372,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                                 onChange={(event) => setTagDraftById((state) => ({ ...state, [session.id]: event.target.value }))}
                                 onBlur={() => setSessionTags(session.id, tagDraft.split(","))}
                                 placeholder="标签，用逗号分隔"
-                                className="h-7 min-w-[180px] rounded-md border border-[var(--mm-border)] px-2 text-xs outline-none focus:border-[#bbb]"
+                                className="h-7 min-w-[180px] rounded-md border border-[var(--mm-border)] px-2 text-xs outline-none focus:border-[#bbb] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                               />
                               <span className="text-[11px] text-[var(--mm-text-tertiary)]">
                                 {formatRelative(sessionActivityTime(session), t)}
@@ -387,26 +387,27 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
                             </div>
                           </div>
                           <div className="flex shrink-0 flex-wrap justify-end gap-1">
-                            <button className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]" onClick={() => openSession(session, false)}>打开</button>
-                            <button className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]" onClick={() => openSession(session, true)}>只读</button>
+                            <button type="button" className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]" onClick={() => openSession(session, false)}>打开</button>
+                            <button type="button" className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]" onClick={() => openSession(session, true)}>只读</button>
                             <button
-                              className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]"
+                              type="button"
+                              className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] disabled:opacity-50"
                               disabled={continuingKey != null}
                               onClick={() => void continueAndOpen(session)}
                             >
                               {continuingKey === `${session.id}:latest` ? "继续中" : "继续"}
                             </button>
-                            <button className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]" onClick={() => setExportRequest({ sessionId: session.id })}>导出</button>
-                            <button className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]" onClick={() => toggleArchive(session)}>
+                            <button type="button" className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]" onClick={() => setExportRequest({ sessionId: session.id })}>导出</button>
+                            <button type="button" className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]" onClick={() => toggleArchive(session)}>
                               {session.archived ? "恢复" : "归档"}
                             </button>
                             {pendingDeleteId === session.id ? (
                               <>
-                                <button className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)]" onClick={() => setPendingDeleteId(null)}>取消删除</button>
-                                <button className="rounded-md bg-[#b91c1c] px-2 py-1 text-xs text-white hover:bg-[#991b1b]" onClick={() => confirmDelete(session)}>确认删除</button>
+                                <button type="button" className="rounded-md px-2 py-1 text-xs hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]" onClick={() => setPendingDeleteId(null)}>取消删除</button>
+                                <button type="button" className="rounded-md bg-[#b91c1c] px-2 py-1 text-xs text-white hover:bg-[#991b1b] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500" onClick={() => confirmDelete(session)}>确认删除</button>
                               </>
                             ) : (
-                              <button className="rounded-md px-2 py-1 text-xs text-[var(--color-error)] hover:bg-[var(--mm-bg-hover)]" onClick={() => requestDelete(session)}>删除</button>
+                              <button type="button" className="rounded-md px-2 py-1 text-xs text-[var(--color-error)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500" onClick={() => requestDelete(session)}>删除</button>
                             )}
                           </div>
                         </div>

@@ -183,6 +183,13 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
         expect(screen.queryByRole("status", { name: "pi-agent 不在线" })).toBeNull();
     });
 
+    it("exposes new conversation control focus-visible ring for keyboard a11y", () => {
+        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" onSectionChange={() => undefined} />);
+        expect(screen.getByRole("button", { name: "新建对话" }).className).toContain(
+            "focus-visible:ring-2",
+        );
+    });
+
     it("不再把设置作为会话侧栏入口", () => {
         renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" onSectionChange={() => undefined} />);
 
