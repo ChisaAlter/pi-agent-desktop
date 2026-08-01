@@ -13,7 +13,7 @@ import {
     checkSkillhubInstalled,
 } from "../services/skills/skillhub-adapter";
 import { isSafeUrl } from "../services/ssrf-guard";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync } from "fs";
 import { dirname, basename, join } from "path";
 import { tmpdir } from "os";
 import { execFileSync } from "child_process";
@@ -23,6 +23,43 @@ interface SkillsIpcDeps {
     getWorkspacePath: () => string | undefined;
     /** 启用状态持久化文件路径 */
     getStateFile: () => string;
+}
+
+const skillImportTails = new Map<string, Promise<void>>();
+
+async function withSkillImportLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
+    const previous = skillImportTails.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    skillImportTails.set(key, current);
+    await previous.catch(() => undefined);
+    try {
+        return await operation();
+    } finally {
+        release();
+        if (skillImportTails.get(key) === current) skillImportTails.delete(key);
+    }
+}
+
+function replaceDirectoryWithBackup(stagingPath: string, targetPath: string): void {
+    const backupPath = `${targetPath}.backup-${process.pid}-${Date.now()}`;
+    let backedUp = false;
+    try {
+        if (existsSync(targetPath)) {
+            renameSync(targetPath, backupPath);
+            backedUp = true;
+        }
+        renameSync(stagingPath, targetPath);
+        if (backedUp) rmSync(backupPath, { recursive: true, force: true });
+    } catch (error) {
+        try {
+            if (existsSync(targetPath)) rmSync(targetPath, { recursive: true, force: true });
+            if (backedUp && existsSync(backupPath)) renameSync(backupPath, targetPath);
+        } catch (rollbackError) {
+            throw new Error(`Skill import replacement failed and rollback failed: ${String(rollbackError)}`, { cause: error });
+        }
+        throw error;
+    }
 }
 
 const STATE_FILE_VERSION = 1;
@@ -217,13 +254,12 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
         const skillsDir = join(cwd, ".agents", "skills");
         const targetPath = join(skillsDir, repoName);
 
-        // 如果目录已存在, 先删掉 (覆盖式安装)
-        // rmSync 已从 "fs" 顶部 import (writeFileSync 旁边的)
-        // 注意: rmSync 在 Node 14.14+ 可用, 本项目要求 Node >= 22
-        if (existsSync(targetPath)) {
-            rmSync(targetPath, { recursive: true, force: true });
-        }
-
+        // 先 clone 到同目录下的临时 staging 目录, 全部成功后再原子替换:
+        // 失败时已安装的旧版本保持不变 (旧实现先删旧目录再 clone, 失败即
+        // 丢失可用技能), 成功替换也顺带清除旧版本的残留文件。
+        return withSkillImportLock(targetPath, async () => {
+        const stagingPath = join(skillsDir, `.tmp-${repoName}-${process.pid}-${Date.now()}`);
+        mkdirSync(skillsDir, { recursive: true });
         try {
             // git clone — 禁用仓库自带 hooks, 防止克隆未审计仓库时 post-checkout 等钩子
             // 在工作区内执行任意代码 (供应链风险). 用空 GIT_TEMPLATE_DIR 阻止 git 安装
@@ -236,7 +272,7 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
                     "clone",
                     "-c", `core.hooksPath=${emptyHooksDir}`,
                     repoUrl,
-                    targetPath,
+                    stagingPath,
                 ], {
                     cwd,
                     timeout: 60_000,
@@ -252,12 +288,15 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
             }
 
             // 检查 SKILL.md 是否存在
-            const skillMdPath = join(targetPath, "SKILL.md");
+            const skillMdPath = join(stagingPath, "SKILL.md");
             const skillMdFound = existsSync(skillMdPath);
 
             // 也检查 .pi/skills/<repoName>/SKILL.md
             const piSkillMdPath = join(cwd, ".pi", "skills", repoName, "SKILL.md");
             const piSkillMdFound = existsSync(piSkillMdPath);
+
+            // 全部成功: backup swap + rollback。
+            replaceDirectoryWithBackup(stagingPath, targetPath);
 
             return {
                 success: true,
@@ -266,6 +305,11 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
                 slug: repoName,
             };
         } catch (err) {
+            try {
+                rmSync(stagingPath, { recursive: true, force: true });
+            } catch (cleanupErr) {
+                log.warn("[skills.ipc] failed to clean up staging dir:", cleanupErr);
+            }
             log.error("[skills.ipc] github import failed:", err);
             const msg = err instanceof Error ? err.message : String(err);
             return ipcError(
@@ -274,6 +318,7 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
                 { url: repoUrl },
             );
         }
+        });
     });
 
     // v1.0.17: 写 SKILL.md 到磁盘 (而非只复制到剪贴板)

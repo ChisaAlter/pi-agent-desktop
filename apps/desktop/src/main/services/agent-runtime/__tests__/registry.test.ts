@@ -135,6 +135,63 @@ describe("AgentRuntimeRegistry", () => {
         expect(registry.list().map((agent) => agent.title)).toEqual(["A", "B"]);
     });
 
+    it("creates independent agents for concurrent explicit creates without session identity", async () => {
+        const [first, second] = await Promise.all([
+            registry.create({ workspaceId: "ws_1", title: "A" }),
+            registry.create({ workspaceId: "ws_1", title: "B" }),
+        ]);
+
+        expect(first.id).not.toBe(second.id);
+        expect(sessions).toHaveLength(2);
+        expect(registry.list()).toHaveLength(2);
+    });
+
+    it("abort skips prompts queued behind the running one", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+        let releaseFirst!: () => void;
+        vi.mocked(sessions[0].prompt).mockImplementationOnce(
+            () => new Promise<void>((resolve) => { releaseFirst = resolve; }),
+        );
+
+        // 第一轮 prompt 挂起, 第二轮排队等待。
+        const firstRun = registry.prompt({ agentId: agent.id, message: "first" });
+        await vi.waitFor(() => expect(sessions[0].prompt).toHaveBeenCalledTimes(1));
+        const secondRun = registry.prompt({ agentId: agent.id, message: "second" });
+
+        // 用户停止: 排队的第二轮不应再执行, 且外层 promise 必须结算 (不挂起)。
+        await registry.abort(agent.id);
+        releaseFirst();
+        await firstRun;
+
+        expect(sessions[0].prompt).toHaveBeenCalledTimes(1);
+        await expect(secondRun).resolves.toBeUndefined();
+        // 停止后的 system 消息存在, 但没有执行第二轮 prompt 的副作用。
+        const messages = registry.getMessages(agent.id);
+        expect(messages.filter((m) => m.role === "user")).toHaveLength(1);
+    });
+
+    it("does not flip agent to error when the prompt rejects after user abort", async () => {
+        const agent = await registry.create({ workspaceId: "ws_1", title: "A" });
+        let rejectPrompt!: (error: Error) => void;
+        vi.mocked(sessions[0].prompt).mockImplementationOnce(
+            () => new Promise<void>((_resolve, reject) => { rejectPrompt = reject; }),
+        );
+
+        const run = registry.prompt({ agentId: agent.id, message: "hello" });
+        await vi.waitFor(() => expect(sessions[0].prompt).toHaveBeenCalledTimes(1));
+        // abort 同步递增纪元, 随后 SDK prompt 以 AbortError 拒绝。
+        const abortPromise = registry.abort(agent.id);
+        rejectPrompt(new Error("aborted"));
+        await run.catch(() => undefined);
+        await abortPromise;
+
+        const state = registry.getRuntimeState(agent.id);
+        expect(state.status).toBe("idle");
+        expect(state.isStreaming).toBe(false);
+        const messages = registry.getMessages(agent.id);
+        expect(messages.some((m) => m.role === "error" && m.content.includes("prompt failed"))).toBe(false);
+    });
+
     it("honors the generated UI setting when loading desktop extensions", async () => {
         registry = new AgentRuntimeRegistry({
             getWorkspace: (workspaceId) => workspaceId === "ws_1"

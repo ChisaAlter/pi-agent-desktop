@@ -38,6 +38,11 @@ export function setupWorkspaceIpc(opts: {
   /** 删除 workspace 时同步释放对应 in-process Pi session (避免资源/句柄泄漏) */
   disposeWorkspaceSession?: (workspaceId: string) => void;
   /**
+   * 删除 workspace 时清理其全部会话 (DB 行 + native 文件), 避免 dangling
+   * workspaceId 的会话继续出现在 session:list 中。
+   */
+  purgeWorkspaceSessions?: (workspaceId: string) => Promise<void>;
+  /**
    * 共享的 workspace 串行 mutator。由 `main/index.ts` 注入, 与
    * `setWorkspacePlanMode` 共用同一队列, 避免并发 plan 切换 + CRUD 互相覆盖。
    * 未注入时退化为模块内的临时队列, 保持向后兼容 (例如老测试)。
@@ -166,6 +171,11 @@ export function setupWorkspaceIpc(opts: {
       disposeWorkspaceSession?.(id);
     } catch (err) {
       log.warn("[workspace.ipc] dispose workspace session failed:", err);
+    }
+    try {
+      await opts.purgeWorkspaceSessions?.(id);
+    } catch (err) {
+      log.warn("[workspace.ipc] purge workspace sessions failed:", err);
     }
     return { success: true };
   });

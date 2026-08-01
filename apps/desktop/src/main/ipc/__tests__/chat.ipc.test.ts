@@ -6,9 +6,9 @@ import { tmpdir } from "node:os";
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 const listeners = new Map<string, (...args: unknown[]) => unknown>();
 const webContentsSend = vi.fn();
-const { execFileSyncMock, rmSyncMock } = vi.hoisted(() => ({
-    execFileSyncMock: vi.fn(),
-    rmSyncMock: vi.fn(),
+const { execFileMock, rmMock } = vi.hoisted(() => ({
+    execFileMock: vi.fn(),
+    rmMock: vi.fn(),
 }));
 
 vi.mock("electron", () => ({
@@ -38,17 +38,44 @@ vi.mock("electron-log/main", () => ({
     },
 }));
 
+// execFile 支持回调形式 (file, args, options, cb) — git:undo 使用。
 vi.mock("child_process", () => ({
-    execFileSync: execFileSyncMock,
+    execFile: execFileMock,
 }));
 
 vi.mock("fs", async (importOriginal) => {
     const actual = await importOriginal<typeof import("fs")>();
+    return actual;
+});
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("node:fs/promises")>();
     return {
         ...actual,
-        rmSync: rmSyncMock,
+        rm: rmMock,
     };
 });
+
+// execFile 回调形式的便捷 mock。
+function execFileSuccess(stdout = ""): void {
+    execFileMock.mockImplementationOnce((_f: unknown, _a: unknown, _o: unknown, cb?: (err: Error | null, out: string) => void) => {
+        if (typeof cb === "function") {
+            cb(null, stdout);
+            return;
+        }
+        return Promise.resolve({ stdout, stderr: "" });
+    });
+}
+
+function execFileError(message: string): void {
+    execFileMock.mockImplementationOnce((_f: unknown, _a: unknown, _o: unknown, cb?: (err: Error | null, out: string) => void) => {
+        if (typeof cb === "function") {
+            cb(new Error(message), "");
+            return;
+        }
+        return Promise.reject(new Error(message));
+    });
+}
 
 import { setupChatIpc } from "../chat.ipc";
 import { PLAN_DIRECTIVE } from "../../services/agent-modes/plan-prompt";
@@ -58,8 +85,8 @@ describe("setupChatIpc", () => {
         handlers.clear();
         listeners.clear();
         webContentsSend.mockClear();
-        execFileSyncMock.mockReset();
-        rmSyncMock.mockReset();
+        execFileMock.mockReset();
+        rmMock.mockReset();
     });
 
     it("sends renderer event payload directly without a workspace envelope", async () => {
@@ -307,6 +334,7 @@ describe("setupChatIpc", () => {
     });
 
     it("normalizes git undo paths before invoking git", async () => {
+        execFileSuccess("");
         setupChatIpc({
             registry: { get: vi.fn(), has: vi.fn() } as any,
             getWorkspace: () => undefined,
@@ -318,11 +346,14 @@ describe("setupChatIpc", () => {
         const result = await handler?.({}, "C:/repo", "src\\app.ts");
 
         expect(result).toBeUndefined();
-        expect(execFileSyncMock).toHaveBeenCalledWith("git", ["checkout", "--", "src/app.ts"], {
+        const call = execFileMock.mock.calls[0];
+        expect(call?.[0]).toBe("git");
+        expect(call?.[1]).toEqual(["checkout", "--", "src/app.ts"]);
+        expect(call?.[2]).toEqual(expect.objectContaining({
             cwd: expect.stringMatching(/[\\/]repo$/),
-            stdio: "ignore",
-        });
-        expect(rmSyncMock).not.toHaveBeenCalled();
+            timeout: 10_000,
+        }));
+        expect(rmMock).not.toHaveBeenCalled();
     });
 
     it("blocks git undo outside the workspace before running git or deleting files", async () => {
@@ -339,8 +370,8 @@ describe("setupChatIpc", () => {
         expect(result).toMatchObject({
             code: "ipcErrors.files.protectedPath",
         });
-        expect(execFileSyncMock).not.toHaveBeenCalled();
-        expect(rmSyncMock).not.toHaveBeenCalled();
+        expect(execFileMock).not.toHaveBeenCalled();
+        expect(rmMock).not.toHaveBeenCalled();
     });
 
     it("blocks git undo for protected credential files inside the workspace", async () => {
@@ -357,16 +388,15 @@ describe("setupChatIpc", () => {
         expect(result).toMatchObject({
             code: "ipcErrors.files.protectedPath",
         });
-        expect(execFileSyncMock).not.toHaveBeenCalled();
-        expect(rmSyncMock).not.toHaveBeenCalled();
+        expect(execFileMock).not.toHaveBeenCalled();
+        expect(rmMock).not.toHaveBeenCalled();
     });
 
     it("uses Node deletion for untracked files after git checkout fallback fails", async () => {
-        execFileSyncMock.mockImplementationOnce(() => {
-            throw new Error("not tracked");
-        });
+        execFileError("not tracked");
         // git status --porcelain returns untracked marker so the new safety guard allows deletion.
-        execFileSyncMock.mockReturnValueOnce("?? src/new.ts\n");
+        execFileSuccess("?? src/new.ts\n");
+        rmMock.mockResolvedValue(undefined);
 
         setupChatIpc({
             registry: { get: vi.fn(), has: vi.fn() } as any,
@@ -379,7 +409,7 @@ describe("setupChatIpc", () => {
         const result = await handler?.({}, "C:/repo", "src/new.ts");
 
         expect(result).toBeUndefined();
-        expect(rmSyncMock).toHaveBeenCalledWith(expect.stringMatching(/[\\/]repo[\\/]src[\\/]new\.ts$/), { force: true });
+        expect(rmMock).toHaveBeenCalledWith(expect.stringMatching(/[\\/]repo[\\/]src[\\/]new\.ts$/), { force: true });
     });
 
     it("lists builtin and dynamic Pi slash commands for the workspace session", async () => {

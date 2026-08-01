@@ -854,7 +854,18 @@ export class LongHorizonDatabase {
                 `);
             }
 
-            this.db.exec("ALTER TABLE task_new RENAME TO task;");
+            // Crash-recovery guard: a previous run (before user_version moved
+            // into the transaction) could commit the rename and crash before
+            // recording the version — `task` then exists while `task_new` is a
+            // fresh empty staging table. Drop it and keep the migrated `task`.
+            const taskExists = this.db.prepare(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='task'"
+            ).get() as { name?: string } | undefined;
+            if (taskExists?.name === "task") {
+                this.db.exec("DROP TABLE IF EXISTS task_new;");
+            } else {
+                this.db.exec("ALTER TABLE task_new RENAME TO task;");
+            }
 
             this.db.exec(`
                 CREATE INDEX IF NOT EXISTS task_session_idx ON task(session_id);
@@ -872,6 +883,11 @@ export class LongHorizonDatabase {
                 );
             }
 
+            // Record the schema version atomically with the migration. Verified
+            // transactional with node:sqlite — a rollback reverts the PRAGMA,
+            // so a crash can never leave user_version ahead of or behind the
+            // committed schema.
+            this.db.exec("PRAGMA user_version = 2;");
             this.db.exec("COMMIT;");
         } catch (err) {
             try {
@@ -881,9 +897,6 @@ export class LongHorizonDatabase {
             }
             throw err;
         }
-
-        // PRAGMA user_version must be issued outside a transaction.
-        this.db.exec("PRAGMA user_version = 2;");
         }
 
         // ---- v3: FTS5 trigram tokenizer ----
@@ -912,6 +925,8 @@ export class LongHorizonDatabase {
                     SELECT id, text, kind, layer, COALESCE(workspace_id, ''), COALESCE(session_id, '')
                     FROM memories;
                 `);
+                // Record the version atomically with the migration (see v2 note).
+                this.db.exec("PRAGMA user_version = 3;");
                 this.db.exec("COMMIT;");
             } catch (err) {
                 try {
@@ -921,8 +936,6 @@ export class LongHorizonDatabase {
                 }
                 throw err;
             }
-            // PRAGMA user_version must be issued outside a transaction.
-            this.db.exec("PRAGMA user_version = 3;");
         }
     }
 }

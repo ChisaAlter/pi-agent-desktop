@@ -212,8 +212,9 @@ export async function gitChangedFiles(workspacePath: string): Promise<GitChanged
 
     // Use `git status -z --porcelain` so filenames containing spaces or special
     // characters are NUL-separated instead of whitespace-separated. With -z,
-    // each entry is "XY path\0"; renames/copies emit a second NUL-terminated
-    // token holding the destination path.
+    // each entry is "XY path\0"; renames/copies emit "XY dest\0src\0" — the
+    // destination lives in the entry itself and the SECOND token holds the
+    // ORIGINAL (source) path, which must be skipped, not reported.
     const output = await execGit(["status", "-z", "--porcelain"], gitRoot);
     const tokens = output.split("\0");
     // Trailing NUL produces a final empty token — drop it.
@@ -239,10 +240,11 @@ export async function gitChangedFiles(workspacePath: string): Promise<GitChanged
         const xy = entry.substring(0, 2);
         const x = xy[0];
         const y = xy[1];
-        let path = entry.substring(3);
-        // Renames/copies: the next NUL-separated token is the destination path.
+        // The destination path is embedded in the entry itself ("XY dest").
+        // Renames/copies append a second NUL-separated token holding the
+        // ORIGINAL path — skip it (i += 2) but never report it.
+        const path = entry.substring(3);
         if ((x === "R" || x === "C" || y === "R" || y === "C") && i + 1 < tokens.length) {
-            path = tokens[i + 1];
             i += 2;
         } else {
             i += 1;

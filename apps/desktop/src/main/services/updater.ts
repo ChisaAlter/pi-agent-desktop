@@ -137,7 +137,40 @@ function parseVersion(version: string): { numbers: number[]; prerelease: string 
     };
 }
 
-function isNewerVersion(candidate: string, current: string): boolean {
+/**
+ * Semver 风格 prerelease 比较: 数字标识符按数值, 字母标识符按字典序,
+ * 数字 < 字母 (semver spec)。字符串比较会把 "beta.10" 判成比 "beta.2" 旧。
+ */
+function comparePrerelease(a: string | null, b: string | null): number {
+    if (a === b) return 0;
+    if (a === null) return 1;
+    if (b === null) return -1;
+    const aParts = a.split(".");
+    const bParts = b.split(".");
+    const length = Math.max(aParts.length, bParts.length);
+    for (let index = 0; index < length; index += 1) {
+        const aPart = aParts[index];
+        const bPart = bParts[index];
+        if (aPart === undefined) return -1;
+        if (bPart === undefined) return 1;
+        const aNumeric = /^\d+$/.test(aPart) ? Number(aPart) : NaN;
+        const bNumeric = /^\d+$/.test(bPart) ? Number(bPart) : NaN;
+        let comparison: number;
+        if (!Number.isNaN(aNumeric) && !Number.isNaN(bNumeric)) {
+            comparison = aNumeric - bNumeric;
+        } else if (!Number.isNaN(aNumeric)) {
+            comparison = -1;
+        } else if (!Number.isNaN(bNumeric)) {
+            comparison = 1;
+        } else {
+            comparison = aPart.localeCompare(bPart);
+        }
+        if (comparison !== 0) return comparison > 0 ? 1 : -1;
+    }
+    return 0;
+}
+
+export function isNewerVersion(candidate: string, current: string): boolean {
     const next = parseVersion(candidate);
     const installed = parseVersion(current);
     if (!next || !installed) return candidate.trim().replace(/^v/i, "") !== current.trim().replace(/^v/i, "");
@@ -147,9 +180,7 @@ function isNewerVersion(candidate: string, current: string): boolean {
         if (difference !== 0) return difference > 0;
     }
     if (next.prerelease === installed.prerelease) return false;
-    if (next.prerelease === null) return true;
-    if (installed.prerelease === null) return false;
-    return next.prerelease > installed.prerelease;
+    return comparePrerelease(next.prerelease, installed.prerelease) > 0;
 }
 
 function normalizeErrorMessage(error: unknown): string {
@@ -188,6 +219,15 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpda
     const packaged = options.isPackaged ?? app.isPackaged;
     const fetchLatestRelease = options.fetchLatestRelease ?? fetchLatestGitHubRelease;
     const state = createState(currentVersion);
+    let lifecycleGeneration = 0;
+    let disposed = false;
+
+    const nextGeneration = (): number => {
+        lifecycleGeneration += 1;
+        return lifecycleGeneration;
+    };
+
+    const isCurrent = (generation: number): boolean => !disposed && generation === lifecycleGeneration;
 
     const broadcast = () => {
         for (const win of getWindows()) {
@@ -197,7 +237,15 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpda
         }
     };
 
-    const patch = (updates: Partial<AppUpdaterState>) => {
+    const patch = (updates: Partial<AppUpdaterState>, generation?: number) => {
+        if (generation !== undefined && !isCurrent(generation)) return;
+        // 已下载的更新 (phase=downloaded) 不能被后续失败/离线的定时检查覆盖 —
+        // 否则"安装"按钮消失, 而更新其实已在磁盘上。
+        if (updates.phase === "error" && state.phase === "downloaded") {
+            Object.assign(state, { ...updates, phase: "downloaded" });
+            broadcast();
+            return;
+        }
         Object.assign(state, updates);
         broadcast();
     };
@@ -210,9 +258,11 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpda
         });
 
         const checkLatestRelease = async (): Promise<AppUpdaterState> => {
-            patch({ phase: "checking", error: null, lastCheckedAt: Date.now() });
+            const generation = nextGeneration();
+            patch({ phase: "checking", error: null, lastCheckedAt: Date.now() }, generation);
             try {
                 const release = await fetchLatestRelease();
+                if (!isCurrent(generation)) return { ...state };
                 const latestVersion = release.tagName.trim().replace(/^v/i, "");
                 const updateAvailable = isNewerVersion(latestVersion, state.currentVersion);
                 log.info(`[AutoUpdater] GitHub release metadata checked: ${latestVersion}`);
@@ -258,13 +308,16 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpda
     updater.autoDownload = false;
     updater.autoInstallOnAppQuit = false;
 
+    let eventGeneration = lifecycleGeneration;
+
     updater.on("checking-for-update", () => {
+        eventGeneration = nextGeneration();
         log.info("[AutoUpdater] checking for update");
         patch({
             phase: "checking",
             error: null,
             lastCheckedAt: Date.now(),
-        });
+        }, eventGeneration);
     });
 
     updater.on("update-available", (info: unknown) => {
@@ -278,7 +331,7 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpda
             progress: null,
             error: null,
             lastCheckedAt: Date.now(),
-        });
+        }, eventGeneration);
     });
 
     updater.on("update-not-available", (info: unknown) => {
@@ -292,7 +345,7 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpda
             progress: null,
             error: null,
             lastCheckedAt: Date.now(),
-        });
+        }, eventGeneration);
     });
 
     updater.on("download-progress", (progress: unknown) => {
@@ -301,7 +354,7 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpda
             phase: "downloading",
             progress: normalizeProgress(typedProgress),
             error: null,
-        });
+        }, eventGeneration);
     });
 
     updater.on("update-downloaded", (info: unknown) => {
@@ -319,7 +372,7 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpda
                 total: state.progress?.total ?? state.progress?.transferred ?? 0,
             },
             error: null,
-        });
+        }, eventGeneration);
     });
 
     updater.on("error", (error: unknown) => {
@@ -330,7 +383,7 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpda
             error: message,
             progress: null,
             lastCheckedAt: Date.now(),
-        });
+        }, eventGeneration);
     });
 
     // SubTask 40.10: retain timer handles so dispose() can cancel them.
@@ -358,21 +411,24 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpda
     return {
         getState: () => ({ ...state }),
         checkForUpdates: async () => {
+            const generation = nextGeneration();
             try {
                 await updater.checkForUpdates();
             } catch (error) {
                 const message = normalizeErrorMessage(error);
-                patch({ phase: "error", error: message, lastCheckedAt: Date.now() });
+                patch({ phase: "error", error: message, lastCheckedAt: Date.now() }, generation);
             }
             return { ...state };
         },
         downloadUpdate: async () => {
             if (!state.updateAvailable) return { ...state };
+            const generation = nextGeneration();
+            eventGeneration = generation;
             try {
                 await updater.downloadUpdate();
             } catch (error) {
                 const message = normalizeErrorMessage(error);
-                patch({ phase: "error", error: message });
+                patch({ phase: "error", error: message }, generation);
             }
             return { ...state };
         },
@@ -383,6 +439,8 @@ export function setupAutoUpdater(options: SetupAutoUpdaterOptions = {}): AppUpda
             return { ...state };
         },
         dispose: () => {
+            disposed = true;
+            nextGeneration();
             if (startupTimer) {
                 clearTimeout(startupTimer);
                 startupTimer = null;

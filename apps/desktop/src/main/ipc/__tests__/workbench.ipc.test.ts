@@ -39,15 +39,16 @@ describe("setupWorkbenchIpc (F-011)", () => {
         expect(getWorkbenchContext("ws_1")).toBeNull();
     });
 
-    it("rejects empty workspaceId via schema", () => {
+    it("ignores empty workspaceId without throwing (safeParse in ipcMain.on)", () => {
         const listener = listeners.get("workbench:set-active-file")!;
-        expect(() => listener({}, "", "C:/repo/a.ts")).toThrow();
+        expect(() => listener({}, "", "C:/repo/a.ts")).not.toThrow();
         expect(getWorkbenchContext("")).toBeNull();
     });
 
-    it("rejects empty filePath string (null is allowed)", () => {
+    it("ignores empty filePath string without throwing (null is allowed)", () => {
         const listener = listeners.get("workbench:set-active-file")!;
-        expect(() => listener({}, "ws_1", "")).toThrow();
+        expect(() => listener({}, "ws_1", "")).not.toThrow();
+        expect(getWorkbenchContext("ws_1")).toBeNull();
     });
 
     // wave-99 residual

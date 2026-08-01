@@ -10,7 +10,13 @@ export function getWorkbenchContext(workspaceId: string): string | null {
 
 export function setupWorkbenchIpc(): void {
     ipcMain.on("workbench:set-active-file", (_event, workspaceId: string, filePath: string | null) => {
-        workbenchSetActiveFileSchema.parse([workspaceId, filePath]);
+        // safeParse inside a fire-and-forget ipcMain.on listener: the throwing
+        // variant would surface an uncaught exception in the main process.
+        const parsed = workbenchSetActiveFileSchema.safeParse([workspaceId, filePath]);
+        if (!parsed.success) {
+            log.warn("[workbench] invalid set-active-file payload:", parsed.error.issues);
+            return;
+        }
         workbenchContext.set(workspaceId, filePath);
         log.info(`[workbench] active file for workspace ${workspaceId}: ${filePath ?? '(none)'}`);
     });

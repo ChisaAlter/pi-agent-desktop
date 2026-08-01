@@ -340,6 +340,16 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     const isTurnActiveRef = useRef(false);
     const lastProviderErrorRef = useRef<string | null>(null);
     const hasCompletionSignalRef = useRef(false);
+    /**
+     * 正在流式运行的 agent id (后台固定): 切换会话后仍继续处理其事件, 直到
+     * agent_end / extension_error / 用户停止 / 计划暂停。修复"切换会话丢流":
+     * 旧实现按当前视图的 agentId 过滤, 切走即永久丢失该 agent 的事件
+     * (消息截断 + isStreaming 卡死)。
+     */
+    const pinnedStreamAgentIdRef = useRef<string | null>(null);
+    /** 用户停止后置位: 丢弃被中止运行遗留的尾随事件, 直到下一轮 agent_start。 */
+    const userStoppedRef = useRef(false);
+    const streamGenerationRef = useRef(0);
 
     // Debounce + flush mechanism
     //   - streamPersistRef 累积待 flush 的内容
@@ -482,7 +492,9 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
 
         const messageId = messageIdRef.current;
         if (!messageId) return;
-        const aid = agentIdRef.current;
+        // 使用流的归属 agent (后台固定), 而非当前视图 agent — 否则切换会话后
+        // 会把 A 的内容写进 B 的 agent 消息。
+        const aid = pinnedStreamAgentIdRef.current ?? agentIdRef.current;
         if (aid) {
             useAgentStore.getState().updateStreamMessage(aid, messageId, updates);
         }
@@ -546,7 +558,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             sessionIdRef.current = linkedSession.id;
         }
         if (messageIdRef.current) return;
-        const aid = agentIdRef.current;
+        const aid = pinnedStreamAgentIdRef.current ?? agentIdRef.current;
         if (!aid && !linkedSession) return;
         const newId = `${aid ? "am" : "m"}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         messageIdRef.current = newId;
@@ -591,6 +603,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         setStreamingMessageId(null);
         messageIdRef.current = null;
         sessionIdRef.current = null;
+        pinnedStreamAgentIdRef.current = null;
         window.dispatchEvent(new CustomEvent("pi:stream-end"));
     }, [flushStreamRender]);
 
@@ -637,14 +650,21 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     // ── 事件订阅 ────────────────────────────────────────────────────────────
     // mount-only: handleEvent 在后面定义, 用 ref 在 useEffect 前 hold 引用.
     // ref 类型是 ((event: PiEvent) => void) | null, 每次 render 同步到 current.
-    const handleEventRef = useRef<((event: PiEvent) => void) | null>(null);
+    const handleEventRef = useRef<((event: PiEvent, sourceAgentId?: string | null) => void) | null>(null);
     useEffect(() => {
         const unsubs: Array<() => void> = [];
         if (window.piAPI?.onAgentEvent) {
             const unsub = window.piAPI.onAgentEvent((payload) => {
-                const activeAgentId = agentIdRef.current;
-                if (!activeAgentId || payload.agentId !== activeAgentId) return;
-                handleEventRef.current?.(payload.event);
+                const pinned = pinnedStreamAgentIdRef.current;
+                if (pinned) {
+                    // 有后台流在运行: 只处理被固定 agent 的事件。切换会话后
+                    // 旧 agent 的事件必须继续处理, 否则消息截断 + 状态卡死。
+                    if (payload.agentId !== pinned) return;
+                } else {
+                    const activeAgentId = agentIdRef.current;
+                    if (!activeAgentId || payload.agentId !== activeAgentId) return;
+                }
+                handleEventRef.current?.(payload.event, payload.agentId);
             });
             if (typeof unsub === "function") unsubs.push(unsub);
         }
@@ -663,14 +683,18 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     }, [agentId]);
 
     // ── 事件处理 ────────────────────────────────────────────────────────────
-    const handleEvent = useCallback((event: PiEvent) => {
+    const handleEvent = useCallback((event: PiEvent, sourceAgentId?: string | null) => {
+        // 用户停止后, 丢弃被中止运行遗留的尾随事件 (toolcall_end / agent_end /
+        // text_delta 等), 直到下一轮 agent_start — 否则它们会被算进新的一轮
+        // (ghost 消息 / 幽灵工具状态)。
+        if (userStoppedRef.current && event.type !== "agent_start") return;
         switch (event.type) {
-            case "agent_start":
+            case "agent_start": {
+                userStoppedRef.current = false;
+                const eventAgentId = sourceAgentId ?? agentIdRef.current;
                 // 防御重复 agent_start: 如果同一 turn 内已有内容,保留状态避免覆盖
-                if (isTurnActiveRef.current && (textRef.current || thinkingRef.current)) {
-                    // 同一 turn 内重复 agent_start — 重置工具调用但保留文本内容
-                    toolCallsRef.current = new Map();
-                    setToolCalls(new Map());
+                if (isTurnActiveRef.current && (textRef.current || thinkingRef.current || toolCallsRef.current.size > 0)) {
+                    // 同一 turn 内重复 agent_start 不能清空已有工具调用。
                     break;
                 }
                 // 新 turn 或首次 agent_start — 完整重置
@@ -687,7 +711,10 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 lastProviderErrorRef.current = null;
                 toolCallsRef.current = new Map();
                 setToolCalls(new Map());
+                // 固定本轮的流式 agent: 即使随后切换会话, 事件仍会送达。
+                pinnedStreamAgentIdRef.current = eventAgentId;
                 break;
+            }
 
             case "message_start":
                 // Pi can emit repeated/empty message_start events. Create the assistant row lazily on first content.
@@ -1067,7 +1094,9 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     !thinkingRef.current &&
                     toolCallsRef.current.size === 0 &&
                     !usePlanStore.getState().activeCard &&
-                    !lastProviderErrorRef.current
+                    !lastProviderErrorRef.current &&
+                    // 纯 UI 卡牌回合 (custom_message 已置位完成信号) 不算空轮。
+                    !hasCompletionSignalRef.current
                 ) {
                     setError("Pi 本轮没有返回内容，请检查模型/API Key 配置后重试。");
                 }
@@ -1080,6 +1109,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
                 sessionIdRef.current = null;
+                pinnedStreamAgentIdRef.current = null;
                 // Notify useTaskProgress: agent ended
                 window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 // 只在本轮产生了用户可见结果时提示，避免纯工具阶段反复响铃
@@ -1102,6 +1132,8 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 isStreamingRef.current = false;
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
+                sessionIdRef.current = null;
+                pinnedStreamAgentIdRef.current = null;
                 if (usePlanStore.getState().activeExecution?.phase === "executing") {
                     usePlanStore.getState().markFailed();
                 }
@@ -1137,7 +1169,13 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         }
         const session = aid ? getTargetSession(aid) : useSessionStore.getState().getCurrentSession();
         const selectedMode = useAgentModeStore.getState().getMode(workspaceId);
-        const isFollowUpWhileStreaming = isStreamingRef.current || promptInFlightRef.current;
+        // 在另一 agent 后台流式运行时, 首次向当前 agent 发送 → 这是新一轮,
+        // 不是 followUp: 重新固定到当前 agent, 旧 agent 的尾随事件由主进程
+        // 在旧运行完全结束后才转发 (此时已被过滤掉)。
+        const pinnedAgent = pinnedStreamAgentIdRef.current;
+        const startsFreshForDifferentAgent = Boolean(aid && pinnedAgent && aid !== pinnedAgent);
+        const isFollowUpWhileStreaming = !startsFreshForDifferentAgent
+            && (isStreamingRef.current || promptInFlightRef.current);
         const isSlashCommand = content.trimStart().startsWith("/");
         const visibleContent = options.visibleContent ?? content;
         const shouldQueueAfterIdle = options.waitForAgentIdle || isExecutePlanCommand(content);
@@ -1182,17 +1220,24 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         isTurnActiveRef.current = true;
         setError(null);
         discardPendingStreamRender();
+        // 从另一个运行中的 agent 切换过来: 先落盘旧 agent 尚未 flush 的尾部内容。
+        if (startsFreshForDifferentAgent) {
+            flushStreamPersist();
+        }
         textRef.current = "";
         thinkingRef.current = "";
         hasCompletionSignalRef.current = false;
         lastProviderErrorRef.current = null;
-        messageIdRef.current = null;
+        streamGenerationRef.current += 1;
         sessionIdRef.current = session?.id ?? null;
         streamPersistRef.current = null;
         toolCallsRef.current = new Map();
         setCurrentText("");
         setCurrentThinking("");
         setToolCalls(new Map());
+        // 固定本轮流式 agent (切换会话后事件继续送达); 非 agent 模式不固定。
+        pinnedStreamAgentIdRef.current = aid ?? null;
+        userStoppedRef.current = false;
 
         // Notify useTaskProgress / progress reminder lanes.
         window.dispatchEvent(new CustomEvent("pi:stream-start", {
@@ -1286,13 +1331,16 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             // Notify useTaskProgress: streaming error
             window.dispatchEvent(new CustomEvent("pi:stream-end"));
         }
-    }, [appendAgentMessage, discardPendingStreamRender, getTargetSession]);
+    }, [appendAgentMessage, discardPendingStreamRender, flushStreamPersist, getTargetSession]);
 
     const stopStreaming = useCallback((workspaceId: string) => {
+        const stopGeneration = streamGenerationRef.current;
+        const stopAgentId = pinnedStreamAgentIdRef.current ?? agentIdRef.current;
+        userStoppedRef.current = true;
         void (async () => {
             const stopped = await requestRunControlStop({
                 workspaceId,
-                agentId: agentIdRef.current,
+                agentId: stopAgentId,
                 runContext: usePlanStore.getState().activeExecution?.phase === "executing"
                     || usePlanStore.getState().activeExecution?.phase === "pausing"
                     ? "plan_execution"
@@ -1301,13 +1349,20 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     setError(message);
                 },
             });
-            if (!stopped) return;
+            if (!stopped) {
+                if (streamGenerationRef.current === stopGeneration) {
+                    userStoppedRef.current = false;
+                }
+                return;
+            }
+            if (streamGenerationRef.current !== stopGeneration) return;
             flushStreamRender();
             setIsStreaming(false);
             isStreamingRef.current = false;
             promptInFlightRef.current = false;
             hasCompletionSignalRef.current = false;
             setStreamingMessageId(null);
+            pinnedStreamAgentIdRef.current = null;
         })();
     }, [flushStreamRender]);
 

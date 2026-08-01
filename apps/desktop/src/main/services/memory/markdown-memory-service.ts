@@ -106,7 +106,7 @@ export interface ReconcileAndSearchOptions extends MemorySearchOptions {
 
 export class MarkdownMemoryService {
     private readonly index: MarkdownIndex;
-    private readonly settings: MarkdownMemorySettings;
+    private settings: MarkdownMemorySettings;
     private readonly rootDir: string;
     private readonly dbPath: string;
     private reconcileInFlight: Promise<ReconcileResult> | null = null;
@@ -131,6 +131,16 @@ export class MarkdownMemoryService {
 
     get settingsSnapshot(): Readonly<MarkdownMemorySettings> {
         return this.settings;
+    }
+
+    /**
+     * Apply the latest long-horizon memory settings. Called from
+     * `onSettingsChanged` so user toggles (enabled / reconcileOnSearch /
+     * searchScoreFloor) take effect at runtime without recreating the
+     * service (which would reopen the SQLite index).
+     */
+    setSettings(settings: Partial<MarkdownMemorySettings>): void {
+        this.settings = { ...DEFAULT_MEMORY_SETTINGS, ...settings };
     }
 
     /** Underlying FTS5 index — exposed for diagnostics + direct testing. */

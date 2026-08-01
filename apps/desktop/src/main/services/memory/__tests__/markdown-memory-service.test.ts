@@ -323,6 +323,23 @@ describe("MarkdownMemoryService — settings.enabled gate", () => {
         expect(files).toEqual([]);
     });
 
+    it("setSettings applies runtime settings changes without recreating the service", async () => {
+        // 修复前: 服务在构造时冻结设置, onSettingsChanged 的同步是死代码。
+        expect(service.settingsSnapshot.reconcileOnSearch).toBe(true);
+        service.setSettings({ enabled: false, reconcileOnSearch: false, searchScoreFloor: 0.5 });
+        expect(service.settingsSnapshot).toEqual({
+            enabled: false,
+            ccIndex: false,
+            reconcileOnSearch: false,
+            searchScoreFloor: 0.5,
+        });
+
+        // 未列出的字段回落默认值 (Partial 语义)。
+        service.setSettings({ searchScoreFloor: 0.9 });
+        expect(service.settingsSnapshot.searchScoreFloor).toBe(0.9);
+        expect(service.settingsSnapshot.enabled).toBe(true);
+    });
+
     it("buildMemoryPath() still works when enabled=false (pure path computation)", () => {
         service.close();
         service = makeService({ enabled: false });

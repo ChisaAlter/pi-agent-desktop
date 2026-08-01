@@ -85,6 +85,13 @@ interface AgentRuntime {
     sessionMode: AgentMode;
     policyController: RuntimePolicyController;
     operationTail: Promise<void>;
+    /** Workspace lifecycle generation captured when this runtime was created. */
+    workspaceGeneration: number;
+    /**
+     * 中止纪元: abort()/stop() 递增。排队中的操作在启动前比对 epoch,
+     * 不一致则跳过执行 (用户停止后排队 prompt 不再运行)。
+     */
+    abortEpoch: number;
     /** 卡死看门狗: running 期间计时, 超时未结束则合成 extension_error 翻转状态 */
     watchdog?: NodeJS.Timeout;
 }
@@ -115,6 +122,10 @@ function promptFailureDetails(error: unknown): string {
 }export class AgentRuntimeRegistry {
     private readonly runtimes = new Map<string, AgentRuntime>();
     private suppressedAgentIds = new Set<string>();
+    /** in-flight 创建 promise: 仅对明确 session 身份的创建请求去重 */
+    private readonly creating = new Map<string, Promise<AgentTab>>();
+    private readonly workspaceGenerations = new Map<string, number>();
+    private readonly invalidatedWorkspaces = new Set<string>();
 
     constructor(private readonly deps: AgentRuntimeRegistryDeps) {}
 
@@ -123,8 +134,51 @@ function promptFailureDetails(error: unknown): string {
     }
 
     async create(input: CreateAgentInput): Promise<AgentTab> {
+        // 无 sessionId 的显式 create 允许同 workspace 创建多个独立 agent。
+        // 只有具有明确 session 身份的请求才需要 in-flight 去重。
+        const dedupKey = input.sessionId
+            ? `${input.workspaceId}\u0000${input.sessionId}`
+            : null;
+        const inFlight = dedupKey ? this.creating.get(dedupKey) : undefined;
+        if (inFlight) return inFlight;
+        const created = this.doCreate(input);
+        if (!dedupKey) return created;
+        this.creating.set(dedupKey, created);
+        void created.then(
+            () => {
+                if (this.creating.get(dedupKey) === created) this.creating.delete(dedupKey);
+            },
+            () => {
+                if (this.creating.get(dedupKey) === created) this.creating.delete(dedupKey);
+            },
+        );
+        return created;
+    }
+
+    private currentWorkspaceGeneration(workspaceId: string): number {
+        return this.workspaceGenerations.get(workspaceId) ?? 0;
+    }
+
+    private invalidateWorkspace(workspaceId: string): void {
+        this.workspaceGenerations.set(workspaceId, this.currentWorkspaceGeneration(workspaceId) + 1);
+        this.invalidatedWorkspaces.add(workspaceId);
+    }
+
+    private beginWorkspaceCreate(workspaceId: string): number {
+        const generation = this.currentWorkspaceGeneration(workspaceId);
+        this.invalidatedWorkspaces.delete(workspaceId);
+        return generation;
+    }
+
+    private isWorkspaceCreateValid(workspaceId: string, generation: number): boolean {
+        return !this.invalidatedWorkspaces.has(workspaceId)
+            && this.currentWorkspaceGeneration(workspaceId) === generation;
+    }
+
+    private async doCreate(input: CreateAgentInput): Promise<AgentTab> {
         const workspace = this.deps.getWorkspace(input.workspaceId);
         if (!workspace) throw new Error(`Workspace not found: ${input.workspaceId}`);
+        const workspaceGeneration = this.beginWorkspaceCreate(workspace.id);
 
         const id = randomUUID();
         const now = Date.now();
@@ -145,6 +199,14 @@ function promptFailureDetails(error: unknown): string {
             workspacePermissions: this.getEffectiveToolPermissions(workspace.id, input.sessionId),
         }));
         const session = await this.createPrimarySession(workspace, id, policyController, sessionPath);
+        if (!this.isWorkspaceCreateValid(workspace.id, workspaceGeneration)) {
+            try {
+                session.dispose();
+            } catch (error) {
+                log.warn("[agent-runtime] stale session dispose after workspace invalidation failed:", workspace.id, error);
+            }
+            throw new Error(`Workspace agent creation invalidated: ${workspace.id}`);
+        }
 
         const runtime: AgentRuntime = {
             tab,
@@ -156,6 +218,8 @@ function promptFailureDetails(error: unknown): string {
             sessionMode: "build",
             policyController,
             operationTail: Promise.resolve(),
+            workspaceGeneration,
+            abortEpoch: 0,
         };
         this.runtimes.set(id, runtime);
         this.subscribe(runtime);
@@ -193,7 +257,10 @@ function promptFailureDetails(error: unknown): string {
                     onAccepted: resolveAccepted,
                 });
             });
-            void operation.catch(rejectAccepted);
+            // onAccepted 已 resolve 后 operation 仍可能 reject (重复调用无副作用);
+            // 被 abort 跳过 (未执行) 时 operation 正常 resolve — 这里兜底结算外层 promise,
+            // 避免 pi:send 因排队 prompt 被跳过而永远挂起。
+            void operation.then(resolveAccepted, rejectAccepted);
         });
     }
 
@@ -224,8 +291,12 @@ function promptFailureDetails(error: unknown): string {
         this.armWatchdog(runtime);
         this.emitState();
         let failureHandled = false;
+        // 捕获启动时的纪元: 运行期间用户 abort/stop 会递增, 此时 SDK prompt
+        // 的拒绝是"用户停止"而非失败 — 不翻转 error 状态、不追加错误消息。
+        const epochAtStart = runtime.abortEpoch;
         const handleFailureOnce = (error: unknown): void => {
             if (failureHandled) return;
+            if (runtime.abortEpoch !== epochAtStart) return;
             failureHandled = true;
             this.handlePromptFailure(runtime, error);
         };
@@ -262,7 +333,15 @@ function promptFailureDetails(error: unknown): string {
 
     async abort(agentId: string): Promise<void> {
         const runtime = this.requireRuntime(agentId);
-        runtime.session.session.abort();
+        // 用户停止: 递增纪元使排队中的 prompt 不再执行; 并等待 SDK abort
+        // (内部 waitForIdle) 完成后再翻转状态, 避免运行中的 promptRuntime
+        // 在状态已置 idle 后继续覆盖/追加消息。
+        runtime.abortEpoch += 1;
+        try {
+            await runtime.session.session.abort();
+        } catch (error) {
+            log.warn("[agent-runtime] abort error:", error);
+        }
         runtime.isStreaming = false;
         runtime.tab.status = "idle";
         runtime.tab.updatedAt = Date.now();
@@ -274,6 +353,8 @@ function promptFailureDetails(error: unknown): string {
     stop(agentId: string): void {
         const runtime = this.runtimes.get(agentId);
         if (!runtime) return;
+        // 递增纪元: 排队中的操作不再对已 dispose 的 session 执行。
+        runtime.abortEpoch += 1;
         this.disarmWatchdog(runtime);
         runtime.session.dispose();
         this.runtimes.delete(agentId);
@@ -365,6 +446,7 @@ function promptFailureDetails(error: unknown): string {
 
     /** 停止并释放某 workspace 下所有 agent (用于 workspace:delete) */
     disposeWorkspace(workspaceId: string): void {
+        this.invalidateWorkspace(workspaceId);
         for (const agentId of [...this.runtimes.keys()]) {
             const runtime = this.runtimes.get(agentId);
             if (runtime?.workspace.id === workspaceId) {
@@ -374,6 +456,12 @@ function promptFailureDetails(error: unknown): string {
     }
 
     disposeAll(): void {
+        for (const workspaceId of new Set([
+            ...Array.from(this.runtimes.values(), (runtime) => runtime.workspace.id),
+            ...this.creating.keys(),
+        ])) {
+            this.invalidateWorkspace(workspaceId);
+        }
         for (const agentId of [...this.runtimes.keys()]) {
             this.stop(agentId);
         }
@@ -390,6 +478,11 @@ function promptFailureDetails(error: unknown): string {
         }
     }
 
+    private isRuntimeValid(runtime: AgentRuntime): boolean {
+        return this.runtimes.get(runtime.tab.id) === runtime
+            && this.isWorkspaceCreateValid(runtime.workspace.id, runtime.workspaceGeneration);
+    }
+
     private subscribe(runtime: AgentRuntime): void {
         const interceptor = createApprovalInterceptor(runtime.workspace.id, {
             abort: () => runtime.session.session.abort(),
@@ -400,6 +493,7 @@ function promptFailureDetails(error: unknown): string {
         });
 
         runtime.session.session.subscribe(async (rawEvent: unknown) => {
+            if (!this.isRuntimeValid(runtime)) return;
             const event = normalizeCustomMessageEvent(rawEvent as PiEvent);
             try {
                 await interceptor.handleEvent(event);
@@ -415,6 +509,7 @@ function promptFailureDetails(error: unknown): string {
     }
 
     private handleEvent(runtime: AgentRuntime, event: PiEvent): void {
+        if (!this.isRuntimeValid(runtime)) return;
         runtime.tab.updatedAt = Date.now();
         if (event.type === "agent_start") {
             runtime.tab.status = "running";
@@ -713,6 +808,9 @@ function promptFailureDetails(error: unknown): string {
         runtime.session = candidate;
         this.subscribe(runtime);
         runtime.tab.updatedAt = Date.now();
+        // 新 session 从默认 build 模式启动: 重置 sessionMode, 否则残留的
+        // "plan" 会让下次 build prompt 错误地发送 /plan (或反向跳过 /plan)。
+        runtime.sessionMode = "build";
         try {
             previous.dispose();
         } catch (error) {
@@ -762,7 +860,15 @@ function promptFailureDetails(error: unknown): string {
     }
 
     private enqueueRuntimeOperation<T>(runtime: AgentRuntime, operation: () => Promise<T>): Promise<T> {
-        const result = runtime.operationTail.then(operation);
+        const epoch = runtime.abortEpoch;
+        const result = runtime.operationTail.then(() => {
+            // 入队后发生 abort()/stop() (纪元递增) → 跳过执行并立即完成,
+            // 否则排队中的 prompt 会在用户停止后继续运行 (或打到已 dispose 的 session)。
+            if (epoch !== runtime.abortEpoch) {
+                return undefined as T;
+            }
+            return operation();
+        });
         runtime.operationTail = result.then(
             () => undefined,
             () => undefined,

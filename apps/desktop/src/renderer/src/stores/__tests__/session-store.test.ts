@@ -756,6 +756,107 @@ describe("session-store (2026-06-06 hotfix): loadSessions 行为", () => {
         });
         expect(piAPI.listSessions).not.toHaveBeenCalled();
     });
+
+    it("merges in-memory messages added while the session is loading (no clobber)", async () => {
+        // 修复前: ensureSessionLoaded 用磁盘快照整体替换 session 对象, 加载期间
+        // 并发写入的消息 (乐观 user 消息 / 流式内容) 从 UI 消失。
+        const api = piAPI as typeof piAPI & {
+            getSession: ReturnType<typeof vi.fn>;
+        };
+        let resolveGet!: (value: unknown) => void;
+        api.getSession = vi.fn(() => new Promise((resolve) => { resolveGet = resolve; }));
+
+        useSessionStore.setState({
+            sessions: [{
+                id: "s1",
+                title: "S",
+                workspaceId: "ws1",
+                createdAt: new Date(0),
+                updatedAt: new Date(0),
+                messages: [],
+                messagesLoaded: false,
+            }],
+            currentSessionId: "s1",
+        });
+
+        const loading = useSessionStore.getState().ensureSessionLoaded("s1");
+        // 加载进行中, 用户发送了一条乐观消息 (尚未落库)。
+        useSessionStore.getState().addMessage("s1", {
+            id: "opt_1",
+            role: "user",
+            content: "并发消息",
+            timestamp: new Date(),
+        }, { persist: false });
+
+        // 磁盘快照里没有这条消息。
+        resolveGet({
+            id: "s1",
+            workspaceId: "ws1",
+            title: "S",
+            createdAt: 0,
+            updatedAt: 0,
+            messages: [{
+                id: "disk_1",
+                role: "assistant",
+                content: "磁盘内容",
+                timestamp: new Date(0).toISOString(),
+            }],
+        });
+        await loading;
+
+        const session = useSessionStore.getState().sessions.find((s) => s.id === "s1");
+        expect(session?.messages.map((m) => m.id)).toEqual(["disk_1", "opt_1"]);
+        expect(session?.messages.find((m) => m.id === "opt_1")?.content).toBe("并发消息");
+    });
+
+    it("prefers in-memory content for messages with the same id updated during load", async () => {
+        const api = piAPI as typeof piAPI & {
+            getSession: ReturnType<typeof vi.fn>;
+        };
+        let resolveGet!: (value: unknown) => void;
+        api.getSession = vi.fn(() => new Promise((resolve) => { resolveGet = resolve; }));
+
+        useSessionStore.setState({
+            sessions: [{
+                id: "s1",
+                title: "S",
+                workspaceId: "ws1",
+                createdAt: new Date(0),
+                updatedAt: new Date(0),
+                messages: [],
+                messagesLoaded: false,
+            }],
+            currentSessionId: "s1",
+        });
+
+        const loading = useSessionStore.getState().ensureSessionLoaded("s1");
+        // 加载期间流式内容写入了同 id 消息 (persist:false, 磁盘还是旧内容)。
+        useSessionStore.getState().addMessage("s1", {
+            id: "m1",
+            role: "assistant",
+            content: "流式新内容",
+            timestamp: new Date(),
+        }, { persist: false });
+
+        resolveGet({
+            id: "s1",
+            workspaceId: "ws1",
+            title: "S",
+            createdAt: 0,
+            updatedAt: 0,
+            messages: [{
+                id: "m1",
+                role: "assistant",
+                content: "磁盘旧内容",
+                timestamp: new Date(0).toISOString(),
+            }],
+        });
+        await loading;
+
+        const session = useSessionStore.getState().sessions.find((s) => s.id === "s1");
+        expect(session?.messages).toHaveLength(1);
+        expect(session?.messages[0]?.content).toBe("流式新内容");
+    });
 });
 
 // wave-129 residual

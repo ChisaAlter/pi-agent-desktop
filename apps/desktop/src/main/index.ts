@@ -781,9 +781,42 @@ function setupIPC(updaterService: AppUpdaterService): void {
       piRegistry.dispose(workspaceId);
       agentRegistry.disposeWorkspace(workspaceId);
     },
+    // 删除工作区时一并清理其全部会话 (DB 行 + native JSONL), 避免 dangling
+    // workspaceId 的会话继续出现在 session:list 里。
+    purgeWorkspaceSessions: async (workspaceId) => {
+      const doomed = (await sessions.listSessions()).filter(
+        (session) => session.workspaceId === workspaceId,
+      );
+      for (const session of doomed) {
+        try {
+          await sessions.deleteSession(session.id);
+        } catch (err) {
+          log.warn("[Main] failed to purge session on workspace delete; preserving native file:", session.id, err);
+          continue;
+        }
+        try {
+          await removeNativeSessionFile(session.id);
+        } catch (err) {
+          log.warn("[Main] failed to remove native file on workspace delete:", session.id, err);
+        }
+      }
+    },
   });
 
   // Session management (delegated to sessions.ipc.ts)
+  // 删除会话的 native JSONL 文件。先停掉绑定该会话的运行中 agent (其 SDK 写
+  // 句柄在 Windows 上会锁住文件, 且会持续把旧历史写回已删除的会话), 再删文件。
+  const removeNativeSessionFile = async (sessionId: string): Promise<void> => {
+    const activeAgents = agentRegistry.list().filter((agent) => agent.sessionId === sessionId);
+    for (const activeAgent of activeAgents) {
+      try {
+        agentRegistry.stop(activeAgent.id);
+      } catch (err) {
+        log.warn("[Main] failed to stop agent for removed session:", sessionId, activeAgent.id, err);
+      }
+    }
+    rmSync(resolveNativeSessionPath(app.getPath("userData"), sessionId), { force: true });
+  };
   setupSessionsIpc({
     repository: sessions,
     renameNativeSession: async (sessionId, title) => {
@@ -811,6 +844,7 @@ function setupIPC(updaterService: AppUpdaterService): void {
         model: settings.model,
       });
     },
+    deleteNativeSession: removeNativeSessionFile,
     onSessionUpdated: (session) => {
       if (session.toolPermissions) sessionToolPermissions.set(session.id, session.toolPermissions);
       else sessionToolPermissions.delete(session.id);
@@ -829,6 +863,11 @@ function setupIPC(updaterService: AppUpdaterService): void {
     reloadPiAgentConfig: () => refreshPiAgentConfig(configManager),
     piAgentDir: PI_AGENT_DIR,
     onSettingsChanged: async (next, previous) => {
+      // 长时程 memory 设置 (enabled / reconcileOnSearch / searchScoreFloor)
+      // 实时同步到 MarkdownMemoryService — 否则这些开关只写进了 store,
+      // 服务永远跑在构造时的默认值上。
+      markdownMemoryService?.setSettings(normalizeLongHorizonSettings(next.longHorizon).memory);
+
       const modelChanged = previous.provider !== next.provider || previous.model !== next.model;
       if (modelChanged && next.provider && next.model) {
         await modelConfigRefreshTail;
