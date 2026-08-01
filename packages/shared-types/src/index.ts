@@ -1398,7 +1398,7 @@ export interface PiAPI {
     listWorkspaces(): Promise<Workspace[] | IpcError>;
     createWorkspace(name: string, path: string): Promise<Workspace | IpcError>;
     createEmptyWorkspace(name: string, parentPath: string): Promise<Workspace | IpcError>;
-    deleteWorkspace(id: string): Promise<void>;
+    deleteWorkspace(id: string): Promise<{ success: true } | IpcError>;
     selectWorkspace(path: string): Promise<void | IpcError>;
     selectDirectory(): Promise<string | null | IpcError>;
     /** v1.0.13: 多选文件,ChatInput 附件按钮 */
@@ -1411,8 +1411,8 @@ export interface PiAPI {
     searchSessionMessages(input: SessionSearchInput): Promise<SessionSearchResult[] | IpcError>;
     createSession(workspaceId: string, title?: string, id?: string): Promise<Session>;
     forkSessionContext(sourceSessionId: string, targetSessionId: string, workspaceId: string, fromMessageId?: string): Promise<void | IpcError>;
-    renameSession(id: string, title: string): Promise<Session>;
-    deleteSession(id: string): Promise<void>;
+    renameSession(id: string, title: string): Promise<Session | IpcError>;
+    deleteSession(id: string): Promise<void | IpcError>;
     archiveSession(id: string, archived: boolean): Promise<Session | IpcError>;
     updateSessionMetadata(
         id: string,

@@ -346,14 +346,62 @@ export const useSessionStore = create<SessionState>((set, get) => {
     if (pending) return pending;
     const load = (async () => {
       const piAPI = getPiAPI();
-      if (!piAPI?.getSession) return existing;
+      const loadStartedSession = get().sessions.find((session) => session.id === sessionId);
+      if (!loadStartedSession) return null;
+      const initialMessages = loadStartedSession.messages;
+      const initialMetadata = {
+        title: loadStartedSession.title,
+        archived: loadStartedSession.archived,
+        favorite: loadStartedSession.favorite,
+        tags: loadStartedSession.tags,
+        readOnly: loadStartedSession.readOnly,
+        lastOpenedAt: loadStartedSession.lastOpenedAt,
+        summary: loadStartedSession.summary,
+        lastOutputPaths: loadStartedSession.lastOutputPaths,
+        usage: loadStartedSession.usage,
+        toolPermissions: loadStartedSession.toolPermissions,
+        updatedAt: loadStartedSession.updatedAt,
+      };
+      if (!piAPI?.getSession) return loadStartedSession;
       const result = await piAPI.getSession(sessionId);
       if (isIpcError(result)) throw new Error(result.fallback);
       const loaded = reviveSession(result);
-      set((state) => ({
-        sessions: state.sessions.map((session) => session.id === sessionId ? loaded : session),
-      }));
-      return loaded;
+      // 加载期间可能已有消息写入内存 (乐观用户消息 / 流式 assistant 内容,
+      // persist:false 或 appendMessage 尚未落库): 磁盘快照会覆盖它们, 导致
+      // 消息从 UI 消失。合并: 同 id 以内存版本为准 (加载窗口内的更新必然更新),
+      // 内存独有消息追加在快照之后。
+      let merged: Session = loaded;
+      set((state) => {
+        const current = state.sessions.find((session) => session.id === sessionId);
+        if (!current) return { sessions: state.sessions };
+        const currentMessages = current.messages;
+        const currentMetadataChanged = current.updatedAt.getTime() !== initialMetadata.updatedAt.getTime()
+          || current.title !== initialMetadata.title
+          || current.archived !== initialMetadata.archived
+          || current.favorite !== initialMetadata.favorite
+          || JSON.stringify(current.tags) !== JSON.stringify(initialMetadata.tags)
+          || current.summary !== initialMetadata.summary
+          || current.lastOpenedAt?.getTime() !== initialMetadata.lastOpenedAt?.getTime();
+        const byId = new Map(loaded.messages.map((message) => [message.id, message]));
+        for (const message of currentMessages) {
+          const wasPresentAtLoad = initialMessages.some((initial) => initial.id === message.id);
+          if (!wasPresentAtLoad || message !== initialMessages.find((initial) => initial.id === message.id)) {
+            byId.set(message.id, message);
+          }
+        }
+        const mergedMessages = [...byId.values()].sort((a, b) => {
+          const aTime = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp).getTime();
+          const bTime = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp).getTime();
+          return aTime - bTime;
+        });
+        merged = currentMetadataChanged
+          ? { ...loaded, ...current, messages: mergedMessages, messagesLoaded: true }
+          : { ...loaded, messages: mergedMessages };
+        return {
+          sessions: state.sessions.map((session) => session.id === sessionId ? merged : session),
+        };
+      });
+      return merged;
     })().catch((error) => {
       recordPersistFailure(error);
       return null;

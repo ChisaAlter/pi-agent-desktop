@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { WorkspaceRegistry } from "../registry";
-import { resolveBundledDesktopExtensionPaths } from "../factory";
+import { createWorkspaceSession, resolveBundledDesktopExtensionPaths } from "../factory";
 
 const subscribe = vi.fn();
 const setModel = vi.fn(async () => true);
@@ -22,6 +22,7 @@ describe("WorkspaceRegistry", () => {
         subscribe.mockReset();
         setModel.mockClear();
         vi.mocked(resolveBundledDesktopExtensionPaths).mockClear();
+        vi.mocked(createWorkspaceSession).mockClear();
         reg = new WorkspaceRegistry();
     });
 
@@ -91,6 +92,49 @@ describe("WorkspaceRegistry", () => {
 
     it("dispose on missing key is a no-op", () => {
         expect(() => reg.dispose("nonexistent")).not.toThrow();
+    });
+
+    it("dispose during in-flight creation does not resurrect a session", async () => {
+        // 创建挂起期间执行 dispose → 创建完成后 session 必须被作废,
+        // 不能重新注册到 entries (旧行为会复活一个绑定已删工作区的活会话)。
+        let releaseCreate!: (value: unknown) => void;
+        vi.mocked(createWorkspaceSession).mockImplementationOnce(
+            () => new Promise((resolve) => { releaseCreate = resolve; }),
+        );
+        const getPromise = reg.get("ws_1", "C:/tmp/a");
+        await vi.waitFor(() => expect(createWorkspaceSession).toHaveBeenCalledTimes(1));
+        reg.dispose("ws_1");
+        releaseCreate({
+            workspaceId: "ws_1",
+            session: { dispose: vi.fn(), subscribe },
+            dispose: vi.fn(),
+            setModel,
+        });
+
+        await expect(getPromise).rejects.toThrow(/disposed/);
+        expect(reg.has("ws_1")).toBe(false);
+        expect(reg.size()).toBe(0);
+
+        // 被删除后重新打开: dispose 标记应被清除, 可正常重建。
+        const ws = await reg.get("ws_1", "C:/tmp/a");
+        expect(ws.workspaceId).toBe("ws_1");
+        expect(reg.has("ws_1")).toBe(true);
+    });
+
+    it("drops forwarded events after the session is disposed", async () => {
+        // dispose 与订阅并发 (订阅回调已注册后才 dispose): 后续事件不得再
+        // 转发给 renderer — 否则已删除工作区的事件会继续冒泡。
+        const send = vi.fn();
+        const pendingEdits = { autoApprove: false } as any;
+        await reg.get("ws_1", "C:/tmp/a", pendingEdits, send);
+        const subscribedCallback = subscribe.mock.calls[0]?.[0];
+        expect(subscribedCallback).toBeTypeOf("function");
+
+        reg.dispose("ws_1");
+        await subscribedCallback({ type: "agent_end" });
+        await subscribedCallback({ type: "text_delta", delta: "stale" });
+
+        expect(send).not.toHaveBeenCalled();
     });
 });
 

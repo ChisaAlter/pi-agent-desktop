@@ -1,7 +1,8 @@
 import { execFile } from "child_process";
 import { isAbsolute, join, relative, resolve } from "path";
 import { existsSync } from "fs";
-import { rm, mkdir, writeFile, readdir } from "fs/promises";
+import { rm, mkdir, writeFile, readdir, rename } from "fs/promises";
+import { randomUUID } from "crypto";
 
 export interface SkillInfo {
     slug: string;
@@ -109,6 +110,43 @@ async function execTar(args: string[], cwd: string): Promise<string> {
     });
 }
 
+const skillOperationTails = new Map<string, Promise<void>>();
+
+async function withSkillLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
+    const previous = skillOperationTails.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    skillOperationTails.set(key, current);
+    await previous.catch(() => undefined);
+    try {
+        return await operation();
+    } finally {
+        release();
+        if (skillOperationTails.get(key) === current) skillOperationTails.delete(key);
+    }
+}
+
+async function replaceSkillDirectory(stagingDir: string, targetDir: string): Promise<void> {
+    const backupDir = `${targetDir}.backup-${randomUUID().slice(0, 8)}`;
+    let backedUp = false;
+    try {
+        if (existsSync(targetDir)) {
+            await rename(targetDir, backupDir);
+            backedUp = true;
+        }
+        await rename(stagingDir, targetDir);
+        if (backedUp) await rm(backupDir, { recursive: true, force: true });
+    } catch (error) {
+        try {
+            if (existsSync(targetDir)) await rm(targetDir, { recursive: true, force: true });
+            if (backedUp && existsSync(backupDir)) await rename(backupDir, targetDir);
+        } catch (rollbackError) {
+            throw new Error(`Skill replacement failed and rollback failed: ${String(rollbackError)}`, { cause: error });
+        }
+        throw error;
+    }
+}
+
 export async function installSkill(slug: string, cwd: string): Promise<void> {
     const skillsDir = join(cwd, ".agents", "skills");
     await mkdir(skillsDir, { recursive: true });
@@ -116,7 +154,11 @@ export async function installSkill(slug: string, cwd: string): Promise<void> {
     const targetDir = join(skillsDir, slug);
     assertSafeSkillTarget(skillsDir, targetDir);
 
-    try {
+    return withSkillLock(targetDir, async () => {
+        const stagingDir = join(skillsDir, `.tmp-${slug}-${randomUUID().slice(0, 8)}`);
+        await mkdir(stagingDir, { recursive: true });
+
+        try {
         const url = `${getApiBase()}/install/${encodeURIComponent(slug)}`;
         const data = await fetchJson<InstallResponse>(url);
 
@@ -124,31 +166,34 @@ export async function installSkill(slug: string, cwd: string): Promise<void> {
             const res = await fetch(data.downloadUrl);
             if (!res.ok) throw new Error(`Download failed: HTTP ${res.status}`);
 
-            await mkdir(targetDir, { recursive: true });
             const buffer = Buffer.from(await res.arrayBuffer());
-            await writeFile(join(targetDir, "skill.tar.gz"), buffer);
+            await writeFile(join(stagingDir, "skill.tar.gz"), buffer);
 
-            const listing = await execTar(["tf", "skill.tar.gz"], targetDir);
+            const listing = await execTar(["tf", "skill.tar.gz"], stagingDir);
             const unsafeEntry = listing.split(/\r?\n/).find((entry) => !isSafeTarEntry(entry));
             if (unsafeEntry) {
                 throw new Error(`Unsafe path in skill archive: ${unsafeEntry}`);
             }
 
-            await execTar(["xzf", "skill.tar.gz", "-C", targetDir], targetDir);
+            await execTar(["xzf", "skill.tar.gz", "-C", stagingDir], stagingDir);
 
             try {
                 const { unlink } = await import("fs/promises");
-                await unlink(join(targetDir, "skill.tar.gz"));
+                await unlink(join(stagingDir, "skill.tar.gz"));
             } catch { /* ignore */ }
         } else {
             throw new Error(data.error ?? "No download URL");
         }
-    } catch (err) {
-        try {
-            await rm(targetDir, { recursive: true, force: true });
-        } catch { /* ignore */ }
-        throw err;
-    }
+
+        // 全部成功: backup swap + rollback, 不先删除旧版本。
+        await replaceSkillDirectory(stagingDir, targetDir);
+        } catch (err) {
+            try {
+                await rm(stagingDir, { recursive: true, force: true });
+            } catch { /* ignore */ }
+            throw err;
+        }
+    });
 }
 
 export async function uninstallSkill(slug: string, cwd: string): Promise<void> {
@@ -156,7 +201,7 @@ export async function uninstallSkill(slug: string, cwd: string): Promise<void> {
     const targetDir = join(skillsDir, slug);
     // Same containment guard as installSkill — reject `../` / absolute slugs before rm.
     assertSafeSkillTarget(skillsDir, targetDir);
-    await rm(targetDir, { recursive: true, force: true });
+    await withSkillLock(targetDir, () => rm(targetDir, { recursive: true, force: true }));
 }
 
 export async function checkSkillhubApi(): Promise<boolean> {

@@ -35,6 +35,13 @@ export class WorkspaceRegistry {
     private entries = new Map<string, WorkspaceEntry>();
     // in-flight 创建 promise: 防止并发首次调用创建重复 session (TOCTOU)
     private creating = new Map<string, Promise<WorkspaceEntry>>();
+    private creatingGenerations = new Map<string, number>();
+    /**
+     * 已 dispose 的 workspaceId 集合。dispose() 与 in-flight 创建/订阅并发时,
+     * 创建完成或订阅前检查此集合, 避免已删除 workspace 的 session 复活并泄漏
+     * 事件订阅。新的 get() 创建开始时清除对应标记, 保证工作区可重新打开。
+     */
+    private disposed = new Set<string>();
     /**
      * Optional stop-gate hook threaded into `createEventBridge` for every
      * workspace's event subscription. Set externally (e.g. from `main/index.ts`
@@ -97,9 +104,13 @@ export class WorkspaceRegistry {
             return existing.session;
         }
 
-        // 复用进行中的创建 promise, 保证每个 workspaceId 只创建一次
+        // 复用进行中的创建 promise, 保证每个 workspaceId 只创建一次。
         let creating = this.creating.get(workspaceId);
         if (!creating) {
+            const generation = (this.creatingGenerations.get(workspaceId) ?? 0) + 1;
+            this.creatingGenerations.set(workspaceId, generation);
+            // 新创建开始: 清除旧 dispose 标记, 使被删除后重新打开的工作区可重建。
+            this.disposed.delete(workspaceId);
             creating = (async () => {
                 const session = await createWorkspaceSession({
                     workspaceId,
@@ -107,6 +118,15 @@ export class WorkspaceRegistry {
                     uiContext: createExtensionUiBridge(workspaceId),
                     desktopExtensions: resolveBundledDesktopExtensionPaths({ generatedUiEnabled }),
                 });
+                // 创建期间被 dispose 或被新 generation 取代: 作废新 session, 不注册 entries。
+                if (this.disposed.has(workspaceId) || this.creatingGenerations.get(workspaceId) !== generation) {
+                    try {
+                        session.dispose();
+                    } catch (err) {
+                        log.warn("[WorkspaceRegistry] dispose stale session after workspace dispose:", workspaceId, err);
+                    }
+                    throw new Error(`Workspace session disposed during creation: ${workspaceId}`);
+                }
                 const entry: WorkspaceEntry = {
                     session,
                     subscribed: false,
@@ -125,12 +145,25 @@ export class WorkspaceRegistry {
                 return entry;
             })();
             this.creating.set(workspaceId, creating);
-            // 无论成功失败, 都清理 in-flight 标记 (成功后 entries 已持有)
-            void creating.finally(() => this.creating.delete(workspaceId));
+            // 只删除仍对应当前 promise 的 map 项, 不误删新 generation。
+            const currentCreating = creating;
+            void creating.then(
+                () => { if (this.creating.get(workspaceId) === currentCreating) this.creating.delete(workspaceId); },
+                () => { if (this.creating.get(workspaceId) === currentCreating) this.creating.delete(workspaceId); },
+            );
         }
         const entry = await creating;
 
         if (send && pendingEdits && !entry.subscribed) {
+            // 创建完成但期间被 dispose: 同样作废, 避免对已销毁的 session 订阅。
+            if (this.disposed.has(workspaceId)) {
+                try {
+                    entry.session.dispose();
+                } catch (err) {
+                    log.warn("[WorkspaceRegistry] dispose stale entry after workspace dispose:", workspaceId, err);
+                }
+                throw new Error(`Workspace session disposed: ${workspaceId}`);
+            }
             await this.ensureSubscribed(entry, workspaceId, workspacePath, pendingEdits, send, getMode);
         }
 
@@ -164,6 +197,8 @@ export class WorkspaceRegistry {
 
         entry.subscribing = (async () => {
             try {
+                // 订阅开始前已被 dispose: 不再对已销毁的 session 建立订阅。
+                if (this.disposed.has(workspaceId)) return;
                 const bridge = createEventBridge(
                     workspaceId,
                     send,
@@ -188,6 +223,8 @@ export class WorkspaceRegistry {
                     if (watchdog) clearTimeout(watchdog);
                     watchdog = setTimeout(() => {
                         watchdog = null;
+                        // session 已被 dispose: 不合成假卡死事件。
+                        if (this.disposed.has(workspaceId)) return;
                         const idle = Date.now() - (entry.lastActivity ?? entry.createdAt);
                         if (idle >= WATCHDOG_MS) {
                             log.error("[WorkspaceRegistry] session watchdog fired (stuck running):", workspaceId);
@@ -214,6 +251,9 @@ export class WorkspaceRegistry {
                 // 外部包 @earendil-works/pi-coding-agent 的 subscribe 签名是 (cb: (event: unknown) => void)
                 // 这里把它当 PiEvent 用 (类型安全)
                 entry.session.session.subscribe(async (rawEvent) => {
+                    // 会话已销毁 (dispose 与订阅并发): 丢弃后续事件, 避免为
+                    // 已删除工作区继续转发/泄漏监听。
+                    if (this.disposed.has(workspaceId)) return;
                     const event = rawEvent as unknown as PiEvent;
                     const isRetryDiagnostic = event?.type === "auto_retry_start" || event?.type === "auto_retry_end";
                     if (!isRetryDiagnostic) {
@@ -271,6 +311,10 @@ export class WorkspaceRegistry {
             }
             this.entries.delete(workspaceId);
         }
+        // 使旧 in-flight 创建失效并摘除, 允许同一 workspace 立即开启新 generation。
+        this.creatingGenerations.set(workspaceId, (this.creatingGenerations.get(workspaceId) ?? 0) + 1);
+        this.creating.delete(workspaceId);
+        this.disposed.add(workspaceId);
         // Notify sibling services so they can clear workspace-scoped caches
         // (e.g. GoalService's react/turn counters). Fire even when no entry
         // existed so services don't accumulate state for disposed workspaces.
@@ -282,12 +326,18 @@ export class WorkspaceRegistry {
     }
 
     disposeAll(): void {
+        for (const id of new Set([...this.entries.keys(), ...this.creating.keys()])) {
+            this.creatingGenerations.set(id, (this.creatingGenerations.get(id) ?? 0) + 1);
+            this.disposed.add(id);
+        }
+        this.creating.clear();
         for (const [id, entry] of this.entries) {
             try {
                 entry.session.dispose();
             } catch (err) {
                 log.warn("[WorkspaceRegistry] dispose error for", id, err);
             }
+            this.disposed.add(id);
         }
         this.entries.clear();
     }

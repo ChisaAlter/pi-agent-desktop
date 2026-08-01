@@ -2,9 +2,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
-const { execFileSyncMock, rmSyncMock } = vi.hoisted(() => ({
-    execFileSyncMock: vi.fn(),
-    rmSyncMock: vi.fn(),
+const { execFileMock, rmMock } = vi.hoisted(() => ({
+    execFileMock: vi.fn(),
+    rmMock: vi.fn(),
 }));
 
 vi.mock("electron", () => ({
@@ -28,16 +28,14 @@ vi.mock("electron-log/main", () => ({
 }));
 
 vi.mock("child_process", () => ({
-    execFileSync: execFileSyncMock,
+    execFile: execFileMock,
 }));
 
-vi.mock("fs", async (importOriginal) => {
-    const actual = await importOriginal<typeof import("fs")>();
-    return {
-        ...actual,
-        rmSync: rmSyncMock,
-    };
-});
+vi.mock("node:fs/promises", () => ({
+    mkdir: vi.fn(),
+    writeFile: vi.fn(),
+    rm: rmMock,
+}));
 
 import { setupChatIpc } from "../chat.ipc";
 
@@ -50,11 +48,34 @@ function setup() {
     });
 }
 
+// execFile supports both callback style (file, args, opts, cb) and promise
+// style (file, args, opts) — the handler under test uses the promise form.
+function execFileSuccess(stdout = ""): void {
+    execFileMock.mockImplementationOnce((_f: unknown, _a: unknown, _o: unknown, cb?: (err: Error | null, out: string) => void) => {
+        const result = { stdout, stderr: "" };
+        if (typeof cb === "function") {
+            cb(null, stdout, "");
+            return;
+        }
+        return Promise.resolve(result);
+    });
+}
+
+function execFileError(message: string): void {
+    execFileMock.mockImplementationOnce((_f: unknown, _a: unknown, _o: unknown, cb?: (err: Error | null, out: string) => void) => {
+        if (typeof cb === "function") {
+            cb(new Error(message), "");
+            return;
+        }
+        return Promise.reject(new Error(message));
+    });
+}
+
 describe("git:undo security guards", () => {
     beforeEach(() => {
         handlers.clear();
-        execFileSyncMock.mockReset();
-        rmSyncMock.mockReset();
+        execFileMock.mockReset();
+        rmMock.mockReset();
     });
 
     it("rejects path traversal attempts like ../etc/passwd without running git or deleting files", async () => {
@@ -66,16 +87,14 @@ describe("git:undo security guards", () => {
         } | undefined;
 
         expect(result).toMatchObject({ code: expect.stringContaining("ipcErrors.") });
-        expect(execFileSyncMock).not.toHaveBeenCalled();
-        expect(rmSyncMock).not.toHaveBeenCalled();
+        expect(execFileMock).not.toHaveBeenCalled();
+        expect(rmMock).not.toHaveBeenCalled();
     });
 
     it("refuses to delete a tracked/modified file when git status reports ' M file.txt'", async () => {
         // git checkout throws -> fallback branch runs -> git status returns modified marker.
-        execFileSyncMock.mockImplementationOnce(() => {
-            throw new Error("checkout failed");
-        });
-        execFileSyncMock.mockReturnValueOnce(" M file.txt\n");
+        execFileError("checkout failed");
+        execFileSuccess(" M file.txt\n");
 
         setup();
 
@@ -85,14 +104,13 @@ describe("git:undo security guards", () => {
         } | undefined;
 
         expect(result).toMatchObject({ code: "ipcErrors.chat.gitUndoNotUntracked" });
-        expect(rmSyncMock).not.toHaveBeenCalled();
+        expect(rmMock).not.toHaveBeenCalled();
     });
 
     it("deletes an untracked file when git status reports '?? new.txt'", async () => {
-        execFileSyncMock.mockImplementationOnce(() => {
-            throw new Error("not tracked");
-        });
-        execFileSyncMock.mockReturnValueOnce("?? new.txt\n");
+        execFileError("not tracked");
+        execFileSuccess("?? new.txt\n");
+        rmMock.mockResolvedValue(undefined);
 
         setup();
 
@@ -100,7 +118,7 @@ describe("git:undo security guards", () => {
         const result = await handler?.({}, "C:/repo", "new.txt");
 
         expect(result).toBeUndefined();
-        expect(rmSyncMock).toHaveBeenCalledWith(
+        expect(rmMock).toHaveBeenCalledWith(
             expect.stringMatching(/[\\/]repo[\\/]new\.txt$/),
             { force: true },
         );
@@ -111,50 +129,48 @@ describe("git:undo security guards", () => {
         setup();
         const result = await handlers.get("git:undo")?.({}, "C:/repo", "");
         expect(result).toMatchObject({ code: "ipcErrors.chat.gitUndoInvalid" });
-        expect(execFileSyncMock).not.toHaveBeenCalled();
-        expect(rmSyncMock).not.toHaveBeenCalled();
+        expect(execFileMock).not.toHaveBeenCalled();
+        expect(rmMock).not.toHaveBeenCalled();
     });
 
     it("deletes nested untracked files when status is ??", async () => {
-        execFileSyncMock.mockImplementationOnce(() => {
-            throw new Error("not tracked");
-        });
-        execFileSyncMock.mockReturnValueOnce("?? src/deep/new.txt\n");
+        execFileError("not tracked");
+        execFileSuccess("?? src/deep/new.txt\n");
+        rmMock.mockResolvedValue(undefined);
         setup();
         const result = await handlers.get("git:undo")?.({}, "C:/repo", "src/deep/new.txt");
         expect(result).toBeUndefined();
-        expect(rmSyncMock).toHaveBeenCalledWith(
+        expect(rmMock).toHaveBeenCalledWith(
             expect.stringMatching(/[\\/]repo[\\/]src[\\/]deep[\\/]new\.txt$/),
             { force: true },
         );
     });
 
     it("returns gitUndoFailed when status and delete both fail", async () => {
-        execFileSyncMock.mockImplementationOnce(() => {
-            throw new Error("checkout failed");
-        });
-        execFileSyncMock.mockImplementationOnce(() => {
-            throw new Error("status unavailable");
-        });
+        execFileError("checkout failed");
+        execFileError("status unavailable");
         setup();
         const result = await handlers.get("git:undo")?.({}, "C:/repo", "orphan.txt");
         expect(result).toMatchObject({
             code: "ipcErrors.chat.gitUndoFailed",
             fallback: expect.stringContaining("status unavailable"),
         });
-        expect(rmSyncMock).not.toHaveBeenCalled();
+        expect(rmMock).not.toHaveBeenCalled();
     });
 
-    it("succeeds via git checkout without rmSync for tracked files", async () => {
-        execFileSyncMock.mockReturnValueOnce(undefined);
+    it("succeeds via git checkout without rm for tracked files", async () => {
+        execFileSuccess("");
         setup();
         const result = await handlers.get("git:undo")?.({}, "C:/repo", "src/app.ts");
         expect(result).toBeUndefined();
-        expect(execFileSyncMock).toHaveBeenCalledWith(
-            "git",
-            ["checkout", "--", "src/app.ts"],
-            expect.objectContaining({ cwd: expect.stringMatching(/[\\/]repo$/) }),
-        );
-        expect(rmSyncMock).not.toHaveBeenCalled();
+        // execFile 以回调形式调用: (file, args, options, callback)。
+        const call = execFileMock.mock.calls[0];
+        expect(call?.[0]).toBe("git");
+        expect(call?.[1]).toEqual(["checkout", "--", "src/app.ts"]);
+        expect(call?.[2]).toEqual(expect.objectContaining({
+            cwd: expect.stringMatching(/[\\/]repo$/),
+            timeout: 10_000,
+        }));
+        expect(rmMock).not.toHaveBeenCalled();
     });
 });

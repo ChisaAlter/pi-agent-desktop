@@ -336,6 +336,73 @@ describe("LongHorizonDatabase", () => {
         expect(version2).toBe(3);
     });
 
+    it("recovers from the old v2 crash window (task committed, user_version still 1)", async () => {
+        // Pre-fix versions committed the schema rename but recorded
+        // `PRAGMA user_version` outside the transaction. A crash between the
+        // two left `task` present with user_version = 1; the re-run used to
+        // fail on `ALTER TABLE task_new RENAME TO task` and break startup.
+        const dir = mkdtempSync(join(tmpdir(), "pi-lh-crash-window-"));
+        dirs.push(dir);
+        const dbPath = join(dir, "long-horizon.db");
+
+        const seed = new DatabaseSync(dbPath);
+        seed.exec("PRAGMA foreign_keys = ON;");
+        seed.exec(`
+            CREATE TABLE task (
+                id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                parent_task_id TEXT,
+                status TEXT NOT NULL,
+                summary TEXT NOT NULL,
+                owner TEXT,
+                created_at INTEGER NOT NULL,
+                last_event_at INTEGER NOT NULL,
+                ended_at INTEGER,
+                cleanup_after INTEGER,
+                source TEXT,
+                workspace_id TEXT,
+                agent_id TEXT,
+                agent_key TEXT,
+                ordinal INTEGER,
+                PRIMARY KEY (session_id, id)
+            );
+            CREATE TABLE task_event (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                at INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                summary TEXT,
+                FOREIGN KEY (session_id, task_id) REFERENCES task(session_id, id) ON DELETE CASCADE
+            );
+        `);
+        const now = Date.now();
+        seed.prepare(
+            `INSERT INTO task (id, session_id, status, summary, created_at, last_event_at, source, workspace_id, agent_key, ordinal)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run("T1", "ws1", "in_progress", "survivor", now, now, "goal", "ws1", "__default__", 0);
+        seed.exec("PRAGMA user_version = 1;");
+        seed.close();
+
+        // Reopening must not throw, must keep the migrated rows, and end at v3.
+        const db = new LongHorizonDatabase(dir);
+        await db.close();
+
+        const verify = openRaw(dbPath);
+        const rows = verify.prepare("SELECT id, summary FROM task ORDER BY id").all() as Array<{
+            id: string; summary: string;
+        }>;
+        const version = (verify.prepare("PRAGMA user_version").get() as { user_version: number }).user_version;
+        const staging = verify.prepare(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='task_new'"
+        ).get() as { name?: string } | undefined;
+        verify.close();
+
+        expect(rows).toEqual([{ id: "T1", summary: "survivor" }]);
+        expect(version).toBe(3);
+        expect(staging).toBeUndefined();
+    });
+
     it("creates new schema with task + task_event tables and indexes on fresh DB", async () => {
         const dir = mkdtempSync(join(tmpdir(), "pi-lh-fresh-"));
         dirs.push(dir);

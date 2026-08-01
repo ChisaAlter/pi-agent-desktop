@@ -272,8 +272,10 @@ describe("git-service protected path policy", () => {
     it("parses -z porcelain renames and untracked as added for changed files", async () => {
         mockResults.push(
             "C:/repo\n",
-            // XY path\0 for rename uses next token as destination; trailing \0
-            "R  old-name.ts\0src/new-name.ts\0?? src/untracked.ts\0M  src/mod.ts\0",
+            // Real `git status -z --porcelain` rename output: "R  dest\0src\0"
+            // (destination first, ORIGINAL path second). Trailing \0 from the
+            // final entry is dropped by the parser.
+            "R  src/new-name.ts\0old-name.ts\0?? src/untracked.ts\0M  src/mod.ts\0",
         );
         const files = await gitChangedFiles("C:/repo");
         expect(Array.isArray(files)).toBe(true);
@@ -285,6 +287,8 @@ describe("git-service protected path policy", () => {
                 expect.objectContaining({ path: "C:/repo/src/mod.ts", status: "modified" }),
             ]),
         );
+        // The ORIGINAL path token must never surface as a changed file.
+        expect(files.some((f) => f.path.endsWith("old-name.ts"))).toBe(false);
         expect(files.every((f) => !f.path.includes("\\"))).toBe(true);
     });
 
@@ -340,7 +344,9 @@ describe("git-service protected path policy", () => {
     it("maps -z porcelain deleted and copy-rename destination", async () => {
         mockResults.push(
             "C:/repo\n",
-            " D src/gone.ts\0R  src/old.ts\0src/renamed.ts\0",
+            // Real git -z output: rename entry "R  dest\0src\0" — the source
+            // (old) path is the SECOND token and must not be reported.
+            " D src/gone.ts\0R  src/renamed.ts\0src/old.ts\0",
         );
         const files = await gitChangedFiles("C:/repo");
         expect(Array.isArray(files)).toBe(true);

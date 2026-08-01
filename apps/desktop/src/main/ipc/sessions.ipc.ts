@@ -35,6 +35,7 @@ export interface SessionsIpcDeps {
     onSessionUpdated?: (session: Session) => void;
     onSessionDeleted?: (sessionId: string) => void;
     renameNativeSession?: (sessionId: string, title: string) => Promise<void>;
+    deleteNativeSession?: (sessionId: string) => Promise<void>;
     forkNativeSession?: (input: {
         sourceSessionId: string;
         targetSessionId: string;
@@ -51,6 +52,22 @@ function toMessage(raw: unknown): Message {
 
 function toToolCallUpdate(raw: unknown): Partial<ToolCall> {
     return raw as Partial<ToolCall>;
+}
+
+const sessionOperationTails = new Map<string, Promise<void>>();
+
+async function withSessionLock<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
+    const previous = sessionOperationTails.get(sessionId) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => { release = resolve; });
+    sessionOperationTails.set(sessionId, current);
+    await previous.catch(() => undefined);
+    try {
+        return await operation();
+    } finally {
+        release();
+        if (sessionOperationTails.get(sessionId) === current) sessionOperationTails.delete(sessionId);
+    }
 }
 
 export function setupSessionsIpc(deps: SessionsIpcDeps): void {
@@ -141,35 +158,57 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
     ipcMain.handle(
         "session:rename",
         async (_event, id: string, title: string) => {
-            try {
-                const session = await repository.renameSession(id, title);
-                await deps.renameNativeSession?.(id, title);
-                deps.onSessionUpdated?.(session);
-                return session;
-            } catch (err) {
-                log.error("[sessions.ipc] session:rename failed:", err);
-                return ipcError(
-                    "ipcErrors.session.renameFailed",
-                    `重命名会话失败: ${err instanceof Error ? err.message : String(err)}`,
-                    { id },
-                );
-            }
+            return withSessionLock(id, async () => {
+                try {
+                    const previous = await repository.getSession(id);
+                    if (!previous) throw new Error(`session not found: ${id}`);
+                    await deps.renameNativeSession?.(id, title);
+                    try {
+                        const session = await repository.renameSession(id, title);
+                        deps.onSessionUpdated?.(session);
+                        return session;
+                    } catch (err) {
+                        if (deps.renameNativeSession) {
+                            try {
+                                await deps.renameNativeSession(id, previous.title);
+                            } catch (rollbackErr) {
+                                log.warn("[sessions.ipc] native rename rollback failed:", id, rollbackErr);
+                            }
+                        }
+                        throw err;
+                    }
+                } catch (err) {
+                    log.error("[sessions.ipc] session:rename failed:", err);
+                    return ipcError(
+                        "ipcErrors.session.renameFailed",
+                        `重命名会话失败: ${err instanceof Error ? err.message : String(err)}`,
+                        { id },
+                    );
+                }
+            });
         },
     );
 
     ipcMain.handle("session:delete", async (_event, id: string) => {
-        try {
-            await repository.deleteSession(id);
-            deps.onSessionDeleted?.(id);
-        } catch (err) {
-            log.error("[sessions.ipc] session:delete failed:", err);
-            return ipcError(
-                "ipcErrors.session.deleteFailed",
-                `删除会话失败: ${err instanceof Error ? err.message : String(err)}`,
-                { id },
-            );
-        }
-        return undefined;
+        return withSessionLock(id, async () => {
+            try {
+                await repository.deleteSession(id);
+                deps.onSessionDeleted?.(id);
+                try {
+                    await deps.deleteNativeSession?.(id);
+                } catch (err) {
+                    log.warn("[sessions.ipc] session:delete native file cleanup failed:", id, err);
+                }
+            } catch (err) {
+                log.error("[sessions.ipc] session:delete failed:", err);
+                return ipcError(
+                    "ipcErrors.session.deleteFailed",
+                    `删除会话失败: ${err instanceof Error ? err.message : String(err)}`,
+                    { id },
+                );
+            }
+            return undefined;
+        });
     });
 
     ipcMain.handle("session:archive", async (_event, id: string, archived: boolean) => {

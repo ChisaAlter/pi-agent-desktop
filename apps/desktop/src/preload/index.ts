@@ -140,7 +140,7 @@ const piAPI: PiAPI = {
     listWorkspaces: () => ipcRenderer.invoke("workspace:list") as Promise<Workspace[] | IpcError>,
     createWorkspace: (name, path) => ipcRenderer.invoke("workspace:create", name, path) as Promise<Workspace | IpcError>,
     createEmptyWorkspace: (name, parentPath) => ipcRenderer.invoke("workspace:create-empty", name, parentPath) as Promise<Workspace | IpcError>,
-    deleteWorkspace: (id) => ipcRenderer.invoke("workspace:delete", id) as Promise<void>,
+    deleteWorkspace: (id) => ipcRenderer.invoke("workspace:delete", id) as Promise<{ success: true } | IpcError>,
     selectWorkspace: (path) => ipcRenderer.invoke("workspace:select", path) as Promise<void | IpcError>,
     selectDirectory: () => ipcRenderer.invoke("workspace:select-directory") as Promise<string | null | IpcError>,
 
@@ -153,8 +153,8 @@ const piAPI: PiAPI = {
     createSession: (workspaceId, title, id) => ipcRenderer.invoke("session:create", workspaceId, title, id) as Promise<Session>,
     forkSessionContext: (sourceSessionId, targetSessionId, workspaceId, fromMessageId) =>
         ipcRenderer.invoke("session:fork-context", sourceSessionId, targetSessionId, workspaceId, fromMessageId) as Promise<void | IpcError>,
-    renameSession: (id, title) => ipcRenderer.invoke("session:rename", id, title) as Promise<Session>,
-    deleteSession: (id) => ipcRenderer.invoke("session:delete", id) as Promise<void>,
+    renameSession: (id, title) => ipcRenderer.invoke("session:rename", id, title) as Promise<Session | IpcError>,
+    deleteSession: (id) => ipcRenderer.invoke("session:delete", id) as Promise<void | IpcError>,
     archiveSession: (id, archived) => ipcRenderer.invoke("session:archive", id, archived) as Promise<Session | IpcError>,
     updateSessionMetadata: (id, updates) =>
         ipcRenderer.invoke("session:update-metadata", id, updates) as Promise<Session | IpcError>,

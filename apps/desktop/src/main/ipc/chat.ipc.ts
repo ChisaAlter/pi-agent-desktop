@@ -4,9 +4,8 @@
 // TODO(Phase 2 Task 19.1): split into chat-slash.ipc.ts / chat-plan.ipc.ts / chat-runtime.ipc.ts / chat-prompt.ipc.ts / chat-git.ipc.ts (deferred — high import-update risk)
 
 import { clipboard, ipcMain, BrowserWindow, type BrowserWindow as BrowserWindowType } from "electron";
-import { execFileSync } from "child_process";
-import { rmSync } from "fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { execFile } from "child_process";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "path";
 import log from "electron-log/main";
 import { ipcError, normalizeLongHorizonSettings } from "@shared";
@@ -1208,7 +1207,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
     });
 
     // M1: Git undo (撤销 file_edit 类改动)
-    // 用 execFileSync 参数化 (避免 shell 注入)
+    // 用 execFile 参数化 (避免 shell 注入, 且不阻塞主进程)
     ipcMain.handle("git:undo", async (_event, workspacePath: string, filePath: string) => {
         try {
             gitUndoSchema.parse([workspacePath, filePath]);
@@ -1238,18 +1237,27 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             return ipcError("ipcErrors.chat.gitUndoInvalid", "目标路径超出工作区");
         }
 
+        // 回调包装的异步 git 调用: 带 10s 超时, 避免 git 挂起 (锁文件/网络盘)
+        // 时阻塞整个主进程。回调形式同时规避 execFile Promise 重载的类型歧义。
+        const runGit = (args: string[]): Promise<string> => new Promise((resolve, reject) => {
+            execFile("git", args, { cwd: workspaceRoot, timeout: 10_000 }, (err, stdout) => {
+                if (err) reject(err);
+                else resolve(String(stdout ?? ""));
+            });
+        });
+
         try {
-            // 先试 git checkout (tracked file)
-            execFileSync("git", ["checkout", "--", gitPath], { cwd: workspaceRoot, stdio: "ignore" });
+            // 先试 git checkout (tracked file)。
+            await runGit(["checkout", "--", gitPath]);
         } catch {
             // fallback: remove an untracked new file using Node APIs under the same workspace guard.
             try {
-                const status = execFileSync("git", ["status", "--porcelain", "--", gitPath], { cwd: workspaceRoot, encoding: "utf-8" }).trim();
-                if (!status.startsWith("?? ")) {
-                    log.warn(`git:undo refused to delete tracked/modified file: ${gitPath} (status=${status})`);
+                const status = await runGit(["status", "--porcelain", "--", gitPath]);
+                if (!status.trim().startsWith("?? ")) {
+                    log.warn(`git:undo refused to delete tracked/modified file: ${gitPath} (status=${status.trim()})`);
                     return ipcError("ipcErrors.chat.gitUndoNotUntracked", "目标文件不是 untracked,已拒绝删除");
                 }
-                rmSync(join(workspaceRoot, gitPath), { force: true });
+                await rm(join(workspaceRoot, gitPath), { force: true });
             } catch (err) {
                 log.error("[chat.ipc] git:undo failed:", err);
                 return ipcError(

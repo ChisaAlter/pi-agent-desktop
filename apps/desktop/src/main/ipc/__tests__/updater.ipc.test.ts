@@ -113,3 +113,27 @@ describe("setupUpdaterIpc", () => {
         expect(service.installUpdate).toHaveBeenCalledTimes(1);
     });
 });
+
+describe("isNewerVersion prerelease comparison", () => {
+    it("compares numeric prerelease identifiers numerically (beta.10 > beta.2)", async () => {
+        const { isNewerVersion } = await import("../../services/updater");
+        expect(isNewerVersion("1.0.15-beta.10", "1.0.15-beta.2")).toBe(true);
+        expect(isNewerVersion("1.0.15-beta.2", "1.0.15-beta.10")).toBe(false);
+        expect(isNewerVersion("1.0.15-beta.2", "1.0.15-beta.2")).toBe(false);
+    });
+
+    it("treats release as newer than any prerelease of the same core version", async () => {
+        const { isNewerVersion } = await import("../../services/updater");
+        expect(isNewerVersion("1.0.15", "1.0.15-beta.10")).toBe(true);
+        expect(isNewerVersion("1.0.15-beta.10", "1.0.15")).toBe(false);
+        expect(isNewerVersion("1.0.16-beta.1", "1.0.15")).toBe(true);
+    });
+
+    it("compares non-numeric prerelease identifiers lexically and numeric < alpha", async () => {
+        const { isNewerVersion } = await import("../../services/updater");
+        expect(isNewerVersion("1.0.0-rc.1", "1.0.0-beta.9")).toBe(true);
+        // semver: 字母标识符优先级高于数字 (alpha > 1)。
+        expect(isNewerVersion("1.0.0-1", "1.0.0-alpha")).toBe(false);
+        expect(isNewerVersion("1.0.0-alpha", "1.0.0-1")).toBe(true);
+    });
+});
