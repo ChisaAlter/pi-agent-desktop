@@ -48,3 +48,19 @@ jobs:
       - name: Test
         shell: pwsh
         run: pnpm -r test
+
+      - name: Coverage
+        shell: pwsh
+        run: pnpm --filter @pi-desktop/desktop test:coverage
+
+      - name: Verify documentation facts
+        shell: pwsh
+        run: pnpm verify:docs
+
+      - name: Build desktop
+        shell: pwsh
+        run: pnpm --filter @pi-desktop/desktop build
+
+      - name: Smoke test main runtime
+        shell: pwsh
+        run: node scripts/smoke-main-runtime.cjs

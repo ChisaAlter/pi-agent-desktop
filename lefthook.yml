@@ -12,6 +12,8 @@ pre-push:
   commands:
     test:
       run: pnpm --filter @pi-desktop/desktop test
+    coverage:
+      run: pnpm --filter @pi-desktop/desktop test:coverage
 
 commit-msg:
   commands:

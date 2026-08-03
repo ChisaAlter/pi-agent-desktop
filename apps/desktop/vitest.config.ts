@@ -19,7 +19,13 @@ export default defineConfig({
             reporter: ["text", "html", "lcov"],
             include: ["src/**/*.{ts,tsx}", "extensions/**/*.{ts,tsx}"],
             exclude: ["**/__tests__/**", "**/*.test.*", "**/*.config.*"],
-            // TODO: add thresholds after coverage improves
+            thresholds: {
+                // Conservative baseline from the current 301-file suite.
+                statements: 75,
+                branches: 65,
+                functions: 75,
+                lines: 77,
+            },
         },
     },
     resolve: {

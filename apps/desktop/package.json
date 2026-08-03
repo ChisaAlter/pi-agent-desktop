@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src extensions --ext .ts,.tsx",
     "test": "vitest --run",
+    "test:coverage": "vitest --run --coverage",
     "e2e": "playwright test",
     "e2e:build": "electron-vite build && playwright test"
   },
@@ -58,6 +59,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.0.0",
+    "@vitest/coverage-v8": "4.1.8",
     "autoprefixer": "^10.4.0",
     "axe-core": "^4.11.4",
     "electron": "41.2.0",
