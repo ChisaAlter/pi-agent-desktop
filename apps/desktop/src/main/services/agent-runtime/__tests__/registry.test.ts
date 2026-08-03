@@ -124,6 +124,19 @@ describe("AgentRuntimeRegistry", () => {
         });
     });
 
+    it("queries agents by workspace and session without conflating ids", async () => {
+        const defaultAgent = await registry.create({ workspaceId: "ws_1", title: "Default" });
+        const sessionAgent = await registry.create({ workspaceId: "ws_1", title: "Session", sessionId: "session-1" });
+
+        expect(registry.listByWorkspace("ws_1").map((agent) => agent.id)).toEqual([defaultAgent.id, sessionAgent.id]);
+        expect(registry.listByWorkspace("missing")).toEqual([]);
+        expect(registry.findBySessionId("session-1")?.id).toBe(sessionAgent.id);
+        expect(registry.findByWorkspaceAndSession("ws_1", "session-1")?.id).toBe(sessionAgent.id);
+        expect(registry.findByWorkspaceAndSession("ws-other", "session-1")).toBeUndefined();
+        expect(registry.resolveActiveAgent("ws_1", { sessionId: "session-1" })?.id).toBe(sessionAgent.id);
+        expect(registry.resolveActiveAgent("ws_1")?.id).toBe(defaultAgent.id);
+    });
+
     it("creates independent agents for the same workspace", async () => {
         const first = await registry.create({ workspaceId: "ws_1", title: "A" });
         const second = await registry.create({ workspaceId: "ws_1", title: "B" });

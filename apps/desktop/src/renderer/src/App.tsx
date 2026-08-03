@@ -54,6 +54,7 @@ import type { TerminalCommandMode } from "./utils/terminal-command";
 import { isIpcError, type DeferredEdit, type SettingsWindowTab } from "@shared";
 import { applyTheme, watchSystemTheme, type Theme } from "./utils/theme";
 import { addToast } from "./stores/toast-store";
+import { resolveActiveAgent } from "./utils/active-agent";
 
 type MainPanel = "chat" | "run" | "workbench" | "skills" | "history";
 
@@ -406,22 +407,15 @@ function AppShell(): React.ReactElement {
     // v2.0: 自动右栏 — 首条消息到达时展开, 之后由用户控制
     const prevMessageCountRef = useRef(0);
     const currentWorkspaceAgent = useMemo(
-        () => currentWorkspace
-            ? agents.find((agent) => agent.workspaceId === currentWorkspace.id)
-            : undefined,
+        () => currentWorkspace ? resolveActiveAgent(agents, currentWorkspace.id) : null,
         [agents, currentWorkspace],
     );
-    const activeChatAgent = useMemo(() => {
-        if (!currentWorkspace) return null;
-        if (currentSessionId) {
-            const sessionAgent = agents.find((agent) => agent.workspaceId === currentWorkspace.id && agent.sessionId === currentSessionId);
-            if (sessionAgent) return sessionAgent;
-        }
-        const selectedAgent = currentAgentId
-            ? agents.find((agent) => agent.id === currentAgentId && agent.workspaceId === currentWorkspace.id && !agent.sessionId)
-            : undefined;
-        return selectedAgent ?? agents.find((agent) => agent.workspaceId === currentWorkspace.id && !agent.sessionId) ?? null;
-    }, [agents, currentAgentId, currentSessionId, currentWorkspace]);
+    const activeChatAgent = useMemo(
+        () => currentWorkspace
+            ? resolveActiveAgent(agents, currentWorkspace.id, { agentId: currentAgentId, sessionId: currentSessionId })
+            : null,
+        [agents, currentAgentId, currentSessionId, currentWorkspace],
+    );
     useEffect(() => {
         window.piAPI?.send?.("desktop-overlay:set-main-context", {
             chatSurfaceActive: activePanel === "chat",

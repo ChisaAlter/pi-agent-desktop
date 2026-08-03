@@ -606,7 +606,7 @@ function setupIPC(updaterService: AppUpdaterService): void {
     // 会话时 followUp 静默 no-op, 长程目标的 inconclusive 注入失效。
     // 现在 agent 优先, piRegistry 仅作 fallback, 保证两种 runtime 都能注入。
     agentSessionLookup: (workspaceId) => {
-      const agent = agentRegistry.findDefaultAgent(workspaceId);
+      const agent = agentRegistry.resolveActiveAgent(workspaceId);
       if (agent) {
         try {
           const ws = agentRegistry.getWorkspaceSession(agent.id);
@@ -642,7 +642,7 @@ function setupIPC(updaterService: AppUpdaterService): void {
   // 再从 piRegistry 触发会造成双 judge / 重复 toast。仅在没有 agent 会话
   // 的纯 legacy 路径才让 piRegistry 触发。
   piRegistry.setOnTurnEnd((workspaceId) => {
-    if (agentRegistry.findDefaultAgent(workspaceId)) return; // agent 路径已处理
+    if (agentRegistry.resolveActiveAgent(workspaceId)) return; // agent 路径已处理
     void goalService?.onTurnEnd(workspaceId).catch((err) => {
       log.warn('[Main] GoalService.onTurnEnd failed:', err);
     });
@@ -716,7 +716,7 @@ function setupIPC(updaterService: AppUpdaterService): void {
   autoScheduler ??= new AutoScheduler({
     subagentManager,
     getWorkspaces: () => store.get('workspaces'),
-    getAgentForWorkspace: (workspaceId) => agentRegistry.findDefaultAgent(workspaceId),
+    getAgentForWorkspace: (workspaceId) => agentRegistry.resolveActiveAgent(workspaceId),
     getLongHorizonSettings: (_workspaceId) =>
       normalizeLongHorizonSettings(store.get('settings').longHorizon ?? DEFAULT_LONG_HORIZON_SETTINGS),
     spawn: createAutoSchedulerSpawnHandler(
@@ -807,20 +807,13 @@ function setupIPC(updaterService: AppUpdaterService): void {
   // 删除会话的 native JSONL 文件。先停掉绑定该会话的运行中 agent (其 SDK 写
   // 句柄在 Windows 上会锁住文件, 且会持续把旧历史写回已删除的会话), 再删文件。
   const removeNativeSessionFile = async (sessionId: string): Promise<void> => {
-    const activeAgents = agentRegistry.list().filter((agent) => agent.sessionId === sessionId);
-    for (const activeAgent of activeAgents) {
-      try {
-        agentRegistry.stop(activeAgent.id);
-      } catch (err) {
-        log.warn("[Main] failed to stop agent for removed session:", sessionId, activeAgent.id, err);
-      }
-    }
+        agentRegistry.stopBySession(sessionId);
     rmSync(resolveNativeSessionPath(app.getPath("userData"), sessionId), { force: true });
   };
   setupSessionsIpc({
     repository: sessions,
     renameNativeSession: async (sessionId, title) => {
-      const activeAgent = agentRegistry.list().find((agent) => agent.sessionId === sessionId);
+      const activeAgent = agentRegistry.findBySessionId(sessionId);
       if (activeAgent) {
         agentRegistry.getWorkspaceSession(activeAgent.id).session.setSessionName(title);
         return;
@@ -935,12 +928,15 @@ function setupIPC(updaterService: AppUpdaterService): void {
   });
 
   // Task IPC (Phase B Task 4) — task:create/list/get/start/block/unblock/done/abandon/rename
-  // workspace → session 解析: Task 1 迁移策略把 session_id 设为 workspace_id,
-  // 当前每个 workspace 只有一个活跃 session,直接用 workspaceId 作为 session_id.
-  // TODO: 当 multi-session per workspace 上线后,需要真正的 workspace → session 映射.
+  // workspace-only callers keep the legacy resolver; explicit sessionId callers
+  // are routed to the supplied native session identity and never reinterpret a
+  // workspaceId as a sessionId.
   setupTaskIpc({
     taskRegistry: taskService.getRegistry(),
-    getWorkspaceSessionId: (workspaceId: string) => workspaceId,
+    getWorkspaceSessionId: (workspaceId: string) =>
+      agentRegistry.resolveActiveAgent(workspaceId)?.sessionId ?? null,
+    resolveSessionId: (workspaceId: string, sessionId: string) =>
+      agentRegistry.findByWorkspaceAndSession(workspaceId, sessionId)?.sessionId ?? null,
   });
 
 }

@@ -451,6 +451,16 @@ export const agentsIdSchema = z.tuple([
     z.string().min(1, "agentId must be a non-empty string"),
 ]);
 
+export const agentsWorkspaceSessionSchema = z.tuple([
+    z.string().min(1, "workspaceId must be a non-empty string"),
+    z.string().min(1, "sessionId must be a non-empty string"),
+]);
+
+export const agentsActiveSelectionSchema = z.object({
+    agentId: z.string().min(1).optional(),
+    sessionId: z.string().min(1).optional(),
+}).strict().optional();
+
 export const agentsSetThinkingSchema = z.tuple([
     z.string().min(1, "agentId must be a non-empty string"),
     z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]),
@@ -528,6 +538,7 @@ const TaskStatusSchema = z.enum(["open", "in_progress", "blocked", "done", "aban
 
 export const TaskCreateSchema = z.object({
     workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
+    sessionId: z.string().min(1, "sessionId must be a non-empty string").optional(),
     summary: z.string().min(1, "summary must be a non-empty string"),
     parentId: TaskIdSchema.optional(),
     owner: z.string().optional(),
@@ -535,6 +546,7 @@ export const TaskCreateSchema = z.object({
 
 export const TaskListSchema = z.object({
     workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
+    sessionId: z.string().min(1, "sessionId must be a non-empty string").optional(),
     status: TaskStatusSchema.optional(),
     includeTerminal: z.boolean().optional(),
     includeArchived: z.boolean().optional(),
@@ -542,11 +554,13 @@ export const TaskListSchema = z.object({
 
 export const TaskGetSchema = z.object({
     workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
+    sessionId: z.string().min(1, "sessionId must be a non-empty string").optional(),
     id: TaskIdSchema,
 }).strict();
 
 export const TaskStartSchema = z.object({
     workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
+    sessionId: z.string().min(1, "sessionId must be a non-empty string").optional(),
     id: TaskIdSchema,
     owner: z.string().optional(),
     eventSummary: z.string().optional(),
@@ -554,6 +568,7 @@ export const TaskStartSchema = z.object({
 
 export const TaskBlockSchema = z.object({
     workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
+    sessionId: z.string().min(1, "sessionId must be a non-empty string").optional(),
     id: TaskIdSchema,
     eventSummary: z.string().optional(),
 }).strict();
@@ -565,6 +580,7 @@ export const TaskAbandonSchema = TaskBlockSchema;
 
 export const TaskRenameSchema = z.object({
     workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
+    sessionId: z.string().min(1, "sessionId must be a non-empty string").optional(),
     id: TaskIdSchema,
     summary: z.string().min(1, "summary must be a non-empty string"),
 }).strict();

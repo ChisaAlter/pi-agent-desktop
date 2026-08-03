@@ -175,10 +175,20 @@ const piAPI: PiAPI = {
 
     // Agents workbench
     agentsList: () => ipcRenderer.invoke("agents:list") as Promise<AgentTab[]>,
+    agentsListByWorkspace: (workspaceId) => ipcRenderer.invoke("agents:list-by-workspace", workspaceId) as Promise<AgentTab[]>,
+    agentsFindBySession: (sessionId) => ipcRenderer.invoke("agents:find-by-session", sessionId) as Promise<AgentTab | undefined>,
+    agentsFindByWorkspaceAndSession: (workspaceId, sessionId) =>
+        ipcRenderer.invoke("agents:find-by-workspace-session", workspaceId, sessionId) as Promise<AgentTab | undefined>,
+    agentsResolveActive: (workspaceId, selection) =>
+        ipcRenderer.invoke("agents:resolve-active", workspaceId, selection) as Promise<AgentTab | undefined>,
     agentsCreate: (input) => ipcRenderer.invoke("agents:create", input) as Promise<AgentTab>,
     agentsPrompt: (input) => ipcRenderer.invoke("agents:prompt", input) as Promise<void>,
     agentsAbort: (agentId) => ipcRenderer.invoke("agents:abort", agentId) as Promise<void>,
+    agentsAbortBySession: (sessionId) => ipcRenderer.invoke("agents:abort-by-session", sessionId) as Promise<void>,
+    agentsAbortWorkspace: (workspaceId) => ipcRenderer.invoke("agents:abort-workspace", workspaceId) as Promise<void>,
     agentsStop: (agentId) => ipcRenderer.invoke("agents:stop", agentId) as Promise<void>,
+    agentsStopBySession: (sessionId) => ipcRenderer.invoke("agents:stop-by-session", sessionId) as Promise<void>,
+    agentsStopWorkspace: (workspaceId) => ipcRenderer.invoke("agents:stop-workspace", workspaceId) as Promise<void>,
     agentsRestart: (agentId) => ipcRenderer.invoke("agents:restart", agentId) as Promise<AgentTab>,
     agentsMessages: (agentId) => ipcRenderer.invoke("agents:messages", agentId) as Promise<AgentMessage[]>,
     agentsRuntimeState: (agentId) =>
@@ -216,8 +226,8 @@ const piAPI: PiAPI = {
         ipcRenderer.invoke("task:create", { workspaceId, ...input }) as Promise<TaskRecord | IpcError>,
     taskList: (workspaceId, options) =>
         ipcRenderer.invoke("task:list", options ? { workspaceId, ...options } : { workspaceId }) as Promise<TaskRecord[] | IpcError>,
-    taskGet: (workspaceId, id) =>
-        ipcRenderer.invoke("task:get", { workspaceId, id }) as Promise<TaskRecord | null | IpcError>,
+    taskGet: (workspaceId, id, sessionId) =>
+        ipcRenderer.invoke("task:get", { workspaceId, id, ...(sessionId ? { sessionId } : {}) }) as Promise<TaskRecord | null | IpcError>,
     taskStart: (workspaceId, id, options) =>
         ipcRenderer.invoke("task:start", options ? { workspaceId, id, ...options } : { workspaceId, id }) as Promise<TaskRecord | IpcError>,
     taskBlock: (workspaceId, id, options) =>

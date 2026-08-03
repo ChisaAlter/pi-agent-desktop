@@ -9,6 +9,7 @@ import { useSessionStore } from "../../stores/session-store";
 import { useAgentStore } from "../../stores/agent-store";
 import { useI18n } from "../../i18n";
 import type { TaskProgressItem, TaskStatus } from "../MiniMaxCode/TaskProgressPanel";
+import { resolveActiveAgent } from "../../utils/active-agent";
 
 interface MessageWithGeneratedUi {
   generatedUi?: GeneratedUiCard;
@@ -102,17 +103,10 @@ export function TaskOverviewPanel(): React.JSX.Element {
   const longHorizon = useSettingsStore((state) => state.settings.longHorizon);
   const currentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace());
   const { t } = useI18n();
-  const scopedAgentId = useMemo(() => {
-    if (!currentWorkspace) return undefined;
-    if (currentSessionId) {
-      const sessionAgent = agents.find((agent) => agent.workspaceId === currentWorkspace.id && agent.sessionId === currentSessionId);
-      if (sessionAgent) return sessionAgent.id;
-    }
-    const selectedAgent = currentAgentId
-      ? agents.find((agent) => agent.id === currentAgentId && agent.workspaceId === currentWorkspace.id)
-      : undefined;
-    return selectedAgent?.id ?? agents.find((agent) => agent.workspaceId === currentWorkspace.id && !agent.sessionId)?.id;
-  }, [agents, currentAgentId, currentSessionId, currentWorkspace]);
+  const scopedAgentId = useMemo(
+    () => resolveActiveAgent(agents, currentWorkspace?.id, { agentId: currentAgentId, sessionId: currentSessionId })?.id,
+    [agents, currentAgentId, currentSessionId, currentWorkspace],
+  );
   const { tasks: scopedRegistryTasks } = useTaskProgress(scopedAgentId);
   // Workspace-wide fallback: plan/workflow rows are often written with agentId,
   // but after tab switches or agent rebinding the scoped id may not match.

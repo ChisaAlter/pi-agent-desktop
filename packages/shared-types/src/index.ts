@@ -1027,8 +1027,9 @@ export interface PlanListOptions {
 // 主进程 TaskRegistry 落盘 task / task_event 表 (SQLite), IPC 层用这些
 // 类型与渲染层交换数据. shared-types 是权威源,主进程通过 @shared 引入.
 // 字段名 camelCase, 与 task-registry.ts 的 TaskRecord 结构一致.
-// 注意: input/options 类型不含 sessionId/id — 这些由 IPC handler 从
-// workspaceId 参数解析后注入 registry 调用.
+// Task input/options may carry an explicit sessionId for compatibility with
+// multi-session callers. IPC handlers resolve it explicitly; workspace-only
+// callers continue through the legacy workspace resolver.
 
 export type TaskStatus = "open" | "in_progress" | "blocked" | "done" | "abandoned";
 export type TaskEventKind =
@@ -1058,25 +1059,35 @@ export interface TaskCreateInput {
     summary: string;
     parentId?: string;
     owner?: string;
+    /** Optional explicit native session identity for IPC callers. */
+    sessionId?: string;
 }
 
 export interface TaskListOptions {
     status?: TaskStatus;
     includeTerminal?: boolean;
     includeArchived?: boolean;
+    /** Optional explicit native session identity for IPC callers. */
+    sessionId?: string;
 }
 
 export interface TaskStartOptions {
     owner?: string;
     eventSummary?: string;
+    /** Optional explicit native session identity for IPC callers. */
+    sessionId?: string;
 }
 
 export interface TaskBlockOptions {
     eventSummary?: string;
+    /** Optional explicit native session identity for IPC callers. */
+    sessionId?: string;
 }
 
 export interface TaskRenameInput {
     summary: string;
+    /** Optional explicit native session identity for IPC callers. */
+    sessionId?: string;
 }
 
 // ── Pi Driver ─────────────────────────────────────────────────────
@@ -1356,6 +1367,11 @@ export function isSettingsWindowTab(value: unknown): value is SettingsWindowTab 
     return SETTINGS_WINDOW_TABS.some((tab) => tab === value);
 }
 
+export interface AgentRuntimeSelection {
+    agentId?: string;
+    sessionId?: string;
+}
+
 export interface AgentPermissionSyncResult {
     activeTools: string[];
     deniedTools: string[];
@@ -1455,10 +1471,18 @@ export interface PiAPI {
 
     // Agents workbench
     agentsList(): Promise<AgentTab[]>;
+    agentsListByWorkspace(workspaceId: string): Promise<AgentTab[]>;
+    agentsFindBySession(sessionId: string): Promise<AgentTab | undefined>;
+    agentsFindByWorkspaceAndSession(workspaceId: string, sessionId: string): Promise<AgentTab | undefined>;
+    agentsResolveActive(workspaceId: string, selection?: AgentRuntimeSelection): Promise<AgentTab | undefined>;
     agentsCreate(input: CreateAgentInput): Promise<AgentTab>;
     agentsPrompt(input: SendAgentPromptInput): Promise<void>;
     agentsAbort(agentId: string): Promise<void>;
+    agentsAbortBySession(sessionId: string): Promise<void>;
+    agentsAbortWorkspace(workspaceId: string): Promise<void>;
     agentsStop(agentId: string): Promise<void>;
+    agentsStopBySession(sessionId: string): Promise<void>;
+    agentsStopWorkspace(workspaceId: string): Promise<void>;
     agentsRestart(agentId: string): Promise<AgentTab>;
     agentsMessages(agentId: string): Promise<AgentMessage[]>;
     agentsRuntimeState(agentId: string): Promise<AgentRuntimeState>;
@@ -1483,7 +1507,7 @@ export interface PiAPI {
     // session_id = workspace_id).
     taskCreate(workspaceId: string, input: TaskCreateInput): Promise<TaskRecord | IpcError>;
     taskList(workspaceId: string, options?: TaskListOptions): Promise<TaskRecord[] | IpcError>;
-    taskGet(workspaceId: string, id: string): Promise<TaskRecord | null | IpcError>;
+    taskGet(workspaceId: string, id: string, sessionId?: string): Promise<TaskRecord | null | IpcError>;
     taskStart(workspaceId: string, id: string, options?: TaskStartOptions): Promise<TaskRecord | IpcError>;
     taskBlock(workspaceId: string, id: string, options?: TaskBlockOptions): Promise<TaskRecord | IpcError>;
     taskUnblock(workspaceId: string, id: string, options?: TaskBlockOptions): Promise<TaskRecord | IpcError>;

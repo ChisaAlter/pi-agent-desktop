@@ -621,8 +621,10 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
     };
     const getSlashSession = async (ws: WorkspaceLite, agentId?: string): Promise<SlashSession> => {
         if (deps.agentRegistry) {
-            let agent = agentId ? deps.agentRegistry.list().find((item) => item.id === agentId) : undefined;
-            agent ??= deps.agentRegistry.findDefaultAgent(ws.id);
+            let agent = agentId
+                ? deps.agentRegistry.list().find((item) => item.id === agentId && item.workspaceId === ws.id)
+                : undefined;
+            agent ??= deps.agentRegistry.resolveActiveAgent(ws.id);
             if (!agent) {
                 agent = await deps.agentRegistry.create({
                     workspaceId: ws.id,
@@ -644,7 +646,8 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
     // 监听 renderer 响应审批
     ipcMain.on("approval:respond", (event, requestId: string, approved: boolean) => {
         if (isFromSettings(event.sender)) return;
-        resolveApprovalRequest(requestId, approved);
+        if (typeof requestId !== "string" || !requestId || typeof approved !== "boolean") return;
+        resolveApprovalRequest(requestId, approved, event.sender);
     });
 
     ipcMain.handle("permission:set-mode", async (_event, mode: PermissionMode) => {
@@ -655,7 +658,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         "permission:respond",
         (event, requestId: string, response: ExtensionUiResponse | PermissionDecision | boolean | string) => {
             if (isFromSettings(event.sender)) return;
-            resolveExtensionUiRequest(requestId, response);
+            resolveExtensionUiRequest(requestId, response, event.sender);
         },
     );
 
@@ -920,7 +923,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
 
     ipcMain.on("plan:respond", (event, requestId: string, decision: string, text?: string) => {
         if (isFromSettings(event.sender)) return;
-        resolveExtensionUiRequest(requestId, { requestId, value: decision === "execute" ? true : text ?? "" });
+        resolveExtensionUiRequest(requestId, { requestId, value: decision === "execute" ? true : text ?? "" }, event.sender);
     });
 
     ipcMain.handle("pi:list-slash-commands", async (_event, workspaceId: string, agentId?: string, _rawMode?: AgentMode) => {
@@ -1154,7 +1157,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
 
         try {
             if (deps.agentRegistry) {
-                let agent = deps.agentRegistry.findDefaultAgent(ws.id);
+                let agent = deps.agentRegistry.resolveActiveAgent(ws.id);
                 if (!agent) {
                     agent = await deps.agentRegistry.create({
                         workspaceId: ws.id,
@@ -1196,7 +1199,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             );
         }
         if (deps.agentRegistry) {
-            const agent = deps.agentRegistry.findDefaultAgent(ws.id);
+            const agent = deps.agentRegistry.resolveActiveAgent(ws.id);
             if (agent) await deps.agentRegistry.abort(agent.id);
             return undefined;
         }

@@ -133,6 +133,46 @@ function promptFailureDetails(error: unknown): string {
         return [...this.runtimes.values()].map((runtime) => ({ ...runtime.tab }));
     }
 
+    /** Return all live runtimes owned by a workspace. */
+    listByWorkspace(workspaceId: string): AgentTab[] {
+        return this.list().filter((agent) => agent.workspaceId === workspaceId);
+    }
+
+    /** Find the first live runtime bound to a persisted desktop session. */
+    findBySessionId(sessionId: string): AgentTab | undefined {
+        return this.list().find((agent) => agent.sessionId === sessionId);
+    }
+
+    /** Find the runtime for one workspace/session pair. */
+    findByWorkspaceAndSession(workspaceId: string, sessionId: string): AgentTab | undefined {
+        return this.list().find((agent) => agent.workspaceId === workspaceId && agent.sessionId === sessionId);
+    }
+
+    /**
+     * Resolve the runtime used by a workspace surface.
+     *
+     * Selection is deliberately deterministic: an explicit agent id wins,
+     * then an exact persisted session match, then the workspace's sessionless
+     * default agent. An agent from another workspace is never returned.
+     */
+    resolveActiveAgent(
+        workspaceId: string,
+        selection: { agentId?: string; sessionId?: string } | string = {},
+    ): AgentTab | undefined {
+        const input = typeof selection === "string" ? { sessionId: selection } : selection;
+        if (input.agentId) {
+            const selected = this.list().find((agent) =>
+                agent.id === input.agentId && agent.workspaceId === workspaceId,
+            );
+            if (selected) return selected;
+        }
+        if (input.sessionId) {
+            const sessionAgent = this.findByWorkspaceAndSession(workspaceId, input.sessionId);
+            if (sessionAgent) return sessionAgent;
+        }
+        return this.listByWorkspace(workspaceId).find((agent) => !agent.sessionId);
+    }
+
     async create(input: CreateAgentInput): Promise<AgentTab> {
         // 无 sessionId 的显式 create 允许同 workspace 创建多个独立 agent。
         // 只有具有明确 session 身份的请求才需要 in-flight 去重。
@@ -350,6 +390,16 @@ function promptFailureDetails(error: unknown): string {
         this.emitState();
     }
 
+    /** Abort all live runtimes bound to a persisted session, retaining them. */
+    async abortBySession(sessionId: string): Promise<void> {
+        await Promise.all(this.list().filter((agent) => agent.sessionId === sessionId).map((agent) => this.abort(agent.id)));
+    }
+
+    /** Abort all live runtimes in a workspace, retaining their runtime records. */
+    async abortWorkspace(workspaceId: string): Promise<void> {
+        await Promise.all(this.listByWorkspace(workspaceId).map((agent) => this.abort(agent.id)));
+    }
+
     stop(agentId: string): void {
         const runtime = this.runtimes.get(agentId);
         if (!runtime) return;
@@ -360,6 +410,21 @@ function promptFailureDetails(error: unknown): string {
         this.runtimes.delete(agentId);
         this.emitState();
         this.disposeSubagentForAgent(agentId);
+    }
+
+    /** Dispose all live runtimes bound to a persisted session. */
+    stopBySession(sessionId: string): void {
+        for (const agent of this.list()) {
+            if (agent.sessionId === sessionId) this.stop(agent.id);
+        }
+    }
+
+    /** Dispose all live runtimes in a workspace. */
+    stopWorkspace(workspaceId: string): void {
+        this.invalidateWorkspace(workspaceId);
+        for (const agent of this.listByWorkspace(workspaceId)) {
+            this.stop(agent.id);
+        }
     }
 
     async restart(agentId: string): Promise<AgentTab> {
@@ -441,18 +506,12 @@ function promptFailureDetails(error: unknown): string {
     }
 
     findDefaultAgent(workspaceId: string): AgentTab | undefined {
-        return this.list().find((agent) => agent.workspaceId === workspaceId);
+        return this.resolveActiveAgent(workspaceId);
     }
 
-    /** 停止并释放某 workspace 下所有 agent (用于 workspace:delete) */
+    /** 停止并释放某 workspace 下所有 agent (用于 workspace:delete). */
     disposeWorkspace(workspaceId: string): void {
-        this.invalidateWorkspace(workspaceId);
-        for (const agentId of [...this.runtimes.keys()]) {
-            const runtime = this.runtimes.get(agentId);
-            if (runtime?.workspace.id === workspaceId) {
-                this.stop(agentId);
-            }
-        }
+        this.stopWorkspace(workspaceId);
     }
 
     disposeAll(): void {

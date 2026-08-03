@@ -23,6 +23,7 @@ import { buildPlanExecutionPrompt } from './plan-execution-prompt';
 import { usePlanSyncEffect } from './hooks/usePlanSyncEffect';
 import { MINIMAX_CHROME_ICON_BUTTON_CLASSNAME } from '../MiniMaxCode/chromeButton';
 import { contentWithGeneratedUiText } from '../../utils/generated-ui';
+import { resolveActiveAgent } from '../../utils/active-agent';
 
 // Ref-based callback that always sees the latest state but has stable identity.
 // Used to avoid stale closures (e.g. handleStop reading an outdated messages array).
@@ -263,17 +264,12 @@ export function ChatView({
   const currentAgentId = useAgentStore((state) => state.currentAgentId);
   const currentSessionId = useSessionStore((state) => state.currentSessionId);
   const createAgent = useAgentStore((state) => state.createAgent);
-  const currentAgent = useMemo(() => {
-    if (!currentWorkspace) return null;
-    if (currentSessionId) {
-      const sessionAgent = agents.find((agent) => agent.workspaceId === currentWorkspace.id && agent.sessionId === currentSessionId);
-      if (sessionAgent) return sessionAgent;
-    }
-    const selectedAgent = currentAgentId
-      ? agents.find((agent) => agent.id === currentAgentId && agent.workspaceId === currentWorkspace.id && !agent.sessionId)
-      : undefined;
-    return selectedAgent ?? agents.find((agent) => agent.workspaceId === currentWorkspace.id && !agent.sessionId) ?? null;
-  }, [agents, currentAgentId, currentSessionId, currentWorkspace]);
+  const currentAgent = useMemo(
+    () => currentWorkspace
+      ? resolveActiveAgent(agents, currentWorkspace.id, { agentId: currentAgentId, sessionId: currentSessionId })
+      : null,
+    [agents, currentAgentId, currentSessionId, currentWorkspace],
+  );
   const agentId = currentAgent?.id ?? null;
   const {
     isStreaming,
