@@ -3,12 +3,14 @@
 // Phase 2 Task 17.3: pending map is isolated per workspaceId to prevent
 // cross-workspace state corruption when multiple windows are open.
 
-import { BrowserWindow } from "electron";
+import { BrowserWindow, type WebContents } from "electron";
 import { randomUUID } from "crypto";
 
 interface PendingRequest {
     resolve: (value: boolean) => void;
     timer: NodeJS.Timeout;
+    /** Renderer that received the request; responses must come from it. */
+    sender: WebContents;
 }
 
 // Per-workspaceId pending map. Keyed by workspaceId; each inner Map is keyed
@@ -83,6 +85,7 @@ export function requestApproval(req: ApprovalRequestPayload): Promise<boolean> {
     const workspaceId = req.workspaceId ?? "";
     const win = resolveWindowForWorkspace(workspaceId);
     if (!win) return Promise.resolve(false);
+    const sender = win.webContents;
 
     const map = getWorkspaceApprovals(workspaceId);
 
@@ -92,10 +95,10 @@ export function requestApproval(req: ApprovalRequestPayload): Promise<boolean> {
             resolve(false); // 超时默认拒绝 (安全侧)
         }, req.timeoutMs ?? 60_000);
 
-        map.set(requestId, { resolve, timer });
+        map.set(requestId, { resolve, timer, sender });
 
         try {
-            win.webContents.send("approval:request", {
+            sender.send("approval:request", {
                 requestId,
                 method: req.method,
                 title: req.title,
@@ -112,10 +115,11 @@ export function requestApproval(req: ApprovalRequestPayload): Promise<boolean> {
 }
 
 /** Renderer 调此函数响应审批 */
-export function resolveApprovalRequest(requestId: string, approved: boolean): void {
+export function resolveApprovalRequest(requestId: string, approved: boolean, sender?: WebContents): void {
     const found = findPending(requestId);
     if (!found) return;
     const { pending, map } = found;
+    if (sender && sender !== pending.sender) return;
     clearTimeout(pending.timer);
     map.delete(requestId);
     pending.resolve(approved);

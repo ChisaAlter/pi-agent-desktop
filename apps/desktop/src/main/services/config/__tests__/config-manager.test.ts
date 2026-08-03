@@ -25,6 +25,70 @@ describe("ConfigManager", () => {
         await expect(manager.getSettingsConfig()).resolves.toMatchObject({ parsed: {} });
     });
 
+    it("redacts auth secrets for UI reads and preserves them when saving redacted values", async () => {
+        await manager.saveAuthConfig({ openai: { type: "api_key", key: "sk-secret" } });
+        const redacted = await manager.getAuthConfigRedacted();
+        expect(redacted.parsed).toEqual({ openai: { type: "api_key", key: "[REDACTED]" } });
+        expect(redacted.raw).not.toContain("sk-secret");
+
+        await expect(manager.saveAuthConfig(redacted.parsed)).resolves.toEqual({ valid: true });
+        await expect(manager.getAuthConfig()).resolves.toMatchObject({
+            parsed: { openai: { key: "sk-secret" } },
+        });
+    });
+
+    it("redacts models.json secrets and preserves them when saving redacted values", async () => {
+        await manager.saveModelsConfig({
+            providers: {
+                openai: {
+                    name: "OpenAI",
+                    baseUrl: "https://api.openai.com/v1",
+                    apiKey: "sk-provider-secret",
+                    headers: { Authorization: "Bearer sk-header-secret", "X-Custom": "plain" },
+                    models: [
+                        { id: "gpt-4o", name: "GPT-4o", apiKey: "sk-model-secret", key: "sk-model-key", headers: { "x-api-key": "sk-model-header" } },
+                    ],
+                },
+            },
+        });
+
+        const redacted = await manager.getModelsConfigRedacted();
+        expect(redacted.raw).not.toContain("sk-provider-secret");
+        expect(redacted.raw).not.toContain("sk-header-secret");
+        expect(redacted.raw).not.toContain("sk-model-secret");
+        expect(redacted.raw).not.toContain("sk-model-key");
+        expect(redacted.raw).not.toContain("sk-model-header");
+        expect(redacted.raw).toContain("X-Custom");
+
+        await expect(manager.saveModelsConfig(redacted.parsed)).resolves.toEqual({ valid: true });
+        await expect(manager.getModelsConfig()).resolves.toMatchObject({
+            parsed: {
+                providers: {
+                    openai: {
+                        apiKey: "sk-provider-secret",
+                        headers: { Authorization: "Bearer sk-header-secret", "X-Custom": "plain" },
+                        models: [{
+                            id: "gpt-4o",
+                            apiKey: "sk-model-secret",
+                            key: "sk-model-key",
+                            headers: { "x-api-key": "sk-model-header" },
+                        }],
+                    },
+                },
+            },
+        });
+    });
+
+    it("rejects saving redacted models secrets when no previous value exists", async () => {
+        const result = await manager.saveModelsConfig({
+            providers: {
+                openai: { name: "OpenAI", baseUrl: "https://api.openai.com/v1", apiKey: "[REDACTED]" },
+            },
+        });
+        expect(result.valid).toBe(false);
+        await expect(readFile(join(dir, "models.json"), "utf8")).rejects.toThrow();
+    });
+
     it("validates models.json before saving", async () => {
         const invalid = await manager.saveModelsConfig({} as any);
 
@@ -681,6 +745,65 @@ describe("ConfigManager", () => {
                     "google-generative-ai",
                 ),
             ).resolves.toEqual([{ id: "gemini-2.0-flash", name: "Gemini 2.0 Flash" }]);
+        });
+
+        it("resolves [REDACTED] keys from models.json by baseUrl and never sends the sentinel", async () => {
+            await manager.saveModelsConfig({
+                providers: {
+                    openai: {
+                        name: "OpenAI",
+                        baseUrl: "https://api.openai.com/v1",
+                        apiKey: "sk-provider-secret",
+                    },
+                },
+            });
+            const fetchMock = vi.fn(async () => ({
+                ok: true,
+                status: 200,
+                json: async () => ({ data: [{ id: "gpt-4o", name: "GPT-4o" }] }),
+            }));
+            vi.stubGlobal("fetch", fetchMock);
+
+            await expect(
+                manager.fetchModels("https://api.openai.com/v1", "[REDACTED]"),
+            ).resolves.toEqual([{ id: "gpt-4o", name: "GPT-4o" }]);
+
+            expect(fetchMock).toHaveBeenCalledWith(
+                "https://api.openai.com/v1/models",
+                expect.objectContaining({
+                    headers: expect.objectContaining({ Authorization: "Bearer sk-provider-secret" }),
+                }),
+            );
+        });
+
+        it("resolves [REDACTED] keys for Anthropic headers and never sends the sentinel", async () => {
+            await manager.saveModelsConfig({
+                providers: {
+                    anthropic: {
+                        name: "Anthropic",
+                        baseUrl: "https://api.anthropic.com",
+                        apiKey: "sk-ant-provider-secret",
+                    },
+                },
+            });
+            const fetchMock = vi.fn(async () => ({
+                ok: true,
+                status: 200,
+                json: async () => ({ data: [{ id: "claude-sonnet-4-20250514" }] }),
+            }));
+            vi.stubGlobal("fetch", fetchMock);
+
+            await manager.fetchModels("https://api.anthropic.com", "[REDACTED]", "anthropic-messages");
+
+            expect(fetchMock).toHaveBeenCalledWith(
+                "https://api.anthropic.com/models",
+                expect.objectContaining({
+                    headers: expect.objectContaining({
+                        "x-api-key": "sk-ant-provider-secret",
+                        "anthropic-version": "2023-06-01",
+                    }),
+                }),
+            );
         });
     });
 });

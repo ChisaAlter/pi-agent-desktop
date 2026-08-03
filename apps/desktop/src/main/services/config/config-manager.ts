@@ -19,9 +19,10 @@ import type {
     ProviderTestResult,
 } from "@shared";
 import type { PiAgentConfig, PiAgentModel } from "../../types";
-import { isSafeUrl } from "../ssrf-guard";
+import { isSafeUrl, fetchWithSafeRedirects } from "../ssrf-guard";
 
 const DEFAULT_PROVIDER_API = "openai-completions";
+export const REDACTED_AUTH_VALUE = "[REDACTED]";
 
 interface VisionImageInput {
     readonly name: string;
@@ -208,8 +209,47 @@ export class ConfigManager {
         return this.readJsonFile("models.json", { providers: {} });
     }
 
+    /** Return models config for UI/export without leaking duplicate provider secrets. */
+    async getModelsConfigRedacted(): Promise<{ raw: string; parsed: PiModelsFile }> {
+        const models = await this.getModelsConfig();
+        const providers = Object.fromEntries(
+            Object.entries(models.parsed.providers ?? {}).map(([providerId, provider]) => {
+                const redacted = { ...provider } as PiProviderConfig;
+                if (typeof redacted.apiKey === "string" && redacted.apiKey) {
+                    redacted.apiKey = REDACTED_AUTH_VALUE;
+                }
+                if (redacted.headers) redacted.headers = this.redactStringRecord(redacted.headers);
+                redacted.models = redacted.models?.map((model) => {
+                    const next = { ...model };
+                    if (typeof next.apiKey === "string" && next.apiKey) next.apiKey = REDACTED_AUTH_VALUE;
+                    if (typeof next.key === "string" && next.key) next.key = REDACTED_AUTH_VALUE;
+                    if (next.headers) next.headers = this.redactStringRecord(next.headers);
+                    return next;
+                });
+                return [providerId, redacted];
+            }),
+        );
+        const parsed = { ...models.parsed, providers };
+        return { raw: JSON.stringify(parsed, null, 2), parsed };
+    }
+
     getAuthConfig(): Promise<{ raw: string; parsed: PiAuthFile }> {
         return this.readJsonFile("auth.json", {});
+    }
+
+    /** Return auth config for UI only; secret values are never exposed over IPC. */
+    async getAuthConfigRedacted(): Promise<{ raw: string; parsed: PiAuthFile }> {
+        const auth = await this.getAuthConfig();
+        const parsed: PiAuthFile = {};
+        for (const [providerId, item] of Object.entries(auth.parsed)) {
+            if (!this.isPlainObject(item)) continue;
+            const secret = this.getAuthValue(item as PiAuthItem);
+            const redacted = { ...item } as PiAuthItem;
+            if (secret && Object.prototype.hasOwnProperty.call(item, "key")) redacted.key = REDACTED_AUTH_VALUE;
+            if (secret && Object.prototype.hasOwnProperty.call(item, "apiKey")) redacted.apiKey = REDACTED_AUTH_VALUE;
+            parsed[providerId] = redacted;
+        }
+        return { raw: JSON.stringify(parsed, null, 2), parsed };
     }
 
     getSettingsConfig(): Promise<{ raw: string; parsed: PiSettingsFile }> {
@@ -262,13 +302,77 @@ export class ConfigManager {
         if (!data || typeof data !== "object" || !data.providers || typeof data.providers !== "object") {
             return { valid: false, error: "models.json 必须包含 providers 对象" };
         }
-        await this.writeJsonFile("models.json", data);
+        const existing = (await this.getModelsConfig()).parsed;
+
+        for (const [providerId, incoming] of Object.entries(data.providers)) {
+            if (!this.isPlainObject(incoming)) return { valid: false, error: "models.json 的 provider 配置必须是对象" };
+            const previous = existing.providers[providerId];
+            if (incoming.apiKey === REDACTED_AUTH_VALUE && !previous?.apiKey) {
+                return { valid: false, error: "脱敏凭据只能用于保留已有密钥" };
+            }
+            const incomingModels = Array.isArray(incoming.models) ? incoming.models : [];
+            for (const model of incomingModels) {
+                if (!this.isPlainObject(model)) return { valid: false, error: "models.json 的 model 配置必须是对象" };
+                const previousModel = previous?.models?.find((item) => item.id === model.id);
+                if (model.apiKey === REDACTED_AUTH_VALUE && !previousModel?.apiKey) {
+                    return { valid: false, error: "脱敏凭据只能用于保留已有密钥" };
+                }
+                if (model.key === REDACTED_AUTH_VALUE && !previousModel?.key) {
+                    return { valid: false, error: "脱敏凭据只能用于保留已有密钥" };
+                }
+            }
+        }
+
+        const providers: Record<string, PiProviderConfig> = {};
+        for (const [providerId, incoming] of Object.entries(data.providers)) {
+            const previous = existing.providers[providerId];
+            const merged: PiProviderConfig = { ...incoming } as PiProviderConfig;
+
+            if (merged.apiKey === REDACTED_AUTH_VALUE && previous?.apiKey) {
+                merged.apiKey = previous.apiKey;
+            }
+            if (merged.headers) {
+                merged.headers = this.restoreRedactedHeaders(merged.headers, previous?.headers);
+            }
+
+            const incomingModels = Array.isArray(incoming.models) ? incoming.models : [];
+            merged.models = incomingModels.map((model) => {
+                const next = { ...model } as PiModelItem;
+                const previousModel = previous?.models?.find((item) => item.id === next.id);
+                if (next.apiKey === REDACTED_AUTH_VALUE && previousModel?.apiKey) {
+                    next.apiKey = previousModel.apiKey;
+                }
+                if (next.key === REDACTED_AUTH_VALUE && previousModel?.key) {
+                    next.key = previousModel.key;
+                }
+                if (next.headers) {
+                    next.headers = this.restoreRedactedHeaders(next.headers, previousModel?.headers);
+                }
+                return next;
+            });
+            providers[providerId] = merged;
+        }
+        await this.writeJsonFile("models.json", { ...data, providers });
         return { valid: true };
     }
 
     async saveAuthConfig(data: PiAuthFile): Promise<ConfigValidationResult> {
         if (!this.isPlainObject(data)) return { valid: false, error: "auth.json 必须是对象" };
-        await this.writeJsonFile("auth.json", data);
+        const existing = (await this.getAuthConfig()).parsed;
+        const next: PiAuthFile = {};
+        for (const [providerId, item] of Object.entries(data)) {
+            if (!this.isPlainObject(item)) return { valid: false, error: "auth.json 的 provider 配置必须是对象" };
+            const existingItem = existing[providerId];
+            const merged = { ...item } as PiAuthItem;
+            for (const field of ["key", "apiKey"] as const) {
+                if (merged[field] !== REDACTED_AUTH_VALUE) continue;
+                const previous = existingItem?.[field] ?? this.getAuthValue(existingItem);
+                if (!previous) return { valid: false, error: "脱敏凭据只能用于保留已有密钥" };
+                merged[field] = previous;
+            }
+            next[providerId] = merged;
+        }
+        await this.writeJsonFile("auth.json", next);
         return { valid: true };
     }
 
@@ -452,6 +556,25 @@ export class ConfigManager {
         );
     }
 
+    async exportConfigRedacted(): Promise<string> {
+        const [models, auth, settings] = await Promise.all([
+            this.getModelsConfigRedacted(),
+            this.getAuthConfigRedacted(),
+            this.getSettingsConfig(),
+        ]);
+        return JSON.stringify(
+            {
+                exportedAt: new Date().toISOString(),
+                files: {
+                    "models.json": models.parsed,
+                    "auth.json": auth.parsed,
+                    "settings.json": settings.parsed,
+                },
+            },
+            null,
+            2,
+        );
+    }
     async importConfig(packageJson: string): Promise<ConfigValidationResult> {
         let parsed: { files?: Record<string, unknown> };
         try {
@@ -480,15 +603,18 @@ export class ConfigManager {
     async fetchModels(baseUrl: string, apiKey?: string, apiType?: string): Promise<PiModelItem[]> {
         if (!baseUrl || baseUrl.trim().length === 0) throw new Error("缺少 baseUrl，请在 models.json 中配置 provider 的 baseUrl");
         const resolvedApi = this.apiFromApiType(apiType) ?? DEFAULT_PROVIDER_API;
+        const effectiveApiKey = apiKey === REDACTED_AUTH_VALUE
+            ? await this.resolveProviderApiKeyByBaseUrl(baseUrl)
+            : apiKey;
         const base = this.trimBaseUrl(baseUrl);
-        const url = resolvedApi === "google-generative-ai" && apiKey
-            ? `${base}/models?key=${encodeURIComponent(apiKey)}`
+        const url = resolvedApi === "google-generative-ai" && effectiveApiKey
+            ? `${base}/models?key=${encodeURIComponent(effectiveApiKey)}`
             : `${base}/models`;
-        const response = await fetch(url, {
+        const response = await fetchWithSafeRedirects(url, {
             headers: {
                 "content-type": "application/json",
-                ...(resolvedApi === "anthropic-messages" && apiKey ? { "x-api-key": apiKey, "anthropic-version": "2023-06-01" } : {}),
-                ...(resolvedApi !== "anthropic-messages" && resolvedApi !== "google-generative-ai" && apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+                ...(resolvedApi === "anthropic-messages" && effectiveApiKey ? { "x-api-key": effectiveApiKey, "anthropic-version": "2023-06-01" } : {}),
+                ...(resolvedApi !== "anthropic-messages" && resolvedApi !== "google-generative-ai" && effectiveApiKey ? { Authorization: `Bearer ${effectiveApiKey}` } : {}),
             },
         });
         if (!response.ok) throw new Error(`模型列表请求失败: HTTP ${response.status}`);
@@ -526,7 +652,7 @@ export class ConfigManager {
         const base = this.trimBaseUrl(baseUrl);
 
         if (vision.api === "anthropic-messages") {
-            const response = await fetch(this.anthropicMessagesUrl(base), {
+            const response = await fetchWithSafeRedirects(this.anthropicMessagesUrl(base), {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
@@ -558,7 +684,7 @@ export class ConfigManager {
         }
 
         if (vision.api === "openai-responses" || vision.api === "openai-codex-responses") {
-            const response = await fetch(`${base}/responses`, {
+            const response = await fetchWithSafeRedirects(`${base}/responses`, {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
@@ -590,7 +716,7 @@ export class ConfigManager {
         }
 
         if (vision.api === "openai-completions") {
-            const response = await fetch(`${base}/chat/completions`, {
+            const response = await fetchWithSafeRedirects(`${base}/chat/completions`, {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
@@ -634,7 +760,9 @@ export class ConfigManager {
     ): Promise<ProviderTestResult> {
         if (!baseUrl) return { ok: false, message: "缺少 baseUrl" };
         const resolvedApiType = this.apiFromApiType(apiType ?? options?.api) ?? DEFAULT_PROVIDER_API;
-        const resolvedApiKey = apiKey ?? await this.resolveProviderApiKey(options?.providerId);
+        const resolvedApiKey = apiKey === REDACTED_AUTH_VALUE
+            ? await this.resolveProviderApiKey(options?.providerId)
+            : apiKey ?? await this.resolveProviderApiKey(options?.providerId);
         const model = modelId || "test";
         const base = this.trimBaseUrl(baseUrl);
         const isResponses = resolvedApiType === "openai-responses" || resolvedApiType === "openai-codex-responses";
@@ -646,7 +774,7 @@ export class ConfigManager {
             ? { model, input: "ping", max_output_tokens: 1 }
             : { model, messages: [{ role: "user", content: "ping" }], max_tokens: 1 };
         try {
-            const response = await fetch(url, {
+            const response = await fetchWithSafeRedirects(url, {
                 method: "POST",
                 headers: {
                     "content-type": "application/json",
@@ -683,6 +811,24 @@ export class ConfigManager {
         );
     }
 
+    private async resolveProviderApiKeyByBaseUrl(baseUrl: string): Promise<string | undefined> {
+        const [authResult, modelsResult, yamlModels] = await Promise.all([
+            this.getAuthConfig(),
+            this.getModelsConfig(),
+            this.getYamlModelsConfig(),
+        ]);
+        const normalized = this.trimBaseUrl(baseUrl);
+        const findProvider = (providers: Record<string, PiProviderConfig> | undefined): string | undefined =>
+            Object.entries(providers ?? {})
+                .find(([, provider]) => this.trimBaseUrl(provider.baseUrl ?? "") === normalized)?.[0];
+        const providerId = findProvider(modelsResult.parsed.providers) ?? findProvider(yamlModels.providers);
+        if (!providerId) return undefined;
+        return (
+            this.getAuthValue(authResult.parsed[providerId]) ??
+            modelsResult.parsed.providers?.[providerId]?.apiKey ??
+            yamlModels.providers?.[providerId]?.apiKey
+        );
+    }
     private async resolveVisionConfig(): Promise<ResolvedVisionConfig> {
         const [settings, models, yamlModels] = await Promise.all([
             this.getSettingsConfig(),
@@ -959,6 +1105,25 @@ export class ConfigManager {
         if (!this.isPlainObject(value)) return undefined;
         const entries = Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string");
         return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+    }
+
+    private redactStringRecord(value: Record<string, string>): Record<string, string> {
+        return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+            const sensitive = /(?:key|token|secret|password|authorization|cookie)/i.test(key);
+            return [key, sensitive && item ? REDACTED_AUTH_VALUE : item];
+        }));
+    }
+
+    private restoreRedactedHeaders(
+        incoming: Record<string, string>,
+        previous: Record<string, string> | undefined,
+    ): Record<string, string> {
+        return Object.fromEntries(Object.entries(incoming).map(([key, value]) => {
+            if (value !== REDACTED_AUTH_VALUE) return [key, value];
+            const previousValue = previous?.[key];
+            if (!previousValue) return [key, REDACTED_AUTH_VALUE];
+            return [key, previousValue];
+        }));
     }
 
     private async writeJsonFile(fileName: string, data: unknown): Promise<void> {

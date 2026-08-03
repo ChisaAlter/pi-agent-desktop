@@ -6,6 +6,29 @@ import type { ChildAgentRunInput, ChildAgentRunResult } from "./types.ts";
 
 type JsonObject = Record<string, unknown>;
 
+const MAX_OUTPUT_CHARS = 256 * 1024;
+const SAFE_CHILD_ENV_KEYS = [
+    "APPDATA", "COMSPEC", "HOME", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA", "NODE_PATH",
+    "OS", "PATH", "Path", "PATHEXT", "PI_CODING_AGENT_DIR", "PROGRAMDATA", "PROGRAMFILES",
+    "SYSTEMDRIVE", "SYSTEMROOT", "TEMP", "TMP", "USERPROFILE", "WINDIR",
+];
+
+function childEnvironment(childAgentDir?: string): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = {};
+    for (const key of SAFE_CHILD_ENV_KEYS) {
+        const value = process.env[key];
+        if (value !== undefined) env[key] = value;
+    }
+    if (childAgentDir) env.PI_CODING_AGENT_DIR = childAgentDir;
+    return env;
+}
+
+function appendBounded(current: string, chunk: string): string {
+    if (current.length >= MAX_OUTPUT_CHARS) return current;
+    const remaining = MAX_OUTPUT_CHARS - current.length;
+    return current + chunk.slice(0, remaining);
+}
+
 function piCommand(): string {
     return process.platform === "win32" ? "pi.cmd" : "pi";
 }
@@ -222,14 +245,11 @@ export async function runChildAgent(input: ChildAgentRunInput): Promise<ChildAge
             child = spawn(command, args, {
                 cwd: input.cwd,
                 shell: false,
-                env: {
-                    ...process.env,
-                    ...(childAgentDir ? { PI_CODING_AGENT_DIR: childAgentDir } : {}),
-                },
+                env: childEnvironment(childAgentDir),
                 windowsVerbatimArguments,
             });
         } catch (error) {
-            stderr += `${error instanceof Error ? error.message : String(error)}\n`;
+            stderr = appendBounded(stderr, `${error instanceof Error ? error.message : String(error)}\n`);
             finish(1);
             return;
         }
@@ -247,16 +267,16 @@ export async function runChildAgent(input: ChildAgentRunInput): Promise<ChildAge
         });
         child.stdout?.on("data", (chunk: Buffer | string) => {
             const text = chunk.toString();
-            stdout += text;
+            stdout = appendBounded(stdout, text);
             for (const line of text.split(/\r?\n/).filter(Boolean)) {
                 input.onStdoutLine?.(line);
             }
         });
         child.stderr?.on("data", (chunk: Buffer | string) => {
-            stderr += chunk.toString();
+            stderr = appendBounded(stderr, chunk.toString());
         });
         child.on("error", (error) => {
-            stderr += `${error instanceof Error ? error.message : String(error)}\n`;
+            stderr = appendBounded(stderr, `${error instanceof Error ? error.message : String(error)}\n`);
             finish(1);
         });
         child.on("close", (exitCode) => finish(exitCode));
@@ -264,7 +284,7 @@ export async function runChildAgent(input: ChildAgentRunInput): Promise<ChildAge
 
         if (input.timeoutMs && input.timeoutMs > 0) {
             timeoutId = setTimeout(() => {
-                stderr += `Timed out after ${input.timeoutMs}ms\n`;
+                stderr = appendBounded(stderr, `Timed out after ${input.timeoutMs}ms\n`);
                 abort();
             }, input.timeoutMs);
         }

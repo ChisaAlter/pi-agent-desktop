@@ -21,6 +21,7 @@ export function PiConfigEditor(): React.JSX.Element {
 
     const loadProviderSelection = async (setStatus: (message: string) => void): Promise<{
         baseUrl: string;
+        providerId: string;
         apiKey?: string;
         apiType?: string;
         modelId?: string;
@@ -54,9 +55,13 @@ export function PiConfigEditor(): React.JSX.Element {
             return null;
         }
 
+        const authItem = authResult.parsed[providerId];
+        const authKey = authItem?.key || authItem?.apiKey || provider.apiKey;
+
         return {
             baseUrl: provider.baseUrl,
-            apiKey: authResult.parsed[providerId]?.key || authResult.parsed[providerId]?.apiKey,
+            providerId,
+            apiKey: authKey === '[REDACTED]' ? '[REDACTED]' : authKey,
             apiType: provider.apiType ?? (provider.api === 'openai-responses' ? 'responses' : undefined),
             modelId: provider.models?.[0]?.id,
         };

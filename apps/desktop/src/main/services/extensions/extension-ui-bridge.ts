@@ -1,4 +1,4 @@
-import { BrowserWindow } from "electron";
+import { BrowserWindow, type WebContents } from "electron";
 import log from "electron-log/main";
 import type {
     ExtensionUIContext,
@@ -21,6 +21,8 @@ type PendingRequest = {
     options?: string[];
     resolve: (value: string | boolean | undefined) => void;
     timer: NodeJS.Timeout;
+    /** Renderer that received the request; responses must come from it. */
+    sender: WebContents;
 };
 
 interface ExtensionUiBridgeScope {
@@ -136,10 +138,12 @@ function coerceDecisionValue(
 export function resolveExtensionUiRequest(
     requestId: string,
     response: ExtensionUiResponse | PermissionDecision | boolean | string,
+    sender?: WebContents,
 ): void {
     const found = findPendingRequest(requestId);
     if (!found) return;
     const { pending, map } = found;
+    if (sender && sender !== pending.sender) return;
     map.delete(requestId);
     clearTimeout(pending.timer);
     pending.resolve(coerceDecisionValue(response, pending));
@@ -258,6 +262,11 @@ export function createExtensionUiBridge(
             createdAt: Date.now(),
         };
 
+        const targetWindow = targetResolver?.(payload) ?? getTargetWindow();
+        if (!targetWindow || targetWindow.isDestroyed()) {
+            return timeoutValue(kind);
+        }
+
         return new Promise((resolve) => {
             const timer = setTimeout(() => {
                 const pending = requests.get(requestId);
@@ -265,9 +274,16 @@ export function createExtensionUiBridge(
                 requests.delete(requestId);
                 pending.resolve(timeoutValue(pending.kind));
             }, DEFAULT_REQUEST_TIMEOUT_MS);
-            requests.set(requestId, { kind, source, options: opts?.options, resolve, timer });
+            requests.set(requestId, {
+                kind,
+                source,
+                options: opts?.options,
+                resolve,
+                timer,
+                sender: targetWindow.webContents,
+            });
             sendToWindow(
-                targetResolver?.(payload) ?? getTargetWindow(),
+                targetWindow,
                 source === "plan" ? "plan:decision-request" : "permission:request",
                 payload,
             );

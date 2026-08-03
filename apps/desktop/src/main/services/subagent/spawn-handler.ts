@@ -137,8 +137,8 @@ export async function spawnSubagent(
     }
     // Prefer the explicitly-named agent; fall back to the workspace's default.
     const agent = input.agentId
-        ? deps.agentRegistry?.list().find((a) => a.id === input.agentId)
-        : deps.agentRegistry?.findDefaultAgent(input.workspaceId);
+        ? deps.agentRegistry?.list().find((a) => a.id === input.agentId && a.workspaceId === input.workspaceId)
+        : deps.agentRegistry?.resolveActiveAgent(input.workspaceId);
     if (!agent) {
         throw new Error(`/${input.subagentType} requires an active agent`);
     }

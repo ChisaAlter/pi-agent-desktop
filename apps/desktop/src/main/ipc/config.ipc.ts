@@ -20,8 +20,8 @@ export function setupConfigIpc(configManager: ConfigManager, opts: { onManagedMo
         return result;
     };
 
-    ipcMain.handle("config:get-models", () => configManager.getModelsConfig());
-    ipcMain.handle("config:get-auth", () => configManager.getAuthConfig());
+    ipcMain.handle("config:get-models", () => configManager.getModelsConfigRedacted());
+    ipcMain.handle("config:get-auth", () => configManager.getAuthConfigRedacted());
     ipcMain.handle("config:get-settings", () => configManager.getSettingsConfig());
     ipcMain.handle("config:save-models", async (_event, data: PiModelsFile) =>
         notifyIfValid(await configManager.saveModelsConfig(data)),
@@ -35,7 +35,7 @@ export function setupConfigIpc(configManager: ConfigManager, opts: { onManagedMo
     ipcMain.handle("config:save-raw", async (_event, fileName: string, rawJson: string) =>
         notifyIfValid(await configManager.saveRawConfig(fileName, rawJson)),
     );
-    ipcMain.handle("config:export", () => configManager.exportConfig());
+    ipcMain.handle("config:export", () => configManager.exportConfigRedacted());
     ipcMain.handle("config:import", async (_event, packageJson: string) =>
         notifyIfValid(await configManager.importConfig(packageJson)),
     );

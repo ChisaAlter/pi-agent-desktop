@@ -26,13 +26,16 @@ import { setupConfigIpc } from "../config.ipc";
 type ConfigManagerStub = Pick<
     ConfigManager,
     | "getModelsConfig"
+    | "getModelsConfigRedacted"
     | "getAuthConfig"
+    | "getAuthConfigRedacted"
     | "getSettingsConfig"
     | "saveModelsConfig"
     | "saveAuthConfig"
     | "saveSettingsConfig"
     | "saveRawConfig"
     | "exportConfig"
+    | "exportConfigRedacted"
     | "importConfig"
     | "fetchModels"
     | "testProviderConnection"
@@ -46,13 +49,16 @@ type ConfigManagerStub = Pick<
 function createManagerStub(): ConfigManagerStub {
     return {
         getModelsConfig: vi.fn(async () => ({ raw: "{}", parsed: { providers: {} } })),
+        getModelsConfigRedacted: vi.fn(async () => ({ raw: "{}", parsed: { providers: {} } })),
         getAuthConfig: vi.fn(async () => ({ raw: "{}", parsed: {} })),
+        getAuthConfigRedacted: vi.fn(async () => ({ raw: "{}", parsed: {} })),
         getSettingsConfig: vi.fn(async () => ({ raw: "{}", parsed: {} })),
         saveModelsConfig: vi.fn(async () => ({ valid: true })),
         saveAuthConfig: vi.fn(async () => ({ valid: true })),
         saveSettingsConfig: vi.fn(async () => ({ valid: true })),
         saveRawConfig: vi.fn(async () => ({ valid: true })),
         exportConfig: vi.fn(async () => "{}"),
+        exportConfigRedacted: vi.fn(async () => "{}"),
         importConfig: vi.fn(async () => ({ valid: true })),
         fetchModels: vi.fn(async () => []),
         testProviderConnection: vi.fn(async () => ({ ok: true, message: "连接成功" })),
@@ -213,12 +219,13 @@ describe("setupConfigIpc", () => {
         setupConfigIpc(manager as ConfigManager);
         await expect(handlers.get("config:get-models")!({})).resolves.toMatchObject({ raw: "{}" });
         await expect(handlers.get("config:get-auth")!({})).resolves.toMatchObject({ raw: "{}" });
+        expect(manager.getAuthConfigRedacted).toHaveBeenCalled();
         await expect(handlers.get("config:get-settings")!({})).resolves.toMatchObject({ raw: "{}" });
         await expect(handlers.get("config:export")!({})).resolves.toBe("{}");
-        expect(manager.getModelsConfig).toHaveBeenCalled();
-        expect(manager.getAuthConfig).toHaveBeenCalled();
+        expect(manager.getModelsConfigRedacted).toHaveBeenCalled();
+        expect(manager.getAuthConfigRedacted).toHaveBeenCalled();
         expect(manager.getSettingsConfig).toHaveBeenCalled();
-        expect(manager.exportConfig).toHaveBeenCalled();
+        expect(manager.exportConfigRedacted).toHaveBeenCalled();
     });
 
     it("broadcasts pi-config:changed after set-default-model success", async () => {

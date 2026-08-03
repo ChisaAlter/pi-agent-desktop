@@ -5,8 +5,8 @@
 // 云实例元数据端点, 那才是会泄露凭证的 SSRF 风险。本测试把这一语义
 // 表驱动锁定, 防止后续重构悄悄改变行为。
 
-import { describe, expect, it } from "vitest";
-import { isSafeUrl } from "../ssrf-guard";
+import { describe, expect, it, vi } from "vitest";
+import { fetchWithSafeRedirects, isSafeUrl } from "../ssrf-guard";
 
 type Case = { label: string; url: string; expected: boolean };
 
@@ -564,13 +564,39 @@ describe("isSafeUrl", () => {
         expect(isSafeUrl("http://169.254.42.42")).toBe(false);
     });
 
-    it("protocol and parse failures; IPv6 fe80 blocked; public https allowed", () => {
-        expect(isSafeUrl("ws://example.com")).toBe(false);
-        expect(isSafeUrl("http://[fe80::abcd]")).toBe(false);
-        expect(isSafeUrl("http://fe80::1")).toBe(false);
-        expect(isSafeUrl("https://api.openai.com/v1")).toBe(true);
-        expect(isSafeUrl("not-a-url")).toBe(false);
-        expect(isSafeUrl("")).toBe(false);
-        expect(isSafeUrl("http://[fd00:ec2::254]/latest")).toBe(false);
+    it("blocks alternate numeric and mapped metadata address forms", () => {
+        for (const url of [
+            "http://2852039166/latest/meta-data",
+            "http://0xa9fea9fe/latest/meta-data",
+            "http://0251.0376.0251.0376/latest/meta-data",
+            "http://169.254.169.254./latest/meta-data",
+            "http://[::ffff:169.254.169.254]/latest/meta-data",
+        ]) {
+            expect(isSafeUrl(url), url).toBe(false);
+        }
     });
+
+    it("follows safe redirects but validates redirect targets", async () => {
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(new Response(null, { status: 302, headers: { location: "/v2" } }))
+            .mockResolvedValueOnce(new Response("ok", { status: 200 }));
+        vi.stubGlobal("fetch", fetchMock);
+        await expect(fetchWithSafeRedirects("https://example.com/v1")).resolves.toMatchObject({ status: 200 });
+        expect(fetchMock).toHaveBeenNthCalledWith(2, "https://example.com/v2", expect.objectContaining({ redirect: "manual" }));
+
+        vi.stubGlobal("fetch", vi.fn(async () => new Response(null, {
+            status: 302,
+            headers: { location: "http://169.254.169.254/latest/meta-data" },
+        })));
+        await expect(fetchWithSafeRedirects("https://example.com/v1")).rejects.toThrow(/不安全的 URL/);
+    });
+
+    it("rejects redirects that exceed the hop limit", async () => {
+        vi.stubGlobal("fetch", vi.fn(async () => new Response(null, {
+            status: 302,
+            headers: { location: "https://example.com/loop" },
+        })));
+        await expect(fetchWithSafeRedirects("https://example.com/v1", {}, 2)).rejects.toThrow(/重定向次数超过限制/);
+    });
+
 });
