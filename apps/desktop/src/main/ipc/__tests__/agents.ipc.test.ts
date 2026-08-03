@@ -181,4 +181,19 @@ describe("setupAgentsIpc", () => {
         });
         expect(registry.setThinking).toHaveBeenCalledWith("agent_1", "medium");
     });
+
+    it("forwards valid set-mode and rejects invalid modes", async () => {
+        const registry = {
+            setMode: vi.fn(async () => ({ agentId: "agent_1", status: "idle", isStreaming: false })),
+        } as unknown as AgentRuntimeRegistry;
+        setupAgentsIpc(registry);
+        await expect(handlers.get("agents:set-mode")?.({}, "agent_1", "plan")).resolves.toMatchObject({
+            agentId: "agent_1",
+        });
+        expect(registry.setMode).toHaveBeenCalledWith("agent_1", "plan");
+        await expect(handlers.get("agents:set-mode")?.({}, "agent_1", "max")).resolves.toMatchObject({
+            __brand: "IpcError",
+            code: "ipcErrors.agents.invalidAgentMode",
+        });
+    });
 });

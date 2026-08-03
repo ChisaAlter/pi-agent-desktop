@@ -7,6 +7,8 @@
 //  - ESC 关闭
 //  - portal 到 body,bypass 父容器 overflow:hidden
 //  - 简单 absolute 定位:trigger 下方,左对齐(start) 或右对齐(end)
+// 生产约束:
+//  - 必须渲染为单一布局节点(不能用 fragment),否则 flex/grid 子项宽度会断,导致模型名硬裁切
 
 import React, { cloneElement, useCallback, useEffect, useLayoutEffect, useRef, useState, isValidElement } from "react";
 import { createPortal } from "react-dom";
@@ -21,6 +23,8 @@ export interface PopoverProps {
     align?: "start" | "end";
     /** 内容区附加 className */
     contentClassName?: string;
+    /** 根节点 className — 参与 flex/grid 布局时必填(如 min-w-0 flex-1) */
+    className?: string;
 }
 
 interface Position {
@@ -49,6 +53,7 @@ export function Popover({
     children,
     align = "start",
     contentClassName = "",
+    className = "",
 }: PopoverProps): React.JSX.Element {
     const [open, setOpen] = useState(false);
     const [pos, setPos] = useState<Position | null>(null);
@@ -56,9 +61,6 @@ export function Popover({
     const contentRef = useRef<HTMLDivElement | null>(null);
     const presence = useMotionPresence(open, 100);
 
-    // 计算位置:trigger 下方,左/右对齐
-    // v1.0.13:viewport 适配 — 优先下方,空间不够翻上方;content 自身 max-height 限
-    // v1.0.14-fix: 优先读取 content 真实高度,estimatedHeight 降到 140;保持同步+异步双算
     const updatePosition = useCallback(() => {
         const el = triggerRef.current;
         if (!el) return;
@@ -67,7 +69,6 @@ export function Popover({
         const vw = window.innerWidth;
         const margin = 8;
         const gap = 8;
-        // 优先用已渲染 content 的真实高度,未渲染时用 140 保守估算(3 个菜单项约 100px)
         const actualHeight = contentRef.current?.offsetHeight ?? 0;
         const estimatedHeight = actualHeight > 0 ? actualHeight : 140;
         const spaceBelow = Math.max(0, vh - rect.bottom - gap - margin);
@@ -81,21 +82,19 @@ export function Popover({
         setPos({ top, left, maxHeight, viewportWidth: vw });
     }, [align]);
 
-    // 点击 trigger 切换
     const handleTriggerClick = useCallback(
         (e: React.MouseEvent) => {
             e.stopPropagation();
             if (open) {
                 setOpen(false);
             } else {
-                updatePosition(); // 同步给初始位置(兼容 jsdom)
+                updatePosition();
                 setOpen(true);
             }
         },
         [open, updatePosition],
     );
 
-    // 真实浏览器:content mount 后用真实高度精算;jsdom 里 rAF 不执行,依赖上面同步初始值
     useLayoutEffect(() => {
         if (!open) return;
         updatePosition();
@@ -105,7 +104,6 @@ export function Popover({
         return () => cancelAnimationFrame(id);
     }, [open, updatePosition]);
 
-    // 点 outside / ESC 关闭
     useEffect(() => {
         if (!open) return;
         const onDown = (e: MouseEvent): void => {
@@ -126,7 +124,6 @@ export function Popover({
         };
     }, [open]);
 
-    // 外部滚动/resize 时关掉；下拉自身滚动不能关闭，否则长菜单无法滑动。
     useEffect(() => {
         if (!open) return;
         let canCloseOnScroll = false;
@@ -149,7 +146,6 @@ export function Popover({
         };
     }, [open]);
 
-    // 注入 ref + onClick 到 trigger（保留原有 ref/onClick）
     const triggerWithRef = isValidElement(trigger)
         ? cloneElement(trigger as React.ReactElement<TriggerElementProps>, {
               ref: (el: HTMLElement | null) => {
@@ -186,9 +182,9 @@ export function Popover({
     );
 
     return (
-        <>
+        <div className={className || undefined} data-pi-popover-root>
             {triggerWithRef}
             {presence.rendered && typeof document !== "undefined" && createPortal(content, document.body)}
-        </>
+        </div>
     );
 }

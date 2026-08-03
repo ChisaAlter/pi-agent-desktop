@@ -466,6 +466,16 @@ export const agentsSetThinkingSchema = z.tuple([
     z.enum(["off", "minimal", "low", "medium", "high", "xhigh"]),
 ]);
 
+export const agentsSetModeSchema = z.tuple([
+    z.string().min(1, "agentId must be a non-empty string"),
+    agentModeSchema,
+]);
+
+export const permissionSetModeSchema = z.tuple([
+    permissionModeSchema,
+    z.string().min(1, "workspaceId must be a non-empty string").optional(),
+]);
+
 // ── Codex session import schemas ──────────────────────────
 
 export const codexScanSchema = z.tuple([

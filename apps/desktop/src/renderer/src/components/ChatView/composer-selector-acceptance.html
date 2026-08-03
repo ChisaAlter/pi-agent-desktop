@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>Composer selector production acceptance</title>
+  <style>
+    :root {
+      --mm-border: #e5e5e5;
+      --mm-bg-control: #fbfbfb;
+      --mm-bg-hover: #f0f0f0;
+      --mm-text-primary: #111;
+      --mm-text-secondary: #555;
+    }
+    body { font-family: system-ui, sans-serif; padding: 24px; background: #f5f5f4; color: #111; }
+    /* 直接复刻生产 CSS 槽位，避免再测到假布局 */
+    .pi-composer-selector-row { display:flex; align-items:center; justify-content:space-between; gap:8px; height:36px; width:520px; background:#fff; border:1px solid #e5e5e5; border-radius:8px; padding:0 12px; }
+    .pi-composer-selector-left { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+    .pi-composer-selector-right { display:flex; min-width:0; flex:1 1 auto; align-items:center; justify-content:flex-end; gap:8px; }
+    .pi-composer-model-capsule { display:flex; height:32px; width:100%; min-width:12rem; max-width:18rem; align-items:stretch; border:1px solid var(--mm-border); border-radius:6px; background:var(--mm-bg-control); }
+    .pi-composer-model-slot { min-width:0; flex:1 1 auto; display:block; }
+    .pi-composer-thinking-slot { width:3rem; flex:0 0 3rem; display:block; }
+    .pi-composer-model-btn { display:flex; width:100%; height:100%; min-width:0; align-items:center; justify-content:center; padding:0 10px; border:0; border-radius:5px 0 0 5px; background:transparent; color:var(--mm-text-secondary); font-size:11px; line-height:16px; }
+    .pi-composer-thinking-btn { display:flex; width:100%; height:100%; align-items:center; justify-content:center; padding:0 6px; border:0; border-left:1px solid var(--mm-border); border-radius:0 5px 5px 0; background:transparent; color:var(--mm-text-secondary); font-size:11px; line-height:16px; }
+    .pi-composer-label { font-size:11px; font-weight:500; line-height:16px; color:var(--mm-text-primary); }
+    .pi-composer-label-full { display:inline-block; white-space:nowrap; }
+    .pi-composer-label-ellipsis { display:block; min-width:0; max-width:100%; width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center; line-height:16px; padding:1px 0; box-sizing:border-box; }
+    .trigger { height:28px; display:inline-flex; align-items:center; padding:0 6px; }
+    #report { margin-top:16px; font-family:ui-monospace,monospace; white-space:pre-wrap; }
+    .pass { color:#067647; } .fail { color:#b42318; }
+  </style>
+</head>
+<body>
+  <h1>Composer selector production acceptance</h1>
+  <div class="pi-composer-selector-row" id="fixture">
+    <div class="pi-composer-selector-left">
+      <span class="trigger pi-composer-label pi-composer-label-full">Build</span>
+      <span class="trigger pi-composer-label pi-composer-label-full" id="permission">智能授权</span>
+    </div>
+    <div class="pi-composer-selector-right">
+      <div class="pi-composer-model-capsule" id="capsule">
+        <div class="pi-composer-model-slot" id="modelSlot">
+          <div data-pi-popover-root style="display:block;height:100%;width:100%;min-width:0">
+            <button class="pi-composer-model-btn" id="modelBtn" title="gpt-5.6-solo-very-long-name-that-must-ellipsis">
+              <span class="pi-composer-label pi-composer-label-ellipsis" id="modelLabel">gpt-5.6-solo-very-long-name-that-must-ellipsis</span>
+            </button>
+          </div>
+        </div>
+        <div class="pi-composer-thinking-slot">
+          <div data-pi-popover-root style="display:block;height:100%;width:100%">
+            <button class="pi-composer-thinking-btn">
+              <span class="pi-composer-label pi-composer-label-full">中</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="report"></div>
+  <script>
+    function line(ok, msg) { return (ok ? "PASS" : "FAIL") + "  " + msg; }
+    const permission = document.getElementById("permission");
+    const modelLabel = document.getElementById("modelLabel");
+    const modelBtn = document.getElementById("modelBtn");
+    const modelSlot = document.getElementById("modelSlot");
+    const report = [];
+
+    const permissionFull = permission.textContent === "智能授权"
+      && permission.scrollWidth <= permission.clientWidth + 1;
+    report.push(line(permissionFull, "permission label fully visible: 智能授权"));
+
+    const cs = getComputedStyle(modelLabel);
+    const hasEllipsisClass = cs.textOverflow === "ellipsis" && cs.whiteSpace === "nowrap" && cs.overflow === "hidden";
+    report.push(line(hasEllipsisClass, "model label uses CSS ellipsis path"));
+
+    const ellipsisActive = modelLabel.scrollWidth > modelLabel.clientWidth + 1;
+    report.push(line(ellipsisActive, "long model name overflows and ellipsizes (not hard-clipped half glyphs)"));
+
+    const slotContracts = modelSlot.clientWidth > 0 && modelSlot.clientWidth < 280;
+    report.push(line(slotContracts, "model slot is width-constrained and shrinkable"));
+
+    const noHardClip = modelBtn.clientHeight >= 28 && modelLabel.clientHeight >= 14;
+    report.push(line(noHardClip, "vertical metrics keep full glyph height"));
+
+    const titleOk = modelBtn.title === modelLabel.textContent;
+    report.push(line(titleOk, "title preserves full model name"));
+
+    const allPass = report.every((r) => r.startsWith("PASS"));
+    document.getElementById("report").className = allPass ? "pass" : "fail";
+    document.getElementById("report").textContent = report.join("\\n") + "\\n\\n" + (allPass ? "ACCEPTANCE: PASS" : "ACCEPTANCE: FAIL");
+    document.title = allPass ? "ACCEPTANCE PASS" : "ACCEPTANCE FAIL";
+  </script>
+</body>
+</html>

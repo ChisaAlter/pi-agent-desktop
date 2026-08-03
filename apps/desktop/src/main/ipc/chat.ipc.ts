@@ -650,8 +650,9 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         resolveApprovalRequest(requestId, approved, event.sender);
     });
 
-    ipcMain.handle("permission:set-mode", async (_event, mode: PermissionMode) => {
-        setDesktopPermissionMode(mode);
+    ipcMain.handle("permission:set-mode", async (_event, mode: PermissionMode, workspaceId?: string) => {
+        // 生产要求：优先 workspace 作用域；未传 workspaceId 时保持全局兼容回退
+        setDesktopPermissionMode(mode, typeof workspaceId === "string" && workspaceId.trim() ? workspaceId : undefined);
     });
 
     ipcMain.on(

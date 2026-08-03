@@ -25,6 +25,22 @@ describe("Popover", () => {
     expect(menu.className).toContain("border-[var(--mm-border)]");
   });
 
+  it("renders a single layout root so flex/grid parents can shrink the trigger", () => {
+    render(
+      <Popover className="min-w-0 flex-1" trigger={<button type="button">Open layout menu</button>}>
+        <button type="button" role="menuitem">Option</button>
+      </Popover>,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Open layout menu" });
+    const root = trigger.closest("[data-pi-popover-root]");
+    expect(root).not.toBeNull();
+    expect(root?.className).toContain("min-w-0");
+    expect(root?.className).toContain("flex-1");
+    // 单一根节点：trigger 的 parent 就是 popover root，不是 fragment 旁路
+    expect(trigger.parentElement).toBe(root);
+  });
+
   it("opens upward with an eight-pixel gap and caps height to the space above the trigger", () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 320 });
     Object.defineProperty(window, "innerHeight", { configurable: true, value: 255 });

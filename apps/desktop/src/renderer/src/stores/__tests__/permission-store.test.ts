@@ -24,12 +24,12 @@ describe("permission-store", () => {
     vi.unstubAllGlobals();
   });
 
-  it("setMode updates local state and calls piAPI", () => {
+  it("setMode updates local state and calls piAPI with workspace scope when provided", () => {
     const permissionSetMode = vi.fn(async () => undefined);
     vi.stubGlobal("window", { piAPI: { permissionSetMode } });
-    usePermissionStore.getState().setMode("ask");
+    usePermissionStore.getState().setMode("ask", "ws_1");
     expect(usePermissionStore.getState().mode).toBe("ask");
-    expect(permissionSetMode).toHaveBeenCalledWith("ask");
+    expect(permissionSetMode).toHaveBeenCalledWith("ask", "ws_1");
   });
 
   it("enqueue dedupes by requestId", () => {
@@ -262,13 +262,13 @@ describe("permission-store", () => {
 
   // wave-245 residual
   it("setMode still updates local state when permissionSetMode rejects", async () => {
-    const permissionSetMode = vi.fn(async () => {
+    const permissionSetMode = vi.fn(async (_mode?: string, _workspaceId?: string) => {
       throw new Error("mode ipc down");
     });
     vi.stubGlobal("window", { piAPI: { permissionSetMode } });
     usePermissionStore.getState().setMode("ask");
     expect(usePermissionStore.getState().mode).toBe("ask");
-    expect(permissionSetMode).toHaveBeenCalledWith("ask");
+    expect(permissionSetMode).toHaveBeenCalledWith("ask", undefined);
     // allow rejection to settle without unhandled rejection
     await Promise.resolve();
   });

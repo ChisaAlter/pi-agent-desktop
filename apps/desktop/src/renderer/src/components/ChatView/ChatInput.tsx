@@ -185,10 +185,10 @@ function MenuCheckIcon(): React.JSX.Element {
 
 /**
  * 选择器 trigger 文案。
- * 生产规则：
- * - 模式/权限/思考：完整显示，绝不横向/纵向裁切
- * - 模型：仅允许单行 ellipsis（text-overflow），禁止父级 overflow 硬裁半个字
- * - 动画只改 opacity，不改 transform/尺寸
+ * 生产规则（写死，禁止再改回 flex 硬裁）：
+ * - 模式/权限/思考：pi-composer-label-full（完整显示）
+ * - 模型：pi-composer-label-ellipsis（唯一 ellipsis 节点）
+ * - 动画只改 opacity
  */
 function SelectorLabel({
   text,
@@ -210,24 +210,13 @@ function SelectorLabel({
     setAnimKey((key) => key + 1);
   }, [text]);
 
-  if (truncate) {
-    // grid 子项 + block 是唯一稳定的居中省略方案；inline-block/flex 子项在窄宽下会硬裁半个字
-    return (
-      <span
-        key={animKey}
-        title={display}
-        className={`pi-label-flip block min-w-0 w-full overflow-hidden text-ellipsis whitespace-nowrap text-center text-[11px] font-medium leading-4 text-[var(--mm-text-primary)] ${className ?? ""}`}
-      >
-        {display}
-      </span>
-    );
-  }
-
   return (
     <span
       key={animKey}
       title={display}
-      className={`pi-label-flip inline-block whitespace-nowrap text-[11px] font-medium leading-4 text-[var(--mm-text-primary)] ${className ?? ""}`}
+      className={`pi-label-flip pi-composer-label ${
+        truncate ? "pi-composer-label-ellipsis" : "pi-composer-label-full"
+      } ${className ?? ""}`}
     >
       {display}
     </span>
@@ -619,15 +608,29 @@ export function ChatInput({
     }
   }, [currentPermission, permissionStore]);
 
+  const resolveActiveAgentId = useCallback(async (): Promise<string | null> => {
+    if (agentId) return agentId;
+    if (!workspaceId || !window.piAPI?.agentsResolveActive) return null;
+    try {
+      const active = await window.piAPI.agentsResolveActive(workspaceId);
+      return active?.id ?? null;
+    } catch (error) {
+      logger.warn("[ChatInput] resolve active agent failed:", error);
+      return null;
+    }
+  }, [agentId, workspaceId]);
+
   const handlePermissionSelect = useCallback(
     (value: PermissionMode) => {
-      permissionStore.setMode(value);
+      // 生产：本地 + settings 立即更新；主进程按 workspace 作用域生效
+      permissionStore.setMode(value, workspaceId);
       updateSettings({ permissionLevel: value });
     },
-    [permissionStore, updateSettings],
+    [permissionStore, updateSettings, workspaceId],
   );
   const handleModelSelect = useCallback(
     (model: { id: string; name: string; provider: string }) => {
+      // 生产：乐观更新 UI；main 侧异步 setModelForAll 到 live Pi session
       updateSettings({ model: model.id, provider: model.provider });
     },
     [updateSettings],
@@ -643,9 +646,12 @@ export function ChatInput({
     (level: ThinkingLevel) => {
       // 先写本地 settings，trigger 立刻翻转；runtime 同步走后台，不被切模型阻塞。
       updateSettings({ thinkingLevel: level });
-      if (!agentId || !window.piAPI?.agentsSetThinking) return;
-      void window.piAPI.agentsSetThinking(agentId, level)
-        .then((result) => {
+      void (async () => {
+        if (!window.piAPI?.agentsSetThinking) return;
+        const targetAgentId = await resolveActiveAgentId();
+        if (!targetAgentId) return;
+        try {
+          const result = await window.piAPI.agentsSetThinking(targetAgentId, level);
           if (isIpcError(result)) {
             setSendError(result.fallback);
             return;
@@ -653,14 +659,32 @@ export function ChatInput({
           if (result.thinkingLevel && result.thinkingLevel !== level) {
             updateSettings({ thinkingLevel: result.thinkingLevel });
           }
-        })
-        .catch((error) => setSendError(error instanceof Error ? error.message : String(error)));
+        } catch (error) {
+          setSendError(error instanceof Error ? error.message : String(error));
+        }
+      })();
     },
-    [agentId, updateSettings],
+    [resolveActiveAgentId, updateSettings],
   );
   const handleAgentModeSelect = useCallback((mode: AgentMode) => {
-    if (workspaceId) setAgentMode(workspaceId, mode);
-  }, [setAgentMode, workspaceId]);
+    if (!workspaceId) return;
+    // 1) 本地立即切换（发送消息路径依赖此 store）
+    setAgentMode(workspaceId, mode);
+    // 2) 生产：立即同步 live Pi session（/plan /compose + 工具权限），不等下一条消息
+    void (async () => {
+      if (!window.piAPI?.agentsSetMode) return;
+      const targetAgentId = await resolveActiveAgentId();
+      if (!targetAgentId) return;
+      try {
+        const result = await window.piAPI.agentsSetMode(targetAgentId, mode);
+        if (isIpcError(result)) {
+          setSendError(result.fallback);
+        }
+      } catch (error) {
+        setSendError(error instanceof Error ? error.message : String(error));
+      }
+    })();
+  }, [resolveActiveAgentId, setAgentMode, workspaceId]);
 
   const commitComposerHeight = useCallback((height: number) => {
     const next = Math.max(COMPOSER_MIN_HEIGHT, Math.min(COMPOSER_MAX_HEIGHT, Math.round(height)));
@@ -1186,8 +1210,8 @@ export function ChatInput({
 
         {/* 控制栏 */}
         {referenceFrame ? (
-          <div className="relative z-20 flex h-9 shrink-0 items-center justify-between gap-2 px-3 pb-2 pt-0" data-testid="chat-input-reference-controls">
-            <div className="flex min-w-0 shrink-0 items-center gap-1.5 text-[var(--mm-text-secondary)]">
+          <div className="pi-composer-selector-row relative z-20 shrink-0 px-3 pb-2 pt-0" data-testid="chat-input-reference-controls">
+            <div className="pi-composer-selector-left text-[var(--mm-text-secondary)]">
               <button type="button" onClick={() => void handlePickFiles()} className="flex h-7 w-7 items-center justify-center rounded-[3px] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]" aria-label={t("chatInput.addFileOrImage")}>
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3 3 0 1 1 4 4L8.5 18.5a1.5 1.5 0 1 1-2-2L15 8" />
@@ -1202,7 +1226,7 @@ export function ChatInput({
                 align="start"
                 contentClassName={COMPOSER_MENU_SURFACE}
                 trigger={
-                  <button type="button" className={COMPOSER_TRIGGER_BASE} aria-label={t("chatInput.agentMode.aria")}>
+                  <button type="button" className={COMPOSER_TRIGGER_BASE} aria-label={t("chatInput.agentMode.aria")} data-testid="chat-input-agent-mode-trigger">
                     <SelectorLabel
                       text={agentModeOptions.find((mode) => mode.value === currentAgentMode)?.label ?? "Build"}
                     />
@@ -1244,23 +1268,26 @@ export function ChatInput({
               </Popover>
               {permissionPopover}
             </div>
-            <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
+            <div className="pi-composer-selector-right">
               {/*
-                生产布局：CSS grid 固定两列。
-                模型列 minmax(0,1fr) 保证可收缩；思考列 3rem 固定。
-                省略只发生在模型文案节点的 text-overflow:ellipsis，绝不在胶囊上 overflow-hidden。
+                生产布局铁律：
+                1) 布局槽位用普通 div（model-slot / thinking-slot），不依赖 Popover fragment/根节点撑 flex
+                2) Popover 根只做 block 填满槽位
+                3) 省略只发生在 .pi-composer-label-ellipsis
               */}
               <div
-                className="grid h-8 w-full min-w-[11rem] max-w-[16rem] grid-cols-[minmax(0,1fr)_3rem] items-stretch rounded-[6px] border border-[var(--mm-border)] bg-[var(--mm-bg-control)]"
+                className="pi-composer-model-capsule"
                 data-testid="chat-input-model-thinking-capsule"
               >
+              <div className="pi-composer-model-slot" data-testid="chat-input-model-slot">
               <Popover
                 align="end"
+                className="block h-full w-full min-w-0"
                 contentClassName={COMPOSER_MENU_SURFACE}
                 trigger={
                   <button
                     type="button"
-                    className="grid h-full min-w-0 grid-cols-1 items-center rounded-l-[5px] px-2.5 text-[11px] leading-4 text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
+                    className="pi-composer-model-btn focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                     aria-label={t("chatInput.model.current", { model: currentModelLabel })}
                     title={currentModelLabel}
                     data-testid="chat-input-model-trigger"
@@ -1308,13 +1335,16 @@ export function ChatInput({
                   </div>
                 )}
               </Popover>
+              </div>
+              <div className="pi-composer-thinking-slot" data-testid="chat-input-thinking-slot">
               <Popover
                 align="end"
+                className="block h-full w-full"
                 contentClassName={COMPOSER_MENU_SURFACE}
                 trigger={
                   <button
                     type="button"
-                    className="flex h-full w-full items-center justify-center rounded-r-[5px] border-l border-[var(--mm-border)] px-1.5 text-[11px] leading-4 text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
+                    className="pi-composer-thinking-btn focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                     aria-label={t("chatInput.thinking.aria", { label: currentThinkingLabel })}
                     data-testid="chat-input-thinking-trigger"
                   >
@@ -1353,6 +1383,7 @@ export function ChatInput({
                   </div>
                 )}
               </Popover>
+              </div>
               </div>
               <button
                 type="button"

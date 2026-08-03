@@ -228,11 +228,22 @@ describe("setupConfigIpc", () => {
         expect(manager.exportConfigRedacted).toHaveBeenCalled();
     });
 
-    it("broadcasts pi-config:changed after set-default-model success", async () => {
+    it("broadcasts pi-config:changed after set-default-model success without heavy managed-models rebuild", async () => {
         const manager = createManagerStub();
-        setupConfigIpc(manager as ConfigManager);
+        const onManagedModelsChanged = vi.fn();
+        setupConfigIpc(manager as ConfigManager, { onManagedModelsChanged });
         await handlers.get("config:set-default-model")!({}, "openai", "gpt-4o");
         expect(manager.setDefaultModel).toHaveBeenCalledWith("openai", "gpt-4o");
         expect(webContentsSend).toHaveBeenCalledWith("pi-config:changed");
+        // 生产铁律：默认模型切换不得触发重路径（refreshWorkspace + disposeAll）
+        expect(onManagedModelsChanged).not.toHaveBeenCalled();
+    });
+
+    it("still uses heavy managed-models path for structural config saves", async () => {
+        const manager = createManagerStub();
+        const onManagedModelsChanged = vi.fn();
+        setupConfigIpc(manager as ConfigManager, { onManagedModelsChanged });
+        await handlers.get("config:save-managed-model")?.({}, { providerId: "openai", modelId: "gpt-4o" });
+        expect(onManagedModelsChanged).toHaveBeenCalledTimes(1);
     });
 });

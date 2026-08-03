@@ -48,6 +48,13 @@ describe("ChatInput", () => {
           isStreaming: false,
           thinkingLevel: level,
         })),
+        agentsSetMode: vi.fn(async (agentId: string, mode: string) => ({
+          agentId,
+          status: "idle",
+          isStreaming: false,
+          mode,
+        })),
+        agentsResolveActive: vi.fn(async () => ({ id: "agent-resolved" })),
         permissionSetMode: vi.fn(async () => undefined),
         openSettingsWindow: vi.fn(async () => undefined),
       },
@@ -185,7 +192,8 @@ describe("ChatInput", () => {
 
     const controls = screen.getByTestId("chat-input-reference-controls");
     const sendButton = within(controls).getByRole("button", { name: "发送" });
-    expect(controls.className).toContain("items-center");
+    expect(controls.className).toContain("pi-composer-selector-row");
+    expect(controls.className).toContain("shrink-0");
     expect(sendButton.className).not.toContain("mt-[-6px]");
     expect(sendButton.className).not.toContain("translate-x");
   });
@@ -289,7 +297,7 @@ describe("ChatInput", () => {
     expect(onStop).toHaveBeenCalledTimes(1);
   });
 
-  it("selects plan mode from the reference composer mode menu without enabling the old plan store", () => {
+  it("selects plan mode from the reference composer mode menu without enabling the old plan store", async () => {
     render(
       <I18nProvider>
         <ChatInput
@@ -297,6 +305,7 @@ describe("ChatInput", () => {
           isProcessing={false}
           workspaceId="ws1"
           workspacePath="C:/repo"
+          agentId="agent-1"
           onSend={vi.fn(async () => undefined)}
           onStop={vi.fn()}
           referenceFrame
@@ -309,6 +318,9 @@ describe("ChatInput", () => {
 
     expect(useAgentModeStore.getState().getMode("ws1")).toBe("plan");
     expect(usePlanStore.getState().enabled).toBe(false);
+    await waitFor(() => {
+      expect(window.piAPI.agentsSetMode).toHaveBeenCalledWith("agent-1", "plan");
+    });
   });
 
   it("does not steal focus back to the textarea after selecting an agent mode", () => {
@@ -394,30 +406,21 @@ describe("ChatInput", () => {
     expect(permissionButton.className).toContain("text-[11px]");
     expect(permissionButton.className).toContain("leading-4");
     expect(permissionButton.className).not.toContain("overflow-hidden");
-    expect(permissionButton.querySelector(".pi-label-flip")?.className).toContain("whitespace-nowrap");
-    expect(permissionButton.querySelector(".pi-label-flip")?.className).not.toContain("truncate");
-    expect(modelButton.className).toContain("h-full");
-    expect(modelButton.className).toContain("min-w-0");
-    expect(modelButton.className).toContain("grid");
-    expect(modelButton.className).toContain("leading-4");
-    expect(modelButton.className).toContain("text-[11px]");
-    const modelLabel = modelButton.querySelector(".pi-label-flip");
-    expect(modelLabel?.className).toContain("overflow-hidden");
-    expect(modelLabel?.className).toContain("text-ellipsis");
-    expect(modelLabel?.className).toContain("whitespace-nowrap");
-    expect(modelLabel?.className).toContain("leading-4");
-    expect(modelLabel?.className).not.toContain("-top-");
+    expect(permissionButton.querySelector(".pi-composer-label-full")).toBeTruthy();
+    expect(permissionButton.querySelector(".pi-composer-label-ellipsis")).toBeNull();
+    expect(modelButton.className).toContain("pi-composer-model-btn");
+    const modelLabel = modelButton.querySelector(".pi-composer-label-ellipsis");
+    expect(modelLabel).toBeTruthy();
+    expect(modelLabel?.className).toContain("pi-composer-label");
     expect(modelButton.textContent).not.toMatch(/•|●/);
-    expect(thinkingButton.className).toContain("h-full");
-    expect(thinkingButton.className).toContain("w-full");
-    expect(thinkingButton.className).toContain("leading-4");
-    expect(thinkingButton.className).toContain("text-[11px]");
+    expect(thinkingButton.className).toContain("pi-composer-thinking-btn");
+    expect(thinkingButton.querySelector(".pi-composer-label-full")).toBeTruthy();
     expect(thinkingButton.querySelector("svg")).toBeNull();
-    // 胶囊用 grid 两列；整块不做 overflow-hidden 硬裁
+    // 布局槽位与胶囊结构
     const capsule = screen.getByTestId("chat-input-model-thinking-capsule");
-    expect(capsule.className).toContain("grid");
-    expect(capsule.className).toContain("grid-cols-[minmax(0,1fr)_3rem]");
-    expect(capsule.className).not.toContain("overflow-hidden");
+    expect(capsule.className).toContain("pi-composer-model-capsule");
+    expect(screen.getByTestId("chat-input-model-slot").className).toContain("pi-composer-model-slot");
+    expect(screen.getByTestId("chat-input-thinking-slot").className).toContain("pi-composer-thinking-slot");
     // residual a11y: composer triggers keep keyboard focus ring (wave-84)
     for (const btn of [agentModeButton, permissionButton, modelButton, thinkingButton]) {
       expect(btn.className).toContain("focus-visible:ring-2");
@@ -458,23 +461,28 @@ describe("ChatInput", () => {
     );
 
     const modelButton = screen.getByTestId("chat-input-model-trigger");
-    const modelLabel = modelButton.querySelector(".pi-label-flip");
+    const modelLabel = modelButton.querySelector(".pi-composer-label-ellipsis");
+    const modelSlot = screen.getByTestId("chat-input-model-slot");
+    const thinkingSlot = screen.getByTestId("chat-input-thinking-slot");
     const capsule = screen.getByTestId("chat-input-model-thinking-capsule");
     const permissionButton = screen.getByTestId("chat-input-permission-trigger");
+    const modelPopoverRoot = modelButton.closest("[data-pi-popover-root]");
 
-    // 模型：完整字符串仍在 DOM（title/text），视觉省略靠 CSS ellipsis，不是硬裁 DOM
+    // 模型：完整字符串仍在 DOM（title/text），视觉省略靠专用 CSS 类
     expect(modelButton.getAttribute("title")).toBe("gpt-5.6-solo-very-long-name-that-must-ellipsis");
     expect(modelLabel?.textContent).toBe("gpt-5.6-solo-very-long-name-that-must-ellipsis");
-    expect(modelLabel?.className).toMatch(/text-ellipsis/);
-    expect(modelLabel?.className).toMatch(/whitespace-nowrap/);
-    expect(modelLabel?.className).toMatch(/overflow-hidden/);
-    // 胶囊与按钮本身不靠 overflow-hidden 切半个字
-    expect(capsule.className).not.toContain("overflow-hidden");
-    expect(modelButton.className).not.toContain("overflow-hidden");
+    expect(modelLabel?.className).toContain("pi-composer-label-ellipsis");
+    // 布局链：slot 承载宽度，Popover 单节点填满 slot，label 才 ellipsis
+    expect(capsule.className).toContain("pi-composer-model-capsule");
+    expect(modelSlot.className).toContain("pi-composer-model-slot");
+    expect(thinkingSlot.className).toContain("pi-composer-thinking-slot");
+    expect(modelPopoverRoot).not.toBeNull();
+    expect(modelPopoverRoot?.parentElement).toBe(modelSlot);
+    expect(modelButton.parentElement).toBe(modelPopoverRoot);
     // 权限文案完整
     expect(permissionButton.textContent).toContain("智能授权");
-    expect(permissionButton.querySelector(".pi-label-flip")?.className).toContain("whitespace-nowrap");
-    expect(permissionButton.querySelector(".pi-label-flip")?.className).not.toContain("truncate");
+    expect(permissionButton.querySelector(".pi-composer-label-full")).toBeTruthy();
+    expect(permissionButton.querySelector(".pi-composer-label-ellipsis")).toBeNull();
   });
 
   it("keeps permission label fully visible after mode changes", () => {
@@ -499,8 +507,8 @@ describe("ChatInput", () => {
 
     const permissionButton = screen.getByRole("button", { name: "权限: 智能授权" });
     expect(permissionButton.textContent).toContain("智能授权");
-    expect(permissionButton.querySelector(".pi-label-flip")?.className).toContain("whitespace-nowrap");
-    expect(permissionButton.querySelector(".pi-label-flip")?.className).not.toContain("truncate");
+    expect(permissionButton.querySelector(".pi-composer-label-full")).toBeTruthy();
+    expect(permissionButton.querySelector(".pi-composer-label-ellipsis")).toBeNull();
   });
 
   it("unifies the four reference composer popover surfaces and omits leading dots", () => {
@@ -590,7 +598,7 @@ describe("ChatInput", () => {
     expect(openTools.className).toContain("focus-visible:ring-2");
   });
 
-  it("allows changing permission mode from the reference composer", () => {
+  it("allows changing permission mode from the reference composer", async () => {
     render(
       <I18nProvider>
         <ChatInput
@@ -609,6 +617,9 @@ describe("ChatInput", () => {
     fireEvent.click(screen.getByRole("menuitemradio", { name: "始终授权" }));
 
     expect(useSettingsStore.getState().settings.permissionLevel).toBe("always");
+    await waitFor(() => {
+      expect(window.piAPI.permissionSetMode).toHaveBeenCalledWith("always", "ws1");
+    });
   });
 
   it("clamps persisted unsupported modes back to build and hides unavailable runtime modes", () => {

@@ -12,11 +12,22 @@ const describeImagesInputSchema = z.array(z.object({
 })).min(1).max(6);
 
 export function setupConfigIpc(configManager: ConfigManager, opts: { onManagedModelsChanged?: () => void } = {}): void {
-    const notifyIfValid = <T extends { valid: boolean }>(result: T): T => {
-        if (result.valid) {
-            opts.onManagedModelsChanged?.();
-            broadcastPiConfigChanged();
-        }
+    // 生产分级通知：
+    // - heavy: 模型清单/鉴权变更 → 重建 live session（贵）
+    // - light: 仅默认模型切换 → 只广播 pi-config:changed，禁止 refreshWorkspace/disposeAll
+    const notifyConfigChangedLight = (): void => {
+        broadcastPiConfigChanged();
+    };
+    const notifyManagedModelsChangedHeavy = (): void => {
+        opts.onManagedModelsChanged?.();
+        broadcastPiConfigChanged();
+    };
+    const notifyIfValidHeavy = <T extends { valid: boolean }>(result: T): T => {
+        if (result.valid) notifyManagedModelsChangedHeavy();
+        return result;
+    };
+    const notifyIfValidLight = <T extends { valid: boolean }>(result: T): T => {
+        if (result.valid) notifyConfigChangedLight();
         return result;
     };
 
@@ -24,30 +35,31 @@ export function setupConfigIpc(configManager: ConfigManager, opts: { onManagedMo
     ipcMain.handle("config:get-auth", () => configManager.getAuthConfigRedacted());
     ipcMain.handle("config:get-settings", () => configManager.getSettingsConfig());
     ipcMain.handle("config:save-models", async (_event, data: PiModelsFile) =>
-        notifyIfValid(await configManager.saveModelsConfig(data)),
+        notifyIfValidHeavy(await configManager.saveModelsConfig(data)),
     );
     ipcMain.handle("config:save-auth", async (_event, data: PiAuthFile) =>
-        notifyIfValid(await configManager.saveAuthConfig(data)),
+        notifyIfValidHeavy(await configManager.saveAuthConfig(data)),
     );
     ipcMain.handle("config:save-settings", async (_event, data: PiSettingsFile) =>
-        notifyIfValid(await configManager.saveSettingsConfig(data)),
+        notifyIfValidHeavy(await configManager.saveSettingsConfig(data)),
     );
     ipcMain.handle("config:save-raw", async (_event, fileName: string, rawJson: string) =>
-        notifyIfValid(await configManager.saveRawConfig(fileName, rawJson)),
+        notifyIfValidHeavy(await configManager.saveRawConfig(fileName, rawJson)),
     );
     ipcMain.handle("config:export", () => configManager.exportConfigRedacted());
     ipcMain.handle("config:import", async (_event, packageJson: string) =>
-        notifyIfValid(await configManager.importConfig(packageJson)),
+        notifyIfValidHeavy(await configManager.importConfig(packageJson)),
     );
     ipcMain.handle("config:list-managed-models", () => configManager.listManagedModels());
     ipcMain.handle("config:save-managed-model", async (_event, input: ManagedModelSaveInput) =>
-        notifyIfValid(await configManager.saveManagedModel(input)),
+        notifyIfValidHeavy(await configManager.saveManagedModel(input)),
     );
     ipcMain.handle("config:delete-managed-model", async (_event, input: ManagedModelDeleteInput) =>
-        notifyIfValid(await configManager.deleteManagedModel(input)),
+        notifyIfValidHeavy(await configManager.deleteManagedModel(input)),
     );
+    // 关键：composer 选模型会走这里。绝不能触发 onManagedModelsChanged（会 refresh 全部 workspace + disposeAll）。
     ipcMain.handle("config:set-default-model", async (_event, providerId: string, modelId: string) =>
-        notifyIfValid(await configManager.setDefaultModel(providerId, modelId)),
+        notifyIfValidLight(await configManager.setDefaultModel(providerId, modelId)),
     );
     ipcMain.handle("config:fetch-models", (_event, baseUrl: string, apiKey?: string, apiType?: string) => {
         // SSRF 防护: 验证 URL 安全性

@@ -1487,6 +1487,7 @@ export interface PiAPI {
     agentsMessages(agentId: string): Promise<AgentMessage[]>;
     agentsRuntimeState(agentId: string): Promise<AgentRuntimeState>;
     agentsSetThinking(agentId: string, level: PiThinkingLevel): Promise<AgentRuntimeState | IpcError>;
+    agentsSetMode(agentId: string, mode: AgentMode): Promise<AgentRuntimeState | IpcError>;
     agentsSyncPermissions(agentId: string): Promise<AgentPermissionSyncResult | IpcError>;
     onAgentsState(cb: (agents: AgentTab[]) => void): Unsubscribe;
     onAgentRuntimeState(cb: (states: AgentRuntimeState[]) => void): Unsubscribe;
@@ -1516,7 +1517,7 @@ export interface PiAPI {
     taskRename(workspaceId: string, id: string, input: TaskRenameInput): Promise<TaskRecord | IpcError>;
 
     // Extension UI bridge
-    permissionSetMode(mode: PermissionMode): Promise<void>;
+    permissionSetMode(mode: PermissionMode, workspaceId?: string): Promise<void>;
     permissionRespond(requestId: string, response: ExtensionUiResponse | PermissionDecision): void;
     onPermissionRequest(cb: (req: ExtensionUiRequest) => void): Unsubscribe;
     onPermissionUpdate(cb: (payload: PermissionUpdatePayload) => void): Unsubscribe;

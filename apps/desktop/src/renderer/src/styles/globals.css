@@ -1213,6 +1213,130 @@ code {
   animation: pi-label-flip 140ms cubic-bezier(0.2, 0, 0, 1);
 }
 
+/*
+ * Composer 生产布局槽位：
+ * - 模型列必须可收缩 (min-width:0)
+ * - 省略只发生在模型文案节点
+ * - 权限/模式/思考绝不横向硬裁
+ */
+.pi-composer-selector-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.pi-composer-selector-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.pi-composer-selector-right {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.pi-composer-model-capsule {
+  display: flex;
+  height: 32px;
+  width: 100%;
+  min-width: 12rem;
+  max-width: 18rem;
+  align-items: stretch;
+  border: 1px solid var(--mm-border);
+  border-radius: 6px;
+  background: var(--mm-bg-control);
+}
+
+.pi-composer-model-slot {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: block;
+}
+
+.pi-composer-thinking-slot {
+  width: 3rem;
+  flex: 0 0 3rem;
+  display: block;
+}
+
+.pi-composer-model-btn {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px 0 0 5px;
+  background: transparent;
+  color: var(--mm-text-secondary);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.pi-composer-model-btn:hover {
+  background: var(--mm-bg-hover);
+}
+
+.pi-composer-thinking-btn {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  border: 0;
+  border-left: 1px solid var(--mm-border);
+  border-radius: 0 5px 5px 0;
+  background: transparent;
+  color: var(--mm-text-secondary);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.pi-composer-thinking-btn:hover {
+  background: var(--mm-bg-hover);
+}
+
+.pi-composer-label {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  color: var(--mm-text-primary);
+}
+
+.pi-composer-label-full {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/* 唯一允许省略的文案节点：模型名 */
+.pi-composer-label-ellipsis {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  /* 给 descender 留足行盒，避免 g/y 被 overflow 竖切 */
+  line-height: 16px;
+  padding: 1px 0;
+  box-sizing: border-box;
+}
+
 @keyframes pi-motion-notice-in {
   from {
     opacity: 0;

@@ -497,6 +497,25 @@ function promptFailureDetails(error: unknown): string {
         return state;
     }
 
+    /**
+     * 立即把 UI 选择的 Agent 模式同步到 live Pi session。
+     * 生产要求：不能只写 localStorage，必须在下一条消息前就完成 /plan|/compose 切换与工具权限裁剪。
+     */
+    async setMode(agentId: string, mode: AgentMode): Promise<AgentRuntimeState> {
+        const runtime = this.requireRuntime(agentId);
+        const modeOptions = this.deps.getModeOptions?.(runtime.workspace.id);
+        const nextMode = normalizeAgentMode(mode, modeOptions);
+        return this.enqueueRuntimeOperation(runtime, async () => {
+            await this.syncRuntimeMode(runtime, nextMode);
+            runtime.mode = nextMode;
+            await this.configureSessionPermissions(runtime, runtime.session, nextMode);
+            runtime.tab.updatedAt = Date.now();
+            const state = this.getRuntimeState(agentId);
+            this.emitRuntimeStates();
+            return state;
+        });
+    }
+
     getWorkspaceSession(agentId: string): WorkspaceSession {
         return this.requireRuntime(agentId).session;
     }

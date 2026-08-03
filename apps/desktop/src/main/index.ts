@@ -735,15 +735,20 @@ function setupIPC(updaterService: AppUpdaterService): void {
   });
   autoScheduler.start();
   setupConfigIpc(configManager, {
+    // 仅 managed models / auth / models.json 结构变更时触发（重路径）。
+    // 默认模型切换不得进入这里；否则 composer 选模型会卡顿数秒（refresh 全部 session + disposeAll）。
     onManagedModelsChanged: () => {
       refreshPiAgentConfig(configManager);
       if (piAgentConfig) {
         const currentSettings = store.get('settings');
-        store.set('settings', {
-          ...currentSettings,
-          provider: piAgentConfig.defaultProvider,
-          model: piAgentConfig.defaultModel,
-        });
+        // 只在当前选择为空时回填默认，避免覆盖用户刚在 UI 选中的模型。
+        if (!currentSettings.provider || !currentSettings.model) {
+          store.set('settings', {
+            ...currentSettings,
+            provider: piAgentConfig.defaultProvider,
+            model: piAgentConfig.defaultModel,
+          });
+        }
       }
       modelConfigRefreshTail = modelConfigRefreshTail.catch(() => undefined).then(async () => {
         const workspaceIds = [...new Set(agentRegistry.list().map((agent) => agent.workspaceId))];

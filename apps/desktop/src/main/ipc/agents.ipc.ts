@@ -1,7 +1,7 @@
 import { ipcMain } from "electron";
-import { ipcError, type CreateAgentInput, type PiThinkingLevel, type SendAgentPromptInput } from "@shared";
+import { ipcError, type AgentMode, type CreateAgentInput, type PiThinkingLevel, type SendAgentPromptInput } from "@shared";
 import type { AgentRuntimeRegistry } from "../services/agent-runtime/registry";
-import { agentsCreateSchema, agentsPromptSchema, agentsIdSchema, agentsSetThinkingSchema, agentsWorkspaceSessionSchema, agentsActiveSelectionSchema } from "./schemas";
+import { agentsCreateSchema, agentsPromptSchema, agentsIdSchema, agentsSetThinkingSchema, agentsSetModeSchema, agentsWorkspaceSessionSchema, agentsActiveSelectionSchema } from "./schemas";
 
 export function setupAgentsIpc(registry: AgentRuntimeRegistry): void {
     ipcMain.handle("agents:list", async () => registry.list());
@@ -76,6 +76,20 @@ export function setupAgentsIpc(registry: AgentRuntimeRegistry): void {
         } catch (error) {
             return ipcError(
                 "ipcErrors.agents.setThinkingFailed",
+                error instanceof Error ? error.message : String(error),
+            );
+        }
+    });
+    ipcMain.handle("agents:set-mode", async (_event, agentId: string, mode: AgentMode) => {
+        const parsed = agentsSetModeSchema.safeParse([agentId, mode]);
+        if (!parsed.success) {
+            return ipcError("ipcErrors.agents.invalidAgentMode", "无效的 Agent 模式");
+        }
+        try {
+            return await registry.setMode(agentId, mode);
+        } catch (error) {
+            return ipcError(
+                "ipcErrors.agents.setModeFailed",
                 error instanceof Error ? error.message : String(error),
             );
         }

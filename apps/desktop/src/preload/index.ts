@@ -195,6 +195,8 @@ const piAPI: PiAPI = {
         ipcRenderer.invoke("agents:runtime-state", agentId) as Promise<AgentRuntimeState>,
     agentsSetThinking: (agentId, level) =>
         ipcRenderer.invoke("agents:set-thinking", agentId, level) as Promise<AgentRuntimeState | IpcError>,
+    agentsSetMode: (agentId, mode) =>
+        ipcRenderer.invoke("agents:set-mode", agentId, mode) as Promise<AgentRuntimeState | IpcError>,
     agentsSyncPermissions: (agentId) =>
         ipcRenderer.invoke("agents:sync-permissions", agentId) as Promise<AgentPermissionSyncResult | IpcError>,
     onAgentsState: (cb) => subscribe<AgentTab[]>("agents:state", cb),
@@ -241,7 +243,8 @@ const piAPI: PiAPI = {
     taskRename: (workspaceId, id, input) =>
         ipcRenderer.invoke("task:rename", { workspaceId, id, ...input }) as Promise<TaskRecord | IpcError>,
 
-    permissionSetMode: (mode: PermissionMode) => ipcRenderer.invoke("permission:set-mode", mode) as Promise<void>,
+    permissionSetMode: (mode: PermissionMode, workspaceId?: string) =>
+        ipcRenderer.invoke("permission:set-mode", mode, workspaceId) as Promise<void>,
     permissionRespond: (
         requestId: string,
         response: ExtensionUiResponse | PermissionDecision,

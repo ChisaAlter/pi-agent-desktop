@@ -354,13 +354,17 @@ describe("settings-store: clearWriteError", () => {
 });
 
 describe("settings-store: Pi 配置变更同步", () => {
-    it("收到 Pi 配置变更事件后重新加载模型并替换旧缓存", async () => {
+    it("收到 Pi 配置变更事件后只刷新模型清单，不覆盖当前选择、不二次 setSettings", async () => {
         vi.resetModules();
         const localStorage = createLocalStorageMock();
         let onChanged: (() => void) | undefined;
         const eventApi = {
             ...mockApi,
-            getSettings: vi.fn(async () => ({})),
+            getSettings: vi.fn(async () => ({
+                theme: "light", fontSize: 14, model: "mimo-v2.5", provider: "mimo",
+                temperature: 0.7, maxTokens: 4096, autoSave: true,
+                showLineNumbers: true, wordWrap: true,
+            })),
             setSettings: vi.fn(async () => ({})),
             loadPiConfig: vi.fn(async () => ({
                 models: [
@@ -394,12 +398,9 @@ describe("settings-store: Pi 配置变更同步", () => {
         const { useSettingsStore: freshStore } = await import("../settings-store");
         // 监听器现在通过 init() 注册 (不再 module-top-level side effect)
         freshStore.getState().init();
+        await Promise.resolve();
+        await Promise.resolve();
         freshStore.setState({
-            settings: {
-                theme: "light", fontSize: 14, model: "mimo-v2.5", provider: "mimo",
-                temperature: 0.7, maxTokens: 4096, autoSave: true,
-                showLineNumbers: true, wordWrap: true,
-            },
             piModels: [
                 {
                     id: "mimo-v2.5",
@@ -415,6 +416,7 @@ describe("settings-store: Pi 配置变更同步", () => {
         expect(eventApi.onPiConfigChanged).toHaveBeenCalledTimes(1);
         await onChanged?.();
         await Promise.resolve();
+        await Promise.resolve();
 
         expect(freshStore.getState().piModels).toEqual([
             expect.objectContaining({
@@ -423,10 +425,12 @@ describe("settings-store: Pi 配置变更同步", () => {
                 name: "LongCat 2.0 Preview",
             }),
         ]);
+        // 生产铁律：pi-config:changed 不得覆盖用户当前选择，也不得二次 setSettings 放大卡顿
         expect(freshStore.getState().settings).toMatchObject({
-            model: "longcat-preview",
-            provider: "longcat",
+            model: "mimo-v2.5",
+            provider: "mimo",
         });
+        expect(eventApi.setSettings).not.toHaveBeenCalled();
     });
 });
 

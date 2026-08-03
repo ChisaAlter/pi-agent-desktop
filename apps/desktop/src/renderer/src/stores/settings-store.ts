@@ -540,7 +540,17 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
       }
       if (piAPI.onPiConfigChanged) {
         unsubPiConfig = piAPI.onPiConfigChanged(() => {
-          void get().loadPiConfig();
+          // 仅刷新模型清单；不要在每次默认模型变更时强制 setSettings 回写，
+          // 否则 composer 选模型会二次触发 settings:set，放大卡顿。
+          void (async () => {
+            try {
+              const config = (await piAPI.loadPiConfig()) as PiConfigPayload;
+              const models = Array.isArray(config.models) ? config.models : [];
+              set({ piModels: models });
+            } catch (e) {
+              logger.info('[settings-store] Pi config refresh after pi-config:changed failed:', e);
+            }
+          })();
         });
       }
     },

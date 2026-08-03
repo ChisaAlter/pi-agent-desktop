@@ -6,7 +6,7 @@ import { createSubscriptionManager } from "../utils/subscription-manager";
 interface PermissionState {
   mode: PermissionMode;
   pending: ExtensionUiRequest[];
-  setMode: (mode: PermissionMode) => void;
+  setMode: (mode: PermissionMode, workspaceId?: string) => void;
   enqueue: (request: ExtensionUiRequest) => void;
   respond: (requestId: string, decision: PermissionDecision) => void;
   respondValue: (requestId: string, value: string | boolean) => void;
@@ -17,9 +17,10 @@ export const usePermissionStore = create<PermissionState>((set, get) => ({
   mode: "smart",
   pending: [],
 
-  setMode: (mode) => {
+  setMode: (mode, workspaceId) => {
     set({ mode });
-    window.piAPI?.permissionSetMode(mode).catch((err) => {
+    // 生产要求：尽量传 workspaceId，避免全局污染其他工作区权限
+    window.piAPI?.permissionSetMode(mode, workspaceId).catch((err) => {
       logger.error("[permission-store] set mode failed:", err);
     });
   },
