@@ -1,5 +1,7 @@
 # Coding Readiness Hardening Implementation Plan
 
+> **Historical / Superseded implementation plan.** Retained for implementation history. Current architecture, persistence, permission, and testing contracts are maintained in [`../../current/`](../../current/) and [`../../security/PERMISSION-MATRIX.md`](../../security/PERMISSION-MATRIX.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use workflow:subagent-driven-development (recommended) or workflow:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make Pi Desktop suitable for supervised daily coding by enforcing desktop tool permissions in the main process, making Plan mode non-bypassable, persisting native Pi sessions, and proving the contracts with real Electron tests.

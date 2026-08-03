@@ -35,6 +35,7 @@
     "test": "pnpm -r run test",
     "clean": "pnpm -r run clean",
     "typecheck": "pnpm -r run typecheck",
+    "verify:docs": "node scripts/verify-doc-facts.cjs",
     "prepare": "lefthook install"
   },
   "devDependencies": {

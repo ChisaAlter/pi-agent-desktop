@@ -1,5 +1,7 @@
 # Pi Desktop Windows Test Report
 
+> **Historical / Superseded report.** This report covers the `1.0.13` test object and is retained as dated evidence. It does not define the current source or release state; use [`../current/facts.md`](../current/facts.md) and [`../current/testing-and-qa.md`](../current/testing-and-qa.md).
+
 测试日期：2026-07-18  
 测试对象：Pi Desktop `1.0.13`  
 测试平台：Windows 11（build 10.0.26200），Electron 41.2.0，Node.js 24.15.0，pnpm 9.0.0，Pi CLI 0.78.1。

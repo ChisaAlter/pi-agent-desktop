@@ -4,7 +4,7 @@
 
 ## Project Overview
 
-Pi Desktop is an Electron 41 + React 19 + TypeScript 5 desktop GUI wrapping the [Pi CLI](https://github.com/earendil-works/pi-coding-agent) AI coding agent. Windows-only (v1.0).
+Pi Desktop `1.0.14` is an Electron `41.2.0` + React 19 + TypeScript 5 desktop GUI wrapping the [Pi CLI](https://github.com/earendil-works/pi-coding-agent) AI coding agent. Windows-only (v1.0). Current architecture, persistence, permissions, and QA boundaries are maintained in [`docs/current/`](docs/current/) and [`docs/security/PERMISSION-MATRIX.md`](docs/security/PERMISSION-MATRIX.md).
 
 ## Monorepo Structure
 
@@ -67,13 +67,20 @@ pnpm --filter @pi-desktop/desktop package      # Build NSIS Windows installer
 
 ## Verification Order (Mandatory)
 
-**Before pushing, run in this exact order** — typecheck and lint are parallelizable but must both pass before test:
+**Before pushing, run the repository gate in this order** — typecheck and lint are parallelizable but must both pass before test:
 
 ```bash
 pnpm -r typecheck && pnpm -r lint && pnpm -r test
 ```
 
-CI runs the same sequence on `windows-latest` (see `.github/workflows/ci.yml`). Lefthook pre-commit runs typecheck + lint in parallel (no test).
+The current CI job runs the same three checks on `windows-latest`. It does not run the full Electron E2E suite or NSIS install/upgrade/uninstall isolation. Run the read-only documentation check separately when current facts change:
+
+```bash
+pnpm verify:docs
+```
+
+Lefthook pre-commit runs typecheck + lint in parallel (no test).
+
 
 ## Architecture: Three Processes
 
@@ -112,7 +119,7 @@ CI runs the same sequence on `windows-latest` (see `.github/workflows/ci.yml`). 
 4. Expose in preload: `apps/desktop/src/preload/index.ts`
 5. Use in renderer via `window.piAPI`
 
-There are 23 IPC handler files. Each exports a `setup*()` function taking dependencies via typed opts object.
+There are 24 IPC handler files. Each exports a `setup*()` function taking dependencies via typed opts object.
 
 ### Multi-workspace Session Architecture
 
@@ -120,11 +127,7 @@ Sessions run in-process (not child processes). The `WorkspaceRegistry` (`service
 
 ### Session Persistence
 
-Two backends coexist:
-- **electron-store** (JSON): original backend, stores sessions as `Session[]` — see `session-store.ts`
-- **better-sqlite3** (SQLite): v1.2 baseline, stores sessions in `sessions.db` under `app.getPath('userData')` — see `session-sqlite.ts`
-
-The SQLite schema supports tree-structured conversations (Pi JSONL v3) via `parent_id` on messages.
+The active desktop session/message repository is `node:sqlite` through `SqliteSessionRepository`. It stores `sessions.db` under `app.getPath('userData')`, with WAL, FTS5 message search, health checks, and a best-effort `sessions.backup.db` recovery copy. Native Pi session JSONL files live under `userData/pi-sessions/`; workspaces/settings remain in `electron-store`. See `docs/current/persistence.md` for the storage map and migration rules.
 
 ### Approval Flow
 
@@ -206,6 +209,7 @@ The SQLite schema supports tree-structured conversations (Pi JSONL v3) via `pare
 
 ## Electron Specifics
 
+- **Source baseline**: version `1.0.14`; keep version/runtime/IPC/persistence/security facts aligned with `docs/current/` and `docs/security/PERMISSION-MATRIX.md`.
 - **Electron 41.2.0** with **electron-vite 5** for building
 - **Package manager**: pnpm 9
 - **Native modules**: `node-pty` (terminal), `sharp` (images) — require node-gyp + Python + Visual Studio on Windows

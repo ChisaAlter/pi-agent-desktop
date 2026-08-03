@@ -10,32 +10,27 @@ Pi Desktop is a Windows desktop client for the [Pi CLI](https://github.com/earen
 
 ## Current Status
 
-As of 2026-06-27, the checked-in application version is `1.0.12` in both the workspace root and the desktop package.
+Current source baseline: Pi Desktop `1.0.14`, Electron `41.2.0`, Node.js `>=22.19.0`, and pnpm `9.0.0`.
 
-Current release snapshot:
-
-| Item | Status |
+| Item | Current fact |
 | --- | --- |
-| Source version | `1.0.12` |
-| Desktop package version | `1.0.12` |
-| Remote default branch | `master` |
-| Repository visibility | `public` |
-| Latest remote Git tag | `v1.0.12` |
-| Published GitHub Releases | `v1.0.12` stable release |
-| Release assets | `Pi-Desktop-1.0.12-setup.exe`, `Pi-Desktop-1.0.12-setup.exe.blockmap`, `latest.yml` |
-| Release published at | `2026-06-27 15:59:59Z` |
-| GitHub release page | `https://github.com/ChisaAlter/pi-agent-desktop/releases/tag/v1.0.12` |
-| In-app updater runtime | implemented, packaged, and wired to GitHub Releases |
-| Real updater result today | a real packaged `1.0.11` build discovered, downloaded, and installed the live `v1.0.12` release from GitHub Releases |
+| Source and desktop package version | `1.0.14` |
+| Electron runtime | `41.2.0` |
+| Main-process IPC modules | 24 |
+| Session persistence | `node:sqlite` through `SqliteSessionRepository` |
+| CI gate | typecheck, lint, test on `windows-latest` |
+| Compose workflow | Implemented built-in `compose` workflow with documented degradation limits |
+| NSIS isolation | Build/artifact checks exist; install/upgrade/uninstall remain blocked until an isolated Windows environment is available |
 
-The important distinction is this:
+The current-state documents are the maintained facts contract:
 
-- `1.0.12` is the current source and packaging version in this repository
-- `v1.0.12` is also the newest GitHub tag and the current published stable release
-- the GitHub release now carries the installer, blockmap, and `latest.yml` required by `electron-updater`
-- the repository is public, so `releases.atom` and `latest.yml` are reachable without GitHub authentication
+- [Current facts](docs/current/facts.md): version, runtime, IPC, Compose, persistence, and release boundaries
+- [Architecture](docs/current/architecture.md): process boundaries, IPC, runtime data flow, and Compose structure
+- [Persistence](docs/current/persistence.md): active stores, migration, recovery, and native Pi session continuity
+- [Testing and QA](docs/current/testing-and-qa.md): CI, Electron E2E, packaging, and isolation evidence boundaries
+- [Permission matrix](docs/security/PERMISSION-MATRIX.md): enforced tool, approval, path, and IPC controls
 
-The release line is now consistent end to end: package version, installer naming, updater metadata, GitHub tag, and published release assets all point at the same `1.0.12` version family.
+Published GitHub release state is intentionally separate from checked-in source state. See the [release and auto-update guide](docs/RELEASE-AND-AUTO-UPDATE.md) before making claims about tags or assets.
 
 ## What Pi Desktop Does
 
@@ -75,6 +70,7 @@ pnpm --filter @pi-desktop/desktop dev
 Use this order before pushing code:
 
 ```bash
+pnpm verify:docs
 pnpm -r typecheck
 pnpm -r lint
 pnpm -r test

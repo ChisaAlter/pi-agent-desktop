@@ -1,5 +1,7 @@
 # Pi Desktop Compose Runtime Alignment
 
+> **Historical / Superseded design snapshot.** The Compose runtime described here has since been implemented with known limits. Use [`../../current/facts.md`](../../current/facts.md) and [`../../current/architecture.md`](../../current/architecture.md) for current behavior.
+
 ## [S1] Problem
 
 Current `Pi Desktop` Compose mode is not a real workflow runtime.

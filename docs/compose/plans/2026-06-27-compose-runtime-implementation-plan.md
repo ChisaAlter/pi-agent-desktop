@@ -1,5 +1,7 @@
 # Pi Desktop Compose Runtime Implementation Plan
 
+> **Historical / Superseded implementation plan.** The plan is retained as a record of the Compose rollout. Current implementation status and limits are in [`../../current/facts.md`](../../current/facts.md) and [`../../current/architecture.md`](../../current/architecture.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use workflow:subagent-driven-development (recommended) or workflow:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 为 `C:\Ai\pi-desktop` 落地一个真实可执行的 Compose runtime：在桌面端提供 `workflow` 工具和内建 `compose` 流程，接通设置/能力报告/UI 状态，并完成真实 Electron 验收。

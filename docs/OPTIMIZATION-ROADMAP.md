@@ -1,5 +1,7 @@
 # Pi Desktop 全面优化路线图
 
+> **Historical / Superseded.** This roadmap was based on an earlier source snapshot. It is retained as history and does not define the current version, architecture, persistence, Compose behavior, permissions, CI, or QA status. Use [`current/facts.md`](current/facts.md), [`current/architecture.md`](current/architecture.md), [`current/persistence.md`](current/persistence.md), and [`current/testing-and-qa.md`](current/testing-and-qa.md) for current facts.
+
 > 编制日期：2026-06-01 · 目标版本：v1.0.1（hotfix） → v1.1.0（功能完善） → v1.2.0（质量）
 > 编制说明：基于 v0.1.0 源码扫描（776 行 main、5 处 TS 编译错误、CI 配置、依赖、核心 service）形成的可执行计划。
 

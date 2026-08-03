@@ -4,8 +4,10 @@ All notable changes to Pi Desktop will be documented here. Format follows [Keep 
 
 ## [Unreleased]
 
-### Planned
-- Electron 35+ bump to unblock e2e
+### Documentation
+- Unified current architecture, persistence, permission, testing, and release facts under `docs/current/` and `docs/security/`.
+- Added the offline, read-only `pnpm verify:docs` contract check.
+
 
 ## [1.0.14] - 2026-07-21
 

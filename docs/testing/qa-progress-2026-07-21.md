@@ -1,5 +1,7 @@
 # QA Progress — 2026-07-21
 
+> **Historical / Superseded snapshot.** This dated progress log is retained as evidence from its test wave. It does not override [`../current/testing-and-qa.md`](../current/testing-and-qa.md) or [`../current/facts.md`](../current/facts.md), which define the current QA and source facts.
+
 目标：代码级审查 + 功能穷举测试 + 使用体验优化（持续迭代，非一次性完成）。
 
 ## 本轮门禁

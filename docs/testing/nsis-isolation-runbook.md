@@ -1,5 +1,7 @@
 # NSIS Install / Uninstall / Upgrade Isolation Runbook
 
+> **Current operational runbook.** The isolation result is current only when re-run: the maintained developer host is blocked for installer mutation. See [`../current/testing-and-qa.md`](../current/testing-and-qa.md) for the source-of-truth QA boundary.
+
 **Purpose:** Execute matrix IDs **K-004 / K-014 / K-015** (install, uninstall, upgrade) without mutating the developer host.
 
 **Host gate (wave-10, 2026-07-21):**

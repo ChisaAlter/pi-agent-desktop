@@ -1,5 +1,7 @@
 # Pi Desktop Windows Test Matrix
 
+> **Historical / Superseded matrix snapshot.** This dated matrix records a prior test object and remains useful as evidence/history. Current test-layer boundaries and release claims are maintained in [`../current/testing-and-qa.md`](../current/testing-and-qa.md).
+
 测试对象：Pi Desktop `1.0.13`（当前工作区版本）  
 测试平台：Windows 10/11，Electron 41.2.0，Node.js >= 22.19.0，pnpm 9。外部依赖：Pi CLI、Git、GitHub 网络、可用的模型 Provider。
 

@@ -1,6 +1,6 @@
 # Contributing to Pi Desktop
 
-Thanks for your interest in contributing! Pi Desktop is an open-source Electron app wrapping [Pi](https://github.com/earendil-works/pi-coding-agent).
+Thanks for your interest in contributing! Pi Desktop is an open-source Electron `41.2.0` app at source version `1.0.14` wrapping [Pi](https://github.com/earendil-works/pi-coding-agent). The maintained current-state contract is in [`docs/current/`](docs/current/), with permissions in [`docs/security/PERMISSION-MATRIX.md`](docs/security/PERMISSION-MATRIX.md).
 
 ## Quick Start
 
@@ -37,11 +37,13 @@ docs/                # Specs, plans, spike notes
 1. Pick an issue or open one describing what you want to change
 2. Create a branch: `git checkout -b feature/m6-xxx`
 3. Implement + write tests (TDD preferred)
-4. Verify the repo gate: `pnpm -r typecheck && pnpm -r lint && pnpm -r test`
-5. For desktop runtime or renderer UI work, also run a real Electron acceptance on the surface you changed
-6. Save fresh acceptance screenshots under `docs/compose/acceptance/`
-7. Commit with clear messages: `feat(approval): add X` / `fix(terminal): Y`
-8. Open a PR against `master`
+4. If the change alters a current version/runtime/IPC/persistence/security/QA fact, update the relevant document under [`docs/current/`](docs/current/) or [`docs/security/PERMISSION-MATRIX.md`](docs/security/PERMISSION-MATRIX.md)
+5. Run the repository gate: `pnpm -r typecheck && pnpm -r lint && pnpm -r test`
+6. Run `pnpm verify:docs` for documentation/fact changes; it is read-only and offline
+7. For desktop runtime or renderer UI work, also run a real Electron acceptance on the surface you changed
+8. Save fresh acceptance screenshots under `docs/compose/acceptance/` when the existing acceptance convention applies
+9. Commit with clear messages: `feat(approval): add X` / `fix(terminal): Y`
+10. Open a PR against `master`
 
 ## Commit Convention
 
@@ -67,13 +69,15 @@ We use **vitest** + **@testing-library/react**. Tests live next to the code:
 - Renderer components: `apps/desktop/src/renderer/src/**/__tests__/*.test.tsx`
 - E2E: `apps/desktop/e2e/*.spec.ts`
 
+The current CI gate is typecheck, lint, and unit/integration test. It does not imply a full Electron E2E or NSIS lifecycle pass. Install/upgrade/uninstall checks must run in Windows Sandbox or another disposable isolated environment; the maintained host is currently blocked for that work.
+
 Run:
 
 ```bash
 pnpm -r typecheck
 pnpm -r lint
 pnpm -r test
-pnpm --filter @pi-desktop/desktop build
+pnpm verify:docs
 ```
 
 If you changed desktop UI, chat runtime behavior, overlays, settings flows, or other Electron-visible surfaces, follow the build with the matching Playwright Electron acceptance and keep the new screenshots in `docs/compose/acceptance/`. Examples:

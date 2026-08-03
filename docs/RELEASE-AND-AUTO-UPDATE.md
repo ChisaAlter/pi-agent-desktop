@@ -1,5 +1,7 @@
 # Pi Desktop Release and Auto-Update Guide
 
+> **Current release procedure.** Source baseline: `1.0.14`; Electron: `41.2.0`. Historical release snapshots below are retained as evidence only. For the current architecture and QA boundaries, see [`current/facts.md`](current/facts.md) and [`current/testing-and-qa.md`](current/testing-and-qa.md).
+
 ## Reader and Goal
 
 This document is for the maintainer who needs to publish a Windows release of Pi Desktop and verify that the in-app updater can discover it.
@@ -13,22 +15,21 @@ After reading it, you should be able to:
 
 ## Current Version Snapshot
 
-This snapshot was updated on 2026-06-27 as part of the updater release cut.
+The checked-in source baseline is `1.0.14` and Electron is `41.2.0`. Verify these facts locally with the offline command before a release-related change:
 
-| Item | Value |
+```bash
+pnpm verify:docs
+```
+
+Published GitHub tags, release assets, and updater reachability are release-environment facts and must be checked during the release flow; do not infer them from the source version alone.
+
+| Item | Current source value |
 | --- | --- |
-| Workspace root version | `1.0.12` |
-| Desktop package version | `1.0.12` |
-| Remote default branch | `master` |
-| Repository visibility | `public` |
-| Latest remote Git tag | `v1.0.12` |
-| Published GitHub Release | `v1.0.12` |
-| Release published at | `2026-06-27 15:59:59Z` |
-| GitHub release page | `https://github.com/ChisaAlter/pi-agent-desktop/releases/tag/v1.0.12` |
-| Published assets | installer, installer blockmap, `latest.yml` |
-| Updater result in packaged build | anonymous GitHub metadata is live; a real packaged `1.0.11` build downloaded and installed `1.0.12` successfully |
-
-The key point remains the same: updater support depends on real signed release assets and a public release feed. Both conditions are now satisfied for `v1.0.12`, so packaged builds can resolve GitHub metadata without maintainer credentials.
+| Workspace root version | `1.0.14` |
+| Desktop package version | `1.0.14` |
+| Electron runtime | `41.2.0` |
+| Updater implementation | `electron-updater` with GitHub Releases provider |
+| NSIS isolation | Host install/upgrade/uninstall verification remains blocked pending an isolated Windows environment |
 
 ## How Versioning Works
 
@@ -124,41 +125,30 @@ Key behavior changes:
 - noisy updater exceptions are normalized into short human-readable messages before they reach the UI
 - the release workflow now uploads installer, blockmap, and `latest.yml` with explicit `gh release upload`, instead of relying on `electron-builder` auto-publish side effects
 
-## Real Acceptance Result on 2026-06-28
+## Real Acceptance Evidence
 
-End-to-end updater acceptance is now complete:
+The following is required evidence for a release candidate, not a source-code assumption:
 
-- the repository visibility is `public`
-- `releases.atom` returns `200`
-- `releases/latest/download/latest.yml` returns `200`
-- a real packaged build whose updater state reported `当前版本: 1.0.11` discovered `最新版本: 1.0.12`
-- that packaged build downloaded `Pi-Desktop-1.0.12-setup.exe` into `%LOCALAPPDATA%\\@pi-desktopdesktop-updater\\pending`
-- the downloaded installer ran successfully and installed `Pi Desktop.exe` under `%LOCALAPPDATA%\\Programs\\Pi Desktop`
-- the installed application reports `当前版本: 1.0.12`, `最新版本: 1.0.12`, and `已是最新`
+- CI typecheck, lint, and test are green;
+- a desktop build and main-runtime smoke check pass;
+- updater-enabled packaging produces the installer, blockmap, `latest.yml`, and packaged `app-update.yml`;
+- the GitHub Release contains the expected assets and the public metadata URLs respond;
+- a packaged app performs a real Settings > About updater check;
+- install/upgrade/uninstall are run only in an isolated Windows environment and recorded separately.
 
-This closes the updater loop on the real packaged Windows path, not just the release-publication side.
+The current maintained host is not an acceptable installer test environment: the NSIS isolation gate is blocked by missing elevation/Sandbox capability and an existing host installation. Keep those lifecycle checks `BLOCKED` or `NOT_RUN` until isolated evidence exists.
 
-## Current Release Status on 2026-06-27
+## Current Release Checks
 
-What is already true:
+The source and workflow facts that can be checked offline are:
 
-- the repository source version is `1.0.12`
-- the remote tag `v1.0.12` is published
-- the GitHub Release `v1.0.12` is published
-- the release contains the installer, blockmap, and `latest.yml`
-- the repository is public, so end users can reach the release feed anonymously
-- CI / release workflows are aligned to `pnpm@9.0.0`
-- the Windows release workflow now mirrors the repo into a real short path before packaging, which avoids the NSIS `MAX_PATH` include failure on GitHub runners
+- root and desktop package versions match `1.0.14`;
+- Electron is `41.2.0`;
+- CI is the typecheck/lint/test gate;
+- updater-enabled release builds set `PI_DESKTOP_ENABLE_AUTO_UPDATE=1`;
+- the release workflow builds and verifies NSIS artifacts.
 
-The publication blockers from earlier in the day are closed:
-
-- invalid `electron-builder --publish` mode
-- misplaced `publisherName`
-- missing NSIS helper include on CI
-- workflow YAML parser issues around the short-path fix
-- short-path copy step exiting non-zero on successful `robocopy`
-- `lefthook install` failing in the mirrored workspace because `.git` was missing
-- duplicate GitHub releases / missing `.blockmap` caused by `electron-builder` auto-publish; the workflow now creates or edits one release explicitly and uploads assets with `--clobber`
+The publication state of a tag, GitHub Release, `latest.yml`, and public feed must be checked against the actual release environment for each release. A source version does not prove that a tag or asset has been published.
 
 ## Common Failure Modes
 
@@ -172,7 +162,7 @@ You are testing the wrong artifact shape. The updater runtime depends on package
 
 ### The app shows a GitHub `404`
 
-For `v1.0.12`, a `404` is no longer expected from missing release publication. If it happens now, check:
+A `404` can mean that the expected tag/release asset has not been published or that the packaged app cannot reach the configured repository. Check:
 
 - the repository was not switched back to `private`
 - the packaged app is still pointing at `ChisaAlter/pi-agent-desktop`
@@ -200,4 +190,4 @@ That was fixed in this rollout. Updater errors should now be summarized before d
 
 Use this sentence:
 
-Pi Desktop is now aligned end to end on `1.0.12`; the repository is public, the GitHub release feed is reachable anonymously, and packaged Windows builds can discover, download, and install the published stable release.
+Pi Desktop source is currently `1.0.14` on Electron `41.2.0`; updater-enabled Windows releases require signed artifacts and explicit GitHub Release verification, while installer lifecycle checks remain blocked until isolated evidence exists.
