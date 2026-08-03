@@ -40,12 +40,25 @@ export interface TaskIpcDeps {
     /** TaskRegistry 实例 (主进程单例, 由 main/index.ts 注入). */
     taskRegistry: TaskRegistry;
     /**
-     * 同步把 workspaceId 解析为 session_id.
-     * 返回 null 表示该 workspace 无对应 session.
-     * 当前实现 (Task 1 迁移策略): session_id = workspace_id.
-     * TODO: 未来需要真正的 workspace → session 映射.
+     * Legacy workspace-only resolver. It remains the fallback for callers that
+     * have not yet supplied an explicit sessionId.
      */
     getWorkspaceSessionId: (workspaceId: string) => string | null;
+    /** Optional validation/resolution for explicit session identities. */
+    resolveSessionId?: (workspaceId: string, sessionId: string) => string | null | Promise<string | null>;
+}
+
+async function resolveTaskSessionId(
+    deps: TaskIpcDeps,
+    workspaceId: string,
+    explicitSessionId?: string,
+): Promise<string | null> {
+    if (explicitSessionId) {
+        return deps.resolveSessionId
+            ? await deps.resolveSessionId(workspaceId, explicitSessionId)
+            : explicitSessionId;
+    }
+    return deps.getWorkspaceSessionId(workspaceId);
 }
 
 function invalidInput(err: ZodError | Error): IpcError {
@@ -91,6 +104,7 @@ export function setupTaskIpc(deps: TaskIpcDeps): void {
     ipcMain.handle("task:create", async (_event, input: unknown) => {
         let parsed: {
             workspaceId: string;
+            sessionId?: string;
             summary: string;
             parentId?: string;
             owner?: string;
@@ -101,7 +115,7 @@ export function setupTaskIpc(deps: TaskIpcDeps): void {
             log.warn("[task.ipc] task:create invalid input:", err);
             return invalidInput(err as ZodError);
         }
-        const sessionId = deps.getWorkspaceSessionId(parsed.workspaceId);
+        const sessionId = await resolveTaskSessionId(deps, parsed.workspaceId, parsed.sessionId);
         if (!sessionId) {
             return ipcError(
                 "ipcErrors.task.sessionNotFound",
@@ -126,6 +140,7 @@ export function setupTaskIpc(deps: TaskIpcDeps): void {
     ipcMain.handle("task:list", async (_event, input: unknown) => {
         let parsed: {
             workspaceId: string;
+            sessionId?: string;
             status?: "open" | "in_progress" | "blocked" | "done" | "abandoned";
             includeTerminal?: boolean;
             includeArchived?: boolean;
@@ -136,7 +151,7 @@ export function setupTaskIpc(deps: TaskIpcDeps): void {
             log.warn("[task.ipc] task:list invalid input:", err);
             return invalidInput(err as ZodError);
         }
-        const sessionId = deps.getWorkspaceSessionId(parsed.workspaceId);
+        const sessionId = await resolveTaskSessionId(deps, parsed.workspaceId, parsed.sessionId);
         if (!sessionId) {
             return ipcError(
                 "ipcErrors.task.sessionNotFound",
@@ -159,14 +174,14 @@ export function setupTaskIpc(deps: TaskIpcDeps): void {
 
     // ── task:get ──────────────────────────────────────────────────
     ipcMain.handle("task:get", async (_event, input: unknown) => {
-        let parsed: { workspaceId: string; id: string };
+        let parsed: { workspaceId: string; sessionId?: string; id: string };
         try {
             parsed = TaskGetSchema.parse(input);
         } catch (err) {
             log.warn("[task.ipc] task:get invalid input:", err);
             return invalidInput(err as ZodError);
         }
-        const sessionId = deps.getWorkspaceSessionId(parsed.workspaceId);
+        const sessionId = await resolveTaskSessionId(deps, parsed.workspaceId, parsed.sessionId);
         if (!sessionId) {
             return ipcError(
                 "ipcErrors.task.sessionNotFound",
@@ -187,6 +202,7 @@ export function setupTaskIpc(deps: TaskIpcDeps): void {
     ipcMain.handle("task:start", async (_event, input: unknown) => {
         let parsed: {
             workspaceId: string;
+            sessionId?: string;
             id: string;
             owner?: string;
             eventSummary?: string;
@@ -197,7 +213,7 @@ export function setupTaskIpc(deps: TaskIpcDeps): void {
             log.warn("[task.ipc] task:start invalid input:", err);
             return invalidInput(err as ZodError);
         }
-        const sessionId = deps.getWorkspaceSessionId(parsed.workspaceId);
+        const sessionId = await resolveTaskSessionId(deps, parsed.workspaceId, parsed.sessionId);
         if (!sessionId) {
             return ipcError(
                 "ipcErrors.task.sessionNotFound",
@@ -220,14 +236,14 @@ export function setupTaskIpc(deps: TaskIpcDeps): void {
 
     // ── task:block ────────────────────────────────────────────────
     ipcMain.handle("task:block", async (_event, input: unknown) => {
-        let parsed: { workspaceId: string; id: string; eventSummary?: string };
+        let parsed: { workspaceId: string; sessionId?: string; id: string; eventSummary?: string };
         try {
             parsed = TaskBlockSchema.parse(input);
         } catch (err) {
             log.warn("[task.ipc] task:block invalid input:", err);
             return invalidInput(err as ZodError);
         }
-        const sessionId = deps.getWorkspaceSessionId(parsed.workspaceId);
+        const sessionId = await resolveTaskSessionId(deps, parsed.workspaceId, parsed.sessionId);
         if (!sessionId) {
             return ipcError(
                 "ipcErrors.task.sessionNotFound",
@@ -249,14 +265,14 @@ export function setupTaskIpc(deps: TaskIpcDeps): void {
 
     // ── task:unblock ─────────────────────────────────────────────
     ipcMain.handle("task:unblock", async (_event, input: unknown) => {
-        let parsed: { workspaceId: string; id: string; eventSummary?: string };
+        let parsed: { workspaceId: string; sessionId?: string; id: string; eventSummary?: string };
         try {
             parsed = TaskUnblockSchema.parse(input);
         } catch (err) {
             log.warn("[task.ipc] task:unblock invalid input:", err);
             return invalidInput(err as ZodError);
         }
-        const sessionId = deps.getWorkspaceSessionId(parsed.workspaceId);
+        const sessionId = await resolveTaskSessionId(deps, parsed.workspaceId, parsed.sessionId);
         if (!sessionId) {
             return ipcError(
                 "ipcErrors.task.sessionNotFound",
@@ -278,14 +294,14 @@ export function setupTaskIpc(deps: TaskIpcDeps): void {
 
     // ── task:done ─────────────────────────────────────────────────
     ipcMain.handle("task:done", async (_event, input: unknown) => {
-        let parsed: { workspaceId: string; id: string; eventSummary?: string };
+        let parsed: { workspaceId: string; sessionId?: string; id: string; eventSummary?: string };
         try {
             parsed = TaskDoneSchema.parse(input);
         } catch (err) {
             log.warn("[task.ipc] task:done invalid input:", err);
             return invalidInput(err as ZodError);
         }
-        const sessionId = deps.getWorkspaceSessionId(parsed.workspaceId);
+        const sessionId = await resolveTaskSessionId(deps, parsed.workspaceId, parsed.sessionId);
         if (!sessionId) {
             return ipcError(
                 "ipcErrors.task.sessionNotFound",
@@ -307,14 +323,14 @@ export function setupTaskIpc(deps: TaskIpcDeps): void {
 
     // ── task:abandon ─────────────────────────────────────────────
     ipcMain.handle("task:abandon", async (_event, input: unknown) => {
-        let parsed: { workspaceId: string; id: string; eventSummary?: string };
+        let parsed: { workspaceId: string; sessionId?: string; id: string; eventSummary?: string };
         try {
             parsed = TaskAbandonSchema.parse(input);
         } catch (err) {
             log.warn("[task.ipc] task:abandon invalid input:", err);
             return invalidInput(err as ZodError);
         }
-        const sessionId = deps.getWorkspaceSessionId(parsed.workspaceId);
+        const sessionId = await resolveTaskSessionId(deps, parsed.workspaceId, parsed.sessionId);
         if (!sessionId) {
             return ipcError(
                 "ipcErrors.task.sessionNotFound",
@@ -336,14 +352,14 @@ export function setupTaskIpc(deps: TaskIpcDeps): void {
 
     // ── task:rename ───────────────────────────────────────────────
     ipcMain.handle("task:rename", async (_event, input: unknown) => {
-        let parsed: { workspaceId: string; id: string; summary: string };
+        let parsed: { workspaceId: string; sessionId?: string; id: string; summary: string };
         try {
             parsed = TaskRenameSchema.parse(input);
         } catch (err) {
             log.warn("[task.ipc] task:rename invalid input:", err);
             return invalidInput(err as ZodError);
         }
-        const sessionId = deps.getWorkspaceSessionId(parsed.workspaceId);
+        const sessionId = await resolveTaskSessionId(deps, parsed.workspaceId, parsed.sessionId);
         if (!sessionId) {
             return ipcError(
                 "ipcErrors.task.sessionNotFound",

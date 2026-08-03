@@ -52,8 +52,8 @@ describe("setupTaskIpc", () => {
         const db = new LongHorizonDatabase(dir);
         databases.push(db);
         taskRegistry = new TaskRegistry(db);
-        getWorkspaceSessionId = (workspaceId: string) =>
-            workspaceId === "ws_1" ? "ws_1" : null;
+        getWorkspaceSessionId = vi.fn((workspaceId: string) =>
+            workspaceId === "ws_1" ? "ws_1" : null);
         setupTaskIpc({ taskRegistry, getWorkspaceSessionId });
     });
 
@@ -134,7 +134,18 @@ describe("setupTaskIpc", () => {
         expect(list3[0].status).toBe("done");
     });
 
-    // ── 2. Unknown workspace ─────────────────────────────────────────
+    it("uses an explicit sessionId instead of the workspace-only resolver", async () => {
+        const createHandler = handlers.get("task:create");
+        const result = (await createHandler?.({}, {
+            workspaceId: "ws_1",
+            sessionId: "native-session-1",
+            summary: "explicit session task",
+        })) as TaskRecord;
+
+        expect(result.sessionId).toBe("native-session-1");
+        expect(getWorkspaceSessionId).not.toHaveBeenCalled?.();
+    });
+
 
     it("returns ipcError.task.sessionNotFound when workspaceId has no session", async () => {
         const createHandler = handlers.get("task:create");
