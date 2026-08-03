@@ -71,7 +71,7 @@ describe("MiniMaxCode window chrome interactivity", () => {
         expect(document.querySelector('[data-mmcode-region="center"]')?.querySelector("#pi-global-composer-root")).toBeTruthy();
     });
 
-    it("keeps only the right collapse control floating and stops reserving a fake left gutter when the sidebar is expanded", () => {
+    it("keeps both collapse controls floating at the workspace edges without a full-height left gutter", () => {
         render(
             <MiniMaxCodeLayout
                 leftSlot={<div>对话</div>}
@@ -101,12 +101,20 @@ describe("MiniMaxCode window chrome interactivity", () => {
         expect(rightToggleClassName).toContain("focus-visible:ring-[#2563eb]");
         expect(rightToggleClassName).not.toContain("rounded-md");
         expect(rightToggleClassName).not.toContain("bg-[var(--mm-bg-main)]");
-        expect(screen.queryByRole("button", { name: "折叠左侧栏" })).toBeNull();
-        expect(document.querySelector('[data-mmcode-region="left"]')?.firstElementChild?.className ?? "").not.toContain("pl-10");
+
+        // 左收起按钮浮在中间工作区左上角:展开态也可见,中心区不预留整高灰色竖条
+        const leftToggle = screen.getByRole("button", { name: "折叠左侧栏" });
+        expect(leftToggle.className).toContain("left-3");
+        expect(leftToggle.className).toContain("top-[calc((42px-1.75rem)/2)]");
+        expect(leftToggle.className).toContain("z-[80]");
+        expect(leftToggle.closest('[data-mmcode-region="center"]')).toBeTruthy();
+        expect(document.querySelector('[data-mmcode-region="center"]')?.className ?? "").not.toContain("pl-6");
+        expect(document.querySelector('[data-mmcode-region="center"]')?.className ?? "").not.toContain("pl-10");
+        expect(document.querySelector('[data-mmcode-region="center"]')?.className ?? "").not.toContain("pl-12");
         expect(document.querySelector('[data-mmcode-region="right-floating"]')?.className ?? "").toContain("absolute");
     });
 
-    it("reserves center gutters when a sidebar is collapsed and omits unavailable right toggle", () => {
+    it("collapses the left rail without a seam border or full-height gutter and omits unavailable right toggle", () => {
         render(
             <MiniMaxCodeLayout
                 leftSlot={<div>对话</div>}
@@ -126,7 +134,11 @@ describe("MiniMaxCode window chrome interactivity", () => {
         expect(document.querySelector('[data-mmcode-region="left"]')?.className ?? "").toContain("pi-motion-rail");
         expect(document.querySelector('[data-mmcode-region="left"]')?.getAttribute("data-collapsed")).toBe("true");
         expect(document.querySelector('[data-mmcode-region="left"]')?.firstElementChild?.className ?? "").toContain("pi-motion-rail-content");
-        expect(document.querySelector('[data-mmcode-region="center"]')?.className ?? "").toContain("pl-10");
+        // 收起后侧栏边框消失,中心区不留整高灰色竖条;顶栏控件自行让出按钮间距
+        expect(document.querySelector('[data-mmcode-region="center"]')?.className ?? "").not.toContain("pl-6");
+        expect(document.querySelector('[data-mmcode-region="center"]')?.className ?? "").not.toContain("pl-10");
+        expect(document.querySelector('[data-mmcode-region="center"]')?.className ?? "").not.toContain("pl-12");
+        expect(document.querySelector('[data-mmcode-region="left"]')?.className ?? "").toContain("border-r-0");
     });
 
     it("uses the provided sidebar width for both body and titlebar", () => {

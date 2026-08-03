@@ -19,7 +19,7 @@ export function SmallActionButton({
         event.stopPropagation();
         onClick();
       }}
-      className="pointer-events-none flex h-7 w-7 shrink-0 items-center justify-center rounded text-[var(--mm-text-primary)] transition-[background-color,color,transform] duration-75 hover:bg-[var(--mm-bg-hover)] active:scale-[0.96] focus:pointer-events-auto focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] group-hover:pointer-events-auto"
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-[var(--mm-text-primary)] transition-[background-color,color,transform] duration-75 hover:bg-[var(--mm-bg-hover)] active:scale-[0.96] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
     >
       {children}
     </button>
@@ -89,6 +89,9 @@ export function SessionRow({
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [draftTitle, setDraftTitle] = useState(session.title);
+  // Explicit hover/focus state so only one row shows actions at a time
+  // (CSS group-hover can stick across adjacent rows while the pointer is between them).
+  const [actionsVisible, setActionsVisible] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const title = session.title || t("sidebar.sessions.unnamed");
   const baseClasses =
@@ -182,10 +185,23 @@ export function SessionRow({
     );
   }
 
+  // Put indent on the button itself so the selected blue pill spans the full row
+  // width — no empty gutter sitting in front of the highlight.
+  const titlePadLeft = Math.max(baseIndent, 10) + Math.max(0, depth) * 14;
+
   return (
     <div
-      className="pi-motion-list-item-enter group relative flex items-center"
-      style={{ paddingLeft: baseIndent + depth * 14 }}
+      className="pi-motion-list-item-enter relative flex items-center"
+      data-session-row={session.id}
+      data-active={active ? "true" : "false"}
+      onMouseEnter={() => setActionsVisible(true)}
+      onMouseLeave={() => setActionsVisible(false)}
+      onFocusCapture={() => setActionsVisible(true)}
+      onBlurCapture={(event) => {
+        const next = event.relatedTarget;
+        if (next instanceof Node && event.currentTarget.contains(next)) return;
+        setActionsVisible(false);
+      }}
       onContextMenu={(event) => {
         event.preventDefault();
         setContextMenuOpen(true);
@@ -199,13 +215,20 @@ export function SessionRow({
         onClick={onSelect}
         aria-label={title}
         aria-current={active ? "page" : undefined}
-        className={`${baseClasses} ${stateClasses} h-9 min-w-0 flex-1 pl-[10px]`}
+        className={`${baseClasses} ${stateClasses} h-9 min-w-0 flex-1`}
+        style={{ paddingLeft: titlePadLeft }}
       >
         <span className="min-w-0 flex-1 truncate text-left">{title}</span>
       </button>
+      {/* State-driven visibility: only the hovered/focused row shows actions. */}
       <div
-        className="pointer-events-none absolute right-1 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-0.5 opacity-0 shadow-[0_4px_12px_rgba(15,23,42,0.16)] transition-opacity duration-75 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+        className={`absolute right-1 top-1/2 z-10 flex -translate-y-1/2 items-center gap-0.5 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-0.5 shadow-[0_4px_12px_rgba(15,23,42,0.16)] transition-opacity duration-75 ${
+          actionsVisible
+            ? "pointer-events-auto opacity-100"
+            : "pointer-events-none opacity-0"
+        }`}
         data-session-actions={session.id}
+        data-visible={actionsVisible ? "true" : "false"}
       >
         {archived ? (
           <SmallActionButton label={`${t("sidebar.sessions.restore")} ${title}`} onClick={() => onArchive(false)}>

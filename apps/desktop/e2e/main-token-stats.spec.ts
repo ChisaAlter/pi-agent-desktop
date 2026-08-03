@@ -42,9 +42,10 @@ async function skipOnboarding(page: Page): Promise<void> {
 }
 
 async function openRightRailIfNeeded(page: Page): Promise<void> {
-    if (await page.getByText("环境信息").count() > 0) return;
+    if (await page.getByTestId("right-rail-panel").count() > 0) return;
     await page.getByRole("button", { name: "展开右侧栏" }).first().click();
-    await expect(page.getByText("环境信息")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("right-rail-panel")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Git 工具")).toBeVisible({ timeout: 10_000 });
 }
 
 async function openSettingsWindow(app: ElectronApplication, page: Page): Promise<Page> {
@@ -120,11 +121,10 @@ test.describe("main page token presentation", () => {
         });
 
         await openRightRailIfNeeded(page);
-        await expect(page.getByText("环境信息")).toBeVisible();
+        await expect(page.getByText("Git 工具")).toBeVisible();
         await expect(page.getByText("来源")).toHaveCount(0);
-        // Progress section is always mounted for empty-state discoverability;
-        // token usage still must not live in the right rail.
-        await expect(page.getByTestId("right-rail-progress")).toBeVisible({ timeout: 5_000 });
+        // Progress only appears when there is a goal or plan checklist.
+        await expect(page.getByTestId("right-rail-progress")).toHaveCount(0);
         await expect(page.getByText("Token 使用统计")).toHaveCount(0);
         await expect(page.getByText("总 Token")).toHaveCount(0);
         await expect(page.getByText("输入 Token")).toHaveCount(0);

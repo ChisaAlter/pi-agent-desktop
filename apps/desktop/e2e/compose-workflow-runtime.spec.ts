@@ -271,7 +271,8 @@ async function ensureRightRailExpanded(page: Page): Promise<void> {
     if (await expand.isVisible().catch(() => false)) {
         await expand.click();
     }
-    await expect(page.getByText("环境信息")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("right-rail-panel")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Git 工具")).toBeVisible({ timeout: 10_000 });
 }
 
 async function selectAgentMode(page: Page, mode: "Build" | "Plan" | "Compose"): Promise<void> {

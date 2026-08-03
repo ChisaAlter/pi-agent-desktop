@@ -8,7 +8,7 @@
 //  - portal 到 body,bypass 父容器 overflow:hidden
 //  - 简单 absolute 定位:trigger 下方,左对齐(start) 或右对齐(end)
 
-import React, { cloneElement, useCallback, useEffect, useRef, useState, isValidElement } from "react";
+import React, { cloneElement, useCallback, useEffect, useLayoutEffect, useRef, useState, isValidElement } from "react";
 import { createPortal } from "react-dom";
 import { useMotionPresence } from "../../hooks/useMotionPresence";
 
@@ -28,6 +28,20 @@ interface Position {
     left: number;
     maxHeight: number;
     viewportWidth: number;
+}
+
+type TriggerElementProps = {
+    onClick?: (e: React.MouseEvent) => void;
+    ref?: React.Ref<HTMLElement>;
+};
+
+function assignRef<T>(ref: React.Ref<T> | undefined, value: T | null): void {
+    if (!ref) return;
+    if (typeof ref === "function") {
+        ref(value);
+        return;
+    }
+    (ref as React.MutableRefObject<T | null>).current = value;
 }
 
 export function Popover({
@@ -82,8 +96,9 @@ export function Popover({
     );
 
     // 真实浏览器:content mount 后用真实高度精算;jsdom 里 rAF 不执行,依赖上面同步初始值
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!open) return;
+        updatePosition();
         const id = requestAnimationFrame(() => {
             updatePosition();
         });
@@ -134,13 +149,18 @@ export function Popover({
         };
     }, [open]);
 
-    // 注入 ref + onClick 到 trigger
+    // 注入 ref + onClick 到 trigger（保留原有 ref/onClick）
     const triggerWithRef = isValidElement(trigger)
-        ? cloneElement(trigger as React.ReactElement<{ onClick?: (e: React.MouseEvent) => void; ref?: React.Ref<HTMLElement> }>, {
+        ? cloneElement(trigger as React.ReactElement<TriggerElementProps>, {
               ref: (el: HTMLElement | null) => {
                   triggerRef.current = el;
+                  assignRef((trigger as React.ReactElement<TriggerElementProps>).props.ref, el);
               },
-              onClick: handleTriggerClick,
+              onClick: (e: React.MouseEvent) => {
+                  (trigger as React.ReactElement<TriggerElementProps>).props.onClick?.(e);
+                  if (e.defaultPrevented) return;
+                  handleTriggerClick(e);
+              },
           })
         : trigger;
 
@@ -150,7 +170,7 @@ export function Popover({
             role="menu"
             data-pi-popover-surface
             data-motion-state={presence.state}
-            className={`pi-motion-popover fixed z-[60] min-w-[180px] overflow-y-auto rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-popover)] py-1 shadow-[0_14px_36px_rgba(20,20,18,0.14),0_2px_8px_rgba(20,20,18,0.06)] ${contentClassName}`}
+            className={`pi-motion-popover fixed z-[200] min-w-[180px] overflow-y-auto rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-popover)] py-1 shadow-[0_14px_36px_rgba(20,20,18,0.14),0_2px_8px_rgba(20,20,18,0.06)] ${contentClassName}`}
             style={
                 pos
                     ? {

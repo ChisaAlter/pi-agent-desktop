@@ -10,6 +10,7 @@
 // 颜色/尺寸全部走 --mm-* token,本组件不硬编码。
 // 不持有任何业务状态:全部由父级传入,layout 只负责排版与占位。
 // v2.0: 支持左右栏折叠 + CSS 动画过渡
+// v2.1: 左收起按钮浮在中间工作区左上角(不占整高槽位);折叠后侧栏不占位(无 border/灰色竖条)
 
 import React, { useEffect, useRef, useState } from "react";
 import { MINIMAX_CHROME_ICON_BUTTON_CLASSNAME } from "./chromeButton";
@@ -235,13 +236,6 @@ export function MiniMaxCodeLayout({
                     className="relative flex min-h-0 w-full flex-1"
                     data-mmcode-region="body"
                 >
-                    {leftCollapsed ? (
-                        <FloatingToggleButton
-                            side="left"
-                            collapsed={leftCollapsed}
-                            onClick={onCollapseLeft}
-                        />
-                    ) : null}
                     <FloatingToggleButton
                         side="right"
                         collapsed={rightCollapsed}
@@ -250,7 +244,9 @@ export function MiniMaxCodeLayout({
 
                     {/* 左侧栏 */}
                     <aside
-                        className={`pi-motion-rail flex shrink-0 flex-col overflow-hidden border-r border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] ${isResizingLeft ? "" : "animate-layout"}`}
+                        className={`pi-motion-rail flex shrink-0 flex-col overflow-hidden bg-[var(--mm-bg-sidebar)] ${isResizingLeft ? "" : "animate-layout"} ${
+                            leftCollapsed ? "border-r-0" : "border-r border-[var(--mm-border)]"
+                        }`}
                         style={{ width: leftCollapsed ? 0 : resolvedLeftWidth, opacity: leftCollapsed ? 0 : 1 }}
                         data-mmcode-region="left"
                         data-collapsed={leftCollapsed ? "true" : "false"}
@@ -281,10 +277,18 @@ export function MiniMaxCodeLayout({
                     ) : null}
 
                     <main
-                        className={`relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--mm-bg-main)] ${leftCollapsed ? "pl-10" : ""}`}
+                        className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--mm-bg-main)]"
                         data-mmcode-region="center"
                         aria-label="main content"
                     >
+                        {/* 左收起按钮浮在中间工作区左上角:不占整高槽位,由各面板顶栏自行让出间距 */}
+                        {onCollapseLeft ? (
+                            <FloatingToggleButton
+                                side="left"
+                                collapsed={leftCollapsed}
+                                onClick={onCollapseLeft}
+                            />
+                        ) : null}
                         {centerSlot}
                         <div
                             id="pi-global-composer-root"

@@ -268,7 +268,7 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
             await expandRightRail.click();
         }
 
-        await page.getByRole('button', { name: '浏览全部文件' }).click();
+        await page.getByRole('tab', { name: '工作台' }).click();
         await expect(page.getByRole('region', { name: '文件工作区' })).toBeVisible({ timeout: 10_000 });
         await page.screenshot({ path: test.info().outputPath('right-rail-visible-files-entry.png'), fullPage: true });
 
@@ -278,7 +278,7 @@ test.describe('Pi Desktop — Terminal & Tools', () => {
         }
 
         await page.getByRole('button', { name: /查看变更文件/ }).click();
-        await expect(page.getByRole('region', { name: 'Git 面板' })).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByTestId('git-changes-overlay')).toBeVisible({ timeout: 10_000 });
         await page.screenshot({ path: test.info().outputPath('right-rail-visible-git-entry.png'), fullPage: true });
 
         await app.close();

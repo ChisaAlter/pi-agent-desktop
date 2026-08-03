@@ -212,8 +212,7 @@ async function captureMainEntrypoints(page: Page, dir: string, prefix: string): 
     await screenshot(page, dir, `${prefix}-04-memory`);
 
     await page.getByRole("tab", { name: "对话" }).click();
-    await expandRightRailIfNeeded(page);
-    await page.getByRole("button", { name: "浏览全部文件" }).click();
+    await page.getByRole("tab", { name: "工作台" }).click();
     await expect(page.getByRole("region", { name: "文件工作区" })).toBeVisible();
     await expectHealthyLayout(page);
     await screenshot(page, dir, `${prefix}-05-files`);
@@ -221,7 +220,7 @@ async function captureMainEntrypoints(page: Page, dir: string, prefix: string): 
     await page.getByRole("tab", { name: "对话" }).click();
     await expandRightRailIfNeeded(page);
     await page.getByRole("button", { name: /查看变更文件/ }).click();
-    await expect(page.getByRole("region", { name: "Git 面板" })).toBeVisible();
+    await expect(page.getByTestId("git-changes-overlay")).toBeVisible();
     await expectHealthyLayout(page);
     await screenshot(page, dir, `${prefix}-06-git`);
 
@@ -350,8 +349,7 @@ test.describe("Pi Desktop — visual function audit", () => {
         await screenshot(page, screenshotDir, "05-memory");
 
         await page.getByRole("tab", { name: "对话" }).click();
-        await expandRightRailIfNeeded(page);
-        await page.getByRole("button", { name: "浏览全部文件" }).click();
+        await page.getByRole("tab", { name: "工作台" }).click();
         await expect(page.getByRole("region", { name: "文件工作区" })).toBeVisible({ timeout: 10_000 });
         await expectHealthyLayout(page);
         await screenshot(page, screenshotDir, "06-files");
@@ -359,7 +357,7 @@ test.describe("Pi Desktop — visual function audit", () => {
         await page.getByRole("tab", { name: "对话" }).click();
         await expandRightRailIfNeeded(page);
         await page.getByRole("button", { name: /查看变更文件/ }).click();
-        await expect(page.getByRole("region", { name: "Git 面板" })).toBeVisible({ timeout: 10_000 });
+        await expect(page.getByTestId("git-changes-overlay")).toBeVisible({ timeout: 10_000 });
         await expectHealthyLayout(page);
         await screenshot(page, screenshotDir, "07-git");
 

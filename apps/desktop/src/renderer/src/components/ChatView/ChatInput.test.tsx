@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { useAttachmentsStore } from "../../stores/attachments-store";
@@ -387,23 +387,178 @@ describe("ChatInput", () => {
     const thinkingButton = screen.getByRole("button", { name: /思考强度:/ });
 
     expect(agentModeButton.querySelector("svg")).toBeNull();
+    expect(agentModeButton.className).toContain("text-[11px]");
+    expect(agentModeButton.className).toContain("leading-4");
+    expect(agentModeButton.className).not.toContain("overflow-hidden");
     expect(permissionButton.querySelectorAll("svg")).toHaveLength(1);
-    expect(permissionButton.querySelector("span:last-child")?.className).toContain("leading-none");
+    expect(permissionButton.className).toContain("text-[11px]");
+    expect(permissionButton.className).toContain("leading-4");
+    expect(permissionButton.className).not.toContain("overflow-hidden");
+    expect(permissionButton.querySelector(".pi-label-flip")?.className).toContain("whitespace-nowrap");
+    expect(permissionButton.querySelector(".pi-label-flip")?.className).not.toContain("truncate");
     expect(modelButton.className).toContain("h-full");
-    expect(modelButton.className).toContain("w-[190px]");
-    expect(modelButton.className).toContain("justify-center");
-    expect(modelButton.className).toContain("leading-none");
-    expect(modelButton.querySelector("span:first-child")?.className).not.toContain("top-");
-    expect(modelButton.querySelector("span:last-child")?.className).toContain("whitespace-nowrap");
-    expect(modelButton.querySelector("span:last-child")?.className).toContain("-top-[1.5px]");
-    expect(modelButton.querySelector("span:last-child")?.className).not.toContain("truncate");
+    expect(modelButton.className).toContain("min-w-0");
+    expect(modelButton.className).toContain("grid");
+    expect(modelButton.className).toContain("leading-4");
+    expect(modelButton.className).toContain("text-[11px]");
+    const modelLabel = modelButton.querySelector(".pi-label-flip");
+    expect(modelLabel?.className).toContain("overflow-hidden");
+    expect(modelLabel?.className).toContain("text-ellipsis");
+    expect(modelLabel?.className).toContain("whitespace-nowrap");
+    expect(modelLabel?.className).toContain("leading-4");
+    expect(modelLabel?.className).not.toContain("-top-");
+    expect(modelButton.textContent).not.toMatch(/•|●/);
     expect(thinkingButton.className).toContain("h-full");
-    expect(thinkingButton.className).toContain("leading-none");
+    expect(thinkingButton.className).toContain("w-full");
+    expect(thinkingButton.className).toContain("leading-4");
+    expect(thinkingButton.className).toContain("text-[11px]");
     expect(thinkingButton.querySelector("svg")).toBeNull();
+    // 胶囊用 grid 两列；整块不做 overflow-hidden 硬裁
+    const capsule = screen.getByTestId("chat-input-model-thinking-capsule");
+    expect(capsule.className).toContain("grid");
+    expect(capsule.className).toContain("grid-cols-[minmax(0,1fr)_3rem]");
+    expect(capsule.className).not.toContain("overflow-hidden");
     // residual a11y: composer triggers keep keyboard focus ring (wave-84)
     for (const btn of [agentModeButton, permissionButton, modelButton, thinkingButton]) {
       expect(btn.className).toContain("focus-visible:ring-2");
       expect(btn.className).toContain("focus-visible:ring-[#2563eb]");
+    }
+  });
+
+  it("uses production ellipsis path for long model names without hard clipping classes", () => {
+    useSettingsStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        provider: "openai",
+        model: "gpt-5.6-solo-very-long-name",
+      },
+      piModels: [
+        {
+          id: "gpt-5.6-solo-very-long-name",
+          name: "gpt-5.6-solo-very-long-name-that-must-ellipsis",
+          description: "Long model",
+          provider: "openai",
+          providerName: "OpenAI",
+        },
+      ],
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    const modelButton = screen.getByTestId("chat-input-model-trigger");
+    const modelLabel = modelButton.querySelector(".pi-label-flip");
+    const capsule = screen.getByTestId("chat-input-model-thinking-capsule");
+    const permissionButton = screen.getByTestId("chat-input-permission-trigger");
+
+    // 模型：完整字符串仍在 DOM（title/text），视觉省略靠 CSS ellipsis，不是硬裁 DOM
+    expect(modelButton.getAttribute("title")).toBe("gpt-5.6-solo-very-long-name-that-must-ellipsis");
+    expect(modelLabel?.textContent).toBe("gpt-5.6-solo-very-long-name-that-must-ellipsis");
+    expect(modelLabel?.className).toMatch(/text-ellipsis/);
+    expect(modelLabel?.className).toMatch(/whitespace-nowrap/);
+    expect(modelLabel?.className).toMatch(/overflow-hidden/);
+    // 胶囊与按钮本身不靠 overflow-hidden 切半个字
+    expect(capsule.className).not.toContain("overflow-hidden");
+    expect(modelButton.className).not.toContain("overflow-hidden");
+    // 权限文案完整
+    expect(permissionButton.textContent).toContain("智能授权");
+    expect(permissionButton.querySelector(".pi-label-flip")?.className).toContain("whitespace-nowrap");
+    expect(permissionButton.querySelector(".pi-label-flip")?.className).not.toContain("truncate");
+  });
+
+  it("keeps permission label fully visible after mode changes", () => {
+    useAgentModeStore.setState({ byWorkspace: { ws1: "compose" } });
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "选择 Agent 模式" }));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Plan/ }));
+
+    const permissionButton = screen.getByRole("button", { name: "权限: 智能授权" });
+    expect(permissionButton.textContent).toContain("智能授权");
+    expect(permissionButton.querySelector(".pi-label-flip")?.className).toContain("whitespace-nowrap");
+    expect(permissionButton.querySelector(".pi-label-flip")?.className).not.toContain("truncate");
+  });
+
+  it("unifies the four reference composer popover surfaces and omits leading dots", () => {
+    vi.useFakeTimers();
+    useSettingsStore.setState((state) => ({
+      settings: {
+        ...state.settings,
+        provider: "mimo",
+        model: "mimo-v2.5",
+      },
+      piModels: [
+        {
+          id: "mimo-v2.5",
+          name: "MiMo v2.5",
+          description: "Base model",
+          provider: "mimo",
+          providerName: "MiMo",
+        },
+      ],
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    const openers = [
+      screen.getByRole("button", { name: "选择 Agent 模式" }),
+      screen.getByRole("button", { name: "权限: 智能授权" }),
+      screen.getByRole("button", { name: "当前模型: MiMo v2.5" }),
+      screen.getByRole("button", { name: "思考强度: 中" }),
+    ];
+
+    try {
+      for (const opener of openers) {
+        fireEvent.click(opener);
+        const menus = screen.getAllByRole("menu");
+        const menu = menus[menus.length - 1];
+        expect(menu.className).toContain("w-[220px]");
+        expect(menu.className).toContain("rounded-[10px]");
+        expect(menu.className).toContain("p-1.5");
+        expect(menu.querySelectorAll(".rounded-full").length).toBe(0);
+        fireEvent.keyDown(document, { key: "Escape" });
+        act(() => {
+          vi.advanceTimersByTime(120);
+        });
+      }
+    } finally {
+      vi.useRealTimers();
     }
   });
 
@@ -559,7 +714,7 @@ describe("ChatInput", () => {
       </I18nProvider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "当前模型: mimo / mimo-v2.5-pro" }));
+    fireEvent.click(screen.getByRole("button", { name: "当前模型: MiMo v2.5 Pro" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: /MiMo v2.5$/ }));
 
     expect(useSettingsStore.getState().settings).toMatchObject({
@@ -601,7 +756,8 @@ describe("ChatInput", () => {
       </I18nProvider>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "当前模型: provider_a / model-0" }));
+    // settings provider "provider_a" 与 model-0 的 provider_0 不一致时回退到 id 文案
+    fireEvent.click(screen.getByRole("button", { name: "当前模型: provider_a/model-0" }));
 
     const menu = screen.getByRole("menu");
     fireEvent.scroll(menu);

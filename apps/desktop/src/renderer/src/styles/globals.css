@@ -1199,6 +1199,20 @@ code {
   }
 }
 
+/* Composer 选择器 trigger 文案切换：只做淡入，避免任何 transform 切字 */
+@keyframes pi-label-flip {
+  0% {
+    opacity: 0.35;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.pi-label-flip {
+  animation: pi-label-flip 140ms cubic-bezier(0.2, 0, 0, 1);
+}
+
 @keyframes pi-motion-notice-in {
   from {
     opacity: 0;
@@ -1391,7 +1405,8 @@ code {
   .pi-motion-running-strip,
   .pi-motion-running-card,
   .pi-motion-status-text,
-  .pi-motion-running-dot {
+  .pi-motion-running-dot,
+  .pi-label-flip {
     animation: none;
   }
 

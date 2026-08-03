@@ -89,8 +89,7 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         await expect(page.getByRole('tab', { name: '扩展' })).toHaveAttribute('aria-selected', 'true');
 
         await page.locator('button[data-mmcode-section="new-task"]').click();
-        await expandRightRailIfNeeded(page);
-        await page.getByRole('button', { name: '浏览全部文件' }).click();
+        await page.getByRole('tab', { name: '工作台' }).click();
         await expect(page.getByRole('region', { name: '文件工作区' })).toBeVisible({ timeout: 5000 });
         await expect(page.getByRole('tab', { name: '工作台' })).toHaveAttribute('aria-selected', 'true');
         await expect(page.getByRole('tab', { name: '文件' })).toHaveAttribute('aria-selected', 'true');
@@ -98,8 +97,7 @@ test.describe('Pi Desktop v1.0.16 — 全功能 smoke', () => {
         await page.getByRole('tab', { name: '对话' }).click();
         await expandRightRailIfNeeded(page);
         await page.getByRole('button', { name: /查看变更文件/ }).click();
-        await expect(page.getByRole('region', { name: 'Git 面板' })).toBeVisible({ timeout: 5000 });
-        await expect(page.getByRole('tab', { name: 'Git' })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByTestId('git-changes-overlay')).toBeVisible({ timeout: 5000 });
 
         await page.getByRole('tab', { name: '终端' }).click();
         await expect(page.getByTestId('terminal-panel')).toBeVisible({ timeout: 5000 });

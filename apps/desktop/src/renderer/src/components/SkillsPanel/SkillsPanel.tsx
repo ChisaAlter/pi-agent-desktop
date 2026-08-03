@@ -167,7 +167,7 @@ export function SkillsPanel(): React.JSX.Element {
 
     return (
         <div className="flex flex-col h-full bg-[var(--mm-bg-sidebar)]" role="region" aria-label="插件面板">
-            <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--mm-border)]">
+            <div className="flex items-center gap-3 border-b border-[var(--mm-border)] py-3 pl-12 pr-4">
                 <div className="w-[128px] min-w-0 shrink-0">
                     <h1 className="m-0 truncate text-[14px] font-medium text-[var(--mm-text-primary)]">插件与技能</h1>
                     <p className="m-0 truncate text-[11px] text-[var(--mm-text-tertiary)]">安装 Pi packages，管理本地 skills</p>

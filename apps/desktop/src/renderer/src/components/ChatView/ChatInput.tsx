@@ -62,6 +62,17 @@ type ThinkingLevel = PiThinkingLevel;
 const COMPOSER_MIN_HEIGHT = 95;
 const COMPOSER_MAX_HEIGHT = 240;
 
+/** 输入框控制栏 4 个选择器的统一浮层/菜单字号 */
+const COMPOSER_MENU_SURFACE =
+  "w-[220px] rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-popover)] p-1.5";
+const COMPOSER_MENU_HEADING =
+  "px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-[var(--mm-text-tertiary)]";
+const COMPOSER_MENU_ITEM =
+  "flex w-full items-center justify-between gap-2 rounded-[7px] px-2 text-left hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]";
+const COMPOSER_MENU_ITEM_SINGLE = `${COMPOSER_MENU_ITEM} h-8 text-[12px]`;
+const COMPOSER_TRIGGER_BASE =
+  "flex h-7 shrink-0 items-center rounded-[4px] px-1.5 text-[11px] leading-4 text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]";
+
 /** 单张粘贴图片的大小上限 (5MB). 超过拒绝, 避免 dataUrl 膨胀 + vision API 超载. */
 const MAX_PASTE_BYTES = 5 * 1024 * 1024;
 
@@ -164,6 +175,65 @@ function PermissionModeIcon({ mode }: { mode: PermissionMode }): React.JSX.Eleme
   );
 }
 
+function MenuCheckIcon(): React.JSX.Element {
+  return (
+    <svg className="h-3.5 w-3.5 shrink-0 text-[var(--mm-accent-blue)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M5 13l4 4L19 7" />
+    </svg>
+  );
+}
+
+/**
+ * 选择器 trigger 文案。
+ * 生产规则：
+ * - 模式/权限/思考：完整显示，绝不横向/纵向裁切
+ * - 模型：仅允许单行 ellipsis（text-overflow），禁止父级 overflow 硬裁半个字
+ * - 动画只改 opacity，不改 transform/尺寸
+ */
+function SelectorLabel({
+  text,
+  truncate = false,
+  className,
+}: {
+  text: string;
+  truncate?: boolean;
+  className?: string;
+}): React.JSX.Element {
+  const [display, setDisplay] = useState(text);
+  const [animKey, setAnimKey] = useState(0);
+  const prevRef = useRef(text);
+
+  useEffect(() => {
+    if (prevRef.current === text) return;
+    prevRef.current = text;
+    setDisplay(text);
+    setAnimKey((key) => key + 1);
+  }, [text]);
+
+  if (truncate) {
+    // grid 子项 + block 是唯一稳定的居中省略方案；inline-block/flex 子项在窄宽下会硬裁半个字
+    return (
+      <span
+        key={animKey}
+        title={display}
+        className={`pi-label-flip block min-w-0 w-full overflow-hidden text-ellipsis whitespace-nowrap text-center text-[11px] font-medium leading-4 text-[var(--mm-text-primary)] ${className ?? ""}`}
+      >
+        {display}
+      </span>
+    );
+  }
+
+  return (
+    <span
+      key={animKey}
+      title={display}
+      className={`pi-label-flip inline-block whitespace-nowrap text-[11px] font-medium leading-4 text-[var(--mm-text-primary)] ${className ?? ""}`}
+    >
+      {display}
+    </span>
+  );
+}
+
 export function ChatInput({
   isConnected,
   isProcessing,
@@ -215,17 +285,26 @@ export function ChatInput({
     })),
     [t],
   );
+  // 模型切换中 runtime 可能短暂吐出空 availableThinkingLevels；空数组不能当“全不可用”，
+  // 否则思考强度菜单会被滤成 0 项，看起来像“几秒点不动”。
+  const [cachedThinkingLevels, setCachedThinkingLevels] = useState<PiThinkingLevel[] | null>(null);
+  useEffect(() => {
+    const available = runtimeState?.availableThinkingLevels;
+    if (available && available.length > 0) {
+      setCachedThinkingLevels(available);
+    }
+  }, [runtimeState?.availableThinkingLevels]);
+  const thinkingLevelsForMenu = (runtimeState?.availableThinkingLevels && runtimeState.availableThinkingLevels.length > 0)
+    ? runtimeState.availableThinkingLevels
+    : cachedThinkingLevels;
   const thinkingOptions = useMemo(
-    () => {
-      const available = runtimeState?.availableThinkingLevels;
-      return THINKING_OPTIONS
-        .filter((option) => !available || available.includes(option.value))
-        .map((option) => ({
-          ...option,
-          label: t(option.labelKey),
-        }));
-    },
-    [runtimeState?.availableThinkingLevels, t],
+    () => THINKING_OPTIONS
+      .filter((option) => !thinkingLevelsForMenu || thinkingLevelsForMenu.includes(option.value))
+      .map((option) => ({
+        ...option,
+        label: t(option.labelKey),
+      })),
+    [thinkingLevelsForMenu, t],
   );
   const longHorizon = settings.longHorizon;
   const longHorizonEnabled = longHorizon?.enabled ?? true;
@@ -562,17 +641,18 @@ export function ChatInput({
   }, []);
   const handleThinkingSelect = useCallback(
     (level: ThinkingLevel) => {
-      if (!agentId || !window.piAPI?.agentsSetThinking) {
-        updateSettings({ thinkingLevel: level });
-        return;
-      }
+      // 先写本地 settings，trigger 立刻翻转；runtime 同步走后台，不被切模型阻塞。
+      updateSettings({ thinkingLevel: level });
+      if (!agentId || !window.piAPI?.agentsSetThinking) return;
       void window.piAPI.agentsSetThinking(agentId, level)
         .then((result) => {
           if (isIpcError(result)) {
             setSendError(result.fallback);
             return;
           }
-          updateSettings({ thinkingLevel: result.thinkingLevel ?? level });
+          if (result.thinkingLevel && result.thinkingLevel !== level) {
+            updateSettings({ thinkingLevel: result.thinkingLevel });
+          }
         })
         .catch((error) => setSendError(error instanceof Error ? error.message : String(error)));
     },
@@ -715,9 +795,15 @@ export function ChatInput({
   const needsModelConfiguration = !isProcessing && !hasValidModel;
   const canSend = inputValue.trim().length > 0 && isConnected && !isSending && (hasValidModel || isSlashCommandDraft);
   const currentPermissionLabel = permissionOptions.find((p) => p.value === currentPermission)?.label ?? t("chatInput.permissions.smart.label");
-  const currentModelLabel = [settings.provider, currentModel].filter(Boolean).join(" / ") || t("chatInput.model.notConfigured");
+  const selectedModelInfo = piModels?.find((m) => m.id === settings.model && m.provider === settings.provider);
+  // 优先显示友好模型名；回退 provider/model，空格省略以多塞几个字符
+  const currentModelLabel = selectedModelInfo?.name
+    || [settings.provider, currentModel].filter(Boolean).join("/")
+    || t("chatInput.model.notConfigured");
   const configuredThinking = settings.thinkingLevel === "none" ? "off" : settings.thinkingLevel;
-  const effectiveThinking = runtimeState?.thinkingLevel ?? configuredThinking;
+  // 优先用本地 settings（用户刚点的值），runtime 仅作尚未写入时的回退。
+  // 否则切模型期间 runtime 旧值会压住本地选择，造成“点了没反应”。
+  const effectiveThinking = configuredThinking || runtimeState?.thinkingLevel;
   const currentThinking = thinkingOptions.some((option) => option.value === effectiveThinking)
     ? effectiveThinking as ThinkingLevel
     : thinkingOptions[0]?.value ?? "off";
@@ -752,12 +838,12 @@ export function ChatInput({
   const permissionPopover = (
     <Popover
       align="start"
-      contentClassName="min-w-[158px]"
+      contentClassName={COMPOSER_MENU_SURFACE}
       trigger={
         <button
           type="button"
           className={referenceFrame
-            ? "flex h-6 items-center gap-1 rounded-[4px] px-1.5 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
+            ? `${COMPOSER_TRIGGER_BASE} gap-1`
             : "flex h-[22px] items-center gap-1 rounded-[4px] border border-transparent px-1.5 text-[10px] text-[var(--mm-text-secondary)] transition-[background-color,border-color,color,opacity,box-shadow,transform] hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-sidebar)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"}
           aria-label={t("chatInput.permissionAria", { label: currentPermissionLabel })}
           data-testid="chat-input-permission-trigger"
@@ -765,35 +851,44 @@ export function ChatInput({
           <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[var(--mm-text-tertiary)]" aria-hidden>
             <PermissionModeIcon mode={currentPermission} />
           </span>
-          <span className="leading-none">{currentPermissionLabel}</span>
+          {referenceFrame ? (
+            <SelectorLabel text={currentPermissionLabel} />
+          ) : (
+            <span className="leading-none">{currentPermissionLabel}</span>
+          )}
         </button>
       }
     >
       {(close) => (
-        <div className="py-1">
-          {permissionOptions.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              role="menuitemradio"
-              aria-checked={currentPermission === opt.value}
-              onClick={() => {
-                handlePermissionSelect(opt.value);
-                close();
-              }}
-              className="flex h-8 w-full items-center gap-2 px-3 text-left text-sm text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
-            >
-              <span className="flex h-4 w-4 shrink-0 items-center justify-center text-[var(--mm-text-tertiary)]" aria-hidden>
-                <PermissionModeIcon mode={opt.value} />
-              </span>
-              <span className="min-w-0 flex-1 truncate">{opt.label}</span>
-              {currentPermission === opt.value && (
-                <svg className="h-3.5 w-3.5 text-[var(--mm-text-primary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M5 13l4 4L19 7" />
-                </svg>
-              )}
-            </button>
-          ))}
+        <div aria-label={t("chatInput.permission")}>
+          <div className={COMPOSER_MENU_HEADING}>{t("chatInput.permission")}</div>
+          {permissionOptions.map((opt) => {
+            const selected = currentPermission === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="menuitemradio"
+                aria-label={opt.label}
+                aria-checked={selected}
+                onClick={() => {
+                  handlePermissionSelect(opt.value);
+                  close();
+                }}
+                className={`${COMPOSER_MENU_ITEM} items-start py-2 ${
+                  selected
+                    ? "bg-[var(--mm-bg-popover-selected)] text-[var(--mm-text-primary)]"
+                    : "text-[var(--mm-text-secondary)]"
+                }`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[12px] font-medium text-[var(--mm-text-primary)]">{opt.label}</span>
+                  <span className="block text-[10px] leading-4 text-[var(--mm-text-secondary)]">{opt.desc}</span>
+                </span>
+                {selected ? <MenuCheckIcon /> : <span className="h-3.5 w-3.5 shrink-0" aria-hidden />}
+              </button>
+            );
+          })}
         </div>
       )}
     </Popover>
@@ -1091,76 +1186,92 @@ export function ChatInput({
 
         {/* 控制栏 */}
         {referenceFrame ? (
-          <div className="relative z-20 flex h-[34px] shrink-0 items-center justify-between px-3 pb-2 pt-0" data-testid="chat-input-reference-controls">
-            <div className="flex items-center gap-3 text-[var(--mm-text-secondary)]">
-              <button type="button" onClick={() => void handlePickFiles()} className="flex h-6 w-6 items-center justify-center rounded-[3px] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]" aria-label={t("chatInput.addFileOrImage")}>
+          <div className="relative z-20 flex h-9 shrink-0 items-center justify-between gap-2 px-3 pb-2 pt-0" data-testid="chat-input-reference-controls">
+            <div className="flex min-w-0 shrink-0 items-center gap-1.5 text-[var(--mm-text-secondary)]">
+              <button type="button" onClick={() => void handlePickFiles()} className="flex h-7 w-7 items-center justify-center rounded-[3px] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]" aria-label={t("chatInput.addFileOrImage")}>
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.7} d="m21 12-8.5 8.5a5 5 0 0 1-7-7L14 5a3 3 0 1 1 4 4L8.5 18.5a1.5 1.5 0 1 1-2-2L15 8" />
                 </svg>
               </button>
-              <button type="button" onClick={openSlashCommands} className="flex h-6 w-6 items-center justify-center rounded-[3px] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]" aria-label={t("chatInput.openSlashCommands")}>
+              <button type="button" onClick={openSlashCommands} className="flex h-7 w-7 items-center justify-center rounded-[3px] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]" aria-label={t("chatInput.openSlashCommands")}>
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="m8 9-4 3 4 3m8-6 4 3-4 3M14 5l-4 14" />
                 </svg>
               </button>
               <Popover
                 align="start"
-                contentClassName="w-[246px] rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-popover)] p-1.5"
+                contentClassName={COMPOSER_MENU_SURFACE}
                 trigger={
-                  <button type="button" className="flex h-6 items-center rounded-[4px] px-1.5 text-[11px] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]" aria-label={t("chatInput.agentMode.aria")}>
-                    <span className="font-medium text-[var(--mm-text-primary)]">
-                      {agentModeOptions.find((mode) => mode.value === currentAgentMode)?.label ?? "Build"}
-                    </span>
+                  <button type="button" className={COMPOSER_TRIGGER_BASE} aria-label={t("chatInput.agentMode.aria")}>
+                    <SelectorLabel
+                      text={agentModeOptions.find((mode) => mode.value === currentAgentMode)?.label ?? "Build"}
+                    />
                   </button>
                 }
               >
                 {(close) => (
-                  <div role="menu" aria-label={t("chatInput.agentMode.menu")}>
-                    {agentModeOptions.map((mode) => (
-                      <button
-                        key={mode.value}
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={currentAgentMode === mode.value}
-                        onClick={() => {
-                          handleAgentModeSelect(mode.value);
-                          close();
-                        }}
-                        className={`flex w-full items-start gap-2 rounded-[7px] px-2 py-2 text-left hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb] ${
-                          currentAgentMode === mode.value ? "bg-[var(--mm-bg-popover-selected)]" : ""
-                        }`}
-                      >
-                        <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${currentAgentMode === mode.value ? "bg-[var(--mm-accent-blue)]" : "bg-[var(--mm-text-tertiary)]"}`} aria-hidden />
-                        <span className="min-w-0">
-                          <span className="block text-[12px] font-medium text-[var(--mm-text-primary)]">{mode.label}</span>
-                          <span className="block text-[10px] leading-4 text-[var(--mm-text-secondary)]">{mode.desc}</span>
-                        </span>
-                      </button>
-                    ))}
+                  <div aria-label={t("chatInput.agentMode.menu")}>
+                    <div className={COMPOSER_MENU_HEADING}>{t("chatInput.agentMode.menu")}</div>
+                    {agentModeOptions.map((mode) => {
+                      const selected = currentAgentMode === mode.value;
+                      return (
+                        <button
+                          key={mode.value}
+                          type="button"
+                          role="menuitemradio"
+                          aria-label={mode.label}
+                          aria-checked={selected}
+                          onClick={() => {
+                            handleAgentModeSelect(mode.value);
+                            close();
+                          }}
+                          className={`${COMPOSER_MENU_ITEM} items-start py-2 ${
+                            selected
+                              ? "bg-[var(--mm-bg-popover-selected)] text-[var(--mm-text-primary)]"
+                              : "text-[var(--mm-text-secondary)]"
+                          }`}
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[12px] font-medium text-[var(--mm-text-primary)]">{mode.label}</span>
+                            <span className="block text-[10px] leading-4 text-[var(--mm-text-secondary)]">{mode.desc}</span>
+                          </span>
+                          {selected ? <MenuCheckIcon /> : <span className="h-3.5 w-3.5 shrink-0" aria-hidden />}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </Popover>
               {permissionPopover}
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 overflow-hidden rounded-[5px] border border-[var(--mm-border)] bg-[var(--mm-bg-control)]">
+            <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
+              {/*
+                生产布局：CSS grid 固定两列。
+                模型列 minmax(0,1fr) 保证可收缩；思考列 3rem 固定。
+                省略只发生在模型文案节点的 text-overflow:ellipsis，绝不在胶囊上 overflow-hidden。
+              */}
+              <div
+                className="grid h-8 w-full min-w-[11rem] max-w-[16rem] grid-cols-[minmax(0,1fr)_3rem] items-stretch rounded-[6px] border border-[var(--mm-border)] bg-[var(--mm-bg-control)]"
+                data-testid="chat-input-model-thinking-capsule"
+              >
               <Popover
                 align="end"
-                contentClassName="min-w-[240px]"
+                contentClassName={COMPOSER_MENU_SURFACE}
                 trigger={
                   <button
                     type="button"
-                    className="flex h-full w-[190px] items-center justify-center gap-1.5 px-2 text-center text-[10px] leading-none text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
+                    className="grid h-full min-w-0 grid-cols-1 items-center rounded-l-[5px] px-2.5 text-[11px] leading-4 text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                     aria-label={t("chatInput.model.current", { model: currentModelLabel })}
+                    title={currentModelLabel}
+                    data-testid="chat-input-model-trigger"
                   >
-                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--mm-accent-blue)]" aria-hidden />
-                    <span className="relative -top-[1.5px] whitespace-nowrap">{currentModelLabel}</span>
+                    <SelectorLabel text={currentModelLabel} truncate />
                   </button>
                 }
               >
                 {(close) => (
-                  <div className="py-1">
-                    <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--mm-text-tertiary)]">{t("chatInput.model.select")}</div>
+                  <div aria-label={t("chatInput.model.select")}>
+                    <div className={COMPOSER_MENU_HEADING}>{t("chatInput.model.select")}</div>
                     {piModels && piModels.length > 0 ? (
                       piModels.map((m) => {
                         const isSelected = settings.provider === m.provider && settings.model === m.id;
@@ -1175,23 +1286,22 @@ export function ChatInput({
                               handleModelSelect({ id: m.id, name: m.name, provider: m.provider });
                               close();
                             }}
-                            className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
+                            className={`${COMPOSER_MENU_ITEM} items-start py-2 ${
+                              isSelected
+                                ? "bg-[var(--mm-bg-popover-selected)] text-[var(--mm-text-primary)]"
+                                : "text-[var(--mm-text-secondary)]"
+                            }`}
                           >
-                            <span
-                              className={`mt-0.5 inline-block h-3 w-3 flex-shrink-0 rounded-full border-2 ${
-                                isSelected ? "border-[var(--mm-bg-active)] bg-[var(--mm-bg-active)]" : "border-[var(--color-border)]"
-                              }`}
-                              aria-hidden
-                            />
                             <span className="min-w-0 flex-1">
-                              <span className="block text-sm text-[var(--mm-text-primary)]">{m.name}</span>
-                              <span className="block text-xs text-[var(--mm-text-tertiary)]">{m.providerName}</span>
+                              <span className="block truncate text-[12px] font-medium text-[var(--mm-text-primary)]">{m.name}</span>
+                              <span className="block truncate text-[10px] leading-4 text-[var(--mm-text-secondary)]">{m.providerName}</span>
                             </span>
+                            {isSelected ? <MenuCheckIcon /> : <span className="h-3.5 w-3.5 shrink-0" aria-hidden />}
                           </button>
                         );
                       })
                     ) : (
-                      <div className="px-3 py-3 text-xs text-[var(--mm-text-tertiary)]">
+                      <div className="px-2 py-3 text-[12px] text-[var(--mm-text-tertiary)]">
                         {t("chatInput.model.empty")}
                       </div>
                     )}
@@ -1200,44 +1310,46 @@ export function ChatInput({
               </Popover>
               <Popover
                 align="end"
-                contentClassName="w-[180px] rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-popover)] p-1.5"
+                contentClassName={COMPOSER_MENU_SURFACE}
                 trigger={
                   <button
                     type="button"
-                    className="flex h-full items-center border-l border-[var(--mm-border)] px-2 text-[10px] leading-none text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
+                    className="flex h-full w-full items-center justify-center rounded-r-[5px] border-l border-[var(--mm-border)] px-1.5 text-[11px] leading-4 text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                     aria-label={t("chatInput.thinking.aria", { label: currentThinkingLabel })}
+                    data-testid="chat-input-thinking-trigger"
                   >
-                    <span className="font-medium text-[var(--mm-text-primary)]">{currentThinkingLabel}</span>
+                    <SelectorLabel text={currentThinkingLabel} />
                   </button>
                 }
               >
                 {(close) => (
-                  <div role="menu" aria-label={t("chatInput.thinking.menu")}>
-                    <div className="px-2 py-1 text-[10px] text-[var(--mm-text-tertiary)]">{t("chatInput.thinking.heading")}</div>
-                    {thinkingOptions.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        role="menuitemradio"
-                        aria-label={option.label}
-                        aria-checked={currentThinking === option.value}
-                        data-thinking-level={option.value}
-                        onClick={() => {
-                          handleThinkingSelect(option.value);
-                          close();
-                        }}
-                        className={`flex h-8 w-full items-center justify-between rounded-[7px] px-2 text-left text-[12px] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb] ${
-                          currentThinking === option.value ? "bg-[var(--mm-bg-popover-selected)] text-[var(--mm-text-primary)]" : "text-[var(--mm-text-secondary)]"
-                        }`}
-                      >
-                        <span>{option.label}</span>
-                        {currentThinking === option.value && (
-                          <svg className="h-3.5 w-3.5 text-[var(--mm-accent-blue)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        )}
-                      </button>
-                    ))}
+                  <div aria-label={t("chatInput.thinking.menu")}>
+                    <div className={COMPOSER_MENU_HEADING}>{t("chatInput.thinking.heading")}</div>
+                    {thinkingOptions.map((option) => {
+                      const selected = currentThinking === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          role="menuitemradio"
+                          aria-label={option.label}
+                          aria-checked={selected}
+                          data-thinking-level={option.value}
+                          onClick={() => {
+                            handleThinkingSelect(option.value);
+                            close();
+                          }}
+                          className={`${COMPOSER_MENU_ITEM_SINGLE} ${
+                            selected
+                              ? "bg-[var(--mm-bg-popover-selected)] text-[var(--mm-text-primary)]"
+                              : "text-[var(--mm-text-secondary)]"
+                          }`}
+                        >
+                          <span className="text-[12px]">{option.label}</span>
+                          {selected ? <MenuCheckIcon /> : <span className="h-3.5 w-3.5 shrink-0" aria-hidden />}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </Popover>

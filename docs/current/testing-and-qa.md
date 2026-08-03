@@ -42,6 +42,14 @@ The tag-triggered release workflow adds desktop build, main runtime smoke, NSIS 
 
 Run E2E after a fresh desktop build when a change affects renderer surfaces, window lifecycle, IPC-visible behavior, chat streaming, permissions, settings, Compose, or packaging-adjacent runtime behavior. Playwright drives compiled Electron directly; it is not a browser-only test.
 
+Chat chrome regressions to cover when touching layout/Git rail/session list:
+
+- left collapse leaves no full-height seam/gutter; expand/collapse control remains reachable from the center workspace;
+- right rail open shows **Git 工具** (not the old always-on progress empty state when no goal/plan exists);
+- **变更** opens the in-chat changes overlay (`git-changes-overlay`) with file rows, not a forced navigation to the workbench Git panel;
+- workspace group **+** creates a new conversation after switching workspace;
+- unit coverage lives in `MiniMaxCodeLayout`, `RightRail`, `GitRailControls`, `GitChangesOverlay`, `SessionRow`, and `ProjectGroupedSessionList` tests; E2E hooks include `right-rail-git-workflow`, `main-token-stats`, smoke/visual-audit right-rail entry points.
+
 Use isolated fixtures for providers and workspaces. A test that needs a real API key, a real network marketplace, or an existing user installation must declare that prerequisite and must not turn an unavailable environment into a product PASS.
 
 For UI changes, preserve useful acceptance screenshots under `docs/compose/acceptance/` when the existing test convention calls for them. Screenshots are evidence, not a substitute for an executable test.

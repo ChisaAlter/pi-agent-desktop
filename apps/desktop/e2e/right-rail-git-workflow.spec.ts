@@ -95,14 +95,15 @@ test.describe("right rail Git workflow", () => {
         const rail = page.getByTestId("right-rail-panel");
         await expect(rail.getByText("本地", { exact: true })).toHaveCount(0);
         await expect(rail.getByText("比较分支", { exact: true })).toHaveCount(0);
-        await rail.getByRole("button", { name: "查看变更文件，打开 Git 面板" }).click();
+        await rail.getByRole("button", { name: "查看变更文件列表" }).click();
 
-        await expect(page.getByRole("region", { name: "Git 面板" })).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByRole("button", { name: "打开 README.md diff" })).toBeVisible({ timeout: 10_000 });
-        await expect(page.getByRole("button", { name: "打开 added-from-rail.txt diff" })).toBeVisible();
+        const changesOverlay = page.getByTestId("git-changes-overlay");
+        await expect(changesOverlay).toBeVisible({ timeout: 10_000 });
+        await expect(changesOverlay.getByText("README.md")).toBeVisible({ timeout: 10_000 });
+        await expect(changesOverlay.getByText("added-from-rail.txt")).toBeVisible();
         await page.screenshot({ path: join(SCREENSHOT_DIR, "01-real-change-list.png"), fullPage: true });
-        await page.getByRole("button", { name: "打开 README.md diff" }).click();
-        await expect(page.getByText("Edited through the real right rail workflow.")).toBeVisible({ timeout: 10_000 });
+        await changesOverlay.getByRole("button", { name: /README\.md/ }).click();
+        await expect(changesOverlay.getByText("Edited through the real right rail workflow.")).toBeVisible({ timeout: 10_000 });
         await page.screenshot({ path: join(SCREENSHOT_DIR, "02-real-diff.png"), fullPage: true });
 
         await page.getByRole("tab", { name: "对话", exact: true }).click();

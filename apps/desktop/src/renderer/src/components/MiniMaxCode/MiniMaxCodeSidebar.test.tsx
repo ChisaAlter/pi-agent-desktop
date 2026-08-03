@@ -12,7 +12,6 @@ import { MiniMaxCodeSidebar } from "./MiniMaxCodeSidebar";
 import { useSessionStore } from "../../stores/session-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
 import { I18nProvider } from "../../i18n";
-import { MINIMAX_CHROME_ICON_BUTTON_CLASSNAME } from "./chromeButton";
 
 const renderWithI18n = (ui: React.ReactElement) => render(<I18nProvider>{ui}</I18nProvider>);
 
@@ -144,31 +143,6 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
         expect(newTaskRow?.className ?? "").toContain("h-7");
         expect(quickCreate.className).toContain("h-7");
         expect(screen.getByRole("button", { name: "新建对话" }).className).toContain("h-7");
-    });
-
-    it("merges the collapse button into the sidebar header so it shares the list's left edge", () => {
-        renderWithI18n(
-            <MiniMaxCodeSidebar
-                {...({
-                    currentSection: "chat",
-                    onSectionChange: () => undefined,
-                    onToggleCollapse: () => undefined,
-                } as unknown as React.ComponentProps<typeof MiniMaxCodeSidebar>)}
-            />,
-        );
-
-        const nav = screen.getByRole("navigation", { name: "会话列表" });
-        const headerStrip = nav.firstElementChild as HTMLElement | null;
-        const headerRow = headerStrip?.firstElementChild as HTMLElement | null;
-        const collapseButton = screen.getByRole("button", { name: "折叠左侧栏" });
-        const quickCreateButton = screen.getByRole("button", { name: "快速新建对话" });
-
-        expect(headerRow?.className ?? "").not.toContain("mx-[11px]");
-        expect(collapseButton.className).toContain("h-7");
-        expect(collapseButton.className).toContain("w-7");
-        expect(collapseButton.className).toContain("shrink-0");
-        expect(collapseButton.className).toBe(MINIMAX_CHROME_ICON_BUTTON_CLASSNAME);
-        expect(quickCreateButton.className).toBe(MINIMAX_CHROME_ICON_BUTTON_CLASSNAME);
     });
 
     it("不在会话侧栏展示 pi-agent 在线状态", () => {

@@ -15,15 +15,18 @@ export interface ProjectGroupedSessionListProps {
   onRenameSession?: (id: string, title: string) => void;
   onDeleteSession: (id: string) => void;
   onSwitchWorkspace: (workspaceId: string) => void;
+  /** Create a new conversation under the given workspace (switch first, then new-task). */
+  onNewConversationInWorkspace?: (workspaceId: string) => void;
   hideEmptyState?: boolean;
 }
 
 interface GroupHeaderProps {
   workspace: Workspace;
-  count: number;
   expanded: boolean;
   onToggle: () => void;
   onSwitch: () => void;
+  onNewConversation?: () => void;
+  newConversationLabel: string;
 }
 
 function FolderIcon(): React.JSX.Element {
@@ -48,27 +51,54 @@ function ChevronIcon({ expanded }: { expanded: boolean }): React.JSX.Element {
   );
 }
 
-function GroupHeader({ workspace, count, expanded, onToggle, onSwitch }: GroupHeaderProps): React.JSX.Element {
+function PlusIcon(): React.JSX.Element {
   return (
-    <button
-      type="button"
-      onClick={() => {
-        onSwitch();
-        onToggle();
-      }}
-      aria-expanded={expanded}
-      title={workspace.path}
-      className="group flex h-9 w-full items-center gap-2 rounded-[var(--mm-radius-sm)] px-2 text-[12px] font-medium text-[var(--mm-text-primary)] transition-[color,transform] duration-150 ease-[cubic-bezier(0.2,0,0,1)] hover:text-[var(--mm-text-secondary)] active:scale-[0.96] motion-reduce:transition-none focus:outline-none focus-visible:bg-[var(--mm-bg-hover)] focus-visible:ring-1 focus-visible:ring-[var(--mm-accent-blue)]"
-    >
-      <span className="text-[var(--mm-text-secondary)] transition-colors group-hover:text-[var(--mm-text-primary)]">
-        <FolderIcon />
-      </span>
-      <span className="min-w-0 flex-1 truncate text-left">{workspace.name}</span>
-      <span className="shrink-0 text-[10px] font-normal tabular-nums text-[var(--mm-text-tertiary)]">{count}</span>
-      <span className="text-[var(--mm-text-tertiary)]">
-        <ChevronIcon expanded={expanded} />
-      </span>
-    </button>
+    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 5v14m-7-7h14" />
+    </svg>
+  );
+}
+
+function GroupHeader({
+  workspace,
+  expanded,
+  onToggle,
+  onSwitch,
+  onNewConversation,
+  newConversationLabel,
+}: GroupHeaderProps): React.JSX.Element {
+  return (
+    <div className="group flex h-9 w-full items-center gap-1 rounded-[var(--mm-radius-sm)] px-1">
+      <button
+        type="button"
+        onClick={() => {
+          onSwitch();
+          onToggle();
+        }}
+        aria-expanded={expanded}
+        title={workspace.path}
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-[var(--mm-radius-sm)] px-1 text-[12px] font-medium text-[var(--mm-text-primary)] transition-[color,transform] duration-150 ease-[cubic-bezier(0.2,0,0,1)] hover:text-[var(--mm-text-secondary)] active:scale-[0.98] motion-reduce:transition-none focus:outline-none focus-visible:bg-[var(--mm-bg-hover)] focus-visible:ring-1 focus-visible:ring-[var(--mm-accent-blue)]"
+      >
+        <span className="text-[var(--mm-text-secondary)] transition-colors group-hover:text-[var(--mm-text-primary)]">
+          <FolderIcon />
+        </span>
+        <span className="min-w-0 flex-1 truncate text-left">{workspace.name}</span>
+      </button>
+      {onNewConversation ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onNewConversation();
+          }}
+          aria-label={newConversationLabel}
+          title={newConversationLabel}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--mm-radius-sm)] text-[var(--mm-text-tertiary)] opacity-0 transition-[opacity,background-color,color,transform] duration-100 hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] active:scale-[0.96] group-hover:opacity-100 group-focus-within:opacity-100"
+        >
+          <PlusIcon />
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -81,6 +111,7 @@ export function ProjectGroupedSessionList({
   onRenameSession = () => undefined,
   onDeleteSession,
   onSwitchWorkspace,
+  onNewConversationInWorkspace,
   hideEmptyState = false,
 }: ProjectGroupedSessionListProps): React.JSX.Element {
   const sessions = useSessionStore((state) => state.sessions);
@@ -138,10 +169,15 @@ export function ProjectGroupedSessionList({
           <div key={workspace.id} className="flex flex-col gap-0.5">
             <GroupHeader
               workspace={workspace}
-              count={groupSessions.length}
               expanded={expanded}
               onToggle={() => toggleGroup(workspace.id)}
               onSwitch={() => onSwitchWorkspace(workspace.id)}
+              onNewConversation={
+                onNewConversationInWorkspace
+                  ? () => onNewConversationInWorkspace(workspace.id)
+                  : undefined
+              }
+              newConversationLabel={t("sidebar.sessions.newInWorkspace", { name: workspace.name })}
             />
             <AnimatedCollapse expanded={expanded}>
               <div className="flex flex-col gap-0.5 pt-0.5">

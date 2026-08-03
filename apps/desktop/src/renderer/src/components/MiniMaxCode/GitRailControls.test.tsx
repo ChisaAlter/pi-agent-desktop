@@ -66,14 +66,31 @@ describe("GitRailControls", () => {
     );
   }
 
-  it("opens the real Git changes workspace from the changes row", () => {
+  it("opens the in-chat changes overlay from the changes row without leaving chat", () => {
     const switchSpy = vi.fn();
     window.addEventListener("app:switch-section", switchSpy);
-    renderControls();
+    render(
+      <I18nProvider>
+        <GitRailControls
+          workspacePath="C:/repo"
+          git={git}
+          diffStats={{ additions: 12, deletions: 3 }}
+          changedFiles={[
+            { path: "src/app.ts", mark: "M", className: "text-[var(--color-info)]" },
+            { path: "src/new.ts", mark: "?", className: "text-[var(--mm-text-tertiary)]" },
+          ]}
+          onRefresh={onRefresh}
+        />
+      </I18nProvider>,
+    );
 
-    fireEvent.click(screen.getByRole("button", { name: "查看变更文件，打开 Git 面板" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看变更文件列表" }));
 
-    expect(switchSpy).toHaveBeenCalledWith(expect.objectContaining({ detail: { section: "git" } }));
+    expect(screen.getByTestId("git-changes-overlay")).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "变更文件" })).toBeTruthy();
+    expect(screen.getByText("app.ts")).toBeTruthy();
+    expect(screen.getByText("new.ts")).toBeTruthy();
+    expect(switchSpy).not.toHaveBeenCalled();
     window.removeEventListener("app:switch-section", switchSpy);
   });
 
@@ -142,7 +159,7 @@ describe("GitRailControls", () => {
   it("exposes row and dialog action focus-visible rings for keyboard a11y", async () => {
     renderControls();
 
-    expect(screen.getByRole("button", { name: "查看变更文件，打开 Git 面板" }).className).toContain(
+    expect(screen.getByRole("button", { name: "查看变更文件列表" }).className).toContain(
       "focus-visible:ring-2",
     );
     expect(screen.getByRole("button", { name: "提交或推送" }).className).toContain("focus-visible:ring-2");

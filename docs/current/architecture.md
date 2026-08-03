@@ -76,6 +76,17 @@ Compose is deliberately degraded rather than pretending to provide unsupported c
 5. Session/message updates are persisted independently of renderer streaming so UI responsiveness does not determine data durability.
 6. Turn completion updates long-horizon stop-gates and renderer state.
 
+## Chat chrome layout (current)
+
+The main window is still the three-slot MiniMax shell, but the floating right utility and left collapse behavior are product-facing contracts:
+
+- **Left collapse** is a center-workspace floating control, not a sidebar-only header button. When collapsed, the left rail width is `0` and its border is removed so the center content meets the window edge without a residual seam. Top strips of center panels reserve space for the control; the center column does not keep a full-height empty gutter.
+- **Left conversation list** groups by date or workspace. Workspace group headers expose a **+** action that switches workspace then opens a blank new conversation. Session rows show hover actions for only the active hovered/focused row; selected-row highlight is full-width.
+- **Right floating rail (chat only)** is a compact **Git 工具** card: changes (`+/-` totals), branch picker, and commit/push. It does not list project files inline. Plan progress appears under the card only when a goal or plan checklist exists.
+- **变更** opens `GitChangesOverlay` as a right-side fixed panel inside chat. The panel lists unstaged/changed files with per-file `+/-`, expands inline unified diffs, and does not route to the workbench Git tab. Git status/diff for the rail is cached per workspace for the session and refreshed while the rail is visible (collapsed rail still must not poll).
+
+These surfaces are renderer chrome over existing main-process Git IPC (`git:status`, `git:diff`, branch/commit/push handlers). Behavior changes belong in unit tests under `MiniMaxCode/*` and the right-rail/chat E2E specs.
+
 ## Window and navigation security
 
 The renderer loads the packaged local file surface (or the development localhost surface). Navigation is limited to the current local document or same-origin development URL. New-window requests are denied after optionally opening only `http:`/`https:` URLs through the system shell. External URLs are not loaded into the application renderer.

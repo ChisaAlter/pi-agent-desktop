@@ -202,15 +202,20 @@ describe("DateGroupedSessionList", () => {
         );
 
         const titleButton = screen.getByRole("button", { name: longTitle });
+        const row = titleButton.parentElement as HTMLElement;
         const actions = container.querySelector('[data-session-actions="s_long"]');
         expect(titleButton.className).toContain("pr-0");
         expect(actions?.className ?? "").toContain("absolute");
         expect(actions?.className ?? "").toContain("right-1");
+        expect(actions?.getAttribute("data-visible")).toBe("false");
         expect(actions?.className ?? "").toContain("pointer-events-none");
-        expect(actions?.className ?? "").toContain("group-hover:pointer-events-auto");
-        expect(actions?.className ?? "").toContain("group-focus-within:pointer-events-auto");
-        expect(actions?.querySelector("button")?.className ?? "").toContain("pointer-events-none");
-        expect(actions?.querySelector("button")?.className ?? "").toContain("group-hover:pointer-events-auto");
+        expect(actions?.className ?? "").toContain("opacity-0");
+        fireEvent.mouseEnter(row);
+        expect(actions?.getAttribute("data-visible")).toBe("true");
+        expect(actions?.className ?? "").toContain("pointer-events-auto");
+        expect(actions?.className ?? "").toContain("opacity-100");
+        fireEvent.mouseLeave(row);
+        expect(actions?.getAttribute("data-visible")).toBe("false");
         expect(actions?.className ?? "").toContain("bg-[var(--mm-bg-panel)]");
         expect(actions?.className ?? "").toContain("shadow-");
         expect(actions?.querySelector("button")?.className ?? "").toContain("h-7");

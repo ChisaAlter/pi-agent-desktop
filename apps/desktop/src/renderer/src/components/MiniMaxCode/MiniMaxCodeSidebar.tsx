@@ -51,8 +51,6 @@ export interface MiniMaxCodeSidebarProps {
     groupMode?: "date" | "workspace";
     /** 切换分组模式回调 */
     onGroupModeChange?: (mode: "date" | "workspace") => void;
-    /** 折叠左侧栏 */
-    onToggleCollapse?: () => void;
 }
 
 // ----------------------------------------------------------------------
@@ -64,15 +62,6 @@ function IconPlus(): React.JSX.Element {
     return (
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 5v14m-7-7h14" />
-        </svg>
-    );
-}
-
-function IconSidebarCollapse(): React.JSX.Element {
-    return (
-        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
-            <rect x="2" y="3" width="12" height="10" rx="1.5" />
-            <line x1="6" y1="3" x2="6" y2="13" />
         </svg>
     );
 }
@@ -233,7 +222,6 @@ export function MiniMaxCodeSidebar({
     onSectionChange,
     groupMode = "date",
     onGroupModeChange,
-    onToggleCollapse,
 }: MiniMaxCodeSidebarProps): React.JSX.Element {
     const { t } = useI18n();
     const currentSessionId = useSessionStore((state) => state.currentSessionId);
@@ -259,17 +247,6 @@ export function MiniMaxCodeSidebar({
             >
                 <div className="flex min-h-[42px] shrink-0 items-center">
                     <div className="flex h-7 w-full items-center gap-2">
-                        {onToggleCollapse && (
-                            <button
-                                type="button"
-                                onClick={onToggleCollapse}
-                                aria-label="折叠左侧栏"
-                                title="折叠左侧栏"
-                                className={MINIMAX_CHROME_ICON_BUTTON_CLASSNAME}
-                            >
-                                <IconSidebarCollapse />
-                            </button>
-                        )}
                         <button
                             type="button"
                             onClick={() => onSectionChange("new-task")}
@@ -323,6 +300,11 @@ export function MiniMaxCodeSidebar({
                                 onRenameSession={renameSession}
                                 onDeleteSession={deleteSession}
                                 onSwitchWorkspace={(wid) => useWorkspaceStore.getState().setCurrentWorkspace(wid)}
+                                onNewConversationInWorkspace={(wid) => {
+                                    // Switch first; defer new-task so App.routeSection reads the new currentWorkspace.
+                                    useWorkspaceStore.getState().setCurrentWorkspace(wid);
+                                    window.setTimeout(() => onSectionChange("new-task"), 0);
+                                }}
                                 hideEmptyState={hasPinnedSessions}
                             />
                         )}

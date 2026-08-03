@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { createPortal } from "react-dom";
 import { isIpcError, type GitBranch, type GitStatus } from "@shared";
 import { useI18n } from "../../i18n";
+import { GitChangesOverlay, type GitChangedFileRow } from "./GitChangesOverlay";
 
 interface DiffStats {
   additions: number;
@@ -11,7 +12,10 @@ interface DiffStats {
 interface GitRailControlsProps {
   workspacePath?: string;
   git: GitStatus | null;
+  gitLoading?: boolean;
   diffStats: DiffStats;
+  diffText?: string;
+  changedFiles?: GitChangedFileRow[];
   onRefresh: () => Promise<void>;
 }
 
@@ -85,10 +89,20 @@ function emitGitChanged(workspacePath: string, reason: "checkout" | "branch" | "
   window.dispatchEvent(new CustomEvent("workspace:git-changed", { detail: { workspacePath, reason } }));
 }
 
-export function GitRailControls({ workspacePath, git, diffStats, onRefresh }: GitRailControlsProps): React.JSX.Element {
+export function GitRailControls({
+  workspacePath,
+  git,
+  gitLoading = false,
+  diffStats,
+  diffText = "",
+  changedFiles = [],
+  onRefresh,
+}: GitRailControlsProps): React.JSX.Element {
   const { t } = useI18n();
+  const changesAnchorRef = useRef<HTMLButtonElement>(null);
   const branchAnchorRef = useRef<HTMLButtonElement>(null);
   const commitAnchorRef = useRef<HTMLButtonElement>(null);
+  const [changesOpen, setChangesOpen] = useState(false);
   const [branchOpen, setBranchOpen] = useState(false);
   const [commitOpen, setCommitOpen] = useState(false);
   const [branches, setBranches] = useState<GitBranch[]>([]);
@@ -111,10 +125,13 @@ export function GitRailControls({ workspacePath, git, diffStats, onRefresh }: Gi
   }, [branchSearch, branches]);
 
   const openChanges = (): void => {
-    window.dispatchEvent(new CustomEvent("app:switch-section", { detail: { section: "git" } }));
+    setBranchOpen(false);
+    setCommitOpen(false);
+    setChangesOpen(true);
   };
 
   const openBranchMenu = async (): Promise<void> => {
+    setChangesOpen(false);
     setCommitOpen(false);
     setBranchOpen(true);
     setBranchError(null);
@@ -179,6 +196,7 @@ export function GitRailControls({ workspacePath, git, diffStats, onRefresh }: Gi
   };
 
   const openCommitMenu = async (): Promise<void> => {
+    setChangesOpen(false);
     setBranchOpen(false);
     setCommitOpen(true);
     setCommitError(null);
@@ -254,22 +272,34 @@ export function GitRailControls({ workspacePath, git, diffStats, onRefresh }: Gi
 
   return (
     <>
-      <button type="button" onClick={openChanges} className={rowClass} aria-label={t("rightRail.gitActions.openChanges")}>
+      <button
+        ref={changesAnchorRef}
+        type="button"
+        onClick={openChanges}
+        className={rowClass}
+        aria-label={t("rightRail.gitActions.openChanges")}
+        aria-haspopup="dialog"
+        aria-expanded={changesOpen}
+      >
         <RowIcon><svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><rect x="5" y="4" width="14" height="16" rx="2" strokeWidth={1.6} /><path strokeLinecap="round" strokeWidth={1.6} d="M9 9h6M9 13h6" /></svg></RowIcon>
         <span>{t("rightRail.changes")}</span>
         <span className="ml-auto flex shrink-0 items-center gap-1.5 font-mono text-[12px]"><span className="text-[var(--color-success)]">+{diffStats.additions}</span><span className="text-[#dc2626]">-{diffStats.deletions}</span></span>
       </button>
 
-      <button ref={branchAnchorRef} type="button" onClick={() => void openBranchMenu()} className={rowClass} aria-haspopup="dialog" aria-expanded={branchOpen} disabled={!git}>
+      <button ref={branchAnchorRef} type="button" onClick={() => void openBranchMenu()} className={rowClass} aria-haspopup="dialog" aria-expanded={branchOpen} disabled={!git || gitLoading}>
         <RowIcon><svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><circle cx="6" cy="5" r="2" strokeWidth={1.6} /><circle cx="18" cy="7" r="2" strokeWidth={1.6} /><circle cx="6" cy="19" r="2" strokeWidth={1.6} /><path d="M6 7v10M8 8.5c5 0 4-1.5 8-1.5" strokeWidth={1.6} strokeLinecap="round" /></svg></RowIcon>
-        <span className="min-w-0 flex-1 truncate">{git?.branch ?? t("rightRail.noGit")}</span>
+        <span className={`min-w-0 flex-1 truncate ${gitLoading && !git ? "text-[var(--right-rail-muted)]" : ""}`}>
+          {git?.branch ?? (gitLoading ? t("rightRail.detectingGit") : t("rightRail.noGit"))}
+        </span>
         <svg className="h-3.5 w-3.5 shrink-0 text-[var(--right-rail-muted)]" fill="none" viewBox="0 0 16 16" stroke="currentColor"><path d="m4 6 4 4 4-4" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" /></svg>
       </button>
 
-      <button ref={commitAnchorRef} type="button" onClick={() => void openCommitMenu()} className={rowClass} aria-label={t("rightRail.commitOrPushAria")} aria-haspopup="dialog" aria-expanded={commitOpen} disabled={!git}>
+      <button ref={commitAnchorRef} type="button" onClick={() => void openCommitMenu()} className={rowClass} aria-label={t("rightRail.commitOrPushAria")} aria-haspopup="dialog" aria-expanded={commitOpen} disabled={!git || gitLoading}>
         <RowIcon><svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M3 12h5m8 0h5M8 12a4 4 0 1 0 8 0 4 4 0 0 0-8 0Z" strokeWidth={1.6} strokeLinecap="round" /></svg></RowIcon>
         <span>{t("rightRail.commitOrPush")}</span>
-        <span className="ml-auto shrink-0 font-mono text-[11px] text-[var(--right-rail-muted)]">{git ? `${git.ahead}/${git.behind}` : "-"}</span>
+        <span className="ml-auto shrink-0 font-mono text-[11px] text-[var(--right-rail-muted)]">
+          {git ? `${git.ahead}/${git.behind}` : gitLoading ? "…" : "-"}
+        </span>
       </button>
 
       {branchOpen ? (
@@ -299,6 +329,18 @@ export function GitRailControls({ workspacePath, git, diffStats, onRefresh }: Gi
             </div>
           </div>
         </RailPopover>
+      ) : null}
+
+      {changesOpen ? (
+        <GitChangesOverlay
+          open={changesOpen}
+          files={changedFiles}
+          workspacePath={workspacePath}
+          diffText={diffText}
+          anchorRef={changesAnchorRef}
+          onClose={() => setChangesOpen(false)}
+          onRefresh={onRefresh}
+        />
       ) : null}
 
       {commitOpen ? (

@@ -126,7 +126,8 @@ describe("ProjectGroupedSessionList", () => {
     expect(onSwitch).toHaveBeenCalledWith("w2");
   });
 
-  it("group headers expose aria-expanded", () => {
+  it("group headers expose aria-expanded and a new-conversation action instead of count/chevron", () => {
+    const onNew = vi.fn();
     render(
       <I18nProvider>
         <ProjectGroupedSessionList
@@ -136,6 +137,7 @@ describe("ProjectGroupedSessionList", () => {
           onArchiveSession={vi.fn()}
           onDeleteSession={vi.fn()}
           onSwitchWorkspace={vi.fn()}
+          onNewConversationInWorkspace={onNew}
         />
       </I18nProvider>,
     );
@@ -145,5 +147,10 @@ describe("ProjectGroupedSessionList", () => {
     expect(alphaHeader?.getAttribute("aria-expanded")).toBe("true");
     expect(betaHeader?.getAttribute("aria-expanded")).toBe("false");
     expect(alphaHeader?.getAttribute("type")).toBe("button");
+    // No session-count badge / chevron trailing text
+    expect(alphaHeader?.textContent ?? "").not.toMatch(/\d/);
+    expect(screen.getByRole("button", { name: "在 Alpha 新建对话" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "在 Beta 新建对话" }));
+    expect(onNew).toHaveBeenCalledWith("w2");
   });
 });

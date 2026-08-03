@@ -862,12 +862,27 @@ function setupIPC(updaterService: AppUpdaterService): void {
       markdownMemoryService?.setSettings(normalizeLongHorizonSettings(next.longHorizon).memory);
 
       const modelChanged = previous.provider !== next.provider || previous.model !== next.model;
+      // 切模型可能要几秒（每个 live session 都 setModel）。
+      // 绝不能阻塞 settings:set IPC，否则思考强度/权限等后续操作会卡住几秒。
+      // 用 latest-wins 串行队列：快速连点只应用最后一次模型。
       if (modelChanged && next.provider && next.model) {
-        await modelConfigRefreshTail;
-        await Promise.all([
-          agentRegistry.setModelForAll(next.provider, next.model),
-          piRegistry.setModelForAll(next.provider, next.model),
-        ]);
+        const provider = next.provider;
+        const model = next.model;
+        modelConfigRefreshTail = modelConfigRefreshTail
+          .catch(() => undefined)
+          .then(async () => {
+            const stillCurrent =
+              store.get("settings").provider === provider &&
+              store.get("settings").model === model;
+            if (!stillCurrent) return;
+            await Promise.all([
+              agentRegistry.setModelForAll(provider, model),
+              piRegistry.setModelForAll(provider, model),
+            ]);
+          })
+          .catch((error) => {
+            log.warn("[Main] failed to apply model to live sessions:", provider, model, error);
+          });
       }
 
       if ((previous.generatedUiEnabled !== false) !== (next.generatedUiEnabled !== false)) {

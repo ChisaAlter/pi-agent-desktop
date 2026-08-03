@@ -63,7 +63,7 @@ export function WorkbenchPanel({
 
   return (
     <section ref={rootRef} className="flex h-full min-h-0 flex-col overflow-hidden bg-[var(--mm-bg-body)]">
-      <div className="flex h-12 shrink-0 items-center border-b border-[var(--mm-border)] px-6">
+      <div className="flex h-12 shrink-0 items-center border-b border-[var(--mm-border)] pl-12 pr-6">
         <div className="flex h-full items-center gap-5" role="tablist" aria-label={t("workbenchPanel.ariaLabel")}>
           {WORKBENCH_TABS.map((tab) => {
             const active = view === tab.id;

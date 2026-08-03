@@ -208,7 +208,7 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--mm-bg-main)] px-6 py-6 text-[var(--mm-text-primary)]">
-      <div className="mb-5 flex items-center justify-between gap-4 border-b border-[var(--mm-border)] pb-4">
+      <div className="mb-5 flex items-center justify-between gap-4 border-b border-[var(--mm-border)] pb-4 pl-6">
         <div className="max-w-[240px] min-w-[180px] shrink-0">
           <h1 className="m-0 text-lg font-semibold">会话中心</h1>
           <p className="m-0 mt-1 text-xs text-[var(--mm-text-secondary)]">

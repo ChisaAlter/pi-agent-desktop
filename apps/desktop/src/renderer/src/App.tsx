@@ -890,7 +890,6 @@ function AppShell(): React.ReactElement {
                         onSectionChange={routeSection}
                         groupMode={sidebarGroupMode}
                         onGroupModeChange={setSidebarGroupMode}
-                        onToggleCollapse={() => setLeftCollapsed((v) => !v)}
                     />
                 }
                 centerSlot={

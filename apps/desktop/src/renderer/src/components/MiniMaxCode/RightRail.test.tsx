@@ -115,7 +115,17 @@ describe("RightRail", () => {
         ahead: 0,
         behind: 0,
       });
-    gitDiff.mockResolvedValue("");
+    gitDiff
+      .mockResolvedValueOnce("")
+      .mockResolvedValueOnce([
+        "diff --git a/src/a.ts b/src/a.ts",
+        "--- a/src/a.ts",
+        "+++ b/src/a.ts",
+        "@@ -1 +1,2 @@",
+        "-old",
+        "+new",
+        "+line",
+      ].join("\n"));
 
     renderWithI18n(<RightRail workspacePath="C:/repo" />);
     await waitFor(() => {
@@ -127,9 +137,9 @@ describe("RightRail", () => {
     await waitFor(() => {
       expect(getGitStatus).toHaveBeenCalledTimes(2);
     });
-    // Changed paths surface in the compact project-files list after refresh.
-    expect(await screen.findByRole("button", { name: "src/a.ts" })).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "Diff" }).length).toBeGreaterThan(0);
+    // Compact rail no longer lists project files; summary counts refresh instead.
+    expect(await screen.findByText("+2")).toBeTruthy();
+    expect(screen.getByText("-1")).toBeTruthy();
   });
 
   it("refreshes git summary when workspace git changes", async () => {
@@ -167,7 +177,7 @@ describe("RightRail", () => {
     expect(screen.getByText("1/0")).toBeTruthy();
   });
 
-  it("prefers plan checklist over generic task activity", () => {
+  it("shows plan checklist with completed/total and hides generic task activity", () => {
     usePlanStore.setState({
       steps: [
         { id: "s1", text: "梳理界面", status: "completed" },
@@ -183,11 +193,13 @@ describe("RightRail", () => {
 
     expect(screen.getByText("梳理界面")).toBeTruthy();
     expect(screen.getByText("执行计划")).toBeTruthy();
-    expect(screen.getByText("运行队列")).toBeTruthy();
-    expect(screen.getByText("普通任务")).toBeTruthy();
+    expect(screen.getByText("1/2")).toBeTruthy();
+    expect(screen.getByTestId("right-rail-progress")).toBeTruthy();
+    expect(screen.queryByText("运行队列")).toBeNull();
+    expect(screen.queryByText("普通任务")).toBeNull();
   });
 
-  it("renders one compact utility panel without token statistics", async () => {
+  it("renders a compact Git tools panel without project files or idle progress", async () => {
     getGitStatus.mockResolvedValue({
       branch: "master",
       modified: [],
@@ -201,15 +213,17 @@ describe("RightRail", () => {
 
     renderWithI18n(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
 
-    expect(await screen.findByText("环境信息")).toBeTruthy();
+    expect(await screen.findByText("Git 工具")).toBeTruthy();
+    expect(screen.queryByText("环境信息")).toBeNull();
+    expect(screen.queryByText("项目文件")).toBeNull();
     expect(screen.queryByText("来源")).toBeNull();
     expect(screen.queryByText("本地")).toBeNull();
     expect(screen.queryByText("比较分支")).toBeNull();
     expect(screen.queryByText("Token 使用统计")).toBeNull();
     expect(screen.queryByText("总 Token")).toBeNull();
     expect(screen.queryByText("会话数")).toBeNull();
-    expect(screen.getByText("进度")).toBeTruthy();
-    expect(screen.getByTestId("right-rail-progress")).toBeTruthy();
+    expect(screen.queryByText("进程")).toBeNull();
+    expect(screen.queryByTestId("right-rail-progress")).toBeNull();
     expect(screen.queryByText("工具权限")).toBeNull();
   });
 
@@ -243,14 +257,18 @@ describe("RightRail", () => {
       behind: 0,
     });
     gitDiff.mockResolvedValue("");
+    usePlanStore.setState({
+      steps: [{ id: "s1", text: "Ship UI", status: "running" }],
+    });
 
     renderWithI18n(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
 
-    expect(await screen.findByText("Environment")).toBeTruthy();
+    expect(await screen.findByText("Git tools")).toBeTruthy();
     expect(screen.queryByText("Token usage")).toBeNull();
     expect(screen.getByText("Progress")).toBeTruthy();
+    expect(screen.getByText("0/1")).toBeTruthy();
     expect(screen.queryByText("Sources")).toBeNull();
-    expect(screen.getAllByRole("button", { name: "Browse all files" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Browse all files" })).toBeNull();
     expect(screen.queryByText("Tool permissions")).toBeNull();
     expect(screen.queryByLabelText("Network")).toBeNull();
     expect(screen.queryByText("环境信息")).toBeNull();
@@ -281,22 +299,7 @@ describe("RightRail", () => {
     expect(screen.getByText("实现 Goal 状态")).toBeTruthy();
   });
 
-  it("shows queue activity as a clickable task flow", () => {
-    const switchSpy = vi.fn();
-    window.addEventListener("app:switch-section", switchSpy);
-    useSessionStore.setState({
-      currentSessionId: "s1",
-      sessions: [
-        {
-          id: "s1",
-          workspaceId: "w1",
-          title: "修复 Git 工作流",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          messages: [],
-        },
-      ],
-    });
+  it("hides progress for queue-only activity without a goal or plan", () => {
     useQueueStore.getState().applyEvent({ type: "agent_start" });
     useQueueStore.getState().applyEvent({
       type: "queue_update",
@@ -306,99 +309,39 @@ describe("RightRail", () => {
 
     renderWithI18n(<RightRail workspacePath="C:/repo" />);
 
-    expect(screen.getByText("运行队列")).toBeTruthy();
-    expect(screen.getByText("修复 Git 工作流")).toBeTruthy();
-    expect(screen.getByText("改成只提交 staged")).toBeTruthy();
-    expect(screen.getByText("跑完整测试")).toBeTruthy();
-    expect(screen.getByText("3 项")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: /修复 Git 工作流/ }));
-    expect(switchSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        detail: { section: "session:s1" },
-      }),
-    );
-
-    window.removeEventListener("app:switch-section", switchSpy);
+    expect(screen.queryByTestId("right-rail-progress")).toBeNull();
+    expect(screen.queryByText("运行队列")).toBeNull();
+    expect(screen.queryByText("改成只提交 staged")).toBeNull();
   });
 
-  it("shows queue errors and completion results in the task flow panel", () => {
+  it("hides queue errors and tool activity when there is no goal or plan", () => {
     useQueueStore.getState().applyEvent({ type: "agent_start" });
     useQueueStore.getState().applyEvent({ type: "extension_error", message: "tool crashed" } as never);
 
-    const { rerender } = renderWithI18n(<RightRail workspacePath="C:/repo" />);
-
-    expect(screen.getByRole("alert").textContent).toContain("tool crashed");
-
-    useQueueStore.getState().clear();
-    useQueueStore.getState().applyEvent({ type: "agent_start" });
-    useQueueStore.getState().applyEvent({ type: "agent_end" });
-    rerender(<RightRail workspacePath="C:/repo" />);
-
-    expect(screen.getByText("最近任务已完成")).toBeTruthy();
-    expect(screen.getByText("Agent 已结束")).toBeTruthy();
-  });
-
-  it("shows auto retry and recent queue activity in the task flow panel", () => {
-    useSessionStore.setState({
-      currentSessionId: "s1",
-      sessions: [
-        {
-          id: "s1",
-          workspaceId: "w1",
-          title: "长任务恢复",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          messages: [],
-        },
-      ],
-    });
-    useQueueStore.getState().applyEvent({
-      type: "auto_retry_start",
-      attempt: 1,
-      maxAttempts: 3,
-      delayMs: 2000,
-      errorMessage: "429 Too Many Requests",
-    });
-
     renderWithI18n(<RightRail workspacePath="C:/repo" />);
 
-    expect(screen.getAllByText("自动重试中").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("自动重试").length).toBeGreaterThan(0);
-    expect(screen.getByText("长任务恢复")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByTestId("right-rail-progress")).toBeNull();
   });
 
-  it("shows recent tool execution activity from queue events", () => {
-    useQueueStore.getState().applyEvent({
-      type: "tool_execution_start",
-      toolCallId: "tc1",
-      toolName: "bash",
-      args: { command: "pnpm test" },
-    });
-
-    renderWithI18n(<RightRail workspacePath="C:/repo" />);
-
-    expect(screen.getAllByText("bash 运行中").length).toBeGreaterThan(0);
-  });
-
-  it("includes fallback tool tasks in the task flow", () => {
+  it("does not surface fallback tool tasks without a goal or plan", () => {
     renderWithI18n(
       <RightRail
         tasks={[{ id: "t1", name: "运行测试", status: "running" }]}
       />,
     );
 
-    expect(screen.getByText("运行队列")).toBeTruthy();
-    expect(screen.getAllByText("运行测试").length).toBeGreaterThan(0);
-    expect(screen.getByText("Tool")).toBeTruthy();
+    expect(screen.queryByText("运行队列")).toBeNull();
+    expect(screen.queryByText("运行测试")).toBeNull();
+    expect(screen.queryByTestId("right-rail-progress")).toBeNull();
   });
 
-  it("puts environment controls first, excludes usage stats, and opens Files and Git from visible rail actions", async () => {
+  it("puts Git tools first, excludes usage stats, and opens the changes overlay", async () => {
     const switchSpy = vi.fn();
     window.addEventListener("app:switch-section", switchSpy);
     getGitStatus.mockResolvedValue({
       branch: "master",
-      modified: [],
+      modified: ["src/a.ts"],
       added: [],
       deleted: [],
       untracked: [],
@@ -441,31 +384,19 @@ describe("RightRail", () => {
 
     renderWithI18n(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
 
+    expect(await screen.findByText("Git 工具")).toBeTruthy();
     expect(screen.queryByText("运行状态")).toBeNull();
     expect(screen.queryByText("思考")).toBeNull();
     expect(screen.queryByText("claude-sonnet")).toBeNull();
-    expect(screen.queryByText("anthropic")).toBeNull();
-    expect(screen.queryByText("输入 1.2K")).toBeNull();
     expect(screen.queryByText("Token 使用统计")).toBeNull();
-    expect(screen.queryByText("1.5K")).toBeNull();
-    expect(screen.queryByText("输入 Token")).toBeNull();
-    expect(screen.queryByText("输出 Token")).toBeNull();
-    expect(screen.queryByText("anthropic/claude-sonnet")).toBeNull();
-    expect(screen.queryByText("会话数")).toBeNull();
     expect(screen.queryByText("工具权限")).toBeNull();
-    expect(screen.queryByLabelText("文件写入")).toBeNull();
-    expect(screen.queryByLabelText("网络")).toBeNull();
     expect(screen.queryByText("最近工具")).toBeNull();
+    expect(screen.queryByRole("button", { name: "浏览全部文件" })).toBeNull();
 
-    fireEvent.click(screen.getAllByRole("button", { name: "浏览全部文件" })[0]);
-    expect(switchSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        detail: { section: "files" },
-      }),
-    );
-
-    fireEvent.click(await screen.findByRole("button", { name: "查看变更文件，打开 Git 面板" }));
-    expect(switchSpy).toHaveBeenCalledWith(
+    fireEvent.click(await screen.findByRole("button", { name: "查看变更文件列表" }));
+    expect(await screen.findByTestId("git-changes-overlay")).toBeTruthy();
+    expect(screen.getByText("a.ts")).toBeTruthy();
+    expect(switchSpy).not.toHaveBeenCalledWith(
       expect.objectContaining({
         detail: { section: "git" },
       }),
@@ -474,7 +405,7 @@ describe("RightRail", () => {
     window.removeEventListener("app:switch-section", switchSpy);
   });
 
-  it("exposes browse/file/diff focus-visible rings for keyboard a11y", async () => {
+  it("exposes changes overlay focus-visible rings and expands inline diffs in place", async () => {
     getGitStatus.mockResolvedValue({
       branch: "master",
       modified: ["a.ts", "b.ts", "c.ts", "d.ts"],
@@ -484,18 +415,29 @@ describe("RightRail", () => {
       ahead: 0,
       behind: 0,
     });
-    gitDiff.mockResolvedValue("");
+    gitDiff.mockResolvedValue([
+      "diff --git a/a.ts b/a.ts",
+      "--- a/a.ts",
+      "+++ b/a.ts",
+      "@@ -1 +1,2 @@",
+      "-old",
+      "+new",
+      "+line",
+    ].join("\n"));
 
     renderWithI18n(<RightRail workspacePath="C:/repo" workspaceId="w1" />);
 
-    const browse = await screen.findByRole("button", { name: "浏览全部文件" });
-    expect(browse.className).toContain("focus-visible:ring-2");
+    const openChanges = await screen.findByRole("button", { name: "查看变更文件列表" });
+    expect(openChanges.className).toContain("focus-visible:ring-2");
+    fireEvent.click(openChanges);
 
+    const overlay = await screen.findByTestId("git-changes-overlay");
+    expect(overlay.className).toContain("fixed");
+    const fileRow = await screen.findByRole("button", { name: /a\.ts/ });
+    expect(fileRow.className).toContain("focus-visible:ring-2");
+    fireEvent.click(fileRow);
     await waitFor(() => {
-      expect(screen.getByTitle("在文件工作区打开 a.ts")).toBeTruthy();
+      expect(screen.getByText("new")).toBeTruthy();
     });
-    expect(screen.getByTitle("在文件工作区打开 a.ts").className).toContain("focus-visible:ring-2");
-    expect(screen.getByTitle("查看 a.ts 的 Git diff").className).toContain("focus-visible:ring-2");
-    expect(screen.getByRole("button", { name: /展开其余/ }).className).toContain("focus-visible:ring-2");
   });
 });

@@ -111,8 +111,8 @@ test.describe("M5 acceptance — critical dotfiles, async Git/File paths and bat
         await reloadAppShell(page);
         await expect(page.getByRole("button", { name: "切换工作区：m5-acceptance" }).first()).toBeVisible({ timeout: 15_000 });
 
-        await page.getByRole("button", { name: "展开右侧栏" }).click();
-        await page.getByRole("button", { name: "浏览全部文件" }).click();
+        await page.getByRole("tab", { name: "工作台" }).click();
+        await expect(page.getByRole("tab", { name: "文件" })).toHaveAttribute("aria-selected", "true");
         const fileSearch = page.getByRole("textbox", { name: "搜索文件" });
         await expect(fileSearch).toBeVisible({ timeout: 5_000 });
 

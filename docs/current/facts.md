@@ -85,6 +85,18 @@ The release workflow additionally builds the desktop bundle, runs the main-runti
 
 The NSIS isolation gate is currently blocked on the maintained test host: it is not elevated, Windows Sandbox is unavailable, Docker is unavailable, and the host already contains a Pi Desktop installation. Do not run installer, uninstall, or upgrade experiments on that host. Use an isolated Windows Sandbox, disposable VM, or equivalent administrator-controlled environment.
 
+## Chat UI chrome (product facts)
+
+These are checked-in renderer behaviors, not roadmap items:
+
+- Left sidebar collapse control is floating on the **center** workspace; collapsed left rail leaves **no** residual border/gutter seam.
+- Right floating rail on chat is a compact **Git 工具** card (changes / branch / commit-or-push). Progress appears only with a plan goal or plan steps.
+- Clicking **变更** opens a right-side in-chat changes panel with per-file `+/-` and inline file diffs; it does not navigate to the workbench Git view.
+- Workspace-grouped session headers use a **+** control to start a new conversation in that workspace (no trailing count/chevron on the header).
+- Git status for the rail is session-cached per workspace and refreshed while the rail is visible; first open may briefly show detecting state instead of “no Git”.
+
+See [architecture.md](architecture.md) for the layout contract and [testing-and-qa.md](testing-and-qa.md) for the unit/E2E coverage expectations.
+
 ## Document maintenance rule
 
 Use this directory for current facts. Keep old plans, reports, and release snapshots as historical artifacts with a short `Historical` or `Superseded` banner. Historical text may contain old version numbers or old implementation names; it must not be used as a current architecture or release contract.

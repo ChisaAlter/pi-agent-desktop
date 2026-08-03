@@ -742,7 +742,7 @@ export function ChatView({
     <div data-testid="chat-view-root" className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--mm-bg-input)] text-[var(--mm-text-primary)]">
       <div
         data-testid="chat-conversation-header"
-        className="grid min-h-[44px] shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-4 text-[12px]"
+        className="grid min-h-[44px] shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-[var(--mm-border)] bg-[var(--mm-bg-input)] pl-12 pr-4 text-[12px]"
       >
         <div className="flex min-w-0 items-center gap-2 overflow-hidden text-[var(--mm-text-primary)]">
           <div className="shrink-0">{workspaceControl}</div>
