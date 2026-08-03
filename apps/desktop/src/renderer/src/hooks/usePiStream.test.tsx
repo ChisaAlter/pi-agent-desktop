@@ -1311,7 +1311,7 @@ describe("usePiStream", () => {
         expect(sendPrompt).toHaveBeenCalledWith("ws1", "follow up", { mode: "build" });
     });
 
-    it("stops showing the current turn as thinking once a structured plan card arrives", async () => {
+    it("keeps the streaming stop control alive until agent_end once a plan card arrives", async () => {
         useAgentModeStore.getState().setMode("ws1", "plan");
         await act(async () => {
             render(<PlanHookStateHost />);
@@ -1339,7 +1339,14 @@ describe("usePiStream", () => {
             });
         });
 
+        // 计划卡片在 turn 进行中到达: 底层 agent 可能仍在运行, 流式状态必须保留,
+        // 否则停止按钮消失, 用户无法停止生成 (计划模式下"发送消息无法停止")。
         expect(usePlanStore.getState().activeCard?.title).toBe("测试计划");
+        expect(screen.getByTestId("streaming").textContent).toBe("true");
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_end" });
+        });
         expect(screen.getByTestId("streaming").textContent).toBe("false");
     });
 

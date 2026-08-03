@@ -1150,7 +1150,14 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     useEffect(() => {
         const unsubscribe = usePlanStore.subscribe((state, previousState) => {
             if (state.activeCard && state.activeCard.id !== previousState.activeCard?.id) {
-                pauseVisibleStreamingForPlanDecision();
+                // 计划卡片在 turn 进行中到达 (plan_write toolcall_start 即发出):
+                // 此时底层 agent 可能仍在运行 (toolcall_end / 收尾文本 / agent_end)。
+                // 若强制暂停可见流式状态, isStreaming 会变 false → 停止/暂停按钮消失,
+                // 用户将无法停止仍在生成的 agent (计划模式下"发送消息无法停止")。
+                // 只在流式状态本就已停止时兜底清理 (卡片迟到/乱序的边界情况)。
+                if (!isStreamingRef.current) {
+                    pauseVisibleStreamingForPlanDecision();
+                }
             }
         });
         return unsubscribe;

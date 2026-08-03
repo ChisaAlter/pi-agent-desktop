@@ -152,6 +152,42 @@ describe("usePiStream pinned agent (session-switch no-drop)", () => {
     expect(result.current.isStreaming).toBe(false);
   });
 
+  it("keeps the stop control alive when a plan card arrives mid-turn (plan mode stop regression)", async () => {
+    useAgentModeStore.getState().setMode("ws1", "plan");
+    const { result } = renderHook(() => usePiStream("agentB"));
+    await act(async () => {
+      await result.current.startStreaming("ws1", "为聊天输入框制定改版计划", { agentId: "agentA" });
+    });
+
+    await act(async () => {
+      emitAgentEvent?.({ agentId: "agentA", workspaceId: "ws1", event: { type: "agent_start" } });
+      emitAgentEvent?.({
+        agentId: "agentA", workspaceId: "ws1",
+        event: { type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "正在制定计划" } } as PiEvent,
+      });
+      // plan_write toolcall_start → plan:card 在 turn 进行中到达。
+      usePlanStore.getState().setCard({
+        id: "plan_tool_1",
+        title: "测试计划",
+        content: "- 检查\n- 修改",
+        createdAt: Date.now(),
+      });
+    });
+
+    // 回归: 计划卡片到达不得强制结束可见流式状态 — 底层 agent 可能仍在运行,
+    // 否则停止按钮消失, 计划模式下"发送消息无法停止"。
+    expect(result.current.isStreaming).toBe(true);
+
+    result.current.stopStreaming("ws1");
+    await act(async () => {
+      await vi.waitFor(() => expect(agentsAbortMock).toHaveBeenCalled());
+    });
+    expect(agentsAbortMock).toHaveBeenCalledWith("agentA");
+    await act(async () => {
+      await vi.waitFor(() => expect(result.current.isStreaming).toBe(false));
+    });
+  });
+
   it("does not report a false 'no content' error for a UI-card-only turn", async () => {
     const { result } = renderHook(() => usePiStream());
 
