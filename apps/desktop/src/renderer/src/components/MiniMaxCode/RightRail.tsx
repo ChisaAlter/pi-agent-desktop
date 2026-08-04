@@ -27,6 +27,8 @@ interface GitSnapshotCache {
 
 // Survive rail unmount/collapse so reopen does not flash "无 Git" like a cold start.
 const gitSnapshotCache = new Map<string, GitSnapshotCache>();
+// 安全审查/性能: 缓存有界 (LRU, 最多 8 个工作区), 防止跨会话无限增长
+const GIT_SNAPSHOT_CACHE_MAX = 8;
 
 function countDiffStats(diff: string): DiffStats {
   return diff.split(/\r?\n/).reduce<DiffStats>((acc, line) => {
@@ -49,6 +51,18 @@ function writeCachedSnapshot(
   diffText: string,
 ): void {
   gitSnapshotCache.set(workspacePath, { git, diffStats, diffText, updatedAt: Date.now() });
+  // LRU 淘汰: 超出上限时删除最旧的条目
+  if (gitSnapshotCache.size > GIT_SNAPSHOT_CACHE_MAX) {
+    let oldestKey: string | null = null;
+    let oldestAt = Infinity;
+    for (const [key, entry] of gitSnapshotCache) {
+      if (entry.updatedAt < oldestAt) {
+        oldestAt = entry.updatedAt;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey) gitSnapshotCache.delete(oldestKey);
+  }
 }
 
 function statusDot(status: string): string {
@@ -170,7 +184,9 @@ export function RightRail({ workspacePath }: RightRailProps): React.JSX.Element 
       if (!disposed) await loadGitSnapshot();
     };
     // Refresh while open; first paint already used cache when available.
-    const intervalId = setInterval(() => void load(), 15000);
+    // 性能优化: 高频刷新由 workspace:git-changed / workspace:file-saved 事件驱动
+    // (下方 effect), 这里只保留 60s 低频兜底 (外部 git 操作/其他工具改动).
+    const intervalId = setInterval(() => void load(), 60000);
     void load();
     return () => {
       disposed = true;
