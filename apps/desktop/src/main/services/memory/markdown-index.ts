@@ -44,9 +44,10 @@
  * first to keep the event loop responsive during bulk reconcile.
  */
 
-import { mkdirSync } from "fs";
+import { existsSync, mkdirSync, renameSync } from "fs";
 import { dirname } from "path";
 import { DatabaseSync } from "node:sqlite";
+import log from "electron-log/main";
 import type { MemoryLocator } from "./paths";
 import type { ReconcileDatabase } from "./reconcile";
 
@@ -123,8 +124,51 @@ export class MarkdownIndex implements ReconcileDatabase {
 
     constructor(opts: MarkdownIndexOptions) {
         mkdirSync(dirname(opts.dbPath), { recursive: true });
-        this.db = new DatabaseSync(opts.dbPath);
+        this.db = this.openHealthyDatabase(opts.dbPath);
         this.migrate();
+    }
+
+    /**
+     * 安全审查 I4: 索引库损坏会从构造函数抛出 → MarkdownMemoryService 构造失败 →
+     * 整个 app 无法启动. 这里做健康检查 + 隔离 + 重建: 索引可从磁盘 markdown
+     * 全量重建 (reconcile), 因此损坏时重建空库是零丢失的. 同时开启 WAL,
+     * 避免每次 reconcile upsert 都重写回滚日志.
+     */
+    private openHealthyDatabase(dbPath: string): DatabaseSync {
+        let candidate: DatabaseSync | undefined;
+        try {
+            candidate = new DatabaseSync(dbPath);
+            const rows = candidate.prepare("PRAGMA quick_check;").all() as Array<{ quick_check?: unknown }>;
+            if (rows.length === 0 || rows.some((row) => row.quick_check !== "ok")) {
+                throw new Error(`memory index quick_check failed: ${JSON.stringify(rows)}`);
+            }
+            candidate.exec("PRAGMA journal_mode = WAL;");
+            return candidate;
+        } catch (error) {
+            try {
+                candidate?.close();
+            } catch {
+                // Best effort: the invalid handle may already be unusable.
+            }
+            // 隔离损坏文件 (含 WAL/SHM), 后续由 reconcile 从磁盘重建索引.
+            const backupPath = `${dbPath}.corrupt-${Date.now()}`;
+            try {
+                for (const suffix of ["", "-wal", "-shm"]) {
+                    const source = `${dbPath}${suffix}`;
+                    if (existsSync(source)) renameSync(source, `${backupPath}${suffix}`);
+                }
+            } catch {
+                // Best effort
+            }
+            log.warn("[markdown-index] corrupt index quarantined; will rebuild from disk:", {
+                dbPath,
+                backupPath,
+                error,
+            });
+            const fresh = new DatabaseSync(dbPath);
+            fresh.exec("PRAGMA journal_mode = WAL;");
+            return fresh;
+        }
     }
 
     private async yieldToEventLoop(): Promise<void> {

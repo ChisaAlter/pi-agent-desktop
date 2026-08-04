@@ -37,6 +37,14 @@ export interface SessionRepository {
     listSessions(): Promise<Session[]>;
     listSessionSummaries(): Promise<SessionListItem[]>;
     getSession(id: string): Promise<Session | undefined>;
+    /**
+     * 有界查询: 最近活动会话的尾部消息 (性能审查 C7) —
+     * 供 turn_end 判定等热路径使用, 避免全库 N+1 加载.
+     */
+    getRecentTranscriptMessages(
+        limit?: number,
+        opts?: { workspaceId?: string; sessionId?: string },
+    ): Promise<Array<{ id: string; role: string; content: string }>>;
     createSession(workspaceId: string, title?: string, id?: string): Promise<Session>;
     renameSession(id: string, title: string): Promise<Session>;
     deleteSession(id: string): Promise<void>;

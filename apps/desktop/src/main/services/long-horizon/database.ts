@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, createReadStream } from "fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, createReadStream } from "fs";
 import { dirname, join } from "path";
 import { randomUUID } from "crypto";
 import readline from "node:readline";
@@ -149,10 +149,12 @@ function rowToTask(row: Record<string, unknown>): LongHorizonTaskRecord {
 export class LongHorizonDatabase {
     private readonly db: DatabaseSync;
     private readonly dbPath: string;
+    private readonly backupPath: string;
 
     constructor(rootDir: string) {
         mkdirSync(rootDir, { recursive: true });
         this.dbPath = join(rootDir, "long-horizon.db");
+        this.backupPath = join(rootDir, "long-horizon.backup.db");
         mkdirSync(dirname(this.dbPath), { recursive: true });
         this.db = this.openHealthyDatabase();
         this.migrate();
@@ -174,12 +176,40 @@ export class LongHorizonDatabase {
                 // Best effort: the invalid handle may already be unusable.
             }
             const backupPath = this.backupCorruptDatabase();
-            log.error("[long-horizon] corrupt database recovered:", {
+            // 安全审查 C8: 与 sessions.db 同语义 — 损坏时先尝试从健康备份恢复,
+            // 而不是直接退回空库 (空库会静默清空全部 goals/tasks/memories).
+            if (existsSync(this.backupPath) && this.backupIsHealthy()) {
+                try {
+                    copyFileSync(this.backupPath, this.dbPath);
+                    log.warn("[long-horizon] restored database from healthy backup:", this.backupPath);
+                    return new DatabaseSync(this.dbPath);
+                } catch (restoreError) {
+                    log.error("[long-horizon] failed to restore from backup:", restoreError);
+                }
+            }
+            log.error("[long-horizon] corrupt database recovered (no usable backup, starting empty):", {
                 databasePath: this.dbPath,
                 backupPath,
                 error,
             });
             return new DatabaseSync(this.dbPath);
+        }
+    }
+
+    private backupIsHealthy(): boolean {
+        let backup: DatabaseSync | undefined;
+        try {
+            backup = new DatabaseSync(this.backupPath, { readOnly: true });
+            const rows = backup.prepare("PRAGMA quick_check;").all() as Array<{ quick_check?: unknown }>;
+            return rows.length > 0 && rows.every((row) => row.quick_check === "ok");
+        } catch {
+            return false;
+        } finally {
+            try {
+                backup?.close();
+            } catch {
+                // Best effort
+            }
         }
     }
 
@@ -209,7 +239,22 @@ export class LongHorizonDatabase {
             // Database may be in a bad state; ignore checkpoint failure so
             // close() still best-effort releases the handle.
         }
+        // 安全审查 C8: 仅当主库健康时才覆盖备份 — 损坏时写备份会毁掉最后一份好数据.
+        let healthy = false;
+        try {
+            const rows = this.db.prepare("PRAGMA quick_check;").all() as Array<{ quick_check?: unknown }>;
+            healthy = rows.length > 0 && rows.every((row) => row.quick_check === "ok");
+        } catch {
+            healthy = false;
+        }
         this.db.close();
+        if (healthy) {
+            try {
+                copyFileSync(this.dbPath, this.backupPath);
+            } catch {
+                // Best-effort backup copy; not fatal.
+            }
+        }
     }
 
     get path(): string {
@@ -294,37 +339,50 @@ export class LongHorizonDatabase {
             updatedAt: timestamp,
         };
         const tagsJson = record.tags?.length ? JSON.stringify(record.tags) : null;
-        // FTS5 trigram tokenizer handles raw text directly — no pre-tokenization.
-        // Tags remain in `memories.tags_json` for structured access only.
-        const searchText = record.text;
-        this.db.prepare(`
-            INSERT OR REPLACE INTO memories (
-                id, scope, layer, kind, text, parent_id, workspace_id, session_id, tags_json, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-            record.id,
-            record.scope,
-            record.layer,
-            record.kind,
-            record.text,
-            record.parentId ?? null,
-            record.workspaceId ?? null,
-            record.sessionId ?? null,
-            tagsJson,
-            timestamp,
-            timestamp,
-        );
-        this.db.prepare(`
-            INSERT OR REPLACE INTO memory_fts (id, search_text, kind, layer, workspace_id, session_id)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-            record.id,
-            searchText,
-            record.kind,
-            record.layer,
-            record.workspaceId ?? "",
-            record.sessionId ?? "",
-        );
+        // 安全审查 I3: 记忆行与 FTS 索引必须同事务写入 — 否则崩溃落在两者之间时,
+        // 记忆行存在但永远搜不到 (或反之).
+        this.db.exec("BEGIN");
+        try {
+            // FTS5 trigram tokenizer handles raw text directly — no pre-tokenization.
+            // Tags remain in `memories.tags_json` for structured access only.
+            const searchText = record.text;
+            this.db.prepare(`
+                INSERT OR REPLACE INTO memories (
+                    id, scope, layer, kind, text, parent_id, workspace_id, session_id, tags_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+                record.id,
+                record.scope,
+                record.layer,
+                record.kind,
+                record.text,
+                record.parentId ?? null,
+                record.workspaceId ?? null,
+                record.sessionId ?? null,
+                tagsJson,
+                timestamp,
+                timestamp,
+            );
+            this.db.prepare(`
+                INSERT OR REPLACE INTO memory_fts (id, search_text, kind, layer, workspace_id, session_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            `).run(
+                record.id,
+                searchText,
+                record.kind,
+                record.layer,
+                record.workspaceId ?? "",
+                record.sessionId ?? "",
+            );
+            this.db.exec("COMMIT");
+        } catch (error) {
+            try {
+                this.db.exec("ROLLBACK");
+            } catch {
+                // Preserve the original error.
+            }
+            throw error;
+        }
         return record;
     }
 

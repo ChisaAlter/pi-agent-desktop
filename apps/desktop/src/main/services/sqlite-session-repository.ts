@@ -279,6 +279,45 @@ export class SqliteSessionRepository implements SessionRepository {
         return sessions.filter((session): session is Session => Boolean(session));
     }
 
+    /**
+     * 性能审查 C7: 单条有界查询 — 最近活动会话的尾部消息, 替代
+     * listSessionSummaries + getSession 的全库 N+1 加载 (turn_end 判定热路径).
+     * workspaceId / sessionId 过滤保持与旧 listSessionSummaries 路径相同的语义.
+     */
+    async getRecentTranscriptMessages(limit = 50, opts?: { workspaceId?: string; sessionId?: string }): Promise<Array<{ id: string; role: string; content: string }>> {
+        const filters: string[] = [];
+        const params: Array<string | number> = [];
+        if (opts?.workspaceId) {
+            filters.push("workspace_id = ?");
+            params.push(opts.workspaceId);
+        }
+        if (opts?.sessionId) {
+            filters.push("id = ?");
+            params.push(opts.sessionId);
+        }
+        const where = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
+        params.push(Math.max(1, Math.min(200, limit)));
+        const rows = this.db.prepare(`
+            SELECT payload_json FROM messages
+            WHERE session_id = (
+                SELECT id FROM sessions
+                ${where}
+                ORDER BY COALESCE(last_opened_at, updated_at) DESC, created_at DESC
+                LIMIT 1
+            )
+            ORDER BY ordinal DESC
+            LIMIT ?
+        `).all(...params) as DbRow[];
+        const messages: Array<{ id: string; role: string; content: string }> = [];
+        for (const row of rows) {
+            const message = parseJson<Message>(row.payload_json, {} as Message);
+            if (!message || typeof message.content !== "string") continue;
+            messages.push({ id: message.id, role: message.role, content: message.content });
+        }
+        // 倒序取回 → 恢复时间正序
+        return messages.reverse();
+    }
+
     async createSession(workspaceId: string, title?: string, id?: string): Promise<Session> {
         const now = Date.now();
         const sessionId = id ?? `s_${now}_${Math.random().toString(36).slice(2, 6)}`;

@@ -203,6 +203,35 @@ describe("SqliteSessionRepository", () => {
         expect(repository.checkHealth()).toMatchObject({ ok: true });
     });
 
+    it("getRecentTranscriptMessages returns the tail of the most recent session, workspace-scoped and bounded", async () => {
+        // 性能审查 C7 回归: 热路径有界查询语义
+        const repository = createRepository();
+        const sessionA = await repository.createSession("w1", "A", "s-a");
+        const sessionB = await repository.createSession("w2", "B", "s-b");
+        const sessionC = await repository.createSession("w1", "C", "s-c");
+        for (let i = 1; i <= 5; i++) {
+            await repository.appendMessage(sessionA.id, { id: `a${i}`, role: "user", content: `a${i}`, timestamp: new Date() });
+        }
+        await repository.appendMessage(sessionB.id, { id: "b1", role: "user", content: "b1", timestamp: new Date() });
+        for (let i = 1; i <= 3; i++) {
+            await repository.appendMessage(sessionC.id, { id: `c${i}`, role: "assistant", content: `c${i}`, timestamp: new Date() });
+        }
+        // 最近活动的是 sessionC (最后创建/打开)
+        await repository.updateSessionMetadata(sessionC.id, { lastOpenedAt: Date.now() + 1000 });
+
+        const scoped = await repository.getRecentTranscriptMessages(10, { workspaceId: "w1" });
+        expect(scoped.map((message) => message.id)).toEqual(["c1", "c2", "c3"]);
+        expect(scoped.map((message) => message.content)).toEqual(["c1", "c2", "c3"]);
+
+        // 显式 sessionId 过滤
+        const explicit = await repository.getRecentTranscriptMessages(10, { sessionId: "s-a" });
+        expect(explicit.map((message) => message.id)).toEqual(["a1", "a2", "a3", "a4", "a5"]);
+
+        // limit 生效
+        const bounded = await repository.getRecentTranscriptMessages(2, { workspaceId: "w1" });
+        expect(bounded.map((message) => message.id)).toEqual(["c2", "c3"]);
+    });
+
     // wave-134 residual
     it("returns empty search hits for blank query and clamps limit", async () => {
         const repository = createRepository();
