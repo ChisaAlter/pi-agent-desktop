@@ -322,7 +322,6 @@ function AppShell(): React.ReactElement {
         void createAgent(
             currentWorkspace.id,
             `${currentSession.title || t("app.untitledSession")} Agent`,
-            undefined,
             currentSession.id,
         ).finally(() => {
             pendingSessionAgentSessions.current.delete(currentSession.id);

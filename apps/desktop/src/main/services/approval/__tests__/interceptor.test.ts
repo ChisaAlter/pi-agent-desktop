@@ -433,6 +433,57 @@ describe("createApprovalInterceptor", () => {
         expect(change?.diff).toContain("+new content");
     });
 
+    it("rejects review for paths that escape the workspace via .. traversal", async () => {
+        // 安全审查回归: filePath 是模型可控参数, `../.ssh/id_rsa` 解析后逃逸工作区,
+        // 不得读取文件内容、不得发送 approval:review.
+        const changeId = pendingEdits.track("tc_traversal", "edit", "../.ssh/id_rsa", {
+            old_string: "a",
+            new_string: "b",
+        });
+        await interceptor.handleEvent({
+            type: "tool_execution_end",
+            toolCallId: "tc_traversal",
+            toolName: "edit",
+            args: { file_path: "../.ssh/id_rsa" },
+            result: {},
+            isError: false,
+        });
+        expect(send).not.toHaveBeenCalled();
+        // 审查记录被丢弃 (不再挂起)
+        expect(pendingEdits.get(changeId)).toBeUndefined();
+    });
+
+    it("rejects review for absolute paths outside the workspace", async () => {
+        const changeId = pendingEdits.track("tc_abs", "write", "C:/Users/x/.ssh/id_rsa", { content: "x" });
+        await interceptor.handleEvent({
+            type: "tool_execution_end",
+            toolCallId: "tc_abs",
+            toolName: "write",
+            args: { file_path: "C:/Users/x/.ssh/id_rsa" },
+            result: {},
+            isError: false,
+        });
+        expect(send).not.toHaveBeenCalled();
+        expect(pendingEdits.get(changeId)).toBeUndefined();
+    });
+
+    it("still reviews in-workspace absolute paths", async () => {
+        const changeId = pendingEdits.track("tc_abs_ok", "write", "C:/workspace/src/ok.ts", { content: "x" });
+        await interceptor.handleEvent({
+            type: "tool_execution_end",
+            toolCallId: "tc_abs_ok",
+            toolName: "write",
+            args: { file_path: "C:/workspace/src/ok.ts" },
+            result: {},
+            isError: false,
+        });
+        expect(send).toHaveBeenCalledWith(
+            "approval:review",
+            "ws_1",
+            expect.objectContaining({ changeId, filePath: "C:/workspace/src/ok.ts" })
+        );
+    });
+
     it("ignores non-write/edit tool_execution_end", async () => {
         await interceptor.handleEvent({
             type: "tool_execution_end",

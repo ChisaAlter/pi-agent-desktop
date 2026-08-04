@@ -65,7 +65,8 @@ import { attachWebSecurityHandlers } from './services/web-security';
 import { configureProductionLogging } from './services/log-redaction';
 import { buildDiagnosticReport } from './services/diagnostics';
 import { attachCrashDiagnostics, attachRendererCrashDiagnostics } from './services/crash-diagnostics';
-import { resolveStoredToolPermissions } from './services/permission/runtime-policy';
+import { resolveRuntimePolicy, resolveStoredToolPermissions } from './services/permission/runtime-policy';
+import { createRuntimePolicyController } from './services/permission/guarded-tools';
 import { resolveNativeSessionPath } from './services/pi-session/session-path';
 import { forkNativeSession } from './services/pi-session/native-session-fork';
 import { loadPiSdk } from './services/pi-session/sdk-runtime';
@@ -361,6 +362,21 @@ const subagentSessionFactory: SubagentSessionFactory = async (opts) => {
   const settings = store.get('settings');
   const provider = opts.modelRef?.provider ?? settings.provider ?? piAgentConfig?.defaultProvider;
   const modelId = opts.modelRef?.modelId ?? settings.model ?? piAgentConfig?.defaultModel;
+  // 子代理守卫 (安全审查 C2): 主会话通过 getRuntimePolicy 启用 createGuardedBuiltins
+  // (protected-paths + 规范路径/符号链接检查); 子代理此前完全裸跑, checkpoint-writer
+  // 的 write/edit 可写任意文件. 这里给予"读写受守卫、shell/git/network 关闭"的策略 —
+  // 类别门禁仍由 toolAllowlist 负责, 守卫只补路径安全这一层.
+  const policyController = createRuntimePolicyController(resolveRuntimePolicy({
+    mode: 'build',
+    workspacePermissions: {
+      fileRead: true,
+      fileWrite: true,
+      shell: false,
+      git: false,
+      network: false,
+      extensions: false,
+    },
+  }));
   const result = await createWorkspaceSession({
     workspaceId: opts.context.workspaceId,
     workspacePath: opts.context.workspacePath,
@@ -370,6 +386,7 @@ const subagentSessionFactory: SubagentSessionFactory = async (opts) => {
     agentDir: PI_AGENT_DIR,
     tools: opts.toolAllowlist,
     customTools: opts.customTools,
+    getRuntimePolicy: policyController.getPolicy,
     thinkingLevel: settings.thinkingLevel === 'none' ? 'off' : settings.thinkingLevel,
     autoCompactionEnabled: settings.autoCompactionEnabled,
   });
@@ -490,13 +507,11 @@ async function resolveActiveModel(_workspaceId: string): Promise<{ provider: Res
 
 async function lookupTranscript(workspaceId: string, agentId?: string): Promise<Array<{ role: 'user' | 'assistant'; content: string; id?: string }>> {
   const repository = getSessionRepository();
-  const sessions = await repository.listSessionSummaries();
-  const candidates = sessions
-    .filter((session) => session.workspaceId === workspaceId && (!agentId || session.id === agentId))
-    .sort((a, b) => (b.lastOpenedAt ?? b.updatedAt) - (a.lastOpenedAt ?? a.updatedAt));
-  const session = candidates[0] ? await repository.getSession(candidates[0].id) : undefined;
+  // 性能审查 C7: 不再全库加载 — 单条有界查询最近活动会话的尾部消息 (60 条),
+  // 保留 workspaceId / agentId(=sessionId) 过滤语义.
+  const recent = await repository.getRecentTranscriptMessages(60, { workspaceId, sessionId: agentId });
   const transcript: Array<{ role: 'user' | 'assistant'; content: string; id?: string }> = [];
-  for (const message of session?.messages ?? []) {
+  for (const message of recent) {
     if (message.role !== 'user' && message.role !== 'assistant') continue;
     if (message.content.trim().length === 0) continue;
     transcript.push({

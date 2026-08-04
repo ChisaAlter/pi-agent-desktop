@@ -163,11 +163,13 @@ export function setupSettingsIpc(opts: {
 
   // Renderer log forwarding to main process electron-log
   ipcMain.on('log:write', (_event, level: string, message: string, extra: unknown) => {
+    // 安全审查: 限制消息长度与 extra 条数, 防止渲染层灌爆日志文件
+    if (typeof message !== "string" || message.length > 8192) return;
     const safeLevel: "error" | "warn" | "info" | "debug" =
       level === "error" || level === "warn" || level === "info" || level === "debug"
         ? level
         : "info";
-    const safeExtra = Array.isArray(extra) ? (extra as unknown[]) : [];
+    const safeExtra = Array.isArray(extra) ? (extra as unknown[]).slice(0, 8) : [];
     log[safeLevel]("[renderer] " + message, ...safeExtra);
   });
 }

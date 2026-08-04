@@ -10,7 +10,9 @@ export const workspaceCreateSchema = z.tuple([
     z.string().min(1, "path must be a non-empty string"),
 ]);
 
-const permissionModeSchema = z.enum(["ask", "smart", "always", "read", "partial", "full"]);
+// 与 @shared PermissionMode 类型对齐 (安全审查 I2: 曾含 read/partial/full 死值,
+// 未知模式会流入权限策略且行为未定义)
+const permissionModeSchema = z.enum(["ask", "smart", "always"]);
 const agentModeSchema = z.enum(["build", "plan", "compose"]);
 
 const piConfigSchema = z
@@ -198,7 +200,7 @@ export const terminalCreateSchema = z.tuple([
 
 export const terminalInputSchema = z.tuple([
     z.string().min(1, "terminalId must be a non-empty string"),
-    z.string().min(1, "data must be a non-empty string"),
+    z.string().min(1, "data must be a non-empty string").max(64 * 1024, "data is too large (max 64KB)"),
 ]);
 
 export const terminalResizeSchema = z.tuple([
@@ -431,11 +433,17 @@ export const writeTextFileSchema = z.union([
 
 // ── Agent IPC schemas ──────────────────────────────────────
 
+// 安全审查 C3: sessionPath 已从契约中移除 — 渲染层不得指定任意文件路径,
+// 原生 JSONL 路径一律由主进程从 sessionId 经 resolveNativeSessionPath 推导.
+// sessionId 使用与 session-path.ts 相同的字符集, 防止非法 ID 流入文件系统.
 export const agentsCreateSchema = z.object({
     workspaceId: z.string().min(1),
     title: z.string().min(1).optional(),
-    sessionId: z.string().min(1).optional(),
-    sessionPath: z.string().min(1).optional(),
+    sessionId: z
+        .string()
+        .regex(/^[A-Za-z0-9._-]+$/, "sessionId must match [A-Za-z0-9._-]+")
+        .max(120)
+        .optional(),
     model: z.string().optional(),
     provider: z.string().optional(),
 });

@@ -116,7 +116,8 @@ describe("setupAgentsIpc", () => {
         expect(registry.getRuntimeState).toHaveBeenCalledWith("agent_1");
     });
 
-    it("rejects empty agent ids for abort/stop/restart/messages/runtime-state", async () => {
+    it("returns structured IpcError for empty agent ids (no ZodError escape)", async () => {
+        // 安全审查 I1: 校验失败返回结构化 ipcError, 而不是让 ZodError 穿越 IPC
         const registry = {
             abort: vi.fn(),
             stop: vi.fn(),
@@ -133,7 +134,10 @@ describe("setupAgentsIpc", () => {
             "agents:messages",
             "agents:runtime-state",
         ]) {
-            await expect(handlers.get(channel)?.({}, "")).rejects.toThrow();
+            await expect(handlers.get(channel)?.({}, "")).resolves.toMatchObject({
+                __brand: "IpcError",
+                code: "ipcErrors.agents.invalidAgentId",
+            });
         }
         expect(registry.abort).not.toHaveBeenCalled();
         expect(registry.stop).not.toHaveBeenCalled();

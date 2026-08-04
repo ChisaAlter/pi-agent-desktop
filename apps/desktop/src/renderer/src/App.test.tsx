@@ -161,7 +161,6 @@ const piAPI = {
         title: input.title ?? "Agent",
         status: "idle",
         sessionId: input.sessionId,
-        sessionPath: input.sessionPath,
         createdAt: 1,
         updatedAt: 1,
     })),

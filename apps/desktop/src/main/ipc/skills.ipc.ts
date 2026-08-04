@@ -323,6 +323,13 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
 
     // v1.0.17: 写 SKILL.md 到磁盘 (而非只复制到剪贴板)
     ipcMain.handle("skills:write-skill", async (_event, name: string, content: string) => {
+        // 安全审查: content 无大小上限会把任意尺寸字符串写盘 — 与 writeTextFileSchema 对齐, 上限 1MB
+        if (typeof content !== "string" || content.length > 1024 * 1024) {
+            return ipcError(
+                "ipcErrors.skills.writeSkillFailed",
+                "技能内容过大, 上限 1MB",
+            );
+        }
         const cwd = deps.getWorkspacePath();
         if (!cwd) {
             return ipcError(

@@ -43,6 +43,11 @@ function defaultShell(): { name: string; args: string[] } {
 
 /** PTY 管理器 (单例, 全局共享) */
 export class PtyManager {
+    /** 安全审查: 并发 PTY 上限, 防止渲染层无界 spawn shell 进程 */
+    private static readonly MAX_CONCURRENT = 16;
+    /** 单次写入上限 (粘贴大文本时由渲染层分块) */
+    private static readonly MAX_WRITE_CHARS = 64 * 1024;
+
     private map = new Map<string, PtyEntry>();
     private outputListeners = new Set<PtyOutputListener>();
     private exitListeners = new Set<PtyExitListener>();
@@ -72,6 +77,9 @@ export class PtyManager {
     async create(opts: PtyOptions): Promise<PtyEntry> {
         if (this.map.has(opts.id)) {
             throw new Error(`Pty with id "${opts.id}" already exists`);
+        }
+        if (this.map.size >= PtyManager.MAX_CONCURRENT) {
+            throw new Error(`Too many concurrent PTYs (max ${PtyManager.MAX_CONCURRENT})`);
         }
         // 动态 import node-pty (它是 native module, 在测试环境可能没编译)
         const ptyModule = await import("node-pty");
@@ -118,7 +126,10 @@ export class PtyManager {
             throw new Error(`Pty "${id}" does not exist`);
         }
         try {
-            entry.pty.write(data);
+            // 防御纵深: 即使 schema 被绕过, 单次写入也限制大小
+            entry.pty.write(data.length > PtyManager.MAX_WRITE_CHARS
+                ? data.slice(0, PtyManager.MAX_WRITE_CHARS)
+                : data);
         } catch (err) {
             log.error(`[PtyManager] write error for ${id}:`, err);
             throw err;

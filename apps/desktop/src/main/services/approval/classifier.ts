@@ -17,27 +17,9 @@ export interface Classification {
     preview: string;
 }
 
-// 高危 shell 命令追加 pattern (补充 @shared/command-risk 中未覆盖的)
-const EXTRA_HIGH_RISK_PATTERNS: RegExp[] = [
-    /\bsc\s+delete\b/i,
-    /\bbcdedit\b/i,
-    /\bnet\s+user\b/i,
-    /\bInvoke-Expression\b/i,
-    // Bare PowerShell alias for Invoke-Expression (e.g. `iex (iwr ...)`)
-    /\biex\b/i,
-    /\bStop-Process\s+.*-Force\b/i,
-    // Disk wipe / secure erase
-    /\bformat\s+[a-z]:/i,
-    /\bcipher\s+\/w\b/i,
-    // Elevation and scheduled persistence
-    /\bStart-Process\b.*-Verb\s+RunAs\b/i,
-    /\bschtasks\b.*\/create\b/i,
-    /\breg\s+add\b/i,
-];
-
-function isExtraHighRiskCommand(cmd: string): boolean {
-    return EXTRA_HIGH_RISK_PATTERNS.some((p) => p.test(cmd));
-}
+// 高危 shell 命令 pattern 全部收敛到 @shared/command-risk 单一事实源,
+// 使渲染层终端门禁与主进程审批路径获得完全一致的覆盖面.
+// (此前 EXTRA_HIGH_RISK_PATTERNS 只在主进程生效, 终端侧会漏判 format/taskkill 等)
 
 // 高危写路径 (支持 Unix / Windows / ~ 前缀)
 const HIGH_RISK_PATH_PATTERNS: RegExp[] = [
@@ -49,6 +31,12 @@ const HIGH_RISK_PATH_PATTERNS: RegExp[] = [
     /^~?\/?\.profile$/,
     /^\/etc\//i,
     /^C:\\Windows\\System32/i,
+    // 安全审查补充: 路径穿越段 (write/edit 的 file_path 是模型可控参数,
+    // `../../.ssh/id_rsa` 可绕过 ^ 锚定的前缀模式)
+    /(^|[\\/])\.\.([\\/]|$)/,
+    // Windows 绝对路径下的凭据目录 (C:\Users\x\.ssh\...)
+    /(?:^|[\\/])(?:\.ssh|\.aws|\.azure|\.kube|\.docker|\.gcloud)[\\/]/i,
+    /(?:^|[\\/])\.(?:git-credentials|npmrc|netrc)$/i,
     /\.git[\\/]hooks/,
     /\.git[\\/]config$/,
     /\.pi[\\/]agent[\\/]settings\.json$/,
@@ -58,6 +46,7 @@ const HIGH_RISK_PATH_PATTERNS: RegExp[] = [
 const EDIT_BASH_PATTERNS: RegExp[] = [
     /^>\s*\S/, // > file 重定向
     /\s>{1,2}\s+\S/, // echo x > file / echo x >> file（避免匹配 2>&1）
+    />[^&>\s]/, // echo x>file / echo x>>file（无空格重定向; 排除 2>&1 与 >>）
     /\bsed\s+-i\b/,
     /\bawk\s+.*\s+>\s+/,
 ];
@@ -88,21 +77,23 @@ const READ_BASH_COMMANDS = new Set([
 
 // 对 git/npm/node 等多用途工具, 只读白名单子命令; 其余视为可变 (edit) 以防
 // `git push`(非 force)、`npm publish/install`、`node -e "..."` 等被误判为只读而绕过追踪.
+// 注意: git config/stash/fetch/pull 会写 .git/config、refs 或 FETCH_HEAD, 不得列入只读;
+// git config 写操作已由 @shared/command-risk 直接判为 high.
 const READ_ONLY_SUBCOMMANDS: Record<string, Set<string>> = {
     git: new Set([
-        "status", "log", "diff", "show", "branch", "remote", "config",
+        "status", "log", "diff", "show", "branch", "remote",
         "ls-files", "ls-remote", "blame", "describe", "rev-parse",
-        "fetch", "pull", "stash", "tag", "shortlog", "name-rev",
+        "tag", "shortlog", "name-rev",
     ]),
     npm: new Set([
         "view", "show", "list", "ls", "outdated", "info", "search",
-        "ping", "config", "help", "version", "prefix", "root",
+        "ping", "help", "version", "prefix", "root",
     ]),
     pnpm: new Set([
-        "list", "ls", "outdated", "info", "why", "config", "help",
+        "list", "ls", "outdated", "info", "why", "help",
         "version", "root", "fetch",
     ]),
-    yarn: new Set(["info", "list", "outdated", "config", "version", "why"]),
+    yarn: new Set(["info", "list", "outdated", "version", "why"]),
     node: new Set(["--version", "-v", "--help", "-h", "version"]),
 };
 
@@ -142,7 +133,7 @@ export function classifyToolCall(call: ToolCall): Classification {
         const cmd = String(args.command ?? args.cmd ?? "").trim();
         if (!cmd) return { risk: "read", preview: "(empty)" };
 
-        if (isHighRiskCommand(cmd) || isExtraHighRiskCommand(cmd)) return { risk: "high", preview: cmd };
+        if (isHighRiskCommand(cmd)) return { risk: "high", preview: cmd };
         for (const pat of EDIT_BASH_PATTERNS) {
             if (pat.test(cmd)) return { risk: "edit", preview: cmd };
         }

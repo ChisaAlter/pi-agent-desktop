@@ -147,7 +147,7 @@ export interface AgentMessage {
 export interface CreateAgentInput {
     workspaceId: string;
     title?: string;
-    sessionPath?: string;
+    /** 会话 ID; 原生 JSONL 路径一律由主进程从 sessionId 推导 (安全审查 C3) */
     sessionId?: string;
 }
 

@@ -433,10 +433,13 @@ describe("classifyToolCall", () => {
             expect(classifyToolCall(t("bash", { command: "cat big.img | dd of=/dev/null" })).risk).toBe("edit");
         });
 
-        it("multi-tool flag-only and read whitelist: git fetch/pull/stash/tag stay read; bare git is edit", () => {
-            expect(classifyToolCall(t("bash", { command: "git fetch origin" })).risk).toBe("read");
-            expect(classifyToolCall(t("bash", { command: "git pull --ff-only" })).risk).toBe("read");
-            expect(classifyToolCall(t("bash", { command: "git stash list" })).risk).toBe("read");
+        it("multi-tool flag-only and read whitelist: fetch/pull/stash/config mutate refs → edit; tag -l read", () => {
+            // 审查修正: git fetch/pull 写 refs/FETCH_HEAD, stash 写 stash 栈, config 写配置 —
+            // 不再列入只读白名单, 统一降级为 edit (保守追踪).
+            expect(classifyToolCall(t("bash", { command: "git fetch origin" })).risk).toBe("edit");
+            expect(classifyToolCall(t("bash", { command: "git pull --ff-only" })).risk).toBe("edit");
+            expect(classifyToolCall(t("bash", { command: "git stash list" })).risk).toBe("edit");
+            expect(classifyToolCall(t("bash", { command: "git config --get user.name" })).risk).toBe("edit");
             expect(classifyToolCall(t("bash", { command: "git tag -l" })).risk).toBe("read");
             // no subcommand → isReadOnlyMultiTool returns false → edit
             expect(classifyToolCall(t("bash", { command: "git" })).risk).toBe("edit");

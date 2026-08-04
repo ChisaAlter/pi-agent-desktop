@@ -222,7 +222,9 @@ function promptFailureDetails(error: unknown): string {
 
         const id = randomUUID();
         const now = Date.now();
-        const sessionPath = input.sessionPath ?? (input.sessionId ? this.deps.resolveNativeSessionPath?.(input.sessionId) : undefined);
+        // 安全审查 C3: sessionPath 已从 IPC 契约移除 — 原生 JSONL 路径只能由
+        // sessionId 经 resolveNativeSessionPath 推导, 渲染层无法指定任意文件路径.
+        const sessionPath = input.sessionId ? this.deps.resolveNativeSessionPath?.(input.sessionId) : undefined;
         const tab: AgentTab = {
             id,
             workspaceId: workspace.id,
@@ -429,11 +431,12 @@ function promptFailureDetails(error: unknown): string {
 
     async restart(agentId: string): Promise<AgentTab> {
         const runtime = this.requireRuntime(agentId);
+        // 安全审查 C3: 不再回传 sessionPath — create 由 sessionId 推导原生路径,
+        // restart 保留 sessionId 即可续接同一原生会话文件.
         const input: CreateAgentInput = {
             workspaceId: runtime.workspace.id,
             title: runtime.tab.title,
             sessionId: runtime.tab.sessionId,
-            sessionPath: runtime.tab.sessionPath,
         };
         this.stop(agentId);
         return this.create(input);

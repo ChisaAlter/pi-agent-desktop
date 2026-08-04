@@ -114,6 +114,16 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
     ipcMain.handle(
         "session:create",
         async (_event, workspaceId: string, title?: string, id?: string) => {
+            // 安全审查 I3: session:create 曾是唯一零校验的会话 handler —
+            // 渲染层可伪造任意 id 污染原生 JSONL 命名空间 (原生文件名是 id 的确定函数),
+            // 或为不存在的 workspace 创建悬挂行. 这里与 session-path.ts 的
+            // DESKTOP_SESSION_ID_PATTERN 对齐, 并校验 workspace 存在.
+            if (typeof workspaceId !== "string" || !workspaceId.trim()) {
+                return ipcError("ipcErrors.session.invalidWorkspace", "workspaceId must be a non-empty string");
+            }
+            if (id !== undefined && (typeof id !== "string" || !/^[A-Za-z0-9._-]{1,120}$/.test(id))) {
+                return ipcError("ipcErrors.session.invalidId", "session id must match [A-Za-z0-9._-]+ (max 120)");
+            }
             try {
                 const session = await repository.createSession(workspaceId, title, id);
                 deps.onSessionUpdated?.(session);

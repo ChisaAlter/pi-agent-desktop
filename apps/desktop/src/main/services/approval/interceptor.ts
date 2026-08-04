@@ -5,7 +5,7 @@
 
 import { classifyToolCall } from "./classifier";
 import { readFile } from "fs/promises";
-import { join } from "path";
+import { resolve, sep } from "path";
 import type { PiEvent, PiToolExecutionStart, PiToolExecutionEnd } from "@shared/events";
 import type { PendingEdits } from "./pending-edits";
 import type { AgentMode, PlanCard } from "@shared";
@@ -200,7 +200,15 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
 
                 let newContent = "";
                 try {
-                    const absPath = join(deps.workspacePath, change.filePath);
+                    // 安全审查修复: change.filePath 是模型可控参数, join 会归一化 `..`,
+                    // 此前 `../../.ssh/id_rsa` 会把工作区外文件内容+diff 发给渲染层.
+                    // 解析后仍逃逸工作区的路径 → 丢弃审查记录, 不读取更不转发.
+                    const workspaceRoot = resolve(deps.workspacePath);
+                    const absPath = resolve(workspaceRoot, change.filePath);
+                    if (absPath !== workspaceRoot && !absPath.startsWith(workspaceRoot + sep)) {
+                        deps.pendingEdits.reject(change.id);
+                        return;
+                    }
                     newContent = await readFile(absPath, "utf-8");
                 } catch {
                     // 文件可能不存在 (新建失败), 用空

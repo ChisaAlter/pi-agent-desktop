@@ -91,6 +91,12 @@ export function assertMemoryWriteAllowed(input: AssertMemoryWriteInput): void {
     const normalizedRoot = ensureTrailingSep(toForward(memoryRoot));
     const normalizedTarget = toForward(target);
 
+    // 安全审查修复: Windows 路径大小写不敏感 — 统一小写后再做前缀比较.
+    // 此前 `C:\Users\x\MEMORY\global\...` (大小写变体) 会被 startsWith 判为树外,
+    // 守卫 fail-open 直接放行到通用编辑流, 绕过记忆树规则.
+    const comparableRoot = ensureTrailingSep(toComparable(memoryRoot));
+    const comparableTarget = toComparable(target);
+
     // Non-memory paths: early return — the guard has no opinion. The caller
     // (write-tool execute path) continues with its normal permission flow.
     //
@@ -99,8 +105,8 @@ export function assertMemoryWriteAllowed(input: AssertMemoryWriteInput): void {
     // false. We catch this by also checking the unslash-stripped forms —
     // a write to exactly the memory root is denied (it's a directory, not a
     // .md file).
-    const rootNoTrailing = normalizedRoot.replace(/\/$/, "");
-    if (normalizedTarget !== rootNoTrailing && !normalizedTarget.startsWith(normalizedRoot)) {
+    const rootNoTrailing = comparableRoot.replace(/\/$/, "");
+    if (comparableTarget !== rootNoTrailing && !comparableTarget.startsWith(comparableRoot)) {
         return;
     }
 
@@ -327,10 +333,19 @@ function formatHelp(
  * logic. Pure: no fs reads, no side effects.
  */
 export function isInsideMemoryTree(target: string, memoryRoot: string): boolean {
-    const normalizedRoot = ensureTrailingSep(toForward(memoryRoot));
-    const normalizedTarget = toForward(target);
-    const rootNoTrailing = normalizedRoot.replace(/\/$/, "");
-    return normalizedTarget === rootNoTrailing || normalizedTarget.startsWith(normalizedRoot);
+    // 安全审查修复: 与 assertMemoryWriteAllowed 同源 — 统一小写比较, 防大小写变体绕过
+    const comparableRoot = ensureTrailingSep(toComparable(memoryRoot));
+    const comparableTarget = toComparable(target);
+    const rootNoTrailing = comparableRoot.replace(/\/$/, "");
+    return comparableTarget === rootNoTrailing || comparableTarget.startsWith(comparableRoot);
+}
+
+/**
+ * Windows 大小写不敏感: 树边界前缀比较统一小写, 防止 `MEMORY/...` 大小写变体
+ * 被 startsWith 判为树外而 fail-open.
+ */
+function toComparable(p: string): string {
+    return toForward(p).toLowerCase();
 }
 
 /**

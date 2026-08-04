@@ -40,7 +40,7 @@ import type { MarkdownMemoryService } from "../services/memory/markdown-memory-s
 import type { MemorySearchHit } from "../services/memory/markdown-index";
 import { formatMemorySection } from "../services/subagent/tools/memory-tools";
 import { getProtectedPathReason } from "../services/protected-paths";
-import { gitUndoSchema, GoalEvaluateSchema } from "./schemas";
+import { gitUndoSchema, GoalEvaluateSchema, permissionSetModeSchema } from "./schemas";
 import { buildAgentModePrompt, goalSlashCommands, normalizeAgentMode } from "../services/agent-modes";
 import { buildMiMoCodeRuntimePort } from "../services/mimocode-runtime-port";
 import { resolveBundledDesktopExtensionPaths } from "../services/pi-session/factory";
@@ -49,6 +49,12 @@ interface WorkspaceLite {
     id: string;
     name: string;
     path: string;
+}
+
+/** 记忆查询 limit 钳制 (1-100), 与 sqlite searchSessionMessages 的 100 上限一致 */
+function clampMemoryLimit(value: unknown): number | undefined {
+    if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+    return Math.min(100, Math.max(1, Math.floor(value)));
 }
 
 interface ChatIpcDeps {
@@ -651,8 +657,19 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
     });
 
     ipcMain.handle("permission:set-mode", async (_event, mode: PermissionMode, workspaceId?: string) => {
+        // 安全审查: 校验 mode 必须是合法枚举 — 任意字符串会流入默认权限模式并驱动
+        // yoloMode/ask 门控, 未知值行为未定义 (此前 schema 是死代码, handler 从不校验).
+        const parsed = permissionSetModeSchema.safeParse([mode, workspaceId]);
+        if (!parsed.success) {
+            return ipcError(
+                "ipcErrors.chat.invalidPermissionMode",
+                "无效的权限模式, 可选: ask / smart / always / read / partial / full",
+            );
+        }
+        const [validMode, validWorkspaceId] = parsed.data;
         // 生产要求：优先 workspace 作用域；未传 workspaceId 时保持全局兼容回退
-        setDesktopPermissionMode(mode, typeof workspaceId === "string" && workspaceId.trim() ? workspaceId : undefined);
+        setDesktopPermissionMode(validMode, validWorkspaceId?.trim() ? validWorkspaceId : undefined);
+        return undefined;
     });
 
     ipcMain.on(
@@ -855,6 +872,8 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         if (!longHorizon.enabled || !longHorizon.memory.enabled) return [];
         const query = typeof input?.query === "string" ? input.query.trim() : "";
         if (!query) return [];
+        // 安全审查: 钳制 limit (1-100), 防止渲染层请求超大结果集
+        const limit = clampMemoryLimit(input?.limit);
 
         // Phase 5: prefer markdown-primary search so the renderer shares the
         // same on-disk data source as the subagent `memory_write` tool. Falls
@@ -865,7 +884,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             const hits = await deps.markdownMemoryService.search(
                 query,
                 {}, // scope filter derived from session/project at spawn time, not user-controlled
-                { limit: input?.limit },
+                { limit },
             );
             return hits.map((hit) => markdownHitToRecord(hit, input?.workspaceId));
         }
@@ -874,7 +893,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         return deps.memoryService.search(query, {
             workspaceId: input.workspaceId,
             sessionId: input.sessionId,
-            limit: input.limit,
+            limit,
             includeHistoryFallback: longHorizon.history.enabled,
             searchScoreFloor: longHorizon.memory.searchScoreFloor,
         });
@@ -890,7 +909,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         return deps.memoryService.listRecent({
             workspaceId: input?.workspaceId,
             sessionId: input?.sessionId,
-            limit: input?.limit,
+            limit: clampMemoryLimit(input?.limit),
         });
     });
 
@@ -1205,8 +1224,11 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             return undefined;
         }
         if (!deps.registry.has(ws.id)) return undefined;
-        const wsSession = await deps.registry.get(ws.id, ws.path);
-        wsSession.session.abort();
+        // 安全审查修复: 用 tryGet 而非 get — get() 会惰性创建会话, 若这是该工作区
+        // 首次访问, 会得到一个未订阅 bridge/interceptor/watchdog 的裸会话
+        // (绕过审批拦截), 直到下一次 pi:send 才补订阅.
+        const wsSession = deps.registry.tryGetWorkspaceSession(ws.id);
+        wsSession?.session.abort();
         return undefined;
     });
 

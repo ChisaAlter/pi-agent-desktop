@@ -362,7 +362,7 @@ export function ChatView({
         ? currentAgent.id
         : agents.find((agent) => agent.workspaceId === currentWorkspace.id && agent.sessionId === sessionForSend!.id)?.id;
       if (!agentIdForSend) {
-        const agent = await createAgent(currentWorkspace.id, `${sessionForSend.title || t("chatView.session.untitled")} Agent`, undefined, sessionForSend.id);
+        const agent = await createAgent(currentWorkspace.id, `${sessionForSend.title || t("chatView.session.untitled")} Agent`, sessionForSend.id);
         agentIdForSend = agent.id;
       }
       if (agentIdForSend && !isStreaming) {

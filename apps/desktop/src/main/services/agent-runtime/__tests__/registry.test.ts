@@ -522,11 +522,21 @@ describe("AgentRuntimeRegistry", () => {
         expect(sessions[0].prompt).toHaveBeenNthCalledWith(4, buildOutbound, { streamingBehavior: "followUp" });
     });
 
-    it("restarts with the same session path and replaces runtime", async () => {
+    it("restarts with the same derived session path and replaces runtime", async () => {
+        const resolveNativeSessionPath = vi.fn(() => "C:/pi/session.jsonl");
+        registry = new AgentRuntimeRegistry({
+            getWorkspace: (workspaceId) => workspaceId === "ws_1"
+                ? { id: "ws_1", name: "demo", path: "C:/demo", createdAt: 1 }
+                : undefined,
+            pendingEdits: new PendingEdits(),
+            send: (channel, payload) => emitted.push({ channel, payload }),
+            resolveNativeSessionPath,
+        });
+
         const agent = await registry.create({
             workspaceId: "ws_1",
             title: "Imported",
-            sessionPath: "C:/pi/session.jsonl",
+            sessionId: "session-123",
         });
 
         const restarted = await registry.restart(agent.id);
@@ -558,8 +568,10 @@ describe("AgentRuntimeRegistry", () => {
         expect(agent.sessionPath).toBe("C:/user-data/pi-sessions/session-123-b9c84322f82434cb.jsonl");
     });
 
-    it("preserves an explicit imported native session path", async () => {
-        const resolveNativeSessionPath = vi.fn();
+    it("never trusts a renderer-supplied sessionPath — always derives from sessionId", async () => {
+        // 安全审查 C3: sessionPath 已从 CreateAgentInput 移除, 原生 JSONL 路径
+        // 只能由 sessionId 经 resolveNativeSessionPath 推导.
+        const resolveNativeSessionPath = vi.fn(() => "C:/user-data/pi-sessions/session-123-derived.jsonl");
         registry = new AgentRuntimeRegistry({
             getWorkspace: (workspaceId) => workspaceId === "ws_1"
                 ? { id: "ws_1", name: "demo", path: "C:/demo", createdAt: 1 }
@@ -572,12 +584,11 @@ describe("AgentRuntimeRegistry", () => {
         await registry.create({
             workspaceId: "ws_1",
             sessionId: "session-123",
-            sessionPath: "D:/imports/native.jsonl",
-        });
+        } as CreateAgentInput);
 
-        expect(resolveNativeSessionPath).not.toHaveBeenCalled();
+        expect(resolveNativeSessionPath).toHaveBeenCalledWith("session-123");
         expect(createWorkspaceSession).toHaveBeenCalledWith(expect.objectContaining({
-            sessionPath: "D:/imports/native.jsonl",
+            sessionPath: "C:/user-data/pi-sessions/session-123-derived.jsonl",
         }));
     });
 
