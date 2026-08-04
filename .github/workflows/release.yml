@@ -33,6 +33,19 @@ jobs:
           $global:LASTEXITCODE = 0
           Write-Host "Using real short workspace path C:\p to avoid NSIS MAX_PATH failures."
 
+      - name: Verify tag matches manifest version
+        # 生产交付审查: tag (v1.0.15) 与 apps/desktop/package.json 版本不一致时,
+        # latest.yml 会以清单版本发布, electron-updater 版本比对静默失败.
+        shell: pwsh
+        run: |
+          Set-Location C:\p
+          $tag = $env:GITHUB_REF_NAME.TrimStart('v')
+          $manifestVersion = (Get-Content apps/desktop/package.json | ConvertFrom-Json).version
+          if ($tag -ne $manifestVersion) {
+            throw "Tag version '$tag' does not match apps/desktop/package.json version '$manifestVersion'. Bump the manifest before tagging."
+          }
+          Write-Host "Tag $env:GITHUB_REF_NAME matches manifest version $manifestVersion."
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:

@@ -53,13 +53,24 @@ const version = rootPackage.version;
 if (version !== desktopPackage.version) {
   failures.push(`package versions differ: root=${version}, desktop=${desktopPackage.version}`);
 }
-if (version !== '1.0.14') failures.push(`source version is ${version}, expected 1.0.14`);
+// 版本期望值从 apps/desktop/package.json 推导, 不再硬编码 —
+// 版本 bump 时只需同步 facts.md (下方 facts version 检查仍强制文档跟随).
 if (desktopPackage.devDependencies?.electron !== '41.2.0') {
   failures.push(`desktop Electron is ${desktopPackage.devDependencies?.electron}, expected 41.2.0`);
 }
 
 const ipcCount = countIpcModules();
-if (ipcCount !== 24) failures.push(`IPC module count is ${ipcCount}, expected 24`);
+// IPC 模块数期望值从 facts.md 解析 (文档即契约): 新增 IPC 模块必须同步文档,
+// 而脚本本身不需要随版本/模块数改动.
+const factsText = read('docs/current/facts.md');
+const ipcExpectedMatch = factsText.match(/(\d+)\s+files?\s+under the main-process IPC/i)
+  ?? factsText.match(/(\d+)\s+IPC/i);
+const expectedIpcModules = ipcExpectedMatch ? Number(ipcExpectedMatch[1]) : NaN;
+if (!Number.isFinite(expectedIpcModules)) {
+  failures.push('facts.md: cannot derive IPC module count');
+} else if (ipcCount !== expectedIpcModules) {
+  failures.push(`IPC module count is ${ipcCount}, facts.md states ${expectedIpcModules} — update docs/current/facts.md`);
+}
 requireText(sqliteRepository, 'from "node:sqlite"', 'SQLite repository');
 requireText(sqliteRepository, 'class SqliteSessionRepository', 'SQLite repository');
 requireText(mainIndex, 'SqliteSessionRepository', 'main persistence wiring');
@@ -112,9 +123,11 @@ for (const term of staleTerms) {
 for (const relativePath of currentPaths) {
   read(relativePath);
 }
-requireText(read('docs/current/facts.md'), '1.0.14', 'facts version');
-requireText(read('docs/current/facts.md'), 'Electron | `41.2.0`', 'facts Electron version');
-requireText(read('docs/current/facts.md'), '24', 'facts IPC count');
+requireText(factsText, desktopPackage.version, 'facts version');
+requireText(factsText, 'Electron | `41.2.0`', 'facts Electron version');
+if (Number.isFinite(expectedIpcModules)) {
+  requireText(factsText, String(expectedIpcModules), 'facts IPC count');
+}
 requireText(read('docs/current/facts.md'), 'node:sqlite', 'facts persistence driver');
 requireText(read('docs/current/facts.md'), 'NSIS isolation gate is currently blocked', 'facts NSIS blocker');
 requireText(read('docs/current/facts.md'), 'Compose is implemented', 'facts Compose status');

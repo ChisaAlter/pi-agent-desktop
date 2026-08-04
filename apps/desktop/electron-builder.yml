@@ -5,7 +5,6 @@ productName: Pi Desktop
 asar: true
 asarUnpack:
   - "**/node-pty/**"
-  - "**/sharp/**"
   - "**/*.node"
 directories:
   buildResources: build
@@ -17,6 +16,21 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
   - '!build_output.txt'
   - '!extensions/**/*'
+  # 生产交付审查 C6: 测试/CI 产物与源码映射不得进入安装包.
+  # 此前 e2e-output/ 有 9,424 个 Playwright trace/截图被打进 asar.
+  - '!e2e-output/**'
+  - '!e2e/**'
+  - '!coverage/**'
+  - '!playwright-report/**'
+  - '!test-results/**'
+  - '!release-test/**'
+  - '!**/*.map'
+  - '!**/*.d.ts'
+  # 注: @earendil-works/* 与 SDK HTTP 客户端 (mistralai/openai/...) 的排除需要
+  # electron-builder --dir 实测验证 — pi-openplan/pi-permission-system 在运行时
+  # 动态加载, 其依赖树 (@earendil-works/pi-agent-core@0.79.4) 必须保留.
+  # TODO(production): 用 `pnpm exec electron-builder --dir` 验证后追加排除,
+  # 预计可再砍 ~700MB. 见 docs/current/ 打包瘦身记录.
 extraResources:
   - from: build/icon.ico
     to: build/icon.ico
@@ -46,8 +60,8 @@ nsis:
   deleteAppDataOnUninstall: false
   warningsAsErrors: true
 
+# mac 目标暂未启用 (v1.0 仅 Windows); 移除对不存在 entitlements 文件的引用
 mac:
-  entitlementsInherit: build/entitlements.mac.plist
   notarize: false
 
 linux:
@@ -56,6 +70,8 @@ linux:
   maintainer: pi-desktop
   category: Utility
 
+# npmRebuild: false 是有意为之 — node-pty 走预编译 N-API, sharp 仅为 devDep
+# (scripts/generate-icon.ts), 均无需源码重编译. 未来引入新原生依赖时必须复核.
 npmRebuild: false
 electronDist: node_modules/electron/dist
 
