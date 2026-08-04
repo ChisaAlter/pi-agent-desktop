@@ -376,7 +376,21 @@ export function PlanCard({
                 placeholder={hasOptions ? t("planCard.feedbackPlaceholderWithOptions") : t("planCard.feedbackPlaceholder")}
                 className="flex-1 rounded-lg border border-[var(--mm-border-subtle)] bg-[var(--mm-bg-control)] px-3 py-1.5 text-xs focus:border-[var(--mm-border-strong)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 onKeyDown={(e) => {
+                  // IME 合成中按 Enter 是确认候选词, 不应触发发送 (与 useInputShortcuts 同一守卫:
+                  // Windows IME keyCode 229 / isComposing)
                   if (e.key === "Enter" && !e.shiftKey) {
+                    const native = e.nativeEvent as KeyboardEvent | undefined;
+                    const keyCode =
+                      typeof native?.keyCode === "number"
+                        ? native.keyCode
+                        : typeof (e as { keyCode?: number }).keyCode === "number"
+                          ? (e as { keyCode?: number }).keyCode
+                          : undefined;
+                    const composing =
+                      native?.isComposing === true ||
+                      (e as { isComposing?: boolean }).isComposing === true ||
+                      keyCode === 229;
+                    if (composing) return;
                     e.preventDefault();
                     if (feedback.trim()) {
                       handleRefine();

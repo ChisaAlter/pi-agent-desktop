@@ -717,6 +717,54 @@ describe("usePiStream", () => {
         })).toHaveLength(0);
     });
 
+    it("after stop, the next prompt starts a NEW assistant message instead of overwriting the stopped one", async () => {
+        // 安全审查 C9 回归: stopStreaming 必须清空 messageIdRef/sessionIdRef.
+        // 否则 userStoppedRef 吞掉 agent_end 后常规清理不执行, 新轮次的 text_delta
+        // 会复用被停止轮次的消息 id — 同会话时覆盖半截回复, 跨会话时静默丢失.
+        await act(async () => {
+            render(<HookStateHost />);
+        });
+
+        // 第一轮: 创建 assistant 消息并流式输出 "partial"
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: { type: "text_delta", delta: "partial" },
+            });
+        });
+
+        // 用户停止生成 (stop IPC 成功)
+        await act(async () => {
+            screen.getByText("stop").click();
+        });
+        await act(async () => {
+            // 停止后到达的 agent_end 被 userStoppedRef 丢弃
+            emitPiEvent?.({ type: "agent_end" });
+        });
+
+        // 第二轮: 重新发送
+        await act(async () => {
+            screen.getByText("send-follow-up").click();
+        });
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: { type: "text_delta", delta: " answer" },
+            });
+        });
+
+        const session = useSessionStore.getState().sessions[0];
+        expect(session.messages).toHaveLength(3);
+        // 被停止的消息内容保持不变 — 新回复落在新的 assistant 消息里
+        expect(session.messages[0]).toMatchObject({ role: "assistant", content: "partial" });
+        expect(session.messages[1]).toMatchObject({ role: "user", content: "follow up" });
+        expect(session.messages[2]).toMatchObject({ role: "assistant", content: " answer" });
+        // 两条 assistant 消息 ID 不同
+        expect(session.messages[0].id).not.toBe(session.messages[2].id);
+    });
+
     it("queues agent follow-ups with explicit streaming behavior while streaming", async () => {
         await act(async () => {
             render(<AgentHookStateHost />);

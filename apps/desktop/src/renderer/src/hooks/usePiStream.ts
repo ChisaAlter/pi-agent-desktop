@@ -1237,6 +1237,10 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         lastProviderErrorRef.current = null;
         streamGenerationRef.current += 1;
         sessionIdRef.current = session?.id ?? null;
+        // 安全审查 C9: 每个新轮次必须清空 messageIdRef — 否则 stop 与重发交错时
+        // (stop 未完成即再次 start), ensureAssistantMessage 会复用上一轮的 messageId,
+        // 新回复覆盖被停止的半截回复.
+        messageIdRef.current = null;
         streamPersistRef.current = null;
         toolCallsRef.current = new Map();
         setCurrentText("");
@@ -1370,6 +1374,12 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             hasCompletionSignalRef.current = false;
             setStreamingMessageId(null);
             pinnedStreamAgentIdRef.current = null;
+            // 安全审查 C9: 必须与 pauseVisibleStreamingForPlanDecision 一致地清空
+            // messageIdRef/sessionIdRef. userStoppedRef 会吞掉后续 agent_end/turn_end,
+            // 常规清理路径不再执行; 不清空则下一次 startStreaming 复用被停止轮次的
+            // messageId — 同会话时新回复覆盖被停止的半截回复, 跨会话时回复静默丢失.
+            messageIdRef.current = null;
+            sessionIdRef.current = null;
         })();
     }, [flushStreamRender]);
 
