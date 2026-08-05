@@ -83,6 +83,11 @@
     "groupByDateShort": "时间",
     "groupByWorkspace": "按工作区分组",
     "groupByWorkspaceShort": "工作区",
+    "workspaces": {
+      "remove": "移除",
+      "removeConfirmTitle": "移除「{{name}}」？",
+      "removeConfirmDescription": "这会从 Pi Desktop 移除工作区及其会话记录，但不会删除磁盘上的项目文件。"
+    },
     "status": {
       "checking": "pi-agent 检测中",
       "online": "pi-agent 在线",

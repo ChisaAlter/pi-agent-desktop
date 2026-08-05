@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useSessionStore } from "../../stores/session-store";
 import { useWorkspaceStore, type Workspace } from "../../stores/workspace-store";
 import { useI18n } from "../../i18n";
@@ -15,6 +16,8 @@ export interface ProjectGroupedSessionListProps {
   onRenameSession?: (id: string, title: string) => void;
   onDeleteSession: (id: string) => void;
   onSwitchWorkspace: (workspaceId: string) => void;
+  /** Remove the workspace from the app without deleting its files on disk. */
+  onRemoveWorkspace?: (workspaceId: string) => void;
   /** Create a new conversation under the given workspace (switch first, then new-task). */
   onNewConversationInWorkspace?: (workspaceId: string) => void;
   hideEmptyState?: boolean;
@@ -26,7 +29,13 @@ interface GroupHeaderProps {
   onToggle: () => void;
   onSwitch: () => void;
   onNewConversation?: () => void;
+  onRemove?: () => void;
   newConversationLabel: string;
+  removeLabel: string;
+  removeConfirmTitle: string;
+  removeConfirmDescription: string;
+  cancelLabel: string;
+  confirmLabel: string;
 }
 
 function FolderIcon(): React.JSX.Element {
@@ -65,10 +74,110 @@ function GroupHeader({
   onToggle,
   onSwitch,
   onNewConversation,
+  onRemove,
   newConversationLabel,
+  removeLabel,
+  removeConfirmTitle,
+  removeConfirmDescription,
+  cancelLabel,
+  confirmLabel,
 }: GroupHeaderProps): React.JSX.Element {
+  const [contextMenuOpen, setContextMenuOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuAnchor, setMenuAnchor] = useState<DOMRect | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const MENU_GAP = 4;
+  const MENU_MARGIN = 8;
+  const MENU_ESTIMATED_HEIGHT = 42;
+
+  const computeMenuPos = (anchor: DOMRect, height: number): { top: number; right: number } => {
+    const spaceBelow = window.innerHeight - anchor.bottom - MENU_GAP - MENU_MARGIN;
+    const openBelow = spaceBelow >= height;
+    return {
+      top: openBelow
+        ? anchor.bottom + MENU_GAP
+        : Math.max(MENU_MARGIN, anchor.top - MENU_GAP - height),
+      right: Math.max(MENU_MARGIN, window.innerWidth - anchor.right + MENU_GAP),
+    };
+  };
+
+  const openContextMenu = (event: React.MouseEvent<HTMLDivElement>): void => {
+    if (!onRemove) return;
+    event.preventDefault();
+    const anchor = event.currentTarget.getBoundingClientRect();
+    setMenuAnchor(anchor);
+    setMenuPos(computeMenuPos(anchor, MENU_ESTIMATED_HEIGHT));
+    setContextMenuOpen(true);
+  };
+
+  useLayoutEffect(() => {
+    if (!contextMenuOpen || !menuAnchor) return;
+    const height = menuRef.current?.offsetHeight || MENU_ESTIMATED_HEIGHT;
+    setMenuPos(computeMenuPos(menuAnchor, height));
+  }, [contextMenuOpen, menuAnchor]);
+
+  useEffect(() => {
+    if (!contextMenuOpen) return;
+    const closeIfOutside = (event: MouseEvent): void => {
+      if (event.target instanceof Node && menuRef.current?.contains(event.target)) return;
+      setContextMenuOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === "Escape") setContextMenuOpen(false);
+    };
+    const closeMenu = (): void => setContextMenuOpen(false);
+    document.addEventListener("mousedown", closeIfOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("blur", closeMenu);
+    window.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("resize", closeMenu);
+    return () => {
+      document.removeEventListener("mousedown", closeIfOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("blur", closeMenu);
+      window.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("resize", closeMenu);
+    };
+  }, [contextMenuOpen]);
+
+  if (confirming) {
+    return (
+      <div
+        className="flex flex-col gap-1.5 rounded-[var(--mm-radius-sm)] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-[12px]"
+        role="dialog"
+        aria-label={removeConfirmTitle}
+      >
+        <strong className="font-medium text-[var(--mm-text-primary)]">{removeConfirmTitle}</strong>
+        <span className="text-[var(--mm-text-secondary)]">{removeConfirmDescription}</span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setConfirming(false)}
+            className="rounded px-2 py-1 text-[11px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setConfirming(false);
+              onRemove?.();
+            }}
+            className="rounded bg-[var(--color-error)] px-2 py-1 text-[11px] text-white hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="group flex h-9 w-full items-center gap-1 rounded-[var(--mm-radius-sm)] px-1">
+    <div
+      className="group relative flex h-9 w-full items-center gap-1 rounded-[var(--mm-radius-sm)] px-1"
+      onContextMenu={openContextMenu}
+    >
       <button
         type="button"
         onClick={() => {
@@ -77,7 +186,7 @@ function GroupHeader({
         }}
         aria-expanded={expanded}
         title={workspace.path}
-        className="flex min-w-0 flex-1 items-center gap-2 rounded-[var(--mm-radius-sm)] px-1 text-[12px] font-medium text-[var(--mm-text-primary)] transition-[color,transform] duration-150 ease-[cubic-bezier(0.2,0,0,1)] hover:text-[var(--mm-text-secondary)] active:scale-[0.98] motion-reduce:transition-none focus:outline-none focus-visible:bg-[var(--mm-bg-hover)] focus-visible:ring-1 focus-visible:ring-[var(--mm-accent-blue)]"
+        className="flex min-w-0 flex-1 items-center gap-2 rounded-[var(--mm-radius-sm)] px-1 text-[12px] font-medium text-[var(--mm-text-primary)] transition-[color,transform] duration-150 ease-[cubic-bezier(0.2,0,0,1)] hover:text-[var(--mm-text-primary)] active:scale-[0.98] motion-reduce:transition-none focus:outline-none focus-visible:bg-[var(--mm-bg-hover)] focus-visible:ring-1 focus-visible:ring-[var(--mm-accent-blue)]"
       >
         <span className="text-[var(--mm-text-secondary)] transition-colors group-hover:text-[var(--mm-text-primary)]">
           <FolderIcon />
@@ -98,6 +207,28 @@ function GroupHeader({
           <PlusIcon />
         </button>
       ) : null}
+      {contextMenuOpen && typeof document !== "undefined" && createPortal(
+        <div
+          ref={menuRef}
+          role="menu"
+          className="fixed z-[200] min-w-[104px] rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] py-1 text-[12px] shadow-[0_8px_24px_rgba(15,23,42,0.12)]"
+          style={menuPos ? { top: menuPos.top, right: menuPos.right } : undefined}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={(event) => {
+              event.stopPropagation();
+              setContextMenuOpen(false);
+              setConfirming(true);
+            }}
+            className="flex w-full items-center px-3 py-1.5 text-left text-[var(--color-error)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-500"
+          >
+            {removeLabel}
+          </button>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
@@ -112,6 +243,7 @@ export function ProjectGroupedSessionList({
   onDeleteSession,
   onSwitchWorkspace,
   onNewConversationInWorkspace,
+  onRemoveWorkspace,
   hideEmptyState = false,
 }: ProjectGroupedSessionListProps): React.JSX.Element {
   const sessions = useSessionStore((state) => state.sessions);
@@ -177,7 +309,13 @@ export function ProjectGroupedSessionList({
                   ? () => onNewConversationInWorkspace(workspace.id)
                   : undefined
               }
+              onRemove={onRemoveWorkspace ? () => onRemoveWorkspace(workspace.id) : undefined}
               newConversationLabel={t("sidebar.sessions.newInWorkspace", { name: workspace.name })}
+              removeLabel={t("sidebar.workspaces.remove")}
+              removeConfirmTitle={t("sidebar.workspaces.removeConfirmTitle", { name: workspace.name })}
+              removeConfirmDescription={t("sidebar.workspaces.removeConfirmDescription")}
+              cancelLabel={t("common.cancel")}
+              confirmLabel={t("common.confirm")}
             />
             <AnimatedCollapse expanded={expanded}>
               <div className="flex flex-col gap-0.5 pt-0.5">

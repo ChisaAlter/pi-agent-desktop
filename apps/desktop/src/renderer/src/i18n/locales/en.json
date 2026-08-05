@@ -83,6 +83,11 @@
     "groupByDateShort": "Date",
     "groupByWorkspace": "Group by workspace",
     "groupByWorkspaceShort": "Workspace",
+    "workspaces": {
+      "remove": "Remove",
+      "removeConfirmTitle": "Remove \"{{name}}\"?",
+      "removeConfirmDescription": "This removes the workspace and its conversations from Pi Desktop but does not delete project files from disk."
+    },
     "status": {
       "checking": "pi-agent checking",
       "online": "pi-agent online",

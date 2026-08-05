@@ -126,8 +126,8 @@ describe("ProjectGroupedSessionList", () => {
     expect(onSwitch).toHaveBeenCalledWith("w2");
   });
 
-  it("group headers expose aria-expanded and a new-conversation action instead of count/chevron", () => {
-    const onNew = vi.fn();
+  it("opens a workspace removal menu and confirms through the callback", () => {
+    const onRemove = vi.fn();
     render(
       <I18nProvider>
         <ProjectGroupedSessionList
@@ -137,20 +137,25 @@ describe("ProjectGroupedSessionList", () => {
           onArchiveSession={vi.fn()}
           onDeleteSession={vi.fn()}
           onSwitchWorkspace={vi.fn()}
-          onNewConversationInWorkspace={onNew}
+          onRemoveWorkspace={onRemove}
         />
       </I18nProvider>,
     );
 
-    const alphaHeader = screen.getByText("Alpha").closest("button");
-    const betaHeader = screen.getByText("Beta").closest("button");
-    expect(alphaHeader?.getAttribute("aria-expanded")).toBe("true");
-    expect(betaHeader?.getAttribute("aria-expanded")).toBe("false");
-    expect(alphaHeader?.getAttribute("type")).toBe("button");
-    // No session-count badge / chevron trailing text
-    expect(alphaHeader?.textContent ?? "").not.toMatch(/\d/);
-    expect(screen.getByRole("button", { name: "在 Alpha 新建对话" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "在 Beta 新建对话" }));
-    expect(onNew).toHaveBeenCalledWith("w2");
+    const alphaRow = screen.getByText("Alpha").closest("div") as HTMLElement;
+    fireEvent.contextMenu(alphaRow);
+    expect(screen.getByRole("menuitem", { name: "移除" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "移除" }));
+    const dialog = screen.getByRole("dialog", { name: "移除「Alpha」？" });
+    expect(screen.getByText(/不会删除磁盘上的项目文件/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(onRemove).not.toHaveBeenCalled();
+
+    fireEvent.contextMenu(alphaRow);
+    fireEvent.click(screen.getByRole("menuitem", { name: "移除" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认" }));
+    expect(onRemove).toHaveBeenCalledWith("w1");
+    expect(dialog).toBeTruthy();
   });
 });
