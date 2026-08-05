@@ -1,7 +1,7 @@
 // ApprovalPanel - 文件变更面板 (按文件聚合)
 //
-// 浮层固定右上角, 不参与文档流 (此前 portal 到 body 却没有 fixed 定位,
-// 会把页面撑长、掉到输入框下面, 必须滚动才能看到)。
+// 浮层固定在右侧、输入框上方, 不参与文档流 (此前 portal 到 body 却没有
+// fixed 定位, 会把页面撑长、掉到输入框下面, 必须滚动才能看到)。
 //
 // 语义:
 //  - 保留: 接受这次变更, 不改文件
@@ -43,10 +43,10 @@ function groupChanges(
 
 export function ApprovalPanel({ isOpen, onToggle, workspaceId }: ApprovalPanelProps): React.JSX.Element {
   const { t } = useTranslation();
-  const { changes, autoApprove, keepChange, undoChange, undoAll, keepAll, undoError, toggleAutoApprove } =
+  const { changes: allChanges, autoApprove, keepChange, undoChange, undoAll, keepAll, undoError, toggleAutoApprove } =
     useApprovalStore(
       useShallow((s) => ({
-        changes: s.changes.filter((c) => !workspaceId || c.workspaceId === workspaceId),
+        changes: s.changes,
         autoApprove: s.autoApprove,
         keepChange: s.keepChange,
         undoChange: s.undoChange,
@@ -56,6 +56,10 @@ export function ApprovalPanel({ isOpen, onToggle, workspaceId }: ApprovalPanelPr
         toggleAutoApprove: s.toggleAutoApprove,
       })),
     );
+  const changes = useMemo(
+    () => allChanges.filter((change) => !workspaceId || change.workspaceId === workspaceId),
+    [allChanges, workspaceId],
+  );
   const [undoing, setUndoing] = useState(false);
 
   // v1.1: 同步 autoApprove 到主进程
@@ -84,7 +88,11 @@ export function ApprovalPanel({ isOpen, onToggle, workspaceId }: ApprovalPanelPr
 
   return (
     <div
-      className="fixed bottom-3 right-3 top-[54px] z-[230] flex w-[min(440px,calc(100vw-24px))] flex-col overflow-hidden rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-main)] shadow-[0_18px_46px_rgba(15,23,42,0.16)]"
+      className="fixed right-3 z-[230] flex w-[min(440px,calc(100vw-24px))] flex-col overflow-hidden rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-main)] shadow-[0_18px_46px_rgba(15,23,42,0.16)]"
+      style={{
+        bottom: "calc(var(--pi-global-composer-height, 103px) + 12px)",
+        maxHeight: "calc(100vh - var(--pi-global-composer-height, 103px) - 66px)",
+      }}
       role="dialog"
       aria-modal="false"
       aria-label={t("approvalPanel.rootAria")}
@@ -132,7 +140,7 @@ export function ApprovalPanel({ isOpen, onToggle, workspaceId }: ApprovalPanelPr
 
       {/* 变更列表 (按文件聚合) */}
       <ul
-        className="m-0 min-h-0 flex-1 list-none space-y-2 overflow-y-auto p-3"
+        className="m-0 min-h-0 flex-auto list-none space-y-2 overflow-y-auto p-3"
         role="list"
         aria-label={t("approvalPanel.listAria")}
       >

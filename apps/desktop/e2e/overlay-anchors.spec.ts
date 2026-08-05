@@ -1,6 +1,5 @@
 import { test, expect, _electron, type ElectronApplication, type Page } from "@playwright/test";
 import { mkdirSync } from "fs";
-import { join } from "path";
 import { electronMainEntry } from "../playwright.config";
 import { resolveElectronExecutablePath } from "./support/electron-launch";
 import { getWindowByUrl } from "./support/electron-windows";
@@ -77,6 +76,63 @@ async function emitPermissionRequest(
     }
     target.__PI_DESKTOP_TEST_OVERLAY__.emitPermissionRequest(payload);
   }, request);
+}
+
+async function emitApprovalReview(
+  app: ElectronApplication,
+  review: { workspaceId: string; filePath: string; changeId: string },
+): Promise<void> {
+  await app.evaluate(({ BrowserWindow }, payload) => {
+    const win = BrowserWindow.getAllWindows().find((item) => {
+      try {
+        return !item.isDestroyed() && item.webContents.getURL().includes("index.html");
+      } catch {
+        return false;
+      }
+    });
+    if (!win) throw new Error("Main window not found for approval injection");
+    const event = {
+      workspaceId: payload.workspaceId,
+      changeId: payload.changeId,
+      toolCallId: payload.changeId,
+      filePath: payload.filePath,
+      timestamp: Date.now(),
+    };
+    win.webContents.send("approval:deferred", { ...event, op: "write" });
+    win.webContents.send("approval:review", {
+      ...event,
+      diff: "--- a/src/risky.ts\n+++ b/src/risky.ts\n@@ -1 +1 @@\n-export const safe = true;\n+export const risky = true;\n",
+      newContent: "export const risky = true;\n",
+    });
+  }, review);
+}
+
+async function measureApprovalComposerGeometry(page: Page): Promise<{
+  gap: number;
+  overlap: number;
+  panelTop: number;
+  panelRight: number;
+  panelHeight: number;
+  viewportWidth: number;
+  documentOverflow: number;
+}> {
+  return page.evaluate(() => {
+    const panel = document.querySelector("[data-testid=\"approval-panel\"]")?.getBoundingClientRect();
+    const composer = document.querySelector("[data-testid=\"chat-input-shell\"]")?.getBoundingClientRect();
+    const scrollingElement = document.scrollingElement;
+    if (!panel || !composer || !scrollingElement) {
+      throw new Error("Missing approval panel, composer, or scrolling element");
+    }
+    return {
+      gap: composer.top - panel.bottom,
+      overlap: Math.max(0, Math.min(panel.bottom, composer.bottom) - Math.max(panel.top, composer.top)),
+      panelTop: panel.top,
+      panelRight: panel.right,
+      panelHeight: panel.height,
+      viewportWidth: window.innerWidth,
+      documentOverflow: scrollingElement.scrollHeight - scrollingElement.clientHeight,
+    };
+  });
 }
 
 async function emitAgentsState(
@@ -255,6 +311,54 @@ test.describe("Pi Desktop overlay anchors", () => {
       const overlay = await inspectOverlayWindow(app);
       return overlay?.visible ?? false;
     }, { timeout: 10_000 }).toBe(false);
+  });
+
+  test("keeps deferred approval reviews above the resizable composer", async () => {
+    const userDataDir = test.info().outputPath(`approval-anchor-${Date.now()}`);
+    const workspacePath = test.info().outputPath("approval-anchor-workspace");
+    ({ app, page } = await launchApp(userDataDir));
+    await setWindowSize(app, 1365, 768);
+    await page.bringToFront();
+    const { workspaceId } = await seedWorkspace(page, workspacePath);
+    await page.reload();
+    await page.waitForLoadState("domcontentloaded");
+
+    const composer = page.locator("[data-testid=\"chat-input-shell\"]");
+    await expect(composer).toBeVisible({ timeout: 15_000 });
+    await emitApprovalReview(app, {
+      workspaceId,
+      filePath: "src/risky.ts",
+      changeId: "approval_anchor_change",
+    });
+
+    const approvalPanel = page.getByTestId("approval-panel");
+    await expect(approvalPanel).toBeVisible({ timeout: 5_000 });
+    const initialGeometry = await measureApprovalComposerGeometry(page);
+    expect(initialGeometry.overlap, JSON.stringify(initialGeometry)).toBe(0);
+    expect(initialGeometry.gap, JSON.stringify(initialGeometry)).toBeGreaterThanOrEqual(5);
+    expect(initialGeometry.gap, JSON.stringify(initialGeometry)).toBeLessThanOrEqual(16);
+    expect(initialGeometry.panelTop, JSON.stringify(initialGeometry)).toBeGreaterThanOrEqual(0);
+    expect(initialGeometry.panelRight, JSON.stringify(initialGeometry)).toBeLessThanOrEqual(initialGeometry.viewportWidth);
+    expect(initialGeometry.panelHeight, JSON.stringify(initialGeometry)).toBeLessThan(360);
+    expect(initialGeometry.documentOverflow, JSON.stringify(initialGeometry)).toBeLessThanOrEqual(4);
+
+    const resizeHandle = composer.getByRole("separator", { name: "调整输入框高度" });
+    const resizeBox = await resizeHandle.boundingBox();
+    expect(resizeBox).not.toBeNull();
+    await page.mouse.move(resizeBox!.x + resizeBox!.width / 2, resizeBox!.y + 3);
+    await page.mouse.down();
+    await page.mouse.move(resizeBox!.x + resizeBox!.width / 2, resizeBox!.y - 96);
+    await page.mouse.up();
+    await expect.poll(async () => composer.evaluate((node) => node.getBoundingClientRect().height)).toBeGreaterThan(180);
+
+    const resizedGeometry = await measureApprovalComposerGeometry(page);
+    expect(resizedGeometry.overlap, JSON.stringify(resizedGeometry)).toBe(0);
+    expect(resizedGeometry.gap, JSON.stringify(resizedGeometry)).toBeGreaterThanOrEqual(5);
+    expect(resizedGeometry.gap, JSON.stringify(resizedGeometry)).toBeLessThanOrEqual(16);
+    expect(resizedGeometry.panelTop, JSON.stringify(resizedGeometry)).toBeGreaterThanOrEqual(0);
+    expect(resizedGeometry.panelHeight, JSON.stringify(resizedGeometry)).toBeLessThan(360);
+    expect(resizedGeometry.documentOverflow, JSON.stringify(resizedGeometry)).toBeLessThanOrEqual(4);
+    await page.screenshot({ path: test.info().outputPath("overlay-approval-above-resized-composer.png"), fullPage: true });
   });
 
   test("keeps the desktop progress reminder hidden after the main window closes", async () => {

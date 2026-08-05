@@ -120,7 +120,7 @@ describe("PermissionRequestStack", () => {
 
     expect(overlay.parentElement).toBe(document.body);
     expect(overlay.className).toContain("fixed");
-    expect(overlay.className).toContain("z-[90]");
+    expect(overlay.className).toContain("z-[260]");
     expect((overlay as HTMLElement).style.left).toBe("var(--pi-global-composer-left, 0px)");
     expect((overlay as HTMLElement).style.right).toBe("var(--pi-global-composer-right, 0px)");
     expect((overlay as HTMLElement).style.bottom).toBe("calc(var(--pi-global-composer-height, 103px) + 12px)");

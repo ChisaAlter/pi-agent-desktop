@@ -275,10 +275,12 @@ describe("session:delete", () => {
                 updatedAt: 1,
             },
         ];
-        const repository = setupWithStore(seed);
+        const onSessionDeleted = vi.fn();
+        const repository = setupWithStore(seed, { onSessionDeleted });
         const handler = handlers.get("session:delete")!;
         const result = await handler({}, "s1");
         expect(result).toBeUndefined();
+        expect(onSessionDeleted).toHaveBeenCalledWith("s1", "ws1");
         expect(await repository.listSessions()).toHaveLength(0);
     });
 

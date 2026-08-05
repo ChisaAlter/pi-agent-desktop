@@ -546,7 +546,93 @@ describe("createApprovalInterceptor", () => {
         expect(abort).not.toHaveBeenCalled();
     });
 
-    it("skips deferred tracking when autoApprove is true", async () => {
+    it("skips deferred tracking when workspace permission mode is always", async () => {
+        const alwaysInterceptor = createApprovalInterceptor("ws_always", {
+            abort,
+            pendingEdits,
+            send,
+            workspacePath: "C:/workspace",
+            getPermissionMode: () => "always",
+        });
+
+        await alwaysInterceptor.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_workspace_always",
+            toolName: "edit",
+            args: { file_path: "src/always.ts", old_string: "a", new_string: "b" },
+        });
+
+        expect(pendingEdits.list()).toHaveLength(0);
+        expect(send).not.toHaveBeenCalled();
+        expect(abort).not.toHaveBeenCalled();
+    });
+
+    it("keeps deferred tracking isolated between workspace permission modes", async () => {
+        const alwaysInterceptor = createApprovalInterceptor("ws_always", {
+            abort,
+            pendingEdits,
+            send,
+            workspacePath: "C:/workspace",
+            getPermissionMode: () => "always",
+        });
+        const askSend = vi.fn();
+        const askInterceptor = createApprovalInterceptor("ws_ask", {
+            abort,
+            pendingEdits,
+            send: askSend,
+            workspacePath: "C:/workspace",
+            getPermissionMode: () => "smart",
+        });
+
+        await alwaysInterceptor.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_workspace_always",
+            toolName: "write",
+            args: { file_path: "src/always.ts", content: "always" },
+        });
+        await askInterceptor.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_workspace_ask",
+            toolName: "write",
+            args: { file_path: "src/ask.ts", content: "ask" },
+        });
+
+        expect(pendingEdits.list()).toHaveLength(1);
+        expect(pendingEdits.list()[0]?.workspaceId).toBe("ws_ask");
+        expect(send).not.toHaveBeenCalled();
+        expect(askSend).toHaveBeenCalledWith(
+            "approval:deferred",
+            "ws_ask",
+            expect.objectContaining({ toolCallId: "tc_workspace_ask" }),
+        );
+    });
+
+    it("rechecks workspace permission mode before tracking after the snapshot read", async () => {
+        let mode: "smart" | "always" = "smart";
+        fsMocks.readFile.mockImplementationOnce(async () => {
+            mode = "always";
+            return "before";
+        });
+        const dynamicInterceptor = createApprovalInterceptor("ws_dynamic", {
+            abort,
+            pendingEdits,
+            send,
+            workspacePath: "C:/workspace",
+            getPermissionMode: () => mode,
+        });
+
+        await dynamicInterceptor.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_dynamic",
+            toolName: "write",
+            args: { file_path: "src/dynamic.ts", content: "after" },
+        });
+
+        expect(pendingEdits.list()).toHaveLength(0);
+        expect(send).not.toHaveBeenCalled();
+    });
+
+    it("still skips deferred tracking when autoApprove is true", async () => {
         pendingEdits.autoApprove = true;
         await interceptor.handleEvent({
             type: "tool_execution_start",

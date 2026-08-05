@@ -242,6 +242,17 @@ export class PendingEdits {
         this.invalidateCache();
     }
 
+    clearWorkspace(workspaceId: string): string[] {
+        const removed: string[] = [];
+        for (const [id, change] of this.map) {
+            if (change.workspaceId !== workspaceId) continue;
+            this.map.delete(id);
+            removed.push(id);
+        }
+        if (removed.length > 0) this.invalidateCache();
+        return removed;
+    }
+
     size(): number {
         return this.map.size;
     }

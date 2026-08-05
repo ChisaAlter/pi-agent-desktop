@@ -78,6 +78,15 @@ describe("PendingEdits", () => {
         expect(list[1].filePath).toBe("old.ts");
     });
 
+    it("clears only edits belonging to the requested workspace", () => {
+        const ws1 = edits.track("tc_ws1", "write", "a.ts", { content: "1" }, undefined, "ws1");
+        const ws2 = edits.track("tc_ws2", "write", "b.ts", { content: "2" }, undefined, "ws2");
+
+        expect(edits.clearWorkspace("ws1")).toEqual([ws1]);
+        expect(edits.get(ws1)).toBeUndefined();
+        expect(edits.get(ws2)?.workspaceId).toBe("ws2");
+    });
+
     it("clear removes all", () => {
         edits.track("tc_1", "write", "a.ts", { content: "1" });
         edits.track("tc_2", "write", "b.ts", { content: "2" });

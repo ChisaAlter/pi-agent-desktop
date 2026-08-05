@@ -62,6 +62,12 @@ export interface ApprovalKeepRequest {
     changeId: string;
 }
 
+/** 主进程清理某工作区的延迟编辑 (例如切换到始终授权) */
+export interface ApprovalCleared {
+    workspaceId: string;
+    changeIds: string[];
+}
+
 /** 撤销完成通知 */
 export interface ApprovalUndone {
     workspaceId: string;

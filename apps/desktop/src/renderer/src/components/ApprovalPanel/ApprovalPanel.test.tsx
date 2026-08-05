@@ -211,8 +211,11 @@ describe("ApprovalPanel", () => {
     );
     const panel = screen.getByTestId("approval-panel");
     expect(panel.className).toContain("fixed");
-    expect(panel.className).toContain("bottom-3");
-    expect(panel.className).toContain("right-3");
+    expect(panel.className).not.toContain("top-[54px]");
+    expect(panel.style.bottom).toBe("calc(var(--pi-global-composer-height, 103px) + 12px)");
+    expect(panel.style.maxHeight).toBe("calc(100vh - var(--pi-global-composer-height, 103px) - 66px)");
+    expect(screen.getByRole("list").className).toContain("flex-auto");
+    expect(screen.getByRole("list").className).toContain("overflow-y-auto");
     expect(panel.className).not.toMatch(/(?:^|\s)h-full(?:\s|$)/);
     expect(panel.className).not.toContain("border-l");
   });

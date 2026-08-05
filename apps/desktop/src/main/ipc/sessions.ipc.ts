@@ -33,7 +33,7 @@ import { normalizeLegacyMessagePayload } from "./tool-call-normalization";
 export interface SessionsIpcDeps {
     repository: SessionRepository;
     onSessionUpdated?: (session: Session) => void;
-    onSessionDeleted?: (sessionId: string) => void;
+    onSessionDeleted?: (sessionId: string, workspaceId?: string) => void;
     renameNativeSession?: (sessionId: string, title: string) => Promise<void>;
     deleteNativeSession?: (sessionId: string) => Promise<void>;
     forkNativeSession?: (input: {
@@ -202,8 +202,9 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
     ipcMain.handle("session:delete", async (_event, id: string) => {
         return withSessionLock(id, async () => {
             try {
+                const deletedSession = await repository.getSession(id);
                 await repository.deleteSession(id);
-                deps.onSessionDeleted?.(id);
+                deps.onSessionDeleted?.(id, deletedSession?.workspaceId);
                 try {
                     await deps.deleteNativeSession?.(id);
                 } catch (err) {

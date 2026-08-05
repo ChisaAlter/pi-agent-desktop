@@ -88,6 +88,7 @@ const appSettingsSchema = z
         language: z.string().optional(),
         piConfig: piConfigSchema.optional(),
         permissionLevel: permissionModeSchema.optional(),
+        workspacePermissionModes: z.record(z.string(), permissionModeSchema).optional(),
         managedRuntimePath: z.string().optional(),
         runtimeChannel: z.enum(["stable", "latest"]).optional(),
         autoCompactionEnabled: z.boolean().optional(),

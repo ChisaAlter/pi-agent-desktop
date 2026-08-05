@@ -38,8 +38,7 @@ import { setupSubagentIpc } from './ipc/subagent.ipc';
 import { PlanFileService } from './services/plan/plan-file-service';
 import { registerLocalFileProtocol } from './services/local-file-protocol';
 import { clearAllPendingApprovals } from './services/approval/approval-bridge';
-import { clearPendingExtensionUiRequests } from './services/extensions/extension-ui-bridge';
-import { setExtensionUiTargetResolver } from './services/extensions/extension-ui-bridge';
+import { clearPendingExtensionUiRequests, configureExtensionUiBridgePersistence, setExtensionUiTargetResolver, clearWorkspacePermissionState, clearSessionPermissionState } from './services/extensions/extension-ui-bridge';
 import { setupAutoUpdater, type AppUpdaterService } from './services/updater';
 import { ptyManager } from './services/shell/pty-manager';
 import { DEFAULT_LONG_HORIZON_SETTINGS, normalizeLongHorizonSettings, type AppSettings, type Session, type ToolPermissions } from '@shared';
@@ -204,6 +203,7 @@ const store = new Store<StoreSchema>({
       wordWrap: true,
       schemaVersion: CURRENT_SCHEMA_VERSION,
       permissionLevel: 'smart',
+      workspacePermissionModes: {},
       runtimeChannel: 'stable',
       autoCompactionEnabled: false,
       generatedUiEnabled: true,
@@ -424,6 +424,11 @@ const agentRegistry = new AgentRuntimeRegistry({
     const workspacePermissions = store.get('settings')?.workspaceToolDefaults?.[workspaceId];
     return resolveStoredToolPermissions({ sessionPermissions, workspacePermissions });
   },
+  getPermissionMode: (workspaceId) => {
+    const settings = store.get('settings');
+    const mode = settings.workspacePermissionModes?.[workspaceId] ?? settings.permissionLevel;
+    return mode === 'ask' || mode === 'smart' || mode === 'always' ? mode : undefined;
+  },
   resolveNativeSessionPath: (sessionId) => {
     const sessionPath = resolveNativeSessionPath(app.getPath('userData'), sessionId);
     mkdirSync(dirname(sessionPath), { recursive: true });
@@ -588,6 +593,23 @@ function initializePiDriver(): void {
 
 // IPC Handlers
 function setupIPC(updaterService: AppUpdaterService): void {
+  configureExtensionUiBridgePersistence({
+    getWorkspacePermissionMode: (workspaceId) => store.get('settings').workspacePermissionModes?.[workspaceId],
+    setWorkspacePermissionMode: (workspaceId, mode) => {
+      const settings = store.get('settings');
+      const modes = { ...(settings.workspacePermissionModes ?? {}) };
+      if (mode) modes[workspaceId] = mode;
+      else delete modes[workspaceId];
+      store.set('settings', { ...settings, workspacePermissionModes: modes });
+      sendToRenderer('settings:changed', { ...settings, workspacePermissionModes: modes });
+      if (mode === 'always') {
+        const changeIds = piPendingEdits.clearWorkspace(workspaceId);
+        if (changeIds.length > 0) {
+          sendToRenderer('approval:cleared', { workspaceId, changeIds }, workspaceId);
+        }
+      }
+    },
+  });
   const sessions = getSessionRepository();
   void sessions.listSessionSummaries().then((items) => {
     for (const session of items) {
@@ -683,6 +705,11 @@ function setupIPC(updaterService: AppUpdaterService): void {
     checkpointService,
     taskService,
     getSettings: () => store.get('settings'),
+    getPermissionMode: (workspaceId) => {
+      const settings = store.get('settings');
+      const mode = settings.workspacePermissionModes?.[workspaceId] ?? settings.permissionLevel;
+      return mode === 'ask' || mode === 'smart' || mode === 'always' ? mode : undefined;
+    },
     transcriptLookup: lookupTranscript,
     getWorkspace: (id: string) => store.get('workspaces').find((w) => w.id === id),
     getDefaultWorkspace: () => {
@@ -805,7 +832,8 @@ function setupIPC(updaterService: AppUpdaterService): void {
     },
     // 删除工作区时一并清理其全部会话 (DB 行 + native JSONL), 避免 dangling
     // workspaceId 的会话继续出现在 session:list 里。
-    purgeWorkspaceSessions: async (workspaceId) => {
+      purgeWorkspaceSessions: async (workspaceId) => {
+        clearWorkspacePermissionState(workspaceId);
       const doomed = (await sessions.listSessions()).filter(
         (session) => session.workspaceId === workspaceId,
       );
@@ -864,7 +892,10 @@ function setupIPC(updaterService: AppUpdaterService): void {
       if (session.toolPermissions) sessionToolPermissions.set(session.id, session.toolPermissions);
       else sessionToolPermissions.delete(session.id);
     },
-    onSessionDeleted: (sessionId) => sessionToolPermissions.delete(sessionId),
+    onSessionDeleted: (sessionId, workspaceId) => {
+      sessionToolPermissions.delete(sessionId);
+      if (workspaceId) clearSessionPermissionState(workspaceId, sessionId);
+    },
   });
 
   setupPackagesIpc();

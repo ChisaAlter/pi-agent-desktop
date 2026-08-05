@@ -22,6 +22,7 @@ vi.mock("electron-log/main", () => ({
 import {
     _pendingExtensionUiRequestCount,
     clearPendingExtensionUiRequests,
+    configureExtensionUiBridgePersistence,
     createExtensionUiBridge,
     resolveExtensionUiRequest,
     setDesktopPermissionMode,
@@ -123,6 +124,53 @@ describe("createExtensionUiBridge pending requests", () => {
         await expect(bridge.confirm("Permission", "Allow write?")).resolves.toBe(true);
         expect(_pendingExtensionUiRequestCount()).toBe(0);
         setDesktopPermissionMode("smart", "ws_1");
+    });
+
+    it("keeps the three permission decisions distinct across repeated requests", async () => {
+        const bridge = createExtensionUiBridge("ws_1", { sessionId: "session_1" });
+        const request = (): Promise<string | undefined> => bridge.select("Permission: run shell", ["yes", "no"]);
+        const resolveLatest = (decision: "allow_once" | "allow_session" | "allow_always" | "deny_session") => {
+            const payload = webContentsSend.mock.calls.filter((call) => call[0] === "permission:request").at(-1)?.[1] as { requestId: string };
+            expect(payload?.requestId).toBeTruthy();
+            resolveExtensionUiRequest(payload.requestId, { requestId: payload.requestId, decision });
+        };
+
+        const once = request();
+        resolveLatest("allow_once");
+        await expect(once).resolves.toBe("yes");
+        expect(_pendingExtensionUiRequestCount()).toBe(0);
+
+        const session = request();
+        resolveLatest("allow_session");
+        await expect(session).resolves.toBe("yes");
+        await expect(request()).resolves.toBe("yes");
+        expect(_pendingExtensionUiRequestCount()).toBe(0);
+
+        setDesktopPermissionMode("smart", "ws_1");
+        const denied = createExtensionUiBridge("ws_1", { sessionId: "session_denied" }).select("Permission: remove file", ["yes", "no"]);
+        resolveLatest("deny_session");
+        await expect(denied).resolves.toBe("no");
+        await expect(createExtensionUiBridge("ws_1", { sessionId: "session_denied" }).select("Permission: remove file", ["yes", "no"])).resolves.toBe("no");
+    });
+
+    it("persists allow_always per workspace and does not leak it to another workspace", async () => {
+        const modes = new Map<string, "always">();
+        configureExtensionUiBridgePersistence({
+            getWorkspacePermissionMode: (workspaceId) => modes.get(workspaceId),
+            setWorkspacePermissionMode: (workspaceId, mode) => {
+                if (mode === "always") modes.set(workspaceId, mode);
+                else modes.delete(workspaceId);
+            },
+        });
+        const first = createExtensionUiBridge("ws_persist", { sessionId: "session_1" }).select("Permission: write file", ["yes", "no"]);
+        const payload = webContentsSend.mock.calls.filter((call) => call[0] === "permission:request").at(-1)?.[1] as { requestId: string };
+        resolveExtensionUiRequest(payload.requestId, { requestId: payload.requestId, decision: "allow_always" });
+        await expect(first).resolves.toBe("yes");
+        await expect(createExtensionUiBridge("ws_persist", { sessionId: "session_2" }).select("Permission: write file", ["yes", "no"])).resolves.toBe("yes");
+        const other = createExtensionUiBridge("ws_other", { sessionId: "session_3" }).select("Permission: write file", ["yes", "no"]);
+        expect(_pendingExtensionUiRequestCount()).toBe(1);
+        clearPendingExtensionUiRequests();
+        await expect(other).resolves.toBeUndefined();
     });
 
     it("maps failed/running plan widget markers using product parse rules", () => {

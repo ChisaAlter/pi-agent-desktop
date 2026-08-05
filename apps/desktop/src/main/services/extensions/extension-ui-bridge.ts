@@ -15,11 +15,20 @@ import type {
     PlanProgressItem,
 } from "@shared";
 
+type PermissionOutcome = "allow" | "deny";
+
+type ExtensionUiBridgePersistence = {
+    getWorkspacePermissionMode?: (workspaceId: string) => PermissionMode | undefined;
+    setWorkspacePermissionMode?: (workspaceId: string, mode: PermissionMode | undefined) => void;
+};
+
 type PendingRequest = {
     kind: ExtensionUiRequest["kind"];
     source: ExtensionUiRequest["source"];
+    workspaceId: string;
     options?: string[];
     resolve: (value: string | boolean | undefined) => void;
+    onDecision?: (decision: PermissionDecision) => void;
     timer: NodeJS.Timeout;
     /** Renderer that received the request; responses must come from it. */
     sender: WebContents;
@@ -27,7 +36,10 @@ type PendingRequest = {
 
 interface ExtensionUiBridgeScope {
     agentId?: string;
+    sessionId?: string;
 }
+
+let permissionPersistence: ExtensionUiBridgePersistence = {};
 
 interface ExtensionUiBridgeObservers {
     onPlanProgress?: (payload: {
@@ -52,6 +64,7 @@ type ExtensionUiTargetResolver = (payload: ExtensionUiRequest) => BrowserWindow 
 // windows/workspaces, causing cross-workspace state corruption.
 const pendingRequestsByWorkspace = new Map<string, Map<string, PendingRequest>>();
 const permissionModeByWorkspace = new Map<string, PermissionMode | null>();
+const permissionOutcomeBySession = new Map<string, Map<string, PermissionOutcome>>();
 // Fallback used when no workspace-specific mode has been set. Preserves the
 // legacy `setDesktopPermissionMode(mode)` behavior (which had no workspaceId
 // parameter) by acting as the implicit default for new workspaces.
@@ -69,10 +82,35 @@ function getWorkspaceRequests(workspaceId: string): Map<string, PendingRequest> 
 }
 
 function getWorkspacePermissionMode(workspaceId: string): PermissionMode | null {
+    if (!permissionModeByWorkspace.has(workspaceId)) {
+        const persisted = permissionPersistence.getWorkspacePermissionMode?.(workspaceId);
+        if (persisted) permissionModeByWorkspace.set(workspaceId, persisted);
+    }
     return permissionModeByWorkspace.has(workspaceId)
         ? (permissionModeByWorkspace.get(workspaceId) as PermissionMode | null)
         : defaultPermissionMode;
 }
+
+function permissionRuleKey(title: string, options?: string[]): string {
+    const stableTitle = title.split(/\r?\n/, 1)[0]?.trim() ?? title.trim();
+    return `${stableTitle}\u0000${(options ?? []).join("\u0000")}`;
+}
+
+function getSessionPermissionOutcome(sessionRules: Map<string, PermissionOutcome>, title: string, options?: string[]): PermissionOutcome | undefined {
+    return sessionRules.get(permissionRuleKey(title, options));
+}
+
+function isPermissionDecision(value: string): value is PermissionDecision {
+    return value === "allow_once" || value === "allow_session" || value === "allow_always" || value === "deny" || value === "deny_session";
+}
+
+function setWorkspacePermissionMode(workspaceId: string, mode: PermissionMode | undefined): void {
+    if (mode) permissionModeByWorkspace.set(workspaceId, mode);
+    else permissionModeByWorkspace.delete(workspaceId);
+    permissionPersistence.setWorkspacePermissionMode?.(workspaceId, mode);
+    sendToWindow(getDefaultWindow(), "permission:update", { mode, workspaceId });
+}
+
 
 /** Renderer only sends `requestId` (no workspaceId), so we scan all workspaces. */
 function findPendingRequest(requestId: string): { pending: PendingRequest; map: Map<string, PendingRequest> } | null {
@@ -94,6 +132,22 @@ function sendToWindow(win: BrowserWindow | null, channel: string, payload: unkno
 
 export function setExtensionUiTargetResolver(resolver: ExtensionUiTargetResolver | null): void {
     targetResolver = resolver;
+}
+
+export function configureExtensionUiBridgePersistence(persistence: ExtensionUiBridgePersistence): void {
+    permissionPersistence = persistence;
+}
+
+export function clearWorkspacePermissionState(workspaceId: string): void {
+    permissionModeByWorkspace.delete(workspaceId);
+    for (const key of permissionOutcomeBySession.keys()) {
+        if (key.startsWith(`${workspaceId}\u0000`)) permissionOutcomeBySession.delete(key);
+    }
+    permissionPersistence.setWorkspacePermissionMode?.(workspaceId, undefined);
+}
+
+export function clearSessionPermissionState(workspaceId: string, sessionId: string): void {
+    permissionOutcomeBySession.delete(`${workspaceId}\u0000${sessionId}`);
 }
 
 function newRequestId(prefix: string): string {
@@ -119,10 +173,22 @@ function coerceDecisionValue(
     response: ExtensionUiResponse | PermissionDecision | boolean | string,
     pending: PendingRequest,
 ): string | boolean | undefined {
-    if (typeof response === "boolean" || typeof response === "string") return response;
+    if (typeof response === "boolean") return response;
+    if (typeof response === "string") {
+        if (isPermissionDecision(response)) {
+            pending.onDecision?.(response);
+            const approve = response === "allow_once" || response === "allow_session" || response === "allow_always";
+            if (pending.kind === "confirm") return approve;
+            const yes = pending.options?.find((opt) => /^yes$/i.test(opt)) ?? pending.options?.[0];
+            const no = pending.options?.find((opt) => /^no$/i.test(opt)) ?? pending.options?.[1];
+            return approve ? yes : no;
+        }
+        return response;
+    }
     if (typeof response === "object" && response !== null) {
         if (typeof response.value === "boolean" || typeof response.value === "string") return response.value;
         if (response.decision) {
+            pending.onDecision?.(response.decision);
             const approve = response.decision === "allow_once" ||
                 response.decision === "allow_session" ||
                 response.decision === "allow_always";
@@ -162,6 +228,7 @@ export function clearPendingExtensionUiRequests(): void {
         }
     }
     pendingRequestsByWorkspace.clear();
+    permissionOutcomeBySession.clear();
 }
 
 export function _pendingExtensionUiRequestCount(): number {
@@ -174,7 +241,7 @@ export function _pendingExtensionUiRequestCount(): number {
 
 export function setDesktopPermissionMode(mode: PermissionMode, workspaceId?: string): void {
     if (workspaceId) {
-        permissionModeByWorkspace.set(workspaceId, mode);
+        setWorkspacePermissionMode(workspaceId, mode);
     } else {
         // Backward-compat: no workspaceId — propagate to all known workspaces
         // and update the default so future workspaces inherit this mode.
@@ -183,20 +250,22 @@ export function setDesktopPermissionMode(mode: PermissionMode, workspaceId?: str
             permissionModeByWorkspace.set(key, mode);
         }
     }
-    const globalScope = globalThis as {
-        __piPermissionSystem?: {
-            setYoloMode?: (enabled: boolean, options?: { persist?: boolean; source?: string }) => unknown;
-        };
-    };
-    try {
-        globalScope.__piPermissionSystem?.setYoloMode?.(mode === "always", {
-            persist: mode === "always",
-            source: "pi-desktop",
-        });
-    } catch (err) {
-        log.warn("[extension-ui] failed to update pi-permission-system yolo mode:", err);
+    if (!workspaceId) {
+      const globalScope = globalThis as {
+          __piPermissionSystem?: {
+              setYoloMode?: (enabled: boolean, options?: { persist?: boolean; source?: string }) => unknown;
+          };
+      };
+      try {
+          globalScope.__piPermissionSystem?.setYoloMode?.(mode === "always", {
+              persist: mode === "always",
+              source: "pi-desktop",
+          });
+      } catch (err) {
+          log.warn("[extension-ui] failed to update pi-permission-system yolo mode:", err);
+      }
     }
-    sendToWindow(getDefaultWindow(), "permission:update", { mode });
+    sendToWindow(getDefaultWindow(), "permission:update", { mode, workspaceId });
 }
 
 function parsePlanWidgetLines(lines: string[]): PlanProgressItem[] {
@@ -235,6 +304,26 @@ export function createExtensionUiBridge(
 ): ExtensionUIContext {
     const getTargetWindow = bridgeOpts.getTargetWindow ?? getDefaultWindow;
     const requests = getWorkspaceRequests(workspaceId);
+    const sessionKey = `${workspaceId}\u0000${scope.sessionId ?? scope.agentId ?? "default"}`;
+    let sessionRules = permissionOutcomeBySession.get(sessionKey);
+    if (!sessionRules) {
+        sessionRules = new Map();
+        permissionOutcomeBySession.set(sessionKey, sessionRules);
+    }
+
+    const getStoredPermissionOutcome = (title: string, options?: string[]): PermissionOutcome | undefined => {
+        if (getWorkspacePermissionMode(workspaceId) === "always") return "allow";
+        return getSessionPermissionOutcome(sessionRules, title, options);
+    };
+
+    const applyPermissionDecision = (title: string, options: string[] | undefined, decision: PermissionDecision): void => {
+        if (classifySource(title, options) !== "permission") return;
+        const key = permissionRuleKey(title, options);
+        if (decision === "allow_session") sessionRules.set(key, "allow");
+        else if (decision === "deny_session") sessionRules.set(key, "deny");
+        else if (decision === "allow_always") setWorkspacePermissionMode(workspaceId, "always");
+        else if (decision === "deny") sessionRules.delete(key);
+    };
 
     const request = async (
         kind: ExtensionUiRequest["kind"],
@@ -253,6 +342,7 @@ export function createExtensionUiBridge(
             requestId,
             workspaceId,
             agentId: scope.agentId,
+            sessionId: scope.sessionId,
             kind,
             source,
             title: split.title,
@@ -277,8 +367,12 @@ export function createExtensionUiBridge(
             requests.set(requestId, {
                 kind,
                 source,
+                workspaceId,
                 options: opts?.options,
                 resolve,
+                onDecision: source === "permission"
+                    ? (decision) => applyPermissionDecision(rawTitle, opts?.options, decision)
+                    : undefined,
                 timer,
                 sender: targetWindow.webContents,
             });
@@ -292,14 +386,18 @@ export function createExtensionUiBridge(
 
     return {
         async select(title: string, options: string[]) {
-            if (getWorkspacePermissionMode(workspaceId) === "always" && classifySource(title, options) === "permission") {
-                return options.find((opt) => /^yes$/i.test(opt)) ?? options[0];
+            if (classifySource(title, options) === "permission") {
+                const stored = getStoredPermissionOutcome(title, options);
+                if (stored === "allow") return options.find((opt) => /^yes$/i.test(opt)) ?? options[0];
+                if (stored === "deny") return options.find((opt) => /^no$/i.test(opt)) ?? options[1];
             }
             return request("select", title, { options }) as Promise<string | undefined>;
         },
         async confirm(title: string, message: string) {
-            if (getWorkspacePermissionMode(workspaceId) === "always" && classifySource(`${title}\n${message}`) === "permission") {
-                return true;
+            if (classifySource(`${title}\n${message}`) === "permission") {
+                const stored = getStoredPermissionOutcome(`${title}\n${message}`);
+                if (stored === "allow") return true;
+                if (stored === "deny") return false;
             }
             return Boolean(await request("confirm", title, { message }));
         },

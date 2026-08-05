@@ -489,10 +489,13 @@ export function ChatView({
       }
     };
   }, [focusMessageId, messages, onFocusMessageHandled]);
+  const permissionMode = currentWorkspace?.id
+    ? settings.workspacePermissionModes?.[currentWorkspace.id] ?? settings.permissionLevel
+    : settings.permissionLevel;
   const permissionLabel =
-    settings.permissionLevel === "always"
+    permissionMode === "always"
       ? t("chatInput.permissions.always.label")
-      : settings.permissionLevel === "ask"
+      : permissionMode === "ask"
         ? t("chatInput.permissions.ask.label")
         : t("chatInput.permissions.smart.label");
   const effectiveThinking = runtimeState?.thinkingLevel ?? (settings.thinkingLevel === "none" ? "off" : settings.thinkingLevel ?? "medium");

@@ -6,8 +6,8 @@
 export * from "./events";
 export * from "./command-risk";
 import type { PiThinkingLevel } from "./events";
-import type { ApprovalKeepRequest, ApprovalRequest, ApprovalUndoRequest, ApprovalUndone, DeferredEdit, FileReview } from "./approval";
-export type { ApprovalKeepRequest, ApprovalRequest, ApprovalUndoRequest, ApprovalUndone, DeferredEdit, FileReview };
+import type { ApprovalKeepRequest, ApprovalRequest, ApprovalUndoRequest, ApprovalUndone, ApprovalCleared, DeferredEdit, FileReview } from "./approval";
+export type { ApprovalKeepRequest, ApprovalRequest, ApprovalUndoRequest, ApprovalUndone, ApprovalCleared, DeferredEdit, FileReview };
 // 上面 re-export approval.ts 的具体类型 (解决: 后面 PiAPI 用到的 ApprovalRequest 等)
 // 注: 不写 export * from "./approval" 是为了不让外层组件意外引入 ApprovalResponse 等内部细节
 
@@ -645,6 +645,8 @@ export interface AppSettings {
     piConfig?: PiConfig;
     /** 桌面权限模式: ask=主动询问, smart=智能授权, always=始终授权 */
     permissionLevel?: PermissionMode | "read" | "partial" | "full";
+    /** 工作区级权限模式覆盖，避免“始终授权”泄漏到其他项目。 */
+    workspacePermissionModes?: Record<string, PermissionMode>;
     managedRuntimePath?: string;
     runtimeChannel?: "stable" | "latest";
     autoCompactionEnabled?: boolean;
@@ -920,6 +922,7 @@ export interface ExtensionUiRequest {
     requestId: string;
     workspaceId?: string;
     agentId?: string;
+    sessionId?: string;
     kind: "select" | "confirm" | "input" | "editor";
     source: "permission" | "plan" | "extension";
     title: string;
@@ -1403,6 +1406,7 @@ export interface PiAPI {
     onApprovalRequest(cb: (req: ApprovalRequest) => void): Unsubscribe;
     onApprovalDeferred(cb: (deferred: DeferredEdit) => void): Unsubscribe;
     onApprovalReview(cb: (review: FileReview) => void): Unsubscribe;
+    onApprovalCleared(cb: (cleared: ApprovalCleared) => void): Unsubscribe;
     // v1.1: 同步 autoApprove 到主进程 (fire-and-forget)
     setAutoApprove(value: boolean): void;
     /** 撤销一笔已执行的 deferred edit (主进程用变更前快照回滚文件) */

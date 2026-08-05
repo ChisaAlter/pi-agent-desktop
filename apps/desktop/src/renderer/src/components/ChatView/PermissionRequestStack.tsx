@@ -57,10 +57,10 @@ export function PermissionRequestStack({
   if (presentPending.length === 0) return null;
 
   const overlayClassName = displayMode === "viewport"
-    ? "pointer-events-none fixed bottom-4 right-4 z-[90] w-full max-w-sm"
+    ? "pointer-events-none fixed bottom-4 right-4 z-[260] w-full max-w-sm"
     : displayMode === "desktop"
-      ? "pointer-events-none z-[90] w-full max-w-sm"
-      : "pointer-events-none fixed z-[90]";
+      ? "pointer-events-none z-[260] w-full max-w-sm"
+      : "pointer-events-none fixed z-[260]";
 
   const overlayStyle = displayMode === "viewport"
     ? undefined

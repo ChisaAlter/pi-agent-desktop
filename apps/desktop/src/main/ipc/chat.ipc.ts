@@ -68,6 +68,7 @@ interface ChatIpcDeps {
     /** 新工作台运行时；存在时 legacy pi:* 入口转发到 agent 语义 */
     agentRegistry?: AgentRuntimeRegistry;
     getSettings?: () => AppSettings;
+    getPermissionMode?: (workspaceId: string) => PermissionMode | undefined;
     goalService?: GoalService;
     transcriptLookup?: (workspaceId: string, agentId?: string) => Promise<Array<{ role: string; content: string; id?: string }>>;
     memoryService?: MemoryService;
@@ -647,6 +648,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             send,
             undefined,
             deps.getSettings?.().generatedUiEnabled !== false,
+            deps.getPermissionMode ? () => deps.getPermissionMode!(ws.id) : undefined,
         )).session as unknown as SlashSession;
     };
 
@@ -1252,6 +1254,7 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
                 send,
                 () => agentModeByWorkspace.get(ws.id) ?? "build",
                 settings?.generatedUiEnabled !== false,
+                deps.getPermissionMode ? () => deps.getPermissionMode!(ws.id) : undefined,
             );
             await wsSession.session.prompt(outbound);
             return undefined; // 显式返 void 满足 TS 全部路径 return 一致

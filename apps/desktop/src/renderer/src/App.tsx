@@ -515,6 +515,11 @@ function AppShell(): React.ReactElement {
         // 当 pendingApprovalCount > 0 时自动显示
         if (pendingApprovalCount > 0) setApprovalVisible(true);
     }, [pendingApprovalCount]);
+    // 权限请求 pending 时收起文件变更面板: 两个浮层都锚定在 composer 上方,
+    // 若同时显示会互相遮挡, 点击“同意”可能误触审批面板的“撤销”按钮。
+    useEffect(() => {
+        if (hasPendingPermission) setApprovalVisible(false);
+    }, [hasPendingPermission]);
     // 关闭 = 最小化 (dismiss): 只收起面板, 不处理任何变更。
     // 之前的实现会 clearChanges(), 把所有未处理项当作拒绝 — 语义错误。
     const closeApproval = useCallback(() => {
@@ -523,6 +528,7 @@ function AppShell(): React.ReactElement {
     useEffect(() => {
         const onDeferred = window.piAPI?.onApprovalDeferred;
         const onReview = window.piAPI?.onApprovalReview;
+        const onCleared = window.piAPI?.onApprovalCleared;
         if (!onDeferred || !onReview) return;
         const deferredApprovals = deferredApprovalRef.current;
 
@@ -543,11 +549,16 @@ function AppShell(): React.ReactElement {
             });
             deferredApprovals.delete(payload.changeId);
         });
+        const unsubCleared = onCleared?.((payload) => {
+            useApprovalStore.getState().clearChangesByIds(payload.workspaceId, payload.changeIds);
+            for (const changeId of payload.changeIds) deferredApprovals.delete(changeId);
+        });
 
         return () => {
             deferredApprovals.clear();
             if (typeof unsubDeferred === "function") unsubDeferred();
             if (typeof unsubReview === "function") unsubReview();
+            if (typeof unsubCleared === "function") unsubCleared();
         };
     }, []);
     useEffect(() => {
@@ -1038,7 +1049,8 @@ function AppShell(): React.ReactElement {
                     <button
                         type="button"
                         onClick={() => setApprovalVisible(true)}
-                        className="fixed bottom-24 right-3 z-[230] inline-flex h-8 items-center gap-1.5 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 text-xs font-medium text-[var(--mm-text-primary)] shadow-[0_8px_24px_rgba(15,23,42,0.14)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
+                        className="fixed right-3 z-[230] inline-flex h-8 items-center gap-1.5 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 text-xs font-medium text-[var(--mm-text-primary)] shadow-[0_8px_24px_rgba(15,23,42,0.14)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
+                        style={{ bottom: "calc(var(--pi-global-composer-height, 103px) + 12px)" }}
                         aria-label={t("approvalPanel.dismissedBadge", { count: pendingApprovalFileCount })}
                         title={t("approvalPanel.dismissedBadge", { count: pendingApprovalFileCount })}
                     >

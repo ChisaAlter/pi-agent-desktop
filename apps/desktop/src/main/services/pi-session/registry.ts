@@ -7,7 +7,7 @@ import { createWorkspaceSession, resolveBundledDesktopExtensionPaths, type Works
 import { createEventBridge, type IpcSender } from "./event-bridge";
 import { createApprovalInterceptor } from "../approval/interceptor";
 import { createExtensionUiBridge } from "../extensions/extension-ui-bridge";
-import type { AgentMode } from "@shared";
+import type { AgentMode, PermissionMode } from "@shared";
 import type { PiEvent } from "@shared/events";
 import type { PendingEdits } from "../approval/pending-edits";
 import log from "electron-log/main";
@@ -95,6 +95,7 @@ export class WorkspaceRegistry {
         send?: IpcSender,
         getMode?: () => AgentMode,
         generatedUiEnabled = true,
+        getPermissionMode?: () => PermissionMode | undefined,
     ): Promise<WorkspaceSession> {
         const existing = this.entries.get(workspaceId);
         if (existing) {
@@ -164,7 +165,7 @@ export class WorkspaceRegistry {
                 }
                 throw new Error(`Workspace session disposed: ${workspaceId}`);
             }
-            await this.ensureSubscribed(entry, workspaceId, workspacePath, pendingEdits, send, getMode);
+            await this.ensureSubscribed(entry, workspaceId, workspacePath, pendingEdits, send, getMode, getPermissionMode);
         }
 
         return entry.session;
@@ -190,6 +191,7 @@ export class WorkspaceRegistry {
         pendingEdits: PendingEdits,
         send: IpcSender,
         getMode?: () => AgentMode,
+        getPermissionMode?: () => PermissionMode | undefined,
     ): Promise<void> {
         if (entry.subscribed) return;
         // 复用进行中的订阅 promise, 保证每个 entry 只订阅一次 (TOCTOU)
@@ -212,6 +214,7 @@ export class WorkspaceRegistry {
                     send,
                     workspacePath,
                     getMode,
+                    getPermissionMode,
                 });
                 // 卡死看门狗: agent_start 起计时, agent_end/turn_end/extension_error 清除.
                 // 采用"最后活动时间"检测: 任何 agent 事件都更新 lastActivity 并重置计时器,

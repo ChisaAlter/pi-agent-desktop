@@ -16,6 +16,10 @@ function collectRendererSources(directory: string): string[] {
     });
 }
 
+const approvalPanelMock = vi.hoisted(() => ({
+    renderCount: vi.fn(),
+}));
+
 vi.mock("./components/MiniMaxCode", async () => {
     const actual = await vi.importActual<typeof import("./components/MiniMaxCode")>("./components/MiniMaxCode");
     return {
@@ -83,7 +87,10 @@ vi.mock("./components/Terminal/TerminalPanel", () => ({
     TerminalPanel: ({ isOpen }: { isOpen: boolean }) => isOpen ? <div>TerminalPanel</div> : null,
 }));
 vi.mock("./components/ApprovalPanel/ApprovalPanel", () => ({
-    ApprovalPanel: () => null,
+    ApprovalPanel: () => {
+        approvalPanelMock.renderCount();
+        return null;
+    },
 }));
 vi.mock("./components/PiStatusPanel/PiStatusPanel", () => ({
     PiStatusPanel: () => null,
@@ -147,6 +154,7 @@ vi.mock("./components/SessionCenter/SessionCenter", () => ({
 
 import App from "./App";
 import { useAgentStore } from "./stores/agent-store";
+import { useApprovalStore } from "./stores/approval-store";
 import { usePermissionStore } from "./stores/permission-store";
 import { useRuntimeFeatureStore } from "./stores/runtime-feature-store";
 import { useSessionStore } from "./stores/session-store";
@@ -691,6 +699,53 @@ describe("App sidebar session navigation", () => {
             expect(screen.getByTestId("motion-panel-chat").getAttribute("data-active")).toBe("true");
         });
         expect(screen.getByRole("alertdialog", { name: "权限请求 1" })).toBeTruthy();
+    });
+
+    it("权限请求 pending 时收起文件变更面板，避免点击“同意”误触“撤销”", async () => {
+        useApprovalStore.setState({
+            changes: [
+                {
+                    id: "change_1",
+                    toolCallId: "tc_1",
+                    toolName: "write",
+                    filePath: "src/a.ts",
+                    workspaceId: "ws_1",
+                    status: "pending",
+                    timestamp: new Date(),
+                },
+            ],
+        });
+        render(<App />);
+
+        // 有 pending 审批变更时, 文件变更面板先显示
+        await waitFor(() => {
+            expect(approvalPanelMock.renderCount).toHaveBeenCalled();
+        });
+        approvalPanelMock.renderCount.mockClear();
+
+        // 权限请求到达后, 面板被收起不再渲染, 点击区域不会被审批按钮劫持
+        act(() => {
+            usePermissionStore.setState({
+                pending: [
+                    {
+                        requestId: "perm_overlay",
+                        workspaceId: "ws_1",
+                        kind: "select",
+                        source: "permission",
+                        title: "Allow edit",
+                        createdAt: Date.now(),
+                    },
+                ],
+            });
+        });
+        // act() 已 flush 权限请求生效的 effects (面板已收起), 清掉生效瞬间的旧帧
+        approvalPanelMock.renderCount.mockClear();
+
+        await waitFor(() => {
+            expect(approvalPanelMock.renderCount).not.toHaveBeenCalled();
+        });
+
+        useApprovalStore.setState({ changes: [] });
     });
 
     it("主窗口可见时会把运行提醒拉回对话页，但不再渲染 workspace 浮卡", async () => {

@@ -594,7 +594,9 @@ export function ChatInput({
     }
   }, [workspaceId, addAttachment, t]);
 
-  const currentPermission = normalizePermissionMode(settings.permissionLevel ?? permissionStore.mode);
+  const currentPermission = normalizePermissionMode(
+    (workspaceId ? settings.workspacePermissionModes?.[workspaceId] : undefined) ?? settings.permissionLevel ?? permissionStore.mode,
+  );
   const currentModel = settings.model;
   const currentWorkspace =
     (workspaceId ? workspaces.find((w) => w.id === workspaceId) : null) ?? getCurrentWorkspace();
@@ -604,9 +606,9 @@ export function ChatInput({
 
   useEffect(() => {
     if (permissionStore.mode !== currentPermission) {
-      permissionStore.setMode(currentPermission);
+      permissionStore.setMode(currentPermission, workspaceId);
     }
-  }, [currentPermission, permissionStore]);
+  }, [currentPermission, permissionStore, workspaceId]);
 
   const resolveActiveAgentId = useCallback(async (): Promise<string | null> => {
     if (agentId) return agentId;
@@ -624,9 +626,11 @@ export function ChatInput({
     (value: PermissionMode) => {
       // 生产：本地 + settings 立即更新；主进程按 workspace 作用域生效
       permissionStore.setMode(value, workspaceId);
-      updateSettings({ permissionLevel: value });
+      updateSettings({
+        ...(workspaceId ? { workspacePermissionModes: { ...settings.workspacePermissionModes, [workspaceId]: value } } : { permissionLevel: value }),
+      });
     },
-    [permissionStore, updateSettings, workspaceId],
+    [permissionStore, updateSettings, workspaceId, settings.workspacePermissionModes],
   );
   const handleModelSelect = useCallback(
     (model: { id: string; name: string; provider: string }) => {

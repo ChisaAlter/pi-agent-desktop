@@ -54,7 +54,10 @@ interface ApprovalState {
   rejectChange: (id: string) => void;
   approveAll: () => void;
   rejectAll: () => void;
+  /** 关闭面板之外的兼容清理入口 */
   clearChanges: () => void;
+  /** 清除指定 workspace 已由主进程处理的变更 */
+  clearChangesByIds: (workspaceId: string, changeIds: string[]) => void;
   toggleAutoApprove: () => void;
   setAutoApprove: (value: boolean) => void;
   /** 注册一个等待审批的 Promise; 超时默认 5 分钟, 超时返回 false */
@@ -254,6 +257,22 @@ export const useApprovalStore = create<ApprovalState>((set, get) => ({
     }
     pendingResolves.clear();
     set({ changes: [] });
+  },
+
+  clearChangesByIds: (workspaceId, changeIds) => {
+    const ids = new Set(changeIds);
+    for (const id of ids) {
+      const resolve = pendingResolves.get(id);
+      if (resolve) {
+        resolve(false);
+        pendingResolves.delete(id);
+      }
+    }
+    set((state) => ({
+      changes: state.changes.filter((change) =>
+        !(change.workspaceId === workspaceId && ids.has(change.id)),
+      ),
+    }));
   },
 
   toggleAutoApprove: () => {

@@ -7,7 +7,7 @@ import { classifyToolCall } from "./classifier";
 import { readFile } from "fs/promises";
 import type { PiEvent, PiToolExecutionStart, PiToolExecutionEnd } from "@shared/events";
 import type { PendingEdits } from "./pending-edits";
-import type { AgentMode, PlanCard } from "@shared";
+import type { AgentMode, PermissionMode, PlanCard } from "@shared";
 import { isPlanModeToolAllowed } from "../agent-modes";
 import { assertMemoryWriteAllowed, isInsideMemoryTree } from "../memory/memory-path-guard";
 
@@ -33,6 +33,8 @@ export interface InterceptorDeps {
     pendingEdits: PendingEdits;
     send: (channel: string, workspaceId: string, payload: unknown) => void;
     workspacePath: string;
+    /** Reads the current workspace permission mode at tool execution time. */
+    getPermissionMode?: () => PermissionMode | undefined;
     getMode?: () => AgentMode;
     /**
      * Optional memory write guard. When provided, edit-family tool calls
@@ -161,8 +163,9 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                         return;
                     }
 
-                    // autoApprove 时跳过 deferred 编辑追踪 (用户已选择自动批准)
-                    if (deps.pendingEdits.autoApprove) return;
+                    const shouldSkipReview = (): boolean =>
+                        deps.getPermissionMode?.() === "always" || deps.pendingEdits.autoApprove;
+                    if (shouldSkipReview()) return;
                     // 变更前快照: 读文件当前内容供后续"撤销"回滚用。
                     // ENOENT → null (原文件不存在, 撤销 = 删除新建文件);
                     // 其他读取错误 (EACCES/IO) → undefined (无快照, 不可撤销 —
@@ -179,6 +182,7 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                         // already rejected by the classifier; all other failures are not undoable.
                         oldContent = undefined;
                     }
+                    if (shouldSkipReview()) return;
                     const changeId = deps.pendingEdits.track(
                         toolCallId,
                         toolName as "write" | "edit",

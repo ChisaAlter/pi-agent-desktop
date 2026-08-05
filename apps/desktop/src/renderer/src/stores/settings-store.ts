@@ -129,6 +129,7 @@ const defaultSettings: AppSettings = {
   autoCompactionEnabled: false,
   generatedUiEnabled: true,
   workspaceToolDefaults: {},
+  workspacePermissionModes: {},
   sidebarGroupMode: 'date',
   shortcutOverrides: readCachedShortcutOverrides(),
   showThinking: true,

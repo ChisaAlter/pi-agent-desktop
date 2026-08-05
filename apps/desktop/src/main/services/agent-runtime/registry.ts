@@ -11,6 +11,7 @@ import {
     type Workspace,
     type AgentMode,
     type AgentPermissionSyncResult,
+    type PermissionMode,
     type ToolPermissions,
     type PiThinkingLevel,
 } from "@shared";
@@ -45,6 +46,7 @@ interface AgentRuntimeRegistryDeps {
     getSettings?: () => AppSettings;
     getPiAgentConfig?: () => PiAgentConfig | null;
     getEffectiveToolPermissions?: (workspaceId: string, sessionId?: string) => ToolPermissions;
+    getPermissionMode?: (workspaceId: string) => PermissionMode | undefined;
     resolveNativeSessionPath?: (sessionId: string) => string;
     /**
      * Returns mode options for the given workspace (CRIT-1).
@@ -240,7 +242,7 @@ function promptFailureDetails(error: unknown): string {
             mode: "build",
             workspacePermissions: this.getEffectiveToolPermissions(workspace.id, input.sessionId),
         }));
-        const session = await this.createPrimarySession(workspace, id, policyController, sessionPath);
+        const session = await this.createPrimarySession(workspace, id, policyController, sessionPath, input.sessionId);
         if (!this.isWorkspaceCreateValid(workspace.id, workspaceGeneration)) {
             try {
                 session.dispose();
@@ -570,6 +572,7 @@ function promptFailureDetails(error: unknown): string {
             pendingEdits: this.deps.pendingEdits,
             send: (channel, workspaceId, payload) => this.sendInterceptorPayload(runtime, channel, workspaceId, payload),
             workspacePath: runtime.workspace.path,
+            getPermissionMode: () => this.deps.getPermissionMode?.(runtime.workspace.id),
             getMode: () => runtime.mode,
         });
 
@@ -808,6 +811,7 @@ function promptFailureDetails(error: unknown): string {
         agentId: string,
         policyController: RuntimePolicyController,
         sessionPath?: string,
+        sessionId?: string,
     ): Promise<WorkspaceSession> {
         return createWorkspaceSession({
             workspaceId: workspace.id,
@@ -819,7 +823,7 @@ function promptFailureDetails(error: unknown): string {
             getRuntimePolicy: policyController.getPolicy,
             uiContext: createExtensionUiBridge(
                 workspace.id,
-                { agentId },
+                { agentId, sessionId },
                 {
                     onPlanProgress: ({ workspaceId, agentId, items }) => {
                         // TODO: migrate to TaskService.createTask in future spec
@@ -879,6 +883,7 @@ function promptFailureDetails(error: unknown): string {
             runtime.tab.id,
             runtime.policyController,
             runtime.tab.sessionPath,
+            runtime.tab.sessionId,
         );
         try {
             this.configureSessionPermissions(runtime, candidate, runtime.mode);

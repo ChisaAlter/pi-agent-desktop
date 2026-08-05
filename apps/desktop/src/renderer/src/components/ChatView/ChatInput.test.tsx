@@ -616,7 +616,7 @@ describe("ChatInput", () => {
     fireEvent.click(screen.getByRole("button", { name: "权限: 智能授权" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: "始终授权" }));
 
-    expect(useSettingsStore.getState().settings.permissionLevel).toBe("always");
+    expect(useSettingsStore.getState().settings.workspacePermissionModes?.ws1).toBe("always");
     await waitFor(() => {
       expect(window.piAPI.permissionSetMode).toHaveBeenCalledWith("always", "ws1");
     });
