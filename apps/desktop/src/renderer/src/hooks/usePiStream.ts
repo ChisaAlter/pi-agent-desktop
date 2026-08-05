@@ -18,10 +18,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { PiEvent } from "@shared/events";
 import {
     isIpcError,
+    type GeneratedUiCard,
     type SessionUsageSnapshot,
     type ToolCall,
 } from "@shared";
-import { useSessionStore } from "../stores/session-store";
+import { useSessionStore, type Session } from "../stores/session-store";
 import { usePlanStore } from "../stores/plan-store";
 import { useSettingsStore } from "../stores/settings-store";
 import { useAgentModeStore } from "../stores/agent-mode-store";
@@ -341,6 +342,13 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     const lastProviderErrorRef = useRef<string | null>(null);
     const hasCompletionSignalRef = useRef(false);
     /**
+     * 文本回合进行中到达的 custom_message (生成式 UI 卡片) 缓存。
+     * 回合结束 (turn_end / agent_end / extension_error / 用户停止) 才挂载成消息,
+     * 避免 UI 先于文本上屏, 出现"下面 UI 先出、上面文本后出"的倒序观感。
+     * 同时锁定到达时的 sessionId, flush 时优先挂载回原会话 (切换会话后不挂错)。
+     */
+    const pendingUiRef = useRef<Map<string, { sessionId: string; ui: GeneratedUiCard }>>(new Map());
+    /**
      * 正在流式运行的 agent id (后台固定): 切换会话后仍继续处理其事件, 直到
      * agent_end / extension_error / 用户停止 / 计划暂停。修复"切换会话丢流":
      * 旧实现按当前视图的 agentId 过滤, 切走即永久丢失该 agent 的事件
@@ -536,6 +544,52 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         return useSessionStore.getState().getCurrentSession();
     }, [getPinnedSession]);
 
+    /**
+     * 把一张生成式 UI 卡片挂载为消息。优先挂到回合最后一条 assistant
+     * 文本消息上 (文本与卡片一体展示, 顺序天然正确); 该消息已有卡片或
+     * 本回合没有文本时, 回退创建独立 `cm_*` 消息。
+     */
+    const mountGeneratedUi = useCallback((session: Session, generatedUi: GeneratedUiCard, attachToMessageId?: string | null) => {
+        if (attachToMessageId) {
+            const target = useSessionStore.getState().sessions
+                .find((item) => item.id === session.id)?.messages
+                .find((message) => message.id === attachToMessageId);
+            if (target && target.role === "assistant" && !target.generatedUi) {
+                useSessionStore.getState().updateMessage(session.id, attachToMessageId, { generatedUi }, { persist: true });
+                return;
+            }
+        }
+        const messageId = `cm_${generatedUi.id}`;
+        const existing = useSessionStore.getState().sessions
+            .find((item) => item.id === session.id)?.messages
+            .find((message) => message.id === messageId);
+        if (existing) {
+            useSessionStore.getState().updateMessage(session.id, messageId, { generatedUi }, { persist: true });
+            return;
+        }
+        useSessionStore.getState().addMessage(session.id, {
+            id: messageId,
+            role: "assistant",
+            content: "",
+            timestamp: new Date(),
+            generatedUi,
+        }, { persist: true });
+    }, []);
+
+    /** 回合结束时挂载缓存的 UI 卡片, 保证文本先完整显示、UI 随后出现。 */
+    const flushPendingUi = useCallback(() => {
+        if (pendingUiRef.current.size === 0) return;
+        const pending = pendingUiRef.current;
+        pendingUiRef.current = new Map();
+        const attachToMessageId = messageIdRef.current;
+        for (const { sessionId, ui } of pending.values()) {
+            const session = useSessionStore.getState().sessions.find((item) => item.id === sessionId)
+                ?? getTargetSession();
+            if (!session) continue;
+            mountGeneratedUi(session, ui, attachToMessageId);
+        }
+    }, [getTargetSession, mountGeneratedUi]);
+
     const updateCurrentUsage = useCallback((updates: Partial<SessionUsageSnapshot>) => {
         const session = getTargetSession() ?? useSessionStore.getState().getCurrentSession();
         if (!session) return;
@@ -597,6 +651,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
 
     const pauseVisibleStreamingForPlanDecision = useCallback(() => {
         flushStreamRender();
+        flushPendingUi();
         setIsStreaming(false);
         isStreamingRef.current = false;
         promptInFlightRef.current = false;
@@ -605,7 +660,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         sessionIdRef.current = null;
         pinnedStreamAgentIdRef.current = null;
         window.dispatchEvent(new CustomEvent("pi:stream-end"));
-    }, [flushStreamRender]);
+    }, [flushPendingUi, flushStreamRender]);
 
     // ── 连接状态 ────────────────────────────────────────────────────────────
     // Track when window.piAPI becomes available — preload injects it after the
@@ -1004,6 +1059,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 // 在 turn_end 这一刻把整个 assistant message 落盘一次
                 flushStreamPersist();
                 isTurnActiveRef.current = false;
+                flushPendingUi();
                 // 非 agent 模式下清除 message/session 引用; agent 模式跨 turn 保持
                 if (!agentIdRef.current) {
                     setStreamingMessageId(null);
@@ -1061,21 +1117,13 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     break;
                 }
                 hasCompletionSignalRef.current = true;
-                const messageId = `cm_${generatedUi.id}`;
-                const existing = useSessionStore.getState().sessions
-                    .find((item) => item.id === session.id)?.messages
-                    .find((message) => message.id === messageId);
-                if (existing) {
-                    useSessionStore.getState().updateMessage(session.id, messageId, { generatedUi }, { persist: true });
+                // 文本回合进行中先缓存 UI 卡片, 回合结束再挂载 —
+                // 否则 UI 消息立即上屏, 而文本还在流式, 视觉上变成"下面 UI 先出、上面文本后出"。
+                if (isTurnActiveRef.current) {
+                    pendingUiRef.current.set(generatedUi.id, { sessionId: session.id, ui: generatedUi });
                     break;
                 }
-                useSessionStore.getState().addMessage(session.id, {
-                    id: messageId,
-                    role: "assistant",
-                    content: "",
-                    timestamp: new Date(),
-                    generatedUi,
-                }, { persist: true });
+                mountGeneratedUi(session, generatedUi);
                 break;
             }
 
@@ -1106,6 +1154,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 setIsStreaming(false);
                 isStreamingRef.current = false;
                 isTurnActiveRef.current = false;
+                flushPendingUi();
                 setStreamingMessageId(null);
                 messageIdRef.current = null;
                 sessionIdRef.current = null;
@@ -1128,6 +1177,9 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 setError(lastProviderErrorRef.current);
                 flushStreamRender();
                 flushStreamPersist();
+                isTurnActiveRef.current = false;
+                // 异常中断也是回合结束: 已到达的 UI 卡片必须挂载, 否则永久丢失
+                flushPendingUi();
                 setIsStreaming(false);
                 isStreamingRef.current = false;
                 setStreamingMessageId(null);
@@ -1141,7 +1193,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 break;
         }
-    }, [discardPendingStreamRender, ensureAssistantMessage, flushStreamPersist, flushStreamRender, scheduleStreamPersist, scheduleStreamRender, syncUsageFromAssistantMessage, updateCurrentUsage, getTargetSession]);
+    }, [discardPendingStreamRender, ensureAssistantMessage, flushPendingUi, flushStreamPersist, flushStreamRender, mountGeneratedUi, scheduleStreamPersist, scheduleStreamRender, syncUsageFromAssistantMessage, updateCurrentUsage, getTargetSession]);
 
     useEffect(() => {
         handleEventRef.current = handleEvent;
@@ -1224,6 +1276,8 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         promptInFlightRef.current = true;
         setIsStreaming(true);
         isStreamingRef.current = true;
+        // 上一轮异常残留的 UI 卡片先挂载, 避免堆积到新回合
+        flushPendingUi();
         isTurnActiveRef.current = true;
         setError(null);
         discardPendingStreamRender();
@@ -1342,7 +1396,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             // Notify useTaskProgress: streaming error
             window.dispatchEvent(new CustomEvent("pi:stream-end"));
         }
-    }, [appendAgentMessage, discardPendingStreamRender, flushStreamPersist, getTargetSession]);
+    }, [appendAgentMessage, discardPendingStreamRender, flushPendingUi, flushStreamPersist, getTargetSession]);
 
     const stopStreaming = useCallback((workspaceId: string) => {
         const stopGeneration = streamGenerationRef.current;
@@ -1368,6 +1422,8 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             }
             if (streamGenerationRef.current !== stopGeneration) return;
             flushStreamRender();
+            // 用户停止会吞掉后续 agent_end/turn_end: 已生成的 UI 卡片必须在此挂载
+            flushPendingUi();
             setIsStreaming(false);
             isStreamingRef.current = false;
             promptInFlightRef.current = false;
@@ -1381,7 +1437,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             messageIdRef.current = null;
             sessionIdRef.current = null;
         })();
-    }, [flushStreamRender]);
+    }, [flushPendingUi, flushStreamRender]);
 
     const clearError = useCallback(() => {
         setError(null);

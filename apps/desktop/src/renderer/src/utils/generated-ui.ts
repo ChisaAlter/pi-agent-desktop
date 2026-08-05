@@ -530,3 +530,58 @@ export function contentWithGeneratedUiText(content: string, card: GeneratedUiCar
     if (!plainCardText) return content;
     return plainContent === plainCardText ? plainContent : `${plainContent}\n${plainCardText}`;
 }
+
+/**
+ * 把 markdown 行规范成可比较的纯文本键 (去列表/标题前缀、行内符号、多余空白)。
+ */
+function normalizeDedupLine(line: string): string {
+    return line
+        .replace(/^\s*(?:[-*+]|\d+[.)]|#{1,6})\s+/, "")
+        .replace(/[*_`~]/g, "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+}
+
+/**
+ * 卡片纯文本行生成多个候选键: 在规范化的基础上再剥离 (status) 括号与
+ * " - description - path" 后缀。文本措辞通常只复述 label (如
+ * `- 编译通过` vs 卡片项 `编译通过 (completed)`), 多候选可提高命中率,
+ * 同时保持"只删确定复述"的保守性。
+ */
+function uiLineCandidates(line: string): string[] {
+    const normalized = normalizeDedupLine(line);
+    if (!normalized) return [];
+    const candidates = new Set<string>([normalized]);
+    const withoutStatus = normalized.replace(/\s*\([^)]*\)\s*/, " ").replace(/\s+/g, " ").trim();
+    if (withoutStatus) candidates.add(withoutStatus);
+    const labelOnly = normalized.split(/\s+-\s+/)[0]?.trim();
+    if (labelOnly) candidates.add(labelOnly);
+    candidates.delete("");
+    return [...candidates];
+}
+
+/**
+ * 从 assistant 文本中剔除与生成式 UI 卡片重复的行。
+ *
+ * 原则:同一份内容只出现一次。Pi 的 agent 常把结构化结果既写进文本
+ * (markdown 列表/标题) 又塞进 render_ui 卡片 —— 卡片已呈现的内容,
+ * 文本里不再重复展示。只删除"规范化后命中卡片候选键"的行, 避免误伤
+ * 叙述性文字; 全部行都重复时返回空串 (消息退化为纯 UI 卡片)。
+ */
+export function stripUiDuplicatedText(content: string, card: GeneratedUiCard | undefined): string {
+    if (!card || !content.trim()) return content;
+    const uiKeys = new Set(
+        generatedUiToPlainText(card)
+            .split("\n")
+            .flatMap(uiLineCandidates),
+    );
+    if (uiKeys.size === 0) return content;
+    const kept = content
+        .split("\n")
+        .filter((line) => {
+            const normalized = normalizeDedupLine(line);
+            return !normalized || !uiKeys.has(normalized);
+        });
+    return kept.join("\n").trim();
+}

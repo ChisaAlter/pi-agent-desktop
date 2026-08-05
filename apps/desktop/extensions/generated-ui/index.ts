@@ -129,7 +129,7 @@ function overviewCard(): RenderUiParams["card"] {
 }
 
 const EXPLICIT_UI_PATTERN = /(生成式\s*ui|卡片|表格|图表|表单|仪表盘|dashboard|chart|table|form)/i;
-const GUIDANCE = `Generated UI is available through the render_ui tool. Use it for structured, high-value results such as plans, status summaries, test reports, file deliveries, metrics, comparisons, charts, or user input forms. Keep a short textual conclusion and put detailed structure in one primary card per turn. Never simulate UI with JSON or HTML in prose. Never use Generated UI actions to run commands or modify files.`;
+const GUIDANCE = `Generated UI is available through the render_ui tool. Use it for structured, high-value results such as plans, status summaries, test reports, file deliveries, metrics, comparisons, charts, or user input forms. Keep a short textual conclusion and put detailed structure in one primary card per turn. Never simulate UI with JSON or HTML in prose. Never use Generated UI actions to run commands or modify files. Do not repeat card content in your text reply — the card is the structured result; keep prose for what the card does not show.`;
 
 export default function generatedUiExtension(pi: ExtensionAPI): void {
     pi.registerTool(defineTool({

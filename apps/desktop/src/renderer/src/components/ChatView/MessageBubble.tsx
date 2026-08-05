@@ -14,7 +14,7 @@ import { PlanCard } from './PlanCard';
 import { usePlanStore } from '../../stores/plan-store';
 import { useSettingsStore } from '../../stores/settings-store';
 import { formatTime, formatIso } from '../../utils/format';
-import { contentWithGeneratedUiText } from '../../utils/generated-ui';
+import { contentWithGeneratedUiText, stripUiDuplicatedText } from '../../utils/generated-ui';
 import type { GeneratedUiCard as GeneratedUiCardData } from '@shared';
 
 type ChatMessage = Message & {
@@ -262,10 +262,16 @@ function MessageBubbleImpl({
   );
   const thinkingCount = (message.thinkingCount ?? (message.thinking?.trim() ? 1 : 0)) + inlineThinking.count;
   const visibleContent = inlineThinking.content;
+  // 同一份内容只出现一次: 生成式 UI 已呈现的行, 文本里不再重复展示。
+  const displayContent = message.generatedUi
+    ? stripUiDuplicatedText(visibleContent, message.generatedUi)
+    : visibleContent;
   const assistantPlainTextContent = useMemo(
-    () => (!isUser ? contentWithGeneratedUiText(visibleContent, message.generatedUi) : ""),
-    [isUser, message.generatedUi, visibleContent],
+    () => (!isUser ? contentWithGeneratedUiText(displayContent, message.generatedUi) : ""),
+    [isUser, message.generatedUi, displayContent],
   );
+  const isGeneratedUiOnlyMessage = !isUser && !displayContent.trim() && Boolean(message.generatedUi);
+  const shouldRenderMessageTime = !isGeneratedUiOnlyMessage;
   const copyContent = assistantPlainTextContent;
   const planContent = assistantPlainTextContent;
   const [copied, setCopied] = useState(false);
@@ -357,9 +363,11 @@ function MessageBubbleImpl({
       aria-busy={isStreaming}
     >
       <div className={bubbleWidthClassName}>
-        <div className={`mb-1 flex items-center gap-2 px-1 text-[11px] text-[#9a9a95] ${isUser ? 'justify-end' : 'justify-start'}`}>
-          <time dateTime={timeIso}>{timeText}</time>
-        </div>
+          {shouldRenderMessageTime && (
+            <div className={`mb-1 flex items-center gap-2 px-1 text-[11px] text-[#9a9a95] ${isUser ? 'justify-end' : 'justify-start'}`}>
+              <time dateTime={timeIso}>{timeText}</time>
+            </div>
+          )}
           <div
             className={messageSurfaceClassName}
             data-testid="message-surface"
@@ -407,7 +415,7 @@ function MessageBubbleImpl({
 
                 {shouldRenderAssistantContent && (
                   <div className="text-sm leading-relaxed font-normal">
-                    <MarkdownRenderer content={visibleContent} isStreaming={isStreaming} />
+                    <MarkdownRenderer content={displayContent} isStreaming={isStreaming} />
                   </div>
                 )}
 
@@ -477,9 +485,11 @@ function MessageBubbleImpl({
                     {copyError}
                   </span>
                 )}
-                <time dateTime={timeIso} className="sr-only">
-                  {timeText}
-                </time>
+                {shouldRenderMessageTime && (
+                  <time dateTime={timeIso} className="sr-only">
+                    {timeText}
+                  </time>
+                )}
               </div>
             )}
           </div>

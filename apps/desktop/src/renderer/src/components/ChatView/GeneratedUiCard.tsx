@@ -148,10 +148,10 @@ function V2Sections({ card, disabled, onSend }: { card: GeneratedUiCardV2; disab
 
 export function GeneratedUiCard({ card, badgeLabel, disabled, onSend }: GeneratedUiCardProps): React.JSX.Element {
   return (
-    <section className="overflow-hidden rounded-[8px] border border-[var(--mm-border-strong)] bg-[var(--mm-bg-input)] shadow-[0_2px_8px_rgba(15,23,42,0.06)]" aria-label={card.title ?? "生成式 UI"} data-generated-ui-card>
+    <section className="overflow-hidden rounded-[8px] border border-[var(--mm-border-strong)] bg-[var(--mm-bg-input)] shadow-[0_2px_8px_rgba(15,23,42,0.06)]" aria-label={card.title ?? "生成内容"} data-generated-ui-card>
       <header className="flex items-start justify-between gap-3 border-b border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-4 py-3">
         <div className="min-w-0">
-          <h3 className="m-0 text-[13px] font-semibold text-[var(--mm-text-primary)]">{card.title || "Pi 生成式界面"}</h3>
+          {card.title ? <h3 className="m-0 text-[13px] font-semibold text-[var(--mm-text-primary)]">{card.title}</h3> : null}
           {card.version === "v2" && card.subtitle ? <p className="m-0 mt-0.5 text-[11px] text-[var(--mm-text-secondary)]">{card.subtitle}</p> : null}
         </div>
         <span className="shrink-0 text-[9px] uppercase text-[var(--mm-text-tertiary)]">{badgeLabel || card.version}</span>

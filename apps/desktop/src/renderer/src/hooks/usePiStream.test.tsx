@@ -765,6 +765,115 @@ describe("usePiStream", () => {
         expect(session.messages[0].id).not.toBe(session.messages[2].id);
     });
 
+    it("mounts deferred ui cards when the user stops the stream", async () => {
+        await act(async () => {
+            render(<HookStateHost />);
+        });
+
+        // 回合进行中: 文本流式 + UI 卡片缓存
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: { type: "text_delta", delta: "partial text" },
+            } as PiEvent);
+            emitPiEvent?.({
+                type: "custom_message",
+                card: { id: "stop-card", kind: "result-summary", title: "停止卡片" },
+            } as PiEvent);
+        });
+
+        // 停止前: UI 仍在缓存, 只有流式文本消息
+        expect(useSessionStore.getState().sessions[0]?.messages).toHaveLength(1);
+
+        // 用户停止生成 (stop IPC 成功) — 停止后 agent_end/turn_end 会被丢弃,
+        // 已生成的 UI 卡片必须在此刻挂载, 不能永久丢失
+        await act(async () => {
+            screen.getByText("stop").click();
+        });
+
+        // UI 挂到回合文本消息上 (同一消息), 不创建独立卡片消息
+        const session = useSessionStore.getState().sessions[0];
+        expect(session.messages).toHaveLength(1);
+        expect(session.messages[0]).toMatchObject({
+            role: "assistant",
+            content: "partial text",
+            generatedUi: expect.objectContaining({ id: "stop-card", title: "停止卡片" }),
+        });
+    });
+
+    it("attaches deferred ui cards to the turn's text message at turn_end", async () => {
+        await act(async () => {
+            render(<HookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: { type: "text_delta", delta: "partial text" },
+            } as PiEvent);
+            emitPiEvent?.({
+                type: "custom_message",
+                card: { id: "attach-card", kind: "result-summary", title: "附加卡片" },
+            } as PiEvent);
+        });
+
+        // 回合中: UI 缓存, 只有流式文本消息
+        expect(useSessionStore.getState().sessions[0]?.messages).toHaveLength(1);
+
+        await act(async () => {
+            emitPiEvent?.({ type: "turn_end" } as PiEvent);
+        });
+
+        // turn_end 后: UI 挂到文本消息 (同一消息), 不创建独立卡片消息
+        const session = useSessionStore.getState().sessions[0];
+        expect(session.messages).toHaveLength(1);
+        expect(session.messages[0]).toMatchObject({
+            role: "assistant",
+            content: "partial text",
+            generatedUi: expect.objectContaining({ id: "attach-card", title: "附加卡片" }),
+        });
+    });
+
+    it("attaches the first ui card to the text message and keeps extra cards separate", async () => {
+        await act(async () => {
+            render(<HookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: { type: "text_delta", delta: "text" },
+            } as PiEvent);
+            emitPiEvent?.({
+                type: "custom_message",
+                card: { id: "card-1", kind: "result-summary", title: "第一张" },
+            } as PiEvent);
+            emitPiEvent?.({
+                type: "custom_message",
+                card: { id: "card-2", kind: "result-summary", title: "第二张" },
+            } as PiEvent);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "turn_end" } as PiEvent);
+        });
+
+        const session = useSessionStore.getState().sessions[0];
+        expect(session.messages).toHaveLength(2);
+        expect(session.messages[0]).toMatchObject({
+            role: "assistant",
+            content: "text",
+            generatedUi: expect.objectContaining({ id: "card-1", title: "第一张" }),
+        });
+        expect(session.messages[1]).toMatchObject({
+            role: "assistant",
+            generatedUi: expect.objectContaining({ id: "card-2", title: "第二张" }),
+        });
+    });
+
     it("queues agent follow-ups with explicit streaming behavior while streaming", async () => {
         await act(async () => {
             render(<AgentHookStateHost />);
@@ -1135,6 +1244,89 @@ describe("usePiStream", () => {
         });
 
         expect(useSessionStore.getState().sessions[0]?.messages).toEqual([]);
+    });
+
+    it("defers custom_message ui cards until turn_end so text renders before the card", async () => {
+        await act(async () => {
+            render(<HookHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" } as PiEvent);
+            emitPiEvent?.({
+                type: "custom_message",
+                card: {
+                    id: "deferred-card",
+                    kind: "result-summary",
+                    title: "延迟卡片",
+                },
+            } as PiEvent);
+        });
+
+        // 回合进行中: UI 卡片不立即上屏, 等文本先流式完成
+        expect(useSessionStore.getState().sessions[0]?.messages).toEqual([]);
+
+        await act(async () => {
+            emitPiEvent?.({ type: "turn_end" } as PiEvent);
+        });
+
+        expect(useSessionStore.getState().sessions[0]?.messages[0]).toMatchObject({
+            role: "assistant",
+            generatedUi: expect.objectContaining({ id: "deferred-card", title: "延迟卡片" }),
+        });
+    });
+
+    it("mounts custom_message ui cards immediately when no text turn is active", async () => {
+        await act(async () => {
+            render(<HookHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({
+                type: "custom_message",
+                card: {
+                    id: "idle-card",
+                    kind: "result-summary",
+                    title: "闲置卡片",
+                },
+            } as PiEvent);
+        });
+
+        expect(useSessionStore.getState().sessions[0]?.messages[0]).toMatchObject({
+            role: "assistant",
+            generatedUi: expect.objectContaining({ id: "idle-card", title: "闲置卡片" }),
+        });
+    });
+
+    it("mounts deferred ui cards when the turn ends with an extension_error", async () => {
+        await act(async () => {
+            render(<HookHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" } as PiEvent);
+            emitPiEvent?.({
+                type: "custom_message",
+                card: {
+                    id: "error-card",
+                    kind: "result-summary",
+                    title: "错误回合卡片",
+                },
+            } as PiEvent);
+        });
+
+        // 回合进行中: 卡片仍在缓存
+        expect(useSessionStore.getState().sessions[0]?.messages).toEqual([]);
+
+        await act(async () => {
+            emitPiEvent?.({ type: "extension_error", message: "agent crashed" } as PiEvent);
+        });
+
+        // 异常中断也是回合结束: 卡片必须挂载, 不能永久丢失
+        expect(useSessionStore.getState().sessions[0]?.messages[0]).toMatchObject({
+            role: "assistant",
+            generatedUi: expect.objectContaining({ id: "error-card", title: "错误回合卡片" }),
+        });
     });
 
     it("normalizes legacy custom_message cards into generated ui payloads", async () => {

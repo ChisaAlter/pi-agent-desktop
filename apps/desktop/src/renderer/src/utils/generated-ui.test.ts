@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GENERATED_UI_LIMITS, contentWithGeneratedUiText, generatedUiToPlainText, normalizeGeneratedUi } from "./generated-ui";
+import { GENERATED_UI_LIMITS, contentWithGeneratedUiText, generatedUiToPlainText, normalizeGeneratedUi, stripUiDuplicatedText } from "./generated-ui";
 
 describe("generated ui v2 normalization", () => {
   it("normalizes comprehensive v2 sections and filters unsafe actions", () => {
@@ -77,6 +77,61 @@ describe("contentWithGeneratedUiText", () => {
     expect(contentWithGeneratedUiText(plain, card ?? undefined)).toBe(plain.trim());
     expect(contentWithGeneratedUiText("note", card ?? undefined)).toBe(`note
 ${plain}`);
+  });
+});
+
+describe("stripUiDuplicatedText", () => {
+  function statusCard(): ReturnType<typeof normalizeGeneratedUi> {
+    return normalizeGeneratedUi({
+      version: "v2",
+      id: "delivery",
+      title: "交付结果",
+      sections: [
+        {
+          id: "files",
+          kind: "status_list",
+          items: [
+            { id: "a", label: "编译通过", status: "completed" },
+            { id: "b", label: "测试通过", status: "completed" },
+          ],
+        },
+      ],
+    });
+  }
+
+  it("removes markdown list lines that restate card items (status suffix variant)", () => {
+    const card = statusCard();
+    const text = "- 编译通过\n- 测试通过\n\n构建产物见 dist/";
+    expect(stripUiDuplicatedText(text, card ?? undefined)).toBe("构建产物见 dist/");
+  });
+
+  it("removes a heading that duplicates the card title", () => {
+    const card = statusCard();
+    const text = "# 交付结果\n\n构建产物见 dist/";
+    expect(stripUiDuplicatedText(text, card ?? undefined)).toBe("构建产物见 dist/");
+  });
+
+  it("keeps prose lines that the card does not cover", () => {
+    const card = statusCard();
+    const text = "已完成全部检查\n\n构建产物见 dist/";
+    expect(stripUiDuplicatedText(text, card ?? undefined)).toBe(text);
+  });
+
+  it("does not drop lines that merely contain a card label inside prose", () => {
+    const card = statusCard();
+    // "已完成: 编译通过" 规范化后不等于卡片候选键 ("编译通过"), 叙述保留
+    const text = "检查结果: 编译通过, 详见卡片";
+    expect(stripUiDuplicatedText(text, card ?? undefined)).toBe(text);
+  });
+
+  it("returns empty string when every line is duplicated", () => {
+    const card = statusCard();
+    const text = "- 编译通过\n- 测试通过";
+    expect(stripUiDuplicatedText(text, card ?? undefined)).toBe("");
+  });
+
+  it("returns content unchanged without a card", () => {
+    expect(stripUiDuplicatedText("- 编译通过", undefined)).toBe("- 编译通过");
   });
 });
 

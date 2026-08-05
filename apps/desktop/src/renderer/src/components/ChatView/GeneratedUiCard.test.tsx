@@ -84,6 +84,17 @@ describe("GeneratedUiCard v2", () => {
     })));
   });
 
+  it("does not display a product title when the generated card has no title", () => {
+    render(<GeneratedUiCard card={{
+      version: "v2",
+      id: "untitled-card",
+      sections: [{ id: "summary", kind: "markdown", content: "项目状态正常" }],
+    }} />);
+
+    expect(screen.getByText("项目状态正常")).toBeTruthy();
+    expect(screen.queryByText("Pi 生成式界面")).toBeNull();
+    expect(screen.getByRole("region", { name: "生成内容" })).toBeTruthy();
+  });
   it("exposes generated-ui action focus-visible rings for keyboard a11y", () => {
     render(<GeneratedUiCard card={cardWith([{
       id: "actions",

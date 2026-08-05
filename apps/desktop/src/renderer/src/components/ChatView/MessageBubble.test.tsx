@@ -132,6 +132,33 @@ describe("MessageBubble", () => {
     expect(screen.getByRole("button", { name: "复制内容" })).toBeTruthy();
   });
 
+  it("does not duplicate the message time for generated ui timelines", () => {
+    const message: Message = {
+      id: "m-generated-timeline",
+      role: "assistant",
+      content: "",
+      timestamp: new Date("2026-08-05T08:17:55"),
+      generatedUi: {
+        version: "v2",
+        id: "ui-timeline",
+        title: "项目进度",
+        sections: [{
+          id: "timeline",
+          kind: "timeline",
+          items: [{ id: "step-1", title: "构建完成", time: "08:18:55" }],
+        }],
+      },
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText("08:18:55")).toBeTruthy();
+    expect(screen.queryByText("08:17:55")).toBeNull();
+  });
   it("copies generated ui text even when assistant message content is empty", async () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, "clipboard", {
@@ -874,5 +901,77 @@ describe("MessageBubble", () => {
     expect(screen.getByText("已暂停")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "继续执行" }));
     await waitFor(() => expect(onPlanAction).toHaveBeenCalledWith(message, "resume"));
+  });
+
+  it("strips text that duplicates generated ui content (single source of truth)", () => {
+    const message: Message = {
+      id: "m-dedup",
+      role: "assistant",
+      content: "# 交付结果\n- 编译通过\n- 测试通过\n\n构建产物见 dist/",
+      timestamp: new Date(0),
+      generatedUi: {
+        version: "v2",
+        id: "delivery",
+        title: "交付结果",
+        sections: [
+          {
+            id: "files",
+            kind: "status_list",
+            items: [
+              { id: "a", label: "编译通过", status: "completed" },
+              { id: "b", label: "测试通过", status: "completed" },
+            ],
+          },
+        ],
+      },
+    };
+
+    const { container } = render(
+      <I18nProvider>
+        <MessageBubble message={message} />
+      </I18nProvider>,
+    );
+
+    // 叙述保留, 重复内容只在卡片出现一次 (文本中的标题与列表项已被剔除)
+    expect(screen.getByText("构建产物见 dist/")).toBeTruthy();
+    const surfaceText = container.querySelector('[data-testid="message-surface"]')?.textContent ?? "";
+    expect(surfaceText.split("交付结果").length - 1).toBe(1);
+    expect(surfaceText.split("编译通过").length - 1).toBe(1);
+    expect(surfaceText.split("测试通过").length - 1).toBe(1);
+  });
+
+  it("renders as a pure card when text fully duplicates the ui card", () => {
+    const message: Message = {
+      id: "m-pure-card",
+      role: "assistant",
+      content: "- 编译通过\n- 测试通过",
+      timestamp: new Date(0),
+      generatedUi: {
+        version: "v2",
+        id: "delivery",
+        title: "交付结果",
+        sections: [
+          {
+            id: "files",
+            kind: "status_list",
+            items: [
+              { id: "a", label: "编译通过", status: "completed" },
+              { id: "b", label: "测试通过", status: "completed" },
+            ],
+          },
+        ],
+      },
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} />
+      </I18nProvider>,
+    );
+
+    // 文本全部去重 → 纯卡片消息: 卡片渲染, 顶部时间不显示
+    expect(screen.getByText("交付结果")).toBeTruthy();
+    expect(screen.getByText("编译通过")).toBeTruthy();
+    expect(screen.queryByText("00:00")).toBeNull();
   });
 });
