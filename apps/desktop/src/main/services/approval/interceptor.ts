@@ -5,7 +5,6 @@
 
 import { classifyToolCall } from "./classifier";
 import { readFile } from "fs/promises";
-import { resolve, sep } from "path";
 import type { PiEvent, PiToolExecutionStart, PiToolExecutionEnd } from "@shared/events";
 import type { PendingEdits } from "./pending-edits";
 import type { AgentMode, PlanCard } from "@shared";
@@ -65,6 +64,7 @@ function asToolEnd(e: PiEvent): PiToolExecutionEnd | null {
 
 export function createApprovalInterceptor(workspaceId: string, deps: InterceptorDeps): ApprovalInterceptor {
     const announcedToolArgs = new Map<string, Record<string, unknown>>();
+    const toolCallChanges = new Map<string, string[]>();
     const emittedPlanCards = new Set<string>();
 
     return {
@@ -81,6 +81,7 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
             if (event.type === "turn_end" || event.type === "agent_end") {
                 emittedPlanCards.clear();
                 announcedToolArgs.clear();
+                toolCallChanges.clear();
             }
 
             const announced = asToolCallArgs(event);
@@ -162,6 +163,22 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
 
                     // autoApprove 时跳过 deferred 编辑追踪 (用户已选择自动批准)
                     if (deps.pendingEdits.autoApprove) return;
+                    // 变更前快照: 读文件当前内容供后续"撤销"回滚用。
+                    // ENOENT → null (原文件不存在, 撤销 = 删除新建文件);
+                    // 其他读取错误 (EACCES/IO) → undefined (无快照, 不可撤销 —
+                    //   误当 null 会导致撤销时 unlink 删除一个存在但不可读的文件)。
+                    // 逃逸路径同样记 null, undo 阶段由路径校验拦截, 不会误删工作区外文件。
+                    let oldContent: string | null | undefined;
+                    try {
+                        const absPath = await deps.pendingEdits.assertPathInsideWorkspace(filePath, deps.workspacePath);
+                        oldContent = await readFile(absPath, "utf-8").catch((err: NodeJS.ErrnoException) =>
+                            err?.code === "ENOENT" ? null : undefined
+                        );
+                    } catch {
+                        // lexical/canonical escape is recorded as null only for paths
+                        // already rejected by the classifier; all other failures are not undoable.
+                        oldContent = undefined;
+                    }
                     const changeId = deps.pendingEdits.track(
                         toolCallId,
                         toolName as "write" | "edit",
@@ -176,13 +193,19 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                             new_string: typeof safeArgs.new_string === "string" ? safeArgs.new_string
                                 : typeof safeArgs.newString === "string" ? safeArgs.newString
                                 : undefined,
-                        }
+                        },
+                        oldContent,
+                        workspaceId
                     );
+                    const queued = toolCallChanges.get(toolCallId) ?? [];
+                    queued.push(changeId);
+                    toolCallChanges.set(toolCallId, queued);
                     deps.send("approval:deferred", workspaceId, {
                         changeId,
                         toolCallId,
                         filePath,
                         op: toolName,
+                        workspaceId,
                         timestamp: Date.now(),
                     });
                     return;
@@ -195,23 +218,24 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                 // turn 结束前每个 tool_execution_end 都清理对应缓存, 防止 announcedToolArgs 无界增长
                 announcedToolArgs.delete(toolCallId);
                 if (toolName !== "write" && toolName !== "edit") return;
-                const change = deps.pendingEdits.getByToolCallId(toolCallId);
+                const queued = toolCallChanges.get(toolCallId);
+                const changeId = queued?.shift();
+                if (queued && queued.length === 0) toolCallChanges.delete(toolCallId);
+                const change = changeId ? deps.pendingEdits.get(changeId) : undefined;
                 if (!change) return;
 
                 let newContent = "";
                 try {
-                    // 安全审查修复: change.filePath 是模型可控参数, join 会归一化 `..`,
-                    // 此前 `../../.ssh/id_rsa` 会把工作区外文件内容+diff 发给渲染层.
-                    // 解析后仍逃逸工作区的路径 → 丢弃审查记录, 不读取更不转发.
-                    const workspaceRoot = resolve(deps.workspacePath);
-                    const absPath = resolve(workspaceRoot, change.filePath);
-                    if (absPath !== workspaceRoot && !absPath.startsWith(workspaceRoot + sep)) {
+                    // Snapshot/review share the same canonical workspace guard.
+                    const absPath = await deps.pendingEdits.assertPathInsideWorkspace(change.filePath, deps.workspacePath);
+                    newContent = await readFile(absPath, "utf-8");
+                } catch (err) {
+                    // Path escape: discard without reading/sending. Other read errors
+                    // keep an empty post-image for diagnostics but never expose content.
+                    if (err instanceof Error && err.message.includes("工作区")) {
                         deps.pendingEdits.reject(change.id);
                         return;
                     }
-                    newContent = await readFile(absPath, "utf-8");
-                } catch {
-                    // 文件可能不存在 (新建失败), 用空
                 }
 
                 const oldContent = change.newContent ?? "";
@@ -221,8 +245,10 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                     changeId: change.id,
                     toolCallId,
                     filePath: change.filePath,
+                    workspaceId,
                     diff,
                     newContent,
+                    oldContent: change.oldContent,
                     timestamp: Date.now(),
                 });
             }

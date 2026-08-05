@@ -452,34 +452,45 @@
     }
   },
   "approvalPanel": {
-    "rootAria": "File change approval",
-    "title": "File change approval",
+    "rootAria": "File changes",
+    "title": "File changes",
     "pendingCount": "{{count}} pending",
     "pendingSummary": "{{count}} file(s) pending approval",
     "pendingSummarySuffix": "file(s) pending approval",
-    "listAria": "Approval changes list",
-    "allProcessed": "All changes processed ({{count}} file(s))",
-    "empty": "No pending changes",
-    "emptyHint": "AI file edits will show up here",
-    "approve": "Approve",
-    "reject": "Reject",
-    "approveAll": "Approve all",
-    "rejectAll": "Reject all",
+    "listAria": "File change list",
+    "allProcessed": "All processed ({{count}})",
+    "empty": "No changes",
+    "emptyHint": "AI file changes will show here",
+    "approve": "Keep",
+    "reject": "Undo",
+    "approveAll": "Keep all",
+    "rejectAll": "Undo all",
     "clear": "Clear",
     "clearAria": "Clear all changes",
-    "autoApprove": "Auto-approve",
-    "autoApproveOn": "Auto-approve is on",
-    "autoApproveOff": "Auto-approve is off",
-    "closePanel": "Close approval panel",
-    "closeAria": "Close panel",
+    "autoApprove": "Auto allow",
+    "autoApproveOn": "Auto allow enabled",
+    "autoApproveOff": "Auto allow disabled",
+    "closePanel": "Minimize panel",
+    "closeAria": "Minimize panel",
     "changeTypes": {
-      "new": "New / overwrite",
+      "new": "New/Overwrite",
       "edit": "Edit",
       "deleted": "Deleted"
     },
     "statusBadge": {
-      "approved": "Approved",
-      "rejected": "Rejected"
+      "approved": "Kept",
+      "rejected": "Rejected",
+      "undone": "Undone"
+    },
+    "groupSummary": "{{files}} files · {{edits}} edits · {{pending}} pending",
+    "keepAll": "Keep all",
+    "undoAll": "Undo all",
+    "undoing": "Undoing…",
+    "dismissedLabel": "File changes",
+    "dismissedBadge": "{{count}} file changes pending, click to view",
+    "changeCount": {
+      "write": "New×{{count}}",
+      "edit": "Edit×{{count}}"
     }
   },
   "terminal": {
@@ -1152,7 +1163,10 @@
     "chat": {
       "workspaceNotFound": "Workspace not found: {{id}}",
       "promptFailed": "Failed to send message to Pi in {{workspace}}: {{message}}",
-      "gitUndoFailed": "Failed to undo file change at {{path}}: {{message}}"
+      "gitUndoFailed": "Failed to undo file change at {{path}}: {{message}}",
+      "invalidApprovalUndo": "Invalid undo request",
+      "approvalChangeNotFound": "This change no longer exists or was already processed",
+      "approvalUndoFailed": "Undo failed: {{reason}}"
     },
     "workspace": {
       "invalidArgs": "Invalid workspace arguments ({{name}}, {{path}}): {{message}}",
@@ -1185,14 +1199,14 @@
       "invalidImages": "Invalid image input"
     }
   },
-    "topbar": {
-      "chat": "Chat",
-      "run": "Run",
-      "workbench": "Workbench",
-      "extensions": "Extensions",
-      "settings": "Settings",
-      "ariaLabel": "Top tab bar"
-    },
+  "topbar": {
+    "chat": "Chat",
+    "run": "Run",
+    "workbench": "Workbench",
+    "extensions": "Extensions",
+    "settings": "Settings",
+    "ariaLabel": "Top tab bar"
+  },
   "runPanel": {
     "ariaLabel": "Run views",
     "tabs": {

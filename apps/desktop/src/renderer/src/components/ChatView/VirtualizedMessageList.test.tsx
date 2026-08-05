@@ -53,29 +53,33 @@ function msg(id: string, content = id): ChatMessage {
   } as ChatMessage;
 }
 
+type RenderListProps = Omit<Parameters<typeof VirtualizedMessageList>[0], "scrollElementRef">;
+
+function renderList(props: RenderListProps): void {
+  // 真实布局里 scrollElementRef 指向 chat-scroll-region 滚动容器
+  const scrollEl = document.createElement("div");
+  render(<VirtualizedMessageList {...props} scrollElementRef={{ current: scrollEl }} />);
+}
+
 describe("VirtualizedMessageList", () => {
   it("renders bubbles for each message via virtualizer items", () => {
-    render(
-      <VirtualizedMessageList
-        messages={[msg("a"), msg("b"), msg("c")]}
-        isStreaming={false}
-        streamingMessageId={null}
-      />,
-    );
+    renderList({
+      messages: [msg("a"), msg("b"), msg("c")],
+      isStreaming: false,
+      streamingMessageId: null,
+    });
     expect(screen.getByText("bubble-a")).toBeTruthy();
     expect(screen.getByText("bubble-b")).toBeTruthy();
     expect(screen.getByText("bubble-c")).toBeTruthy();
   });
 
   it("marks streaming and search target messages", () => {
-    render(
-      <VirtualizedMessageList
-        messages={[msg("a"), msg("b")]}
-        isStreaming
-        streamingMessageId="b"
-        focusMessageId="a"
-      />,
-    );
+    renderList({
+      messages: [msg("a"), msg("b")],
+      isStreaming: true,
+      streamingMessageId: "b",
+      focusMessageId: "a",
+    });
     const a = screen.getByText("bubble-a").closest("[data-message-id]");
     const b = screen.getByText("bubble-b").closest("[data-message-id]");
     expect(a?.getAttribute("data-search-target")).toBe("1");
@@ -85,7 +89,12 @@ describe("VirtualizedMessageList", () => {
 
   it("renders empty list without rows", () => {
     const { container } = render(
-      <VirtualizedMessageList messages={[]} isStreaming={false} streamingMessageId={null} />,
+      <VirtualizedMessageList
+        messages={[]}
+        isStreaming={false}
+        streamingMessageId={null}
+        scrollElementRef={{ current: document.createElement("div") }}
+      />,
     );
     expect(container.querySelectorAll("[data-message-id]")).toHaveLength(0);
   });

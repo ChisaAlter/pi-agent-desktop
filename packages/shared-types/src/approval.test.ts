@@ -29,6 +29,7 @@ describe("approval types residual", () => {
       toolCallId: "t1",
       filePath: "src/a.ts",
       op: "write",
+      workspaceId: "ws-test",
       timestamp: 1,
     };
     const review: FileReview = {
@@ -37,6 +38,7 @@ describe("approval types residual", () => {
       filePath: deferred.filePath,
       diff: "@@\n+x",
       newContent: "x",
+      workspaceId: "ws-test",
       timestamp: 2,
     };
     expect(review.diff).toContain("+x");
@@ -51,6 +53,7 @@ describe("approval types residual", () => {
       toolCallId: "t2",
       filePath: "src/b.ts",
       op: "edit",
+      workspaceId: "ws-test",
       timestamp: 10,
     };
     expect(edit.op).toBe("edit");
@@ -95,6 +98,7 @@ describe("approval types residual", () => {
       toolCallId: "tc",
       filePath: "a.ts",
       op: "write",
+      workspaceId: "ws-test",
       timestamp: 1,
     };
     expect(d.op).toBe("write");
@@ -113,6 +117,7 @@ describe("approval types residual", () => {
       filePath: "f.ts",
       diff: "@@\n+line",
       newContent: "line",
+      workspaceId: "ws-test",
       timestamp: 99,
     };
     expect(review.diff).toContain("+line");
@@ -151,6 +156,7 @@ describe("approval types residual", () => {
       toolCallId: "t2",
       filePath: "b.ts",
       op: "edit",
+      workspaceId: "ws-test",
       timestamp: 2,
     };
     expect(d.op).toBe("edit");
@@ -164,6 +170,7 @@ describe("approval types residual", () => {
       filePath: "src/a.ts",
       diff: "@@ -1 +1 @@\n-a\n+b\n",
       newContent: "b\n",
+      workspaceId: "ws-test",
       timestamp: 99,
     };
     expect(review.diff).toContain("@@");
@@ -179,6 +186,7 @@ describe("approval types residual", () => {
       toolCallId: "t3",
       filePath: "c.ts",
       op: "write",
+      workspaceId: "ws-test",
       timestamp: 3,
     };
     expect(d.op).toBe("write");
@@ -212,6 +220,7 @@ describe("approval types residual", () => {
       toolCallId: "tc-303",
       filePath: "a.ts",
       op: "write",
+      workspaceId: "ws-test",
       timestamp: 1,
     };
     const review: FileReview = {
@@ -220,6 +229,7 @@ describe("approval types residual", () => {
       filePath: deferred.filePath,
       diff: "+x",
       newContent: "x",
+      workspaceId: "ws-test",
       timestamp: 2,
     };
     expect(review.changeId).toBe("c-303");
@@ -250,6 +260,7 @@ describe("approval types residual", () => {
       toolCallId: "tc-319",
       filePath: "src/x.ts",
       op: "edit",
+      workspaceId: "ws-test",
       timestamp: 10,
     };
     const review: FileReview = {
@@ -258,6 +269,7 @@ describe("approval types residual", () => {
       filePath: deferred.filePath,
       diff: ["@@ -1 +1 @@", "-a", "+b", ""].join(String.fromCharCode(10)),
       newContent: "b" + String.fromCharCode(10),
+      workspaceId: "ws-test",
       timestamp: 11,
     };
     expect(deferred.op).toBe("edit");

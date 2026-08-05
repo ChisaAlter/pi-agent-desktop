@@ -10,6 +10,7 @@ import Store from 'electron-store';
 import { PiDriver, type PiInstallProgress } from './pi-driver';
 import { WorkspaceRegistry } from './services/pi-session/registry';
 import { PendingEdits } from './services/approval/pending-edits';
+import { sendToWorkspaceWindow } from './services/approval/approval-bridge';
 import { setupChatIpc } from './ipc/chat.ipc';
 import { setupFilesIpc } from './ipc/files.ipc';
 import { setupSessionsIpc } from './ipc/sessions.ipc';
@@ -258,7 +259,8 @@ function getSessionRepository(): SqliteSessionRepository {
   return sessionRepository;
 }
 
-const sendToRenderer = (channel: string, payload: unknown) => {
+const sendToRenderer = (channel: string, payload: unknown, workspaceId?: string) => {
+  if (workspaceId && sendToWorkspaceWindow(workspaceId, channel, payload)) return;
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) {
       win.webContents.send(channel, payload);

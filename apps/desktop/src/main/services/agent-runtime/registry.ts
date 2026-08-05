@@ -35,7 +35,7 @@ import { createRuntimePolicyController, type RuntimePolicyController } from "../
 import { filterActiveTools, resolveRuntimePolicy, resolveStoredToolPermissions } from "../permission/runtime-policy";
 import log from "electron-log/main";
 
-type Send = (channel: string, payload: unknown) => void;
+type Send = (channel: string, payload: unknown, workspaceId?: string) => void;
 
 interface AgentRuntimeRegistryDeps {
     getWorkspace: (workspaceId: string) => Workspace | undefined;
@@ -736,7 +736,7 @@ function promptFailureDetails(error: unknown): string {
             });
             return;
         }
-        this.deps.send(channel, payload);
+        this.deps.send(channel, payload, workspaceId);
     }
 
     private addMessage(

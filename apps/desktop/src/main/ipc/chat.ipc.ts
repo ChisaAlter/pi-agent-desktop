@@ -13,7 +13,7 @@ import type { LongHorizonMemoryRecord } from "@shared";
 import { WorkspaceRegistry } from "../services/pi-session/registry";
 import type { IpcSender } from "../services/pi-session/event-bridge";
 import { PendingEdits } from "../services/approval/pending-edits";
-import { resolveApprovalRequest, setWorkspaceWindow } from "../services/approval/approval-bridge";
+import { resolveApprovalRequest, isWorkspaceWindow, sendToWorkspaceWindow, setWorkspaceWindow } from "../services/approval/approval-bridge";
 import type { WebContents } from "electron";
 import { getWorkbenchContext } from "./workbench.ipc";
 import {
@@ -40,7 +40,7 @@ import type { MarkdownMemoryService } from "../services/memory/markdown-memory-s
 import type { MemorySearchHit } from "../services/memory/markdown-index";
 import { formatMemorySection } from "../services/subagent/tools/memory-tools";
 import { getProtectedPathReason } from "../services/protected-paths";
-import { gitUndoSchema, GoalEvaluateSchema, permissionSetModeSchema } from "./schemas";
+import { ApprovalKeepSchema, ApprovalUndoSchema, gitUndoSchema, GoalEvaluateSchema, permissionSetModeSchema } from "./schemas";
 import { buildAgentModePrompt, goalSlashCommands, normalizeAgentMode } from "../services/agent-modes";
 import { buildMiMoCodeRuntimePort } from "../services/mimocode-runtime-port";
 import { resolveBundledDesktopExtensionPaths } from "../services/pi-session/factory";
@@ -619,7 +619,8 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             return false;
         }
     };
-    const send: IpcSender = (channel, _workspaceId, payload) => {
+    const send: IpcSender = (channel, workspaceId, payload) => {
+        if (sendToWorkspaceWindow(workspaceId, channel, payload)) return;
         const win: BrowserWindowType | null = BrowserWindow.getAllWindows()[0] ?? null;
         if (win && !win.isDestroyed()) {
             win.webContents.send(channel, payload);
@@ -654,6 +655,61 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
         if (isFromSettings(event.sender)) return;
         if (typeof requestId !== "string" || !requestId || typeof approved !== "boolean") return;
         resolveApprovalRequest(requestId, approved, event.sender);
+    });
+
+    // 保留一笔已执行的 deferred edit: 主进程清理快照, 文件保持现状。
+    ipcMain.handle("approval:keep-change", async (event, raw: unknown) => {
+        if (isFromSettings(event.sender)) {
+            return ipcError("ipcErrors.chat.invalidApprovalUndo", "无效的保留请求");
+        }
+        const parsed = ApprovalKeepSchema.safeParse(raw);
+        if (!parsed.success) {
+            return ipcError("ipcErrors.chat.invalidApprovalUndo", "无效的保留请求: workspaceId 与 changeId 必须为非空字符串");
+        }
+        const { workspaceId, changeId } = parsed.data;
+        if (!isWorkspaceWindow(workspaceId, event.sender)) {
+            return ipcError("ipcErrors.chat.invalidApprovalUndo", "当前窗口无权操作该工作区变更");
+        }
+        const ws = deps.getWorkspace(workspaceId);
+        if (!ws) {
+            return ipcError("ipcErrors.chat.workspaceNotFound", `Workspace not found: ${workspaceId}`, { id: workspaceId });
+        }
+        const change = deps.pendingEdits.get(changeId);
+        if (!change || change.workspaceId !== workspaceId) {
+            return ipcError("ipcErrors.chat.approvalChangeNotFound", "变更不存在或不属于该工作区");
+        }
+        deps.pendingEdits.approve(changeId);
+        return undefined;
+    });
+
+    // 撤销一笔已执行的 deferred edit: 用变更前快照回滚文件。
+    // 主进程是权威 — 变更是否存在、路径是否在 workspace 内都由这里裁决。
+    ipcMain.handle("approval:undo-change", async (event, raw: unknown) => {
+        if (isFromSettings(event.sender)) {
+            return ipcError("ipcErrors.chat.invalidApprovalUndo", "无效的撤销请求");
+        }
+        const parsed = ApprovalUndoSchema.safeParse(raw);
+        if (!parsed.success) {
+            return ipcError("ipcErrors.chat.invalidApprovalUndo", "无效的撤销请求: workspaceId 与 changeId 必须为非空字符串");
+        }
+        const { workspaceId, changeId } = parsed.data;
+        if (!isWorkspaceWindow(workspaceId, event.sender)) {
+            return ipcError("ipcErrors.chat.invalidApprovalUndo", "当前窗口无权操作该工作区变更");
+        }
+        const ws = deps.getWorkspace(workspaceId);
+        if (!ws) {
+            return ipcError("ipcErrors.chat.workspaceNotFound", `Workspace not found: ${workspaceId}`, { id: workspaceId });
+        }
+        const change = deps.pendingEdits.get(changeId);
+        if (!change) {
+            return ipcError("ipcErrors.chat.approvalChangeNotFound", "变更不存在或已处理");
+        }
+        const result = await deps.pendingEdits.undo(changeId, ws.path, workspaceId);
+        if (!result.ok) {
+            return ipcError("ipcErrors.chat.approvalUndoFailed", result.error);
+        }
+        event.sender.send("approval:undone", { workspaceId, changeId, filePath: change.filePath });
+        return undefined;
     });
 
     ipcMain.handle("permission:set-mode", async (_event, mode: PermissionMode, workspaceId?: string) => {
@@ -1093,10 +1149,10 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
     });
 
     // v1.1: renderer 同步 autoApprove 标志到主进程
-    ipcMain.on("approval:set-auto-approve", (event, value: boolean) => {
-        if (isFromSettings(event.sender)) return;
-        deps.pendingEdits.autoApprove = value;
+    ipcMain.on("approval:set-auto-approve", (event, value: unknown) => {
+        if (isFromSettings(event.sender) || typeof value !== "boolean") return;
         log.info(`[chat.ipc] autoApprove set to: ${value}`);
+        deps.pendingEdits.autoApprove = value;
     });
 
     ipcMain.handle("pi:send", async (event, workspaceId: string, text: string, options?: SendPromptOptions) => {

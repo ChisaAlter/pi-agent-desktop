@@ -452,34 +452,45 @@
     }
   },
   "approvalPanel": {
-    "rootAria": "文件变更审批",
-    "title": "文件变更审批",
-    "pendingCount": "{{count}} 个待审批",
+    "rootAria": "文件变更",
+    "title": "文件变更",
+    "pendingCount": "{{count}} 个待处理",
     "pendingSummary": "{{count}} 个文件待审批",
     "pendingSummarySuffix": "个文件待审批",
-    "listAria": "审批变更列表",
-    "allProcessed": "所有变更已处理 ({{count}} 个文件)",
-    "empty": "暂无待审批的变更",
+    "listAria": "文件变更列表",
+    "allProcessed": "全部已处理 ({{count}} 项)",
+    "empty": "暂无变更",
     "emptyHint": "AI 修改文件时将在此处显示",
-    "approve": "接受",
-    "reject": "拒绝",
-    "approveAll": "全部接受",
-    "rejectAll": "全部拒绝",
+    "approve": "保留",
+    "reject": "撤销",
+    "approveAll": "全部保留",
+    "rejectAll": "全部撤销",
     "clear": "清除",
     "clearAria": "清除所有变更",
-    "autoApprove": "自动审批",
-    "autoApproveOn": "自动审批已开启",
-    "autoApproveOff": "自动审批已关闭",
-    "closePanel": "关闭审批面板",
-    "closeAria": "关闭面板",
+    "autoApprove": "自动放行",
+    "autoApproveOn": "自动放行已开启",
+    "autoApproveOff": "自动放行已关闭",
+    "closePanel": "收起面板",
+    "closeAria": "收起面板",
     "changeTypes": {
       "new": "新建/覆盖",
       "edit": "编辑",
       "deleted": "删除"
     },
     "statusBadge": {
-      "approved": "已接受",
-      "rejected": "已拒绝"
+      "approved": "已保留",
+      "rejected": "已拒绝",
+      "undone": "已撤销"
+    },
+    "groupSummary": "{{files}} 个文件 · {{edits}} 次编辑 · {{pending}} 个待处理",
+    "keepAll": "全部保留",
+    "undoAll": "全部撤销",
+    "undoing": "撤销中…",
+    "dismissedLabel": "文件变更",
+    "dismissedBadge": "{{count}} 个文件变更待处理, 点击查看",
+    "changeCount": {
+      "write": "新建×{{count}}",
+      "edit": "编辑×{{count}}"
     }
   },
   "terminal": {
@@ -1152,7 +1163,10 @@
     "chat": {
       "workspaceNotFound": "工作区不存在: {{id}}",
       "promptFailed": "在 {{workspace}} 给 Pi 发消息失败: {{message}}",
-      "gitUndoFailed": "撤销 {{path}} 的文件改动失败: {{message}}"
+      "gitUndoFailed": "撤销 {{path}} 的文件改动失败: {{message}}",
+      "invalidApprovalUndo": "无效的撤销请求",
+      "approvalChangeNotFound": "该变更不存在或已处理",
+      "approvalUndoFailed": "撤销失败: {{reason}}"
     },
     "workspace": {
       "invalidArgs": "工作区参数无效 ({{name}}, {{path}}): {{message}}",
@@ -1185,14 +1199,14 @@
       "invalidImages": "无效的图片输入"
     }
   },
-    "topbar": {
-      "chat": "对话",
-      "run": "运行",
-      "workbench": "工作台",
-      "extensions": "扩展",
-      "settings": "设置",
-      "ariaLabel": "顶部标签栏"
-    },
+  "topbar": {
+    "chat": "对话",
+    "run": "运行",
+    "workbench": "工作台",
+    "extensions": "扩展",
+    "settings": "设置",
+    "ariaLabel": "顶部标签栏"
+  },
   "runPanel": {
     "ariaLabel": "运行视图",
     "tabs": {

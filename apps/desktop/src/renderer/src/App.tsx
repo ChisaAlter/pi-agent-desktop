@@ -188,6 +188,7 @@ function AppShell(): React.ReactElement {
     );
 
     const { getCurrentWorkspace, workspaces } = useWorkspaceStore();
+    const currentWorkspace = getCurrentWorkspace();
     const workspacesLoaded = useWorkspaceStore((state) => state.loaded);
     const workspaceError = useWorkspaceStore((state) => state.lastError);
     const clearWorkspaceError = useWorkspaceStore((state) => state.clearError);
@@ -200,7 +201,10 @@ function AppShell(): React.ReactElement {
     const hydrateUpdaterState = useUpdaterStore((state) => state.hydrate);
     const refreshRuntimeFeatureState = useRuntimeFeatureStore((state) => state.refresh);
     const pendingApprovalCount = useApprovalStore(
-        (s) => s.changes.filter((c) => c.status === "pending").length,
+        (s) => s.changes.filter((c) => c.status === "pending" && c.workspaceId === currentWorkspace?.id).length,
+    );
+    const pendingApprovalFileCount = useApprovalStore(
+        (s) => new Set(s.changes.filter((c) => c.status === "pending" && c.workspaceId === currentWorkspace?.id).map((c) => c.filePath)).size,
     );
     const agents = useAgentStore((s) => s.agents);
     const currentAgentId = useAgentStore((s) => s.currentAgentId);
@@ -208,7 +212,6 @@ function AppShell(): React.ReactElement {
     const agentsInitialized = useAgentStore((s) => s.initialized);
     const createAgent = useAgentStore((s) => s.createAgent);
     const pendingPermissions = usePermissionStore((s) => s.pending);
-    const currentWorkspace = getCurrentWorkspace();
     const pendingDefaultAgentWorkspaces = useRef<Set<string>>(new Set());
     const pendingSessionAgentSessions = useRef<Set<string>>(new Set());
     const rightRailManualPreferenceRef = useRef<"open" | "collapsed" | null>(null);
@@ -512,9 +515,10 @@ function AppShell(): React.ReactElement {
         // 当 pendingApprovalCount > 0 时自动显示
         if (pendingApprovalCount > 0) setApprovalVisible(true);
     }, [pendingApprovalCount]);
+    // 关闭 = 最小化 (dismiss): 只收起面板, 不处理任何变更。
+    // 之前的实现会 clearChanges(), 把所有未处理项当作拒绝 — 语义错误。
     const closeApproval = useCallback(() => {
         setApprovalVisible(false);
-        useApprovalStore.getState().clearChanges();
     }, []);
     useEffect(() => {
         const onDeferred = window.piAPI?.onApprovalDeferred;
@@ -528,11 +532,14 @@ function AppShell(): React.ReactElement {
         const unsubReview = onReview((payload) => {
             const deferred = deferredApprovals.get(payload.changeId);
             useApprovalStore.getState().addChange({
+                id: payload.changeId,
                 toolCallId: payload.toolCallId,
                 toolName: deferred?.op === "edit" ? "edit" : "write",
                 filePath: payload.filePath,
+                workspaceId: payload.workspaceId ?? deferred?.workspaceId,
                 diff: payload.diff,
                 newContent: payload.newContent,
+                oldContent: payload.oldContent,
             });
             deferredApprovals.delete(payload.changeId);
         });
@@ -1019,7 +1026,27 @@ function AppShell(): React.ReactElement {
                 pendingApprovalCount > 0 &&
                 portalTarget &&
                 createPortal(
-                    <ApprovalPanel isOpen onToggle={closeApproval} />,
+                    <ApprovalPanel isOpen onToggle={closeApproval} workspaceId={currentWorkspace?.id} />,
+                    portalTarget,
+                )}
+
+            {/* 面板最小化后的入口浮标: 未处理的变更仍在, 点击重新打开 */}
+            {!approvalVisible &&
+                pendingApprovalCount > 0 &&
+                portalTarget &&
+                createPortal(
+                    <button
+                        type="button"
+                        onClick={() => setApprovalVisible(true)}
+                        className="fixed bottom-24 right-3 z-[230] inline-flex h-8 items-center gap-1.5 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 text-xs font-medium text-[var(--mm-text-primary)] shadow-[0_8px_24px_rgba(15,23,42,0.14)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
+                        aria-label={t("approvalPanel.dismissedBadge", { count: pendingApprovalFileCount })}
+                        title={t("approvalPanel.dismissedBadge", { count: pendingApprovalFileCount })}
+                    >
+                        <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#f59e0b] px-1 text-[10px] font-bold text-white">
+                            {pendingApprovalFileCount}
+                        </span>
+                        {t("approvalPanel.dismissedLabel")}
+                    </button>,
                     portalTarget,
                 )}
         </>

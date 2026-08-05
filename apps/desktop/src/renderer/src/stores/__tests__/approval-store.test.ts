@@ -131,6 +131,126 @@ describe("approval-store: autoApprove", () => {
     });
 });
 
+describe("approval-store: undo (真实回滚)", () => {
+    beforeEach(() => {
+        // node 环境无 window, 测试需要 stub 全局
+        vi.stubGlobal("window", { piAPI: { undoApprovalChange: vi.fn().mockResolvedValue(undefined) } });
+    });
+
+    it("undoChange 调 IPC 成功后 status=undone 并清 undoError", async () => {
+        const undoApprovalChange = vi.fn().mockResolvedValue(undefined);
+        const keepApprovalChange = vi.fn().mockResolvedValue(undefined);
+        window.piAPI = { undoApprovalChange, keepApprovalChange } as never;
+        const id = useApprovalStore.getState().addChange({
+            toolCallId: "t", toolName: "write", filePath: "/a.ts", workspaceId: "ws_1",
+        });
+        await useApprovalStore.getState().undoChange(id);
+        expect(undoApprovalChange).toHaveBeenCalledWith("ws_1", id);
+        expect(useApprovalStore.getState().changes[0].status).toBe("undone");
+        expect(useApprovalStore.getState().undoError[id]).toBeUndefined();
+    });
+
+    it("undoChange IPC 失败 → 记录 undoError, status 保持 pending (可重试)", async () => {
+        const undoApprovalChange = vi.fn().mockResolvedValue({
+            __brand: "IpcError", code: "ipcErrors.chat.approvalUndoFailed", fallback: "磁盘写入失败",
+        });
+        const keepApprovalChange = vi.fn().mockResolvedValue(undefined);
+        window.piAPI = { undoApprovalChange, keepApprovalChange } as never;
+        const id = useApprovalStore.getState().addChange({
+            toolCallId: "t", toolName: "write", filePath: "/a.ts", workspaceId: "ws_1",
+        });
+        await useApprovalStore.getState().undoChange(id);
+        expect(useApprovalStore.getState().changes[0].status).toBe("pending");
+        const recorded = useApprovalStore.getState().undoError[id];
+        expect(recorded).toMatchObject({ code: "ipcErrors.chat.approvalUndoFailed" });
+    });
+
+    it("缺少 workspaceId 的变更无法撤销, 记错误", async () => {
+        window.piAPI = { undoApprovalChange: vi.fn() } as never;
+        const id = useApprovalStore.getState().addChange({
+            toolCallId: "t", toolName: "write", filePath: "/a.ts",
+        });
+        await useApprovalStore.getState().undoChange(id);
+        expect(useApprovalStore.getState().changes[0].status).toBe("pending");
+        expect(useApprovalStore.getState().undoError[id]).toContain("workspace");
+    });
+
+    it("undoAll 只撤销 pending 项", async () => {
+        const undoApprovalChange = vi.fn().mockResolvedValue(undefined);
+        const keepApprovalChange = vi.fn().mockResolvedValue(undefined);
+        window.piAPI = { undoApprovalChange, keepApprovalChange } as never;
+        const a = useApprovalStore.getState().addChange({
+            toolCallId: "t1", toolName: "write", filePath: "/a.ts", workspaceId: "ws_1",
+        });
+        useApprovalStore.getState().addChange({
+            toolCallId: "t2", toolName: "write", filePath: "/b.ts", workspaceId: "ws_1",
+        });
+        await useApprovalStore.getState().keepChange(a);
+        await useApprovalStore.getState().undoAll();
+        const changes = useApprovalStore.getState().changes;
+        expect(changes.find((c) => c.id === a)?.status).toBe("approved");
+        expect(changes.find((c) => c.filePath === "/b.ts")?.status).toBe("undone");
+    });
+
+    it("keepAll 全部 pending 变 approved", async () => {
+        const keepApprovalChange = vi.fn().mockResolvedValue(undefined);
+        window.piAPI = { keepApprovalChange } as never;
+        useApprovalStore.getState().addChange({ toolCallId: "t1", toolName: "write", filePath: "/a.ts", workspaceId: "ws_1" });
+        useApprovalStore.getState().addChange({ toolCallId: "t2", toolName: "edit", filePath: "/b.ts", workspaceId: "ws_1" });
+        await useApprovalStore.getState().keepAll();
+        expect(useApprovalStore.getState().changes.every((c) => c.status === "approved")).toBe(true);
+    });
+
+    it("keepChange 清掉之前的 undoError", () => {
+        const undoApprovalChange = vi.fn().mockResolvedValue({
+            __brand: "IpcError", code: "x", fallback: "失败",
+        });
+        const keepApprovalChange = vi.fn().mockResolvedValue(undefined);
+        window.piAPI = { undoApprovalChange, keepApprovalChange } as never;
+        const id = useApprovalStore.getState().addChange({
+            toolCallId: "t", toolName: "write", filePath: "/a.ts", workspaceId: "ws_1",
+        });
+        return useApprovalStore.getState().undoChange(id).then(async () => {
+            await useApprovalStore.getState().keepChange(id);
+            expect(useApprovalStore.getState().undoError[id]).toBeUndefined();
+        });
+    });
+});
+
+describe("approval-store: undo IPC 异常", () => {
+    it("IPC invoke reject → 记录错误, status 保持 pending", async () => {
+        const undoApprovalChange = vi.fn().mockRejectedValue(new Error("ipc closed"));
+        vi.stubGlobal("window", { piAPI: { undoApprovalChange } });
+        const id = useApprovalStore.getState().addChange({
+            toolCallId: "t", toolName: "write", filePath: "/a.ts", workspaceId: "ws_1",
+        });
+        await useApprovalStore.getState().undoChange(id);
+        expect(useApprovalStore.getState().changes[0].status).toBe("pending");
+        expect(useApprovalStore.getState().undoError[id]).toContain("ipc closed");
+    });
+
+    it("undoAll 串行执行且单条失败不中断", async () => {
+        const calls: string[] = [];
+        const undoApprovalChange = vi.fn().mockImplementation(async (_ws: string, id: string) => {
+            calls.push(id);
+            // 第 2 次调用 (b) 失败, 验证单条失败不中断后续
+            if (calls.length === 2) {
+                return { __brand: "IpcError", code: "x", fallback: "fail" };
+            }
+            return undefined;
+        });
+        vi.stubGlobal("window", { piAPI: { undoApprovalChange } });
+        const a = useApprovalStore.getState().addChange({ toolCallId: "t1", toolName: "write", filePath: "/a.ts", workspaceId: "ws_1" });
+        const b = useApprovalStore.getState().addChange({ toolCallId: "t2", toolName: "write", filePath: "/b.ts", workspaceId: "ws_1" });
+        await useApprovalStore.getState().undoAll();
+        // 串行: a 先 b 后 (按 addChange 顺序)
+        expect(calls).toEqual([a, b]);
+        const changes = useApprovalStore.getState().changes;
+        expect(changes.find((c) => c.filePath === "/a.ts")?.status).toBe("undone");
+        expect(changes.find((c) => c.filePath === "/b.ts")?.status).toBe("pending");
+    });
+});
+
 describe("approval-store: diff helpers", () => {
     it("generateWriteDiff: 新文件 (oldContent=undefined) 所有行都是 +", () => {
         const diff = generateWriteDiff("/tmp/new.ts", undefined, "line1\nline2");

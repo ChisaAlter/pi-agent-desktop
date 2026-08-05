@@ -630,3 +630,12 @@ export const SubagentCancelSchema = z.object({
     agentId: z.string().min(1, "agentId must be a non-empty string"),
     actorId: z.string().min(1, "actorId must be a non-empty string"),
 }).strict();
+
+// ── Approval undo IPC schema ──────────────────────────────
+// approval:undo-change 入参: 必须指定 workspace (路径解析基准) 与 changeId。
+export const ApprovalUndoSchema = z.object({
+    workspaceId: z.string().min(1, "workspaceId must be a non-empty string"),
+    changeId: z.string().min(1, "changeId must be a non-empty string"),
+}).strict();
+
+export const ApprovalKeepSchema = ApprovalUndoSchema;

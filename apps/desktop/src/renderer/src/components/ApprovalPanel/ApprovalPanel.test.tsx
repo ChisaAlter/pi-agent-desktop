@@ -1,37 +1,35 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { ApprovalPanel } from "./ApprovalPanel";
 import type { PendingChange } from "../../stores/approval-store";
 
 const {
-  approveChange,
-  rejectChange,
-  approveAll,
-  rejectAll,
+  keepChange,
+  undoChange,
+  undoAll,
+  keepAll,
   toggleAutoApprove,
-  clearChanges,
   setAutoApprove,
   useApprovalStore,
 } = vi.hoisted(() => {
-  const approveChange = vi.fn();
-  const rejectChange = vi.fn();
-  const approveAll = vi.fn();
-  const rejectAll = vi.fn();
+  const keepChange = vi.fn();
+  const undoChange = vi.fn();
+  const undoAll = vi.fn().mockResolvedValue(undefined);
+  const keepAll = vi.fn();
   const toggleAutoApprove = vi.fn();
-  const clearChanges = vi.fn();
   const setAutoApprove = vi.fn();
   let state = {
     changes: [] as PendingChange[],
     autoApprove: false,
-    approveChange,
-    rejectChange,
-    approveAll,
-    rejectAll,
+    undoError: {} as Record<string, string>,
+    keepChange,
+    undoChange,
+    undoAll,
+    keepAll,
     toggleAutoApprove,
-    clearChanges,
     setAutoApprove,
   };
   const useApprovalStore = Object.assign(
@@ -45,24 +43,23 @@ const {
         state = {
           changes: [],
           autoApprove: false,
-          approveChange,
-          rejectChange,
-          approveAll,
-          rejectAll,
+          undoError: {},
+          keepChange,
+          undoChange,
+          undoAll,
+          keepAll,
           toggleAutoApprove,
-          clearChanges,
           setAutoApprove,
         };
       },
     },
   );
   return {
-    approveChange,
-    rejectChange,
-    approveAll,
-    rejectAll,
+    keepChange,
+    undoChange,
+    undoAll,
+    keepAll,
     toggleAutoApprove,
-    clearChanges,
     setAutoApprove,
     useApprovalStore,
   };
@@ -72,21 +69,27 @@ vi.mock("../../stores/approval-store", () => ({ useApprovalStore }));
 
 vi.mock("./ChangeApprovalCard", () => ({
   ChangeApprovalCard: ({
-    change,
-    onApprove,
-    onReject,
+    filePath,
+    changes,
+    onKeep,
+    onUndo,
+    undoError,
   }: {
-    change: PendingChange;
-    onApprove: (id: string) => void;
-    onReject: (id: string) => void;
+    filePath: string;
+    changes: PendingChange[];
+    onKeep: (id: string) => void;
+    onUndo: (id: string) => void;
+    undoError: Record<string, string>;
   }) => (
-    <div data-testid={`card-${change.id}`}>
-      <button type="button" onClick={() => onApprove(change.id)}>
-        approve-{change.id}
+    <div data-testid={`group-${filePath}`}>
+      <span>{filePath}</span>
+      <button type="button" onClick={() => onKeep(changes[0]!.id)}>
+        keep-{changes[0]!.id}
       </button>
-      <button type="button" onClick={() => onReject(change.id)}>
-        reject-{change.id}
+      <button type="button" onClick={() => onUndo(changes[0]!.id)}>
+        undo-{changes[0]!.id}
       </button>
+      {undoError[changes[0]!.id] ? <span>{undoError[changes[0]!.id]}</span> : null}
     </div>
   ),
 }));
@@ -109,14 +112,12 @@ function makeChange(id: string, status: PendingChange["status"] = "pending"): Pe
 describe("ApprovalPanel", () => {
   beforeEach(() => {
     useApprovalStore._reset();
-    approveChange.mockReset();
-    rejectChange.mockReset();
-    approveAll.mockReset();
-    rejectAll.mockReset();
-    toggleAutoApprove.mockReset();
-    clearChanges.mockReset();
-    setAutoApprove.mockReset();
-    setAutoApprove.mockReset();
+    keepChange.mockClear();
+    undoChange.mockClear();
+    undoAll.mockClear(); // 保留 mockResolvedValue 实现, 只清调用记录
+    keepAll.mockClear();
+    toggleAutoApprove.mockClear();
+    setAutoApprove.mockClear();
     window.piAPI = { setAutoApprove } as never;
   });
 
@@ -135,14 +136,21 @@ describe("ApprovalPanel", () => {
         <ApprovalPanel isOpen onToggle={vi.fn()} />
       </I18nProvider>,
     );
-    expect(screen.getByRole("region", { name: "文件变更审批" })).toBeTruthy();
-    expect(screen.getByText("暂无待审批的变更")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "关闭审批面板" })).toBeTruthy();
+    const panel = screen.getByRole("dialog", { name: "文件变更" });
+    expect(panel).toBeTruthy();
+    expect(panel.className).toContain("fixed");
+    expect(panel.className).toContain("z-[230]");
+    expect(screen.getByText("暂无变更")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "收起面板" })).toBeTruthy();
   });
 
-  it("lists pending changes and wires bulk actions + auto-approve", () => {
+  it("groups changes by file, wires keep/undo and bulk actions + auto-approve", async () => {
     useApprovalStore.setState({
-      changes: [makeChange("a"), makeChange("b", "approved")],
+      changes: [
+        makeChange("a"),
+        makeChange("b", "approved"),
+        makeChange("c", "pending"),
+      ],
       autoApprove: false,
     });
     const onToggle = vi.fn();
@@ -152,30 +160,36 @@ describe("ApprovalPanel", () => {
       </I18nProvider>,
     );
 
-    expect(screen.getByTestId("card-a")).toBeTruthy();
-    expect(screen.getByTestId("card-b")).toBeTruthy();
-    expect(screen.getByLabelText("1 个待审批")).toBeTruthy();
+    // 两个文件分组 (a.ts + c.ts), b.ts 已处理也展示
+    expect(screen.getByTestId("group-a.ts")).toBeTruthy();
+    expect(screen.getByTestId("group-b.ts")).toBeTruthy();
+    expect(screen.getByTestId("group-c.ts")).toBeTruthy();
+    expect(screen.getByLabelText("2 个待处理")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "全部接受" }));
-    fireEvent.click(screen.getByRole("button", { name: "全部拒绝" }));
-    fireEvent.click(screen.getByRole("button", { name: "清除所有变更" }));
-    expect(approveAll).toHaveBeenCalledTimes(1);
-    expect(rejectAll).toHaveBeenCalledTimes(1);
-    expect(clearChanges).toHaveBeenCalledTimes(1);
+    // 单条 keep/undo 路由
+    fireEvent.click(screen.getByRole("button", { name: "keep-a" }));
+    fireEvent.click(screen.getByRole("button", { name: "undo-c" }));
+    expect(keepChange).toHaveBeenCalledWith("a");
+    expect(undoChange).toHaveBeenCalledWith("c");
 
-    const auto = screen.getByRole("switch", { name: "自动审批" });
+    // 批量
+    fireEvent.click(screen.getByRole("button", { name: "全部保留" }));
+    await waitFor(() => expect(keepAll).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "全部撤销" }));
+    await waitFor(() => {
+      expect(undoAll).toHaveBeenCalledTimes(1);
+    });
+
+    // 自动放行
+    const auto = screen.getByRole("switch", { name: "自动放行" });
     expect(auto.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(auto);
     expect(toggleAutoApprove).toHaveBeenCalledTimes(1);
     expect(setAutoApprove).toHaveBeenCalledWith(true);
 
-    fireEvent.click(screen.getByRole("button", { name: "关闭审批面板" }));
+    // 收起 = dismiss, 只通知 onToggle
+    fireEvent.click(screen.getByRole("button", { name: "收起面板" }));
     expect(onToggle).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(screen.getByText("approve-a"));
-    fireEvent.click(screen.getByText("reject-a"));
-    expect(approveChange).toHaveBeenCalledWith("a");
-    expect(rejectChange).toHaveBeenCalledWith("a");
   });
 
   it("exposes close control focus-visible ring for keyboard a11y", () => {
@@ -184,8 +198,22 @@ describe("ApprovalPanel", () => {
         <ApprovalPanel isOpen onToggle={vi.fn()} />
       </I18nProvider>,
     );
-    expect(screen.getByRole("button", { name: "关闭审批面板" }).className).toContain(
+    expect(screen.getByRole("button", { name: "收起面板" }).className).toContain(
       "focus-visible:ring-2",
     );
+  });
+
+  it("floats over the app instead of stretching document flow under the composer", () => {
+    render(
+      <I18nProvider>
+        <ApprovalPanel isOpen onToggle={vi.fn()} />
+      </I18nProvider>,
+    );
+    const panel = screen.getByTestId("approval-panel");
+    expect(panel.className).toContain("fixed");
+    expect(panel.className).toContain("bottom-3");
+    expect(panel.className).toContain("right-3");
+    expect(panel.className).not.toMatch(/(?:^|\s)h-full(?:\s|$)/);
+    expect(panel.className).not.toContain("border-l");
   });
 });

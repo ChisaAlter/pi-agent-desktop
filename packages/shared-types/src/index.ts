@@ -6,8 +6,8 @@
 export * from "./events";
 export * from "./command-risk";
 import type { PiThinkingLevel } from "./events";
-import type { ApprovalRequest, DeferredEdit, FileReview } from "./approval";
-export type { ApprovalRequest, DeferredEdit, FileReview };
+import type { ApprovalKeepRequest, ApprovalRequest, ApprovalUndoRequest, ApprovalUndone, DeferredEdit, FileReview } from "./approval";
+export type { ApprovalKeepRequest, ApprovalRequest, ApprovalUndoRequest, ApprovalUndone, DeferredEdit, FileReview };
 // 上面 re-export approval.ts 的具体类型 (解决: 后面 PiAPI 用到的 ApprovalRequest 等)
 // 注: 不写 export * from "./approval" 是为了不让外层组件意外引入 ApprovalResponse 等内部细节
 
@@ -1405,6 +1405,11 @@ export interface PiAPI {
     onApprovalReview(cb: (review: FileReview) => void): Unsubscribe;
     // v1.1: 同步 autoApprove 到主进程 (fire-and-forget)
     setAutoApprove(value: boolean): void;
+    /** 撤销一笔已执行的 deferred edit (主进程用变更前快照回滚文件) */
+    undoApprovalChange(workspaceId: string, changeId: string): Promise<void | IpcError>;
+    /** 保留一笔已执行的 deferred edit (主进程清理快照但不改文件) */
+    keepApprovalChange(workspaceId: string, changeId: string): Promise<void | IpcError>;
+    onApprovalUndone(cb: (done: ApprovalUndone) => void): Unsubscribe;
 
     // Git + Pi stop
     gitUndo(workspacePath: string, filePath: string): Promise<void | IpcError>;

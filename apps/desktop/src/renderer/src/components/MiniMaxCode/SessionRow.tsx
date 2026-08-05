@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Session } from "../../stores/session-store";
 
 export function SmallActionButton({
@@ -93,13 +94,43 @@ export function SessionRow({
   // (CSS group-hover can stick across adjacent rows while the pointer is between them).
   const [actionsVisible, setActionsVisible] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const title = session.title || t("sidebar.sessions.unnamed");
-  const baseClasses =
-    "flex w-full items-center gap-2 rounded-[var(--mm-radius-sm)] py-0 pr-0 text-[13px] leading-relaxed transition-[background-color,color,box-shadow] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]";
-  const stateClasses = active
-    ? "bg-[var(--mm-bg-selected)] font-medium text-[var(--mm-text-primary)] shadow-[0_4px_14px_rgba(37,99,235,0.16)] hover:bg-[var(--mm-bg-selected)]"
-    : "bg-transparent font-normal text-[var(--mm-text-primary)] shadow-none hover:bg-[var(--mm-bg-hover)]";
-  const pinLabel = `${session.favorite ? t("sidebar.sessions.unpin") : t("sidebar.sessions.pin")} ${title}`;
+  // Right-click menu is portaled to <body> with fixed coordinates so the
+  // overflow-hidden/scroll containers in the sidebar cannot clip it.
+  const [menuAnchor, setMenuAnchor] = useState<DOMRect | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const MENU_GAP = 4;
+  const MENU_MARGIN = 8;
+  const MENU_ESTIMATED_HEIGHT = 72;
+
+  const computeMenuPos = (anchor: DOMRect, height: number): { top: number; right: number } => {
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const spaceBelow = vh - anchor.bottom - MENU_GAP - MENU_MARGIN;
+    const openBelow = spaceBelow >= height;
+    return {
+      // Flip above the row when it sits near the bottom edge of the viewport.
+      top: openBelow
+        ? anchor.bottom + MENU_GAP
+        : Math.max(MENU_MARGIN, anchor.top - MENU_GAP - height),
+      right: Math.max(MENU_MARGIN, vw - anchor.right + MENU_GAP),
+    };
+  };
+
+  const openContextMenu = (event: React.MouseEvent<HTMLDivElement>): void => {
+    event.preventDefault();
+    const anchor = event.currentTarget.getBoundingClientRect();
+    setMenuAnchor(anchor);
+    setMenuPos(computeMenuPos(anchor, MENU_ESTIMATED_HEIGHT));
+    setContextMenuOpen(true);
+  };
+
+  // Reposition once the portal is mounted so the flip decision uses the real
+  // menu height instead of the estimate.
+  useLayoutEffect(() => {
+    if (!contextMenuOpen || !menuAnchor) return;
+    const height = menuRef.current?.offsetHeight || MENU_ESTIMATED_HEIGHT;
+    setMenuPos(computeMenuPos(menuAnchor, height));
+  }, [contextMenuOpen, menuAnchor]);
 
   useEffect(() => {
     if (!contextMenuOpen) return;
@@ -116,13 +147,27 @@ export function SessionRow({
     document.addEventListener("mousedown", closeIfOutside);
     document.addEventListener("keydown", closeOnEscape);
     window.addEventListener("blur", closeMenu);
+    // The fixed menu no longer tracks the row inside the scroll containers,
+    // so close on scroll/resize instead of letting it detach.
+    window.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("resize", closeMenu);
 
     return () => {
       document.removeEventListener("mousedown", closeIfOutside);
       document.removeEventListener("keydown", closeOnEscape);
       window.removeEventListener("blur", closeMenu);
+      window.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("resize", closeMenu);
     };
   }, [contextMenuOpen]);
+
+  const title = session.title || t("sidebar.sessions.unnamed");
+  const baseClasses =
+    "flex w-full items-center gap-2 rounded-[var(--mm-radius-sm)] py-0 pr-0 text-[13px] leading-relaxed transition-[background-color,color,box-shadow] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]";
+  const stateClasses = active
+    ? "bg-[var(--mm-bg-selected)] font-medium text-[var(--mm-text-primary)] shadow-[0_4px_14px_rgba(37,99,235,0.16)] hover:bg-[var(--mm-bg-selected)]"
+    : "bg-transparent font-normal text-[var(--mm-text-primary)] shadow-none hover:bg-[var(--mm-bg-hover)]";
+  const pinLabel = `${session.favorite ? t("sidebar.sessions.unpin") : t("sidebar.sessions.pin")} ${title}`;
 
   const commitRename = (): void => {
     const trimmed = draftTitle.trim();
@@ -202,10 +247,7 @@ export function SessionRow({
         if (next instanceof Node && event.currentTarget.contains(next)) return;
         setActionsVisible(false);
       }}
-      onContextMenu={(event) => {
-        event.preventDefault();
-        setContextMenuOpen(true);
-      }}
+      onContextMenu={openContextMenu}
       onKeyDown={(event) => {
         if (event.key === "Escape") setContextMenuOpen(false);
       }}
@@ -245,39 +287,43 @@ export function SessionRow({
           </>
         )}
       </div>
-      {contextMenuOpen && (
-        <div
-          ref={menuRef}
-          role="menu"
-          className="absolute right-1 top-8 z-20 min-w-[104px] rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] py-1 text-[12px] shadow-[0_8px_24px_rgba(15,23,42,0.12)]"
-        >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={(event) => {
-              event.stopPropagation();
-              setContextMenuOpen(false);
-              setDraftTitle(session.title);
-              setRenaming(true);
-            }}
-            className="flex w-full items-center px-3 py-1.5 text-left text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
+      {contextMenuOpen &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            className="fixed z-[200] min-w-[104px] rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] py-1 text-[12px] shadow-[0_8px_24px_rgba(15,23,42,0.12)]"
+            style={menuPos ? { top: menuPos.top, right: menuPos.right } : undefined}
           >
-            {t("sidebar.sessions.rename")}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={(event) => {
-              event.stopPropagation();
-              setContextMenuOpen(false);
-              setConfirming(true);
-            }}
-            className="flex w-full items-center px-3 py-1.5 text-left text-[var(--color-error)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-500"
-          >
-            {t("sidebar.sessions.delete")}
-          </button>
-        </div>
-      )}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={(event) => {
+                event.stopPropagation();
+                setContextMenuOpen(false);
+                setDraftTitle(session.title);
+                setRenaming(true);
+              }}
+              className="flex w-full items-center px-3 py-1.5 text-left text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
+            >
+              {t("sidebar.sessions.rename")}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={(event) => {
+                event.stopPropagation();
+                setContextMenuOpen(false);
+                setConfirming(true);
+              }}
+              className="flex w-full items-center px-3 py-1.5 text-left text-[var(--color-error)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-red-500"
+            >
+              {t("sidebar.sessions.delete")}
+            </button>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

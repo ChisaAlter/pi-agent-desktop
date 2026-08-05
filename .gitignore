@@ -83,6 +83,9 @@ packages/shared-types/docs/testing/evidence/
 .idea/
 .vscode/
 .mavis/
+.loopx/
+.codex/goals/
+.zcode/
 
 # Stale artifacts (M5 cleanup)
 *.tserrors.txt

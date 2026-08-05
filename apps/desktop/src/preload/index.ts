@@ -8,6 +8,7 @@ import type {
     IpcError,
     PiInstallProgress,
     ApprovalRequest,
+    ApprovalUndone,
     DeferredEdit,
     FileReview,
     PiEvent,
@@ -124,6 +125,11 @@ const piAPI: PiAPI = {
     onApprovalRequest: (cb) => subscribe<ApprovalRequest>("approval:request", cb),
     onApprovalDeferred: (cb) => subscribe<DeferredEdit>("approval:deferred", cb),
     onApprovalReview: (cb) => subscribe<FileReview>("approval:review", cb),
+    undoApprovalChange: (workspaceId, changeId) =>
+        ipcRenderer.invoke("approval:undo-change", { workspaceId, changeId }) as Promise<void | IpcError>,
+    keepApprovalChange: (workspaceId, changeId) =>
+        ipcRenderer.invoke("approval:keep-change", { workspaceId, changeId }) as Promise<void | IpcError>,
+    onApprovalUndone: (cb) => subscribe<ApprovalUndone>("approval:undone", cb),
     // v1.1: 同步 autoApprove 到主进程
     setAutoApprove: (value: boolean) => {
         ipcRenderer.send("approval:set-auto-approve", value);

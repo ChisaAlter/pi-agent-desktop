@@ -5,9 +5,15 @@ vi.mock("../approval-bridge", () => ({
     requestApproval: vi.fn().mockResolvedValue(true),
 }));
 
+const fsMocks = vi.hoisted(() => ({
+    readFile: vi.fn().mockResolvedValue("new content"),
+    realpath: vi.fn((p: string) => Promise.resolve(p)),
+}));
+
 // Mock fs/promises
 vi.mock("fs/promises", () => ({
-    readFile: vi.fn().mockResolvedValue("new content"),
+    readFile: fsMocks.readFile,
+    realpath: fsMocks.realpath,
 }));
 
 import { createApprovalInterceptor } from "../interceptor";
@@ -22,6 +28,7 @@ describe("createApprovalInterceptor", () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        fsMocks.realpath.mockImplementation((p: string) => Promise.resolve(p));
         pendingEdits = new PendingEdits();
         send = vi.fn();
         abort = vi.fn();
@@ -86,6 +93,43 @@ describe("createApprovalInterceptor", () => {
             "ws_1",
             expect.objectContaining({ toolCallId: "tc_2", filePath: "src/foo.ts" })
         );
+    });
+
+    it("records ENOENT as null snapshot (file did not exist before)", async () => {
+        fsMocks.readFile.mockRejectedValueOnce(Object.assign(new Error("noent"), { code: "ENOENT" }));
+        await interceptor.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_snap1",
+            toolName: "write",
+            args: { file_path: "src/new.ts", content: "x" },
+        });
+        const change = pendingEdits.getByToolCallId("tc_snap1");
+        expect(change?.oldContent).toBeNull();
+    });
+
+    it("records non-ENOENT read errors as undefined snapshot (not undoable, never deleted)", async () => {
+        fsMocks.readFile.mockRejectedValueOnce(Object.assign(new Error("EACCES"), { code: "EACCES" }));
+        await interceptor.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_snap2",
+            toolName: "write",
+            args: { file_path: "src/readonly.ts", content: "x" },
+        });
+        const change = pendingEdits.getByToolCallId("tc_snap2");
+        expect(change?.oldContent).toBeUndefined();
+    });
+
+    it("classifies workspace-escaping paths as high risk: never tracked, no deferred event", async () => {
+        // `..` 段在 classifier 层即判 high (HIGH_RISK_PATH_PATTERNS 含路径穿越模式),
+        // 不进入 deferred 流程 — 快照/撤销链路天然接触不到逃逸路径。
+        await interceptor.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_snap3",
+            toolName: "write",
+            args: { file_path: "../../outside.ts", content: "x" },
+        });
+        expect(pendingEdits.getByToolCallId("tc_snap3")).toBeUndefined();
+        expect(send).not.toHaveBeenCalled();
     });
 
     it("aborts non-plan-file writes while plan mode is active", async () => {
@@ -408,8 +452,14 @@ describe("createApprovalInterceptor", () => {
     });
 
     it("on tool_execution_end for write/edit, reads file and sends review", async () => {
-        // 先 track 一个 edit
-        const changeId = pendingEdits.track("tc_3", "write", "src/bar.ts", { content: "old" });
+        await interceptor.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_3",
+            toolName: "write",
+            args: { file_path: "src/bar.ts", content: "old" },
+        });
+        const changeId = pendingEdits.getByToolCallId("tc_3")?.id;
+        expect(changeId).toBeDefined();
         await interceptor.handleEvent({
             type: "tool_execution_end",
             toolCallId: "tc_3",
@@ -427,48 +477,42 @@ describe("createApprovalInterceptor", () => {
                 newContent: "new content",
             })
         );
-        const change = pendingEdits.get(changeId);
+        const change = pendingEdits.get(changeId!);
         // diff 含 basename
         expect(change?.diff).toContain("bar.ts");
         expect(change?.diff).toContain("+new content");
     });
 
     it("rejects review for paths that escape the workspace via .. traversal", async () => {
-        // 安全审查回归: filePath 是模型可控参数, `../.ssh/id_rsa` 解析后逃逸工作区,
-        // 不得读取文件内容、不得发送 approval:review.
-        const changeId = pendingEdits.track("tc_traversal", "edit", "../.ssh/id_rsa", {
-            old_string: "a",
-            new_string: "b",
-        });
         await interceptor.handleEvent({
-            type: "tool_execution_end",
+            type: "tool_execution_start",
             toolCallId: "tc_traversal",
             toolName: "edit",
-            args: { file_path: "../.ssh/id_rsa" },
-            result: {},
-            isError: false,
+            args: { file_path: "../.ssh/id_rsa", old_string: "a", new_string: "b" },
         });
+        expect(pendingEdits.getByToolCallId("tc_traversal")).toBeUndefined();
         expect(send).not.toHaveBeenCalled();
-        // 审查记录被丢弃 (不再挂起)
-        expect(pendingEdits.get(changeId)).toBeUndefined();
     });
 
     it("rejects review for absolute paths outside the workspace", async () => {
-        const changeId = pendingEdits.track("tc_abs", "write", "C:/Users/x/.ssh/id_rsa", { content: "x" });
         await interceptor.handleEvent({
-            type: "tool_execution_end",
+            type: "tool_execution_start",
             toolCallId: "tc_abs",
             toolName: "write",
-            args: { file_path: "C:/Users/x/.ssh/id_rsa" },
-            result: {},
-            isError: false,
+            args: { file_path: "C:/Users/x/.ssh/id_rsa", content: "x" },
         });
+        expect(pendingEdits.getByToolCallId("tc_abs")).toBeUndefined();
         expect(send).not.toHaveBeenCalled();
-        expect(pendingEdits.get(changeId)).toBeUndefined();
     });
 
     it("still reviews in-workspace absolute paths", async () => {
-        const changeId = pendingEdits.track("tc_abs_ok", "write", "C:/workspace/src/ok.ts", { content: "x" });
+        await interceptor.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_abs_ok",
+            toolName: "write",
+            args: { file_path: "C:/workspace/src/ok.ts", content: "x" },
+        });
+        const changeId = pendingEdits.getByToolCallId("tc_abs_ok")?.id;
         await interceptor.handleEvent({
             type: "tool_execution_end",
             toolCallId: "tc_abs_ok",

@@ -40,6 +40,19 @@ export function clearWorkspaceWindow(workspaceId: string): void {
     workspaceWindows.delete(workspaceId);
 }
 
+/** Send workspace-scoped renderer events to the window that owns the workspace. */
+export function sendToWorkspaceWindow(workspaceId: string, channel: string, payload: unknown): boolean {
+    const win = resolveWindowForWorkspace(workspaceId);
+    if (!win) return false;
+    win.webContents.send(channel, payload);
+    return true;
+}
+
+export function isWorkspaceWindow(workspaceId: string, sender: WebContents): boolean {
+    const win = resolveWindowForWorkspace(workspaceId);
+    return Boolean(win && win.webContents === sender);
+}
+
 function getWorkspaceApprovals(workspaceId: string): Map<string, PendingRequest> {
     let m = pendingByWorkspace.get(workspaceId);
     if (!m) {

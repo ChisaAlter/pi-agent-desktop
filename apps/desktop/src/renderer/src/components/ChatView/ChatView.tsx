@@ -872,6 +872,7 @@ export function ChatView({
                 onPlanAction={handlePlanAction}
                 onGeneratedUiSend={handleGeneratedUiSend}
                 generatedUiDisabled={!isConnected || isStreaming || Boolean(currentSession?.readOnly)}
+                scrollElementRef={scrollRegionRef}
               />
             ) : (
             messages.map((message) => (

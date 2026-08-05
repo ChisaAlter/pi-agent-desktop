@@ -1,6 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { PendingEdits } from "../pending-edits";
 
+const fsMocks = vi.hoisted(() => ({
+    writeFile: vi.fn(),
+    unlink: vi.fn(),
+    realpath: vi.fn((p: string) => Promise.resolve(p)),
+}));
+
+vi.mock("fs/promises", () => ({
+    writeFile: fsMocks.writeFile,
+    unlink: fsMocks.unlink,
+    realpath: fsMocks.realpath,
+}));
+
 describe("PendingEdits", () => {
     let edits: PendingEdits;
 
@@ -516,5 +528,109 @@ describe("PendingEdits", () => {
         expect(list3).not.toBe(list1);
         expect(list3).toHaveLength(1);
         expect(list3[0]?.id).toBe(a);
+    });
+});
+
+describe("PendingEdits.undo", () => {
+    const { writeFile, unlink } = fsMocks;
+    const { resolve } = require("path");
+
+    beforeEach(() => {
+        vi.resetModules();
+        writeFile.mockReset();
+        unlink.mockReset();
+        fsMocks.realpath.mockImplementation((p: string) => Promise.resolve(p));
+    });
+
+    async function freshEdits(): Promise<{ edits: PendingEdits; PendingEditsCtor: typeof PendingEdits }> {
+        const { PendingEdits: PendingEditsCtor } = await import("../pending-edits");
+        return { edits: new PendingEditsCtor(), PendingEditsCtor };
+    }
+
+    it("writes back the snapshot for an existing file", async () => {
+        const { edits } = await freshEdits();
+        const id = edits.track("t1", "write", "src/foo.ts", { content: "new" }, "old content");
+        const result = await edits.undo(id, "C:/workspace");
+        expect(result).toEqual({ ok: true });
+        expect(writeFile).toHaveBeenCalledWith(resolve("C:/workspace", "src/foo.ts"), "old content", "utf-8");
+        expect(edits.get(id)).toBeUndefined();
+    });
+
+    it("deletes the new file when snapshot is null (file did not exist before)", async () => {
+        const { edits } = await freshEdits();
+        const id = edits.track("t1", "write", "src/new.ts", { content: "new" }, null);
+        const result = await edits.undo(id, "C:/workspace");
+        expect(result).toEqual({ ok: true });
+        expect(unlink).toHaveBeenCalledWith(resolve("C:/workspace", "src/new.ts"));
+    });
+
+    it("treats ENOENT on unlink as already-achieved undo", async () => {
+        const { edits } = await freshEdits();
+        unlink.mockRejectedValueOnce(Object.assign(new Error("gone"), { code: "ENOENT" }));
+        const id = edits.track("t1", "write", "src/new.ts", { content: "new" }, null);
+        const result = await edits.undo(id, "C:/workspace");
+        expect(result).toEqual({ ok: true });
+    });
+
+    it("rejects undo for changes without a snapshot", async () => {
+        const { edits } = await freshEdits();
+        const id = edits.track("t1", "write", "src/foo.ts", { content: "new" }); // oldContent undefined
+        const result = await edits.undo(id, "C:/workspace");
+        expect(result).toEqual({ ok: false, error: expect.stringContaining("快照") });
+        expect(writeFile).not.toHaveBeenCalled();
+        expect(edits.get(id)).toBeDefined();
+    });
+
+    it("rejects path escape outside the workspace", async () => {
+        const { edits } = await freshEdits();
+        const id = edits.track("t1", "write", "../../.ssh/id_rsa", { content: "x" }, "old");
+        const result = await edits.undo(id, "C:/workspace");
+        expect(result).toEqual({ ok: false, error: expect.stringContaining("工作区") });
+        expect(writeFile).not.toHaveBeenCalled();
+        expect(unlink).not.toHaveBeenCalled();
+    });
+
+    it("returns error for unknown changeId", async () => {
+        const { edits } = await freshEdits();
+        const result = await edits.undo("change_missing", "C:/workspace");
+        expect(result).toEqual({ ok: false, error: expect.stringContaining("不存在") });
+    });
+
+    it("rejects undo when change belongs to a different workspace", async () => {
+        const { edits } = await freshEdits();
+        const id = edits.track("t1", "write", "src/foo.ts", { content: "new" }, "old", "ws_A");
+        const result = await edits.undo(id, "C:/workspace", "ws_B");
+        expect(result).toEqual({ ok: false, error: expect.stringContaining("工作区") });
+        expect(writeFile).not.toHaveBeenCalled();
+        // 归属匹配时正常执行
+        const ok = await edits.undo(id, "C:/workspace", "ws_A");
+        expect(ok).toEqual({ ok: true });
+    });
+
+    it("rejects undo when canonical target resolves outside the workspace (symlink escape)", async () => {
+        const { edits } = await freshEdits();
+        fsMocks.realpath.mockResolvedValueOnce("C:/outside/secret.ts");
+        const id = edits.track("t1", "write", "src/link.ts", { content: "new" }, "old");
+        const result = await edits.undo(id, "C:/workspace");
+        expect(result).toEqual({ ok: false, error: expect.stringContaining("工作区") });
+        expect(writeFile).not.toHaveBeenCalled();
+    });
+
+    it("allows undo when canonical target stays inside the workspace", async () => {
+        const { edits } = await freshEdits();
+        fsMocks.realpath.mockResolvedValueOnce(resolve("C:/workspace", "src/real.ts"));
+        const id = edits.track("t1", "write", "src/alias.ts", { content: "new" }, "old");
+        const result = await edits.undo(id, "C:/workspace");
+        expect(result).toEqual({ ok: true });
+        expect(writeFile).toHaveBeenCalledWith(resolve("C:/workspace", "src/alias.ts"), "old", "utf-8");
+    });
+
+    it("treats unresolved target (ENOENT chain) as workspace-root canonical", async () => {
+        const { edits } = await freshEdits();
+        fsMocks.realpath.mockRejectedValue(Object.assign(new Error("noent"), { code: "ENOENT" }));
+        const id = edits.track("t1", "write", "src/new.ts", { content: "new" }, null);
+        const result = await edits.undo(id, "C:/workspace");
+        expect(result).toEqual({ ok: true });
+        expect(unlink).toHaveBeenCalledWith(resolve("C:/workspace", "src/new.ts"));
     });
 });
