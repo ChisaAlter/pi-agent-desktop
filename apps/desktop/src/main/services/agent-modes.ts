@@ -270,7 +270,35 @@ function isReadOnlyShellSegment(segment: string): boolean {
         if (subcommand === "worktree") {
             return (tokens[2]?.replace(/^['"]|['"]$/g, "").toLowerCase() ?? "") === "list";
         }
+        if (subcommand === "branch") {
+            // git branch 裸命令 = 列分支 (只读); 但任何非旗标参数都是分支名,
+            // 而 git branch <name> 会创建分支, -d/-D/-m/-M/-f 等会删除/重命名/
+            // 强制更新。只读旗标 (--list/--contains 等) 允许带 pattern/commit
+            // 参数, 其余组合一律拒绝 (fail-closed)。
+            const args = tokens.slice(2).map((t) => t.replace(/^['"]|['"]$/g, ""));
+            if (args.length === 0) return true;
+            const readonlyFlags = new Set(["-a", "-r", "-v", "-vv", "--list", "--no-color", "--contains", "--merged", "--no-merged"]);
+            if (!readonlyFlags.has(args[0])) return false;
+            return args.every((t) => !t.startsWith("-") || readonlyFlags.has(t));
+        }
         return READ_ONLY_GIT_SUBCOMMANDS.has(subcommand);
+    }
+    if (command === "find") {
+        // find 的动作旗标会修改文件系统: -delete 删除, -exec/-execdir/-ok 执行
+        // 任意命令, -fprint/-fprintf/-fprint0/-fls 写文件。其余 (name/type/
+        // mtime/print 等) 是纯查询, 放行。
+        const args = tokens.slice(1).map((t) => t.replace(/^['"]|['"]$/g, ""));
+        if (args.some((t) =>
+            t === "-delete" || t === "-exec" || t === "-execdir" || t === "-ok" || t === "-okdir"
+            || t.startsWith("-fprint") || t === "-fls")) return false;
+        return true;
+    }
+    if (command === "sort") {
+        // sort -o/--output 会把排序结果写回文件; sort 其余旗标均只读。
+        const args = tokens.slice(1).map((t) => t.replace(/^['"]|['"]$/g, ""));
+        return args.every((t) =>
+            !(t.startsWith("--output")) &&
+            !(t.startsWith("-") && !t.startsWith("--") && t.includes("o")));
     }
     if (command === "mkdir") return isPlanDirectoryMkdir(tokens.slice(1));
     return READ_ONLY_SHELL_COMMANDS.has(command);

@@ -46,6 +46,7 @@ import { SubagentManager, type SubagentSessionFactory } from './services/subagen
 import { AutoScheduler, type ScheduledSubagentType } from './services/subagent/auto-scheduler';
 import { createAutoSchedulerSpawnHandler, type SubagentSpawnHandlerDeps } from './services/subagent/spawn-handler';
 import { MarkdownMemoryService } from './services/memory/markdown-memory-service';
+import { buildMemoryGuard } from './services/memory/memory-path-guard';
 import { SessionSummaryService } from './services/subagent/session-summary-service';
 import { createWorkspaceSession } from './services/pi-session/factory';
 import { AgentRuntimeRegistry } from './services/agent-runtime/registry';
@@ -439,6 +440,18 @@ const agentRegistry = new AgentRuntimeRegistry({
   getMemoryService: () => memoryService,
   getModeOptions: getLongHorizonModeOptions,
   getSubagentManager: () => subagentManager,
+  getMemoryGuard: (workspaceId) => {
+    // 惰性解析: markdownMemoryService 在 whenReady 内才初始化, 而 provider
+    // 首次调用发生在会话订阅时 (晚于启动), 闭包取最新值。
+    const workspace = store.get('workspaces').find((w) => w.id === workspaceId);
+    if (!workspace) return undefined;
+    return buildMemoryGuard({
+      workspacePath: workspace.path,
+      workspaceId,
+      markdownMemoryService,
+      userData: app.getPath('userData'),
+    });
+  },
   onTurnEnd: (workspaceId, agentId) => goalService?.onTurnEnd(workspaceId, agentId),
 });
 if (process.env.CI === "1" || process.env.NODE_ENV === "test") {
@@ -739,6 +752,16 @@ function setupIPC(updaterService: AppUpdaterService): void {
   //    subagents when the primary agent is idle, no subagent is in-flight, and
   //    the configured interval has elapsed since the last run.
   markdownMemoryService ??= new MarkdownMemoryService({});
+  // 接线 memory-path-guard 到 legacy WorkspaceRegistry 的 interceptor 订阅:
+  // 记忆树内 write/edit 由 guard 仲裁, 不再走 deferred-edit 流程。
+  piRegistry.setMemoryGuardProvider((workspaceId, workspacePath) =>
+    buildMemoryGuard({
+      workspacePath,
+      workspaceId,
+      markdownMemoryService,
+      userData: app.getPath('userData'),
+    }),
+  );
   sessionSummaryService ??= new SessionSummaryService(sessions);
   setupSubagentIpc({ subagentManager });
   subagentManager.start();
@@ -862,6 +885,7 @@ function setupIPC(updaterService: AppUpdaterService): void {
   };
   setupSessionsIpc({
     repository: sessions,
+    getWorkspace: (workspaceId) => store.get('workspaces').find((candidate) => candidate.id === workspaceId),
     renameNativeSession: async (sessionId, title) => {
       const activeAgent = agentRegistry.findBySessionId(sessionId);
       if (activeAgent) {

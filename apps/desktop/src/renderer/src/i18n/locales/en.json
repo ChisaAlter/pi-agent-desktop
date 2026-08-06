@@ -227,7 +227,8 @@
     },
     "sendFailed": {
       "title": "Send failed",
-      "retry": "Retry"
+      "retry": "Retry",
+      "dismiss": "Close"
     },
     "empty": {
       "title": "New chat",
@@ -271,7 +272,10 @@
       "continue": "Continue from this session"
     },
     "messagesAria": "Conversation messages",
-    "messageAria": "Message from {{author}}"
+    "messageAria": "Message from {{author}}",
+    "loading": {
+      "messages": "Loading conversation…"
+    }
   },
   "planCard": {
     "status": {
@@ -520,7 +524,9 @@
     "noMatches": "No matching projects",
     "newBlankProject": "New blank project",
     "useExistingFolder": "Use existing folder",
-    "promptName": "Enter a new project name"
+    "promptName": "Enter a new project name",
+    "confirm": "Create",
+    "cancel": "Cancel"
   },
   "fileWorkspace": {
     "region": "File workspace",

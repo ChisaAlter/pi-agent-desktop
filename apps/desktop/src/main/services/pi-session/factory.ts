@@ -159,6 +159,25 @@ function safeResolve(packageName: string, map: (resolved: string) => string = (r
     }
 }
 
+/**
+ * Whether the bundled `pi-permission-system` extension resolved successfully.
+ *
+ * The approval interceptor's high-risk branch is fail-open by design: it
+ * delegates runtime permission decisions to this extension and never
+ * aborts/approves itself. If the extension is missing (packaging regression,
+ * version mismatch, first-run extraction failure), high-risk tool calls
+ * would execute with NO gate at all. This cached probe lets the interceptor
+ * flip that branch to fail-closed (abort + extension_error) until the
+ * extension is available again.
+ */
+let permissionSystemAvailable: boolean | undefined;
+export function isPermissionSystemAvailable(): boolean {
+    if (permissionSystemAvailable === undefined) {
+        permissionSystemAvailable = safeResolve("pi-permission-system") !== undefined;
+    }
+    return permissionSystemAvailable;
+}
+
 export function resolveBundledDesktopExtensionPaths(
     options: DesktopExtensionCapabilityOptions = {},
 ): string[] {

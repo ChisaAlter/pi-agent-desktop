@@ -666,7 +666,15 @@ function AppShell(): React.ReactElement {
         if (section === "new-task") {
             useSessionStore.setState({ currentSessionId: null });
             if (currentWorkspace) {
-                void useAgentStore.getState().createAgent(currentWorkspace.id, `${currentWorkspace.name} Agent`);
+                // 复用已有的 workspace 级默认 agent — 曾无条件 createAgent,
+                // 每次点"新对话"都新增一个 agent, 列表持续膨胀且 resolveActiveAgent
+                // 从多个候选中选取 (可能命中旧上下文)。与默认 agent 去重 effect 对齐。
+                const hasWorkspaceAgent = useAgentStore.getState().agents.some(
+                    (agent) => agent.workspaceId === currentWorkspace.id && !agent.sessionId,
+                );
+                if (!hasWorkspaceAgent) {
+                    void useAgentStore.getState().createAgent(currentWorkspace.id, `${currentWorkspace.name} Agent`);
+                }
             }
             setActiveSection("new-task");
             requestChatInputFocus();

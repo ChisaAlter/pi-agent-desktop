@@ -162,4 +162,18 @@ describe("splitHunkLines residual (wave-305)", () => {
       expect(fold.newEnd).toBe(118);
     }
   });
+
+  // C8 回归: 折叠段必须保留中间行 — 曾丢弃导致"展开"后无内容可渲染。
+  it("fold segment retains the folded middle lines for expansion", () => {
+    const lines: DiffLine[] = [];
+    for (let i = 1; i <= 10; i++) lines.push(ctx(i, i, `c${i}`));
+    const segs = splitHunkLines(lines);
+    const fold = segs.find((s) => s.type === "fold");
+    expect(fold?.type).toBe("fold");
+    if (fold?.type === "fold") {
+      expect(fold.count).toBe(4); // 10 - 3 - 3
+      expect(fold.lines).toHaveLength(4);
+      expect(fold.lines.map((l) => l.content)).toEqual(["c4", "c5", "c6", "c7"]);
+    }
+  });
 });

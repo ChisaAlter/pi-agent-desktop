@@ -380,10 +380,17 @@ export function ChatView({
       }
     } catch (err) {
       setSendError(err instanceof Error ? err.message : String(err));
+      // 关键: 必须向上抛出, ChatInput.handleSend 的 catch 依赖 onSend 抛异常
+      // 来恢复草稿 + 附件 + 焦点。吞掉异常会让用户输入被清空且无法重试。
+      throw err;
     }
   });
   const handleGeneratedUiSend = useEventCallback(async (request: GeneratedUiSendRequest): Promise<void> => {
-    await handleSend(request.transportContent, { visibleContent: request.visibleContent, waitForAgentIdle: true });
+    try {
+      await handleSend(request.transportContent, { visibleContent: request.visibleContent, waitForAgentIdle: true });
+    } catch {
+      // 失败已通过 sendError 展示; 生成 UI 卡片没有输入框草稿可恢复, 不继续上抛。
+    }
   });
 
   // SubTask 7.1: useEventCallback keeps identity stable (so ChatInput's onStop
@@ -814,8 +821,18 @@ export function ChatView({
         className="min-h-0 flex-1 overflow-y-auto"
       >
         {messages.length === 0 ? (
-          <div className="flex min-h-full flex-col px-0 pb-0 pt-0 text-center">
-            <EmptyConversationIntro
+          currentSession?.messagesLoaded === false ? (
+            /* 会话消息懒加载中 — 不渲染"新对话"欢迎卡片, 避免历史会话
+               加载完成时闪成消息列表, 让用户误以为对话被清空。 */
+            <div className="flex min-h-full items-center justify-center">
+              <div className="flex items-center gap-2 text-sm text-[var(--mm-text-secondary)]" role="status">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-[var(--mm-border)] border-t-[var(--mm-accent-blue)]" aria-hidden="true" />
+                {t("chatView.loading.messages")}
+              </div>
+            </div>
+          ) : (
+            <div className="flex min-h-full flex-col px-0 pb-0 pt-0 text-center">
+              <EmptyConversationIntro
               workspaceControl={workspaceControl}
               modelSummary={modelSummary}
               permissionLabel={permissionLabel}
@@ -851,11 +868,12 @@ export function ChatView({
                   }}
                     className="px-4 py-2 bg-[var(--mm-bg-active)] text-[var(--mm-text-on-active)] rounded-md hover:opacity-90 transition-colors text-sm font-medium self-start focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                 >
-                  {t('chatView.sendFailed.retry')}
+                  {t('chatView.sendFailed.dismiss')}
                 </button>
               </div>
             )}
-          </div>
+            </div>
+          )
         ) : (
           /* 消息列表 */
           <div

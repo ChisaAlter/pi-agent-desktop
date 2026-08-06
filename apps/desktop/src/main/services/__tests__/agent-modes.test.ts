@@ -935,3 +935,50 @@ describe("agent modes", () => {
         expect(noCompose).not.toContain("compose");
     });
 });
+
+// C3 回归: plan 模式只读门禁必须做参数级检查, 防 find/sort/git branch 绕过。
+describe("plan-mode read-only gate argument-level checks (C3)", () => {
+    const ws = "C:/repo";
+
+    it("blocks find -delete / -exec / -execdir / -fprint family", () => {
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "find . -delete" }, workspacePath: ws })).toBe(false);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "find . -exec rm {} \\;" }, workspacePath: ws })).toBe(false);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "find . -execdir rm {} \\;" }, workspacePath: ws })).toBe(false);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "find . -ok rm {} \\;" }, workspacePath: ws })).toBe(false);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "find . -fprint list.txt" }, workspacePath: ws })).toBe(false);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "find . -fprintf list.txt '%p\\n'" }, workspacePath: ws })).toBe(false);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "find . -fls listing.txt" }, workspacePath: ws })).toBe(false);
+    });
+
+    it("still allows read-only find queries", () => {
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "find src -name '*.ts'" }, workspacePath: ws })).toBe(true);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "find . -type f -mtime -7 -print" }, workspacePath: ws })).toBe(true);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "find . -maxdepth 2 -type d | head" }, workspacePath: ws })).toBe(true);
+    });
+
+    it("blocks sort -o / --output file writes", () => {
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "sort -o out.txt in.txt" }, workspacePath: ws })).toBe(false);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "sort --output=out.txt in.txt" }, workspacePath: ws })).toBe(false);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "sort -ro out.txt in.txt" }, workspacePath: ws })).toBe(false);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "sort -n -o out.txt in.txt" }, workspacePath: ws })).toBe(false);
+    });
+
+    it("still allows read-only sort", () => {
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "sort file.txt" }, workspacePath: ws })).toBe(true);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "cat a | sort -n | head -5" }, workspacePath: ws })).toBe(true);
+    });
+
+    it("blocks mutating git branch forms, allows listing forms", () => {
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "git branch -d main" }, workspacePath: ws })).toBe(false);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "git branch -D main" }, workspacePath: ws })).toBe(false);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "git branch -m old new" }, workspacePath: ws })).toBe(false);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "git branch -f main HEAD~1" }, workspacePath: ws })).toBe(false);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "git branch feature-x" }, workspacePath: ws })).toBe(false);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "git branch --set-upstream-to=origin/main main" }, workspacePath: ws })).toBe(false);
+        // 只读形式
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "git branch" }, workspacePath: ws })).toBe(true);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "git branch -a" }, workspacePath: ws })).toBe(true);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "git branch -vv" }, workspacePath: ws })).toBe(true);
+        expect(isPlanModeToolAllowed({ toolName: "bash", args: { command: "git branch --list 'feature*'" }, workspacePath: ws })).toBe(true);
+    });
+});

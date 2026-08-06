@@ -56,7 +56,6 @@ describe("WorkspaceSwitcher", () => {
       },
       configurable: true,
     });
-    vi.spyOn(window, "prompt").mockReturnValue("BlankProject");
     useWorkspaceStore.setState({
       workspaces: [
         {
@@ -131,7 +130,7 @@ describe("WorkspaceSwitcher", () => {
     expect(window.piAPI.selectWorkspace).toHaveBeenCalledWith("C:\\Ai\\NewProject");
   });
 
-  it("creates an empty workspace from a selected parent directory", async () => {
+  it("creates an empty workspace via the inline naming form (Electron has no window.prompt)", async () => {
     Object.defineProperty(window, "piAPI", {
       value: {
         selectWorkspace: vi.fn(async () => undefined),
@@ -149,8 +148,11 @@ describe("WorkspaceSwitcher", () => {
     fireEvent.click(screen.getByRole("button", { name: /切换工作区/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: "新增空白项目" }));
 
+    // 内联命名表单替代 window.prompt (Electron 渲染进程不支持 prompt)
+    fireEvent.change(screen.getByLabelText("请输入新项目名称"), { target: { value: "BlankProject" } });
+    fireEvent.click(screen.getByRole("button", { name: "确认" }));
+
     await waitFor(() => {
-      expect(window.prompt).toHaveBeenCalled();
       expect(createEmptyWorkspace).toHaveBeenCalledWith("BlankProject", "C:\\Ai");
     });
     expect(window.piAPI.selectWorkspace).toHaveBeenCalledWith("C:\\Ai\\BlankProject");

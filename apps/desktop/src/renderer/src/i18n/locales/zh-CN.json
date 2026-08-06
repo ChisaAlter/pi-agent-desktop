@@ -227,7 +227,8 @@
     },
     "sendFailed": {
       "title": "发送失败",
-      "retry": "重试"
+      "retry": "重试",
+      "dismiss": "关闭"
     },
     "empty": {
       "title": "新对话",
@@ -271,7 +272,10 @@
       "continue": "从此会话继续"
     },
     "messagesAria": "对话消息",
-    "messageAria": "{{author}} 的消息"
+    "messageAria": "{{author}} 的消息",
+    "loading": {
+      "messages": "正在加载会话…"
+    }
   },
   "planCard": {
     "status": {
@@ -520,7 +524,9 @@
     "noMatches": "没有匹配的项目",
     "newBlankProject": "新增空白项目",
     "useExistingFolder": "使用现有文件夹",
-    "promptName": "请输入新项目名称"
+    "promptName": "请输入新项目名称",
+    "confirm": "确认",
+    "cancel": "取消"
   },
   "fileWorkspace": {
     "region": "文件工作区",

@@ -37,6 +37,7 @@
  */
 
 import { join, relative } from "path";
+import { resolveProjectId } from "./paths";
 
 /** Agent names recognised by the guard. */
 export type MemoryAgentName =
@@ -362,4 +363,52 @@ export function memoryRootPath(userData: string): string {
  */
 export function markdownIndexDbPath(userData: string): string {
     return join(userData, "memory", "index.sqlite");
+}
+
+/**
+ * Deps block consumed by the approval interceptor's memory-guard branch
+ * (`approval/interceptor.ts` `InterceptorDeps.memoryGuard`). Kept as a
+ * standalone structural type here so both session registries and the
+ * subagent memory tools can share one builder without importing from the
+ * approval layer.
+ */
+export interface MemoryGuardDeps {
+    agentName: string;
+    memoryRoot: string;
+    projectId: string;
+    sessionId: string;
+    taskId?: string;
+}
+
+/**
+ * Build the memory-path-guard deps block for a workspace's primary session.
+ *
+ * Production wiring for the interceptor's `memoryGuard` branch: memoryRoot
+ * comes from the markdown memory service when available (falling back to
+ * `<userData>/memory`), projectId from `resolveProjectId(workspacePath)`,
+ * agentName is always "main", sessionId is the workspace id.
+ *
+ * Returns `undefined` when the memory root cannot be resolved — callers
+ * treat that as "guard unavailable, keep legacy deferred-edit flow".
+ */
+export function buildMemoryGuard(opts: {
+    workspacePath: string;
+    workspaceId: string;
+    markdownMemoryService?: { memoryRoot?: string } | null;
+    userData: string;
+}): MemoryGuardDeps | undefined {
+    const { workspacePath, workspaceId, markdownMemoryService, userData } = opts;
+    let memoryRoot: string | undefined;
+    try {
+        memoryRoot = markdownMemoryService?.memoryRoot ?? memoryRootPath(userData);
+    } catch {
+        return undefined;
+    }
+    if (!memoryRoot) return undefined;
+    return {
+        agentName: "main",
+        memoryRoot,
+        projectId: resolveProjectId(workspacePath),
+        sessionId: workspaceId,
+    };
 }

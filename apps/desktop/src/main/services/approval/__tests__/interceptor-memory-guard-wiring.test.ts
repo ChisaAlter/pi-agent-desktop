@@ -1,17 +1,14 @@
 /**
  * Integration test: memory-path-guard wiring (Task 3)
  *
- * Verifies that the deps shape produced by `agent-runtime/registry.ts`'s
- * `buildMemoryGuard` and `pi-session/registry.ts`'s `buildMemoryGuard`
- * actually drives `assertMemoryWriteAllowed` when edit-family tool calls
- * land inside the memory tree. The shape exercised here mirrors the
- * production wiring 1:1 (memoryRoot from `MarkdownMemoryService.memoryRoot`
- * or `memoryRootPath(app.getPath("userData"))`, projectId from
- * `resolveProjectId(workspacePath)`, agentName "main", sessionId from
- * workspace/agent id).
- *
- * This file is the executable smoke command for Task 3 — see
- * `.trae/specs/enforce-completion-standards/tasks.md`.
+ * Verifies that the deps shape produced by the shared `buildMemoryGuard`
+ * helper (used by `agent-runtime/registry.ts`'s `getMemoryGuard` and
+ * `pi-session/registry.ts`'s `setMemoryGuardProvider`) actually drives
+ * `assertMemoryWriteAllowed` when edit-family tool calls land inside the
+ * memory tree. The shape exercised here is the production one — memoryRoot
+ * from `MarkdownMemoryService.memoryRoot` or `memoryRootPath(userData)`,
+ * projectId from `resolveProjectId(workspacePath)`, agentName "main",
+ * sessionId from the workspace id.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "fs";
@@ -42,7 +39,7 @@ vi.mock("electron", () => ({
 import { createApprovalInterceptor } from "../interceptor";
 import { PendingEdits } from "../pending-edits";
 import { MarkdownMemoryService } from "../../memory/markdown-memory-service";
-import { memoryRootPath } from "../../memory/memory-path-guard";
+import { buildMemoryGuard } from "../../memory/memory-path-guard";
 import { resolveProjectId } from "../../memory/paths";
 
 let tempRoot: string;
@@ -61,37 +58,12 @@ afterEach(() => {
 });
 
 /**
- * Mirror of the production `buildMemoryGuard` helper shared by both
- * registries. When the markdown memory service is provided, its
- * `memoryRoot` is the source of truth; otherwise we fall back to
- * `memoryRootPath(app.getPath("userData"))`.
+ * Production `buildMemoryGuard` lives in `memory/memory-path-guard.ts` and
+ * is consumed by both session registries — see `agent-runtime/registry.ts`
+ * (`getMemoryGuard` deps) and `pi-session/registry.ts`
+ * (`setMemoryGuardProvider`). This test exercises that shared helper
+ * directly; callers must pass `userData` (the app's userData path).
  */
-function buildMemoryGuard(opts: {
-    workspacePath: string;
-    workspaceId: string;
-    markdownMemoryService?: MarkdownMemoryService | null;
-}): {
-    agentName: string;
-    memoryRoot: string;
-    projectId: string;
-    sessionId: string;
-    taskId?: string;
-} | undefined {
-    const { workspacePath, workspaceId, markdownMemoryService } = opts;
-    let memoryRoot: string | undefined;
-    try {
-        memoryRoot = markdownMemoryService?.memoryRoot ?? memoryRootPath(MOCK_USER_DATA);
-    } catch {
-        return undefined;
-    }
-    if (!memoryRoot) return undefined;
-    return {
-        agentName: "main",
-        memoryRoot,
-        projectId: resolveProjectId(workspacePath),
-        sessionId: workspaceId,
-    };
-}
 
 describe("memory-path-guard wiring (Task 3) — production deps shape", () => {
     let pendingEdits: PendingEdits;
@@ -109,6 +81,7 @@ describe("memory-path-guard wiring (Task 3) — production deps shape", () => {
         const guard = buildMemoryGuard({
             workspacePath: "C:/demo",
             workspaceId: "ws_1",
+            userData: MOCK_USER_DATA,
         });
         expect(guard).toBeDefined();
         expect(guard?.agentName).toBe("main");
@@ -132,6 +105,7 @@ describe("memory-path-guard wiring (Task 3) — production deps shape", () => {
             workspacePath: "C:/demo",
             workspaceId: "ws_1",
             markdownMemoryService: service,
+            userData: MOCK_USER_DATA,
         });
         expect(guard?.memoryRoot).toBe(service.memoryRoot);
         expect(guard?.memoryRoot).toBe(join(tempRoot, "memory"));
@@ -139,6 +113,7 @@ describe("memory-path-guard wiring (Task 3) — production deps shape", () => {
         const fallbackGuard = buildMemoryGuard({
             workspacePath: "C:/demo",
             workspaceId: "ws_1",
+            userData: MOCK_USER_DATA,
         });
         expect(fallbackGuard?.memoryRoot).toBe(join(MOCK_USER_DATA, "memory"));
         expect(fallbackGuard?.memoryRoot).not.toBe(guard?.memoryRoot);
@@ -148,6 +123,7 @@ describe("memory-path-guard wiring (Task 3) — production deps shape", () => {
         const guard = buildMemoryGuard({
             workspacePath: "C:/demo",
             workspaceId: "ws_1",
+            userData: MOCK_USER_DATA,
         });
         expect(guard).toBeDefined();
         const projectId = guard!.projectId;
@@ -187,6 +163,7 @@ describe("memory-path-guard wiring (Task 3) — production deps shape", () => {
         const guard = buildMemoryGuard({
             workspacePath: "C:/demo",
             workspaceId: "ws_1",
+            userData: MOCK_USER_DATA,
         });
         expect(guard).toBeDefined();
         const targetPath = `${guard!.memoryRoot}/cc/feedback.md`;
@@ -223,6 +200,7 @@ describe("memory-path-guard wiring (Task 3) — production deps shape", () => {
         const guard = buildMemoryGuard({
             workspacePath: "C:/demo",
             workspaceId: "ws_1",
+            userData: MOCK_USER_DATA,
         });
         expect(guard).toBeDefined();
 
@@ -258,6 +236,7 @@ describe("memory-path-guard wiring (Task 3) — production deps shape", () => {
         const guard = buildMemoryGuard({
             workspacePath: "C:/demo",
             workspaceId: "ws_1",
+            userData: MOCK_USER_DATA,
         });
         expect(guard).toBeDefined();
         const targetPath = `${guard!.memoryRoot}/sessions/ws_1/tasks/T1/progress.md`;

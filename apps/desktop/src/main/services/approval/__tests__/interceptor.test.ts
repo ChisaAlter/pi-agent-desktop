@@ -78,6 +78,31 @@ describe("createApprovalInterceptor", () => {
         expect(abort).not.toHaveBeenCalled();
     });
 
+    it("fail-closed: aborts high-risk tool calls when the permission system is unavailable", async () => {
+        interceptor = createApprovalInterceptor("ws_1", {
+            abort,
+            pendingEdits,
+            send,
+            workspacePath: "C:/workspace",
+            isPermissionSystemReady: () => false,
+        });
+        await interceptor.handleEvent({
+            type: "tool_execution_start",
+            toolCallId: "tc_fail_closed",
+            toolName: "bash",
+            args: { command: "rm -rf /" },
+        });
+        expect(abort).toHaveBeenCalledTimes(1);
+        expect(send).toHaveBeenCalledWith(
+            "pi:event",
+            "ws_1",
+            expect.objectContaining({
+                type: "extension_error",
+                message: expect.stringContaining("权限系统未就绪"),
+            }),
+        );
+    });
+
     it("tracks file_edit in pending-edits, no abort, no approval request", async () => {
         await interceptor.handleEvent({
             type: "tool_execution_start",
@@ -451,7 +476,14 @@ describe("createApprovalInterceptor", () => {
         );
     });
 
-    it("on tool_execution_end for write/edit, reads file and sends review", async () => {
+    it("on tool_execution_end for write/edit, sends before/after diff (snapshot vs disk)", async () => {
+        // 回归: diff 基准必须是"变更前快照 vs 实际落盘内容"。track 时第一次
+        // readFile 取变更前快照, tool_execution_end 时第二次 readFile 取落盘
+        // 内容。曾错误地用"模型意图内容 (args.content)"当旧内容, 导致覆盖写
+        // 时 diff 恒为空、edit 时整文件显示为新增。
+        fsMocks.readFile
+            .mockResolvedValueOnce("old snapshot")
+            .mockResolvedValueOnce("new content");
         await interceptor.handleEvent({
             type: "tool_execution_start",
             toolCallId: "tc_3",
@@ -478,8 +510,9 @@ describe("createApprovalInterceptor", () => {
             })
         );
         const change = pendingEdits.get(changeId!);
-        // diff 含 basename
+        // diff 是"变更前快照 → 落盘内容", 同时包含删除行与新增行
         expect(change?.diff).toContain("bar.ts");
+        expect(change?.diff).toContain("-old snapshot");
         expect(change?.diff).toContain("+new content");
     });
 

@@ -241,7 +241,12 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
 
         // 从 URL 解析仓库名 (e.g., "https://github.com/user/repo" → "repo")
         const repoName = basename(repoUrl.replace(/\.git$/, "")).replace(/\/$/, "");
-        if (!repoName) {
+        // 安全: repoName 会直接拼进 <workspace>/.agents/skills/<repoName> 并参与
+        // 备份替换目录运算。URL 正则允许 "." / ".." 路径段, basename("https://
+        // github.com/attacker/..") === ".." 会把替换目标解析到 skills 根目录
+        // 甚至 .agents 目录本身 (备份后删除 = 用户全部技能被摧毁)。因此必须
+        // 用 SKILL_SLUG_PATTERN 拒绝 "." / ".." / 含路径分隔符的任何仓库名。
+        if (!repoName || !SKILL_SLUG_PATTERN.test(repoName)) {
             return ipcError(
                 "ipcErrors.skills.githubImportFailed",
                 `无法从 URL 解析仓库名: ${repoUrl}`,

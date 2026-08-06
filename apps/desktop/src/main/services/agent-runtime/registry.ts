@@ -14,15 +14,18 @@ import {
     type PermissionMode,
     type ToolPermissions,
     type PiThinkingLevel,
+    type SubagentStatus,
 } from "@shared";
 import type { PiEvent } from "@shared/events";
 import {
     createWorkspaceSession,
     resolveBundledDesktopExtensionPaths,
+    isPermissionSystemAvailable,
     type WorkspaceSession,
 } from "../pi-session/factory";
 import { normalizeCustomMessageEvent } from "../pi-session/event-bridge";
 import { createApprovalInterceptor } from "../approval/interceptor";
+import type { MemoryGuardDeps } from "../memory/memory-path-guard";
 import { createExtensionUiBridge } from "../extensions/extension-ui-bridge";
 import { buildAgentModePrompt, normalizeAgentMode } from "../agent-modes";
 import type { TaskService } from "../long-horizon/task-service";
@@ -63,6 +66,14 @@ interface AgentRuntimeRegistryDeps {
         workflowEnabled?: boolean;
         composeWorkflowEnabled?: boolean;
     };
+    /**
+     * Builds the memory-path-guard deps block for a workspace's primary
+     * session (see `memory/memory-path-guard.ts` `buildMemoryGuard`). When it
+     * returns a guard, the interceptor routes in-tree write/edit tool calls
+     * through `assertMemoryWriteAllowed` instead of the deferred-edit flow.
+     * Returning `undefined` keeps the legacy flow (guard unavailable).
+     */
+    getMemoryGuard?: (workspaceId: string) => MemoryGuardDeps | undefined;
     /** @deprecated setSourceTasks is the legacy per-source snapshot API; migrate callers to TaskService.createTask in a future spec. */
     getTaskService?: () => Pick<TaskService, "setSourceTasks"> | null | undefined;
     getMemoryService?: () => Pick<MemoryService, "put"> | null | undefined;
@@ -99,6 +110,11 @@ interface AgentRuntime {
 }
 
 const AGENT_WATCHDOG_MS = 5 * 60 * 1000;
+
+/** 与 SubagentManager.isTerminalStatus 语义一致: 终态之外即为在途。 */
+function isTerminalSubagentStatus(status: SubagentStatus): boolean {
+    return status === "cancelled" || status === "failed" || status === "timeout" || status === "idle";
+}
 
 export function formatPromptFailureMessage(error: unknown): string {
     const raw = promptFailureDetails(error);
@@ -574,6 +590,8 @@ function promptFailureDetails(error: unknown): string {
             workspacePath: runtime.workspace.path,
             getPermissionMode: () => this.deps.getPermissionMode?.(runtime.workspace.id),
             getMode: () => runtime.mode,
+            memoryGuard: this.deps.getMemoryGuard?.(runtime.workspace.id),
+            isPermissionSystemReady: () => isPermissionSystemAvailable(),
         });
 
         runtime.session.session.subscribe(async (rawEvent: unknown) => {
@@ -669,6 +687,19 @@ function promptFailureDetails(error: unknown): string {
         }
         runtime.watchdog = setTimeout(() => {
             runtime.watchdog = undefined;
+            // 主 agent 阻塞在 actor 工具上等待子代理时, 主会话不产生任何事件,
+            // 而子代理 (dream/distill) 的超时可达 10-15 分钟, 远超看门狗 5 分钟。
+            // 此时直接 abort 会误杀用户正在等待的回合。检测到在途 actor 就
+            // 续期重 arm, 把结束权交给子代理自身的超时兜底。
+            const manager = this.deps.getSubagentManager?.();
+            const hasActiveActors = manager
+                ? manager.listInstances(runtime.tab.id).some((instance) => !isTerminalSubagentStatus(instance.status))
+                : false;
+            if (hasActiveActors) {
+                log.warn("[agent-runtime] watchdog deferred (subagent actors in flight):", runtime.tab.id);
+                this.armWatchdog(runtime);
+                return;
+            }
             log.error("[agent-runtime] watchdog fired (stuck running):", runtime.tab.id);
             try {
                 runtime.session.session.abort();

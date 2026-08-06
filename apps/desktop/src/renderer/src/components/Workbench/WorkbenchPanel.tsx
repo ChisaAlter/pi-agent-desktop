@@ -39,7 +39,12 @@ export function WorkbenchPanel({
   const rootRef = useRef<HTMLElement>(null);
   const [surfaceVisible, setSurfaceVisible] = useState(false);
   const [terminalMounted, setTerminalMounted] = useState(false);
+  const [filesMounted, setFilesMounted] = useState(false);
   const shouldMountTerminal = terminalMounted || (surfaceVisible && view === "terminal");
+  // FileWorkspace 与 Terminal 同款 keep-mounted: 一旦挂载就不再卸载, 仅在
+  // 非激活视图时用 display:none 隐藏。否则切 tab/离开工作台会卸载编辑器,
+  // 700ms 防抖保存窗口内的输入直接丢失 (autoSave 关闭时全部编辑丢失)。
+  const shouldMountFiles = filesMounted || (surfaceVisible && view === "files");
 
   useLayoutEffect(() => {
     const root = rootRef.current;
@@ -59,6 +64,10 @@ export function WorkbenchPanel({
 
   useEffect(() => {
     if (surfaceVisible && view === "terminal") setTerminalMounted(true);
+  }, [surfaceVisible, view]);
+
+  useEffect(() => {
+    if (surfaceVisible && view === "files") setFilesMounted(true);
   }, [surfaceVisible, view]);
 
   return (
@@ -97,14 +106,16 @@ export function WorkbenchPanel({
           </div>
         ) : (
           <>
-            {surfaceVisible && view === "files" ? (
-              <Suspense fallback={<WorkbenchLoading label={t("workbenchPanel.loading.files")} />}>
-                <FileWorkspace
-                  workspacePath={workspacePath}
-                  workspaceId={workspaceId}
-                  initialTarget={fileTarget}
-                />
-              </Suspense>
+            {shouldMountFiles ? (
+              <div className={surfaceVisible && view === "files" ? "h-full" : "hidden"}>
+                <Suspense fallback={<WorkbenchLoading label={t("workbenchPanel.loading.files")} />}>
+                  <FileWorkspace
+                    workspacePath={workspacePath}
+                    workspaceId={workspaceId}
+                    initialTarget={fileTarget}
+                  />
+                </Suspense>
+              </div>
             ) : null}
             {surfaceVisible && view === "git" ? <GitPanel workspacePath={workspacePath} /> : null}
             {shouldMountTerminal ? (

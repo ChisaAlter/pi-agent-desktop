@@ -76,8 +76,12 @@ function HunkHeader({ header }: { header: string }): React.JSX.Element {
 
 const CONTEXT_EXPAND = 3;
 
-export function splitHunkLines(lines: DiffLine[]): Array<{ type: 'lines'; lines: DiffLine[] } | { type: 'fold'; count: number; oldStart: number | null; newStart: number | null; oldEnd: number | null; newEnd: number | null }> {
-  const result: Array<{ type: 'lines'; lines: DiffLine[] } | { type: 'fold'; count: number; oldStart: number | null; newStart: number | null; oldEnd: number | null; newEnd: number | null }> = [];
+type DiffSegment =
+    | { type: "lines"; lines: DiffLine[] }
+    | { type: "fold"; count: number; oldStart: number | null; newStart: number | null; oldEnd: number | null; newEnd: number | null; lines: DiffLine[] };
+
+export function splitHunkLines(lines: DiffLine[]): DiffSegment[] {
+  const result: DiffSegment[] = [];
   let i = 0;
   while (i < lines.length) {
     if (lines[i].type !== 'context') {
@@ -93,9 +97,20 @@ export function splitHunkLines(lines: DiffLine[]): Array<{ type: 'lines'; lines:
     } else {
       const head = lines.slice(i, i + CONTEXT_EXPAND);
       const tail = lines.slice(j - CONTEXT_EXPAND, j);
-      const folded = j - CONTEXT_EXPAND - (i + CONTEXT_EXPAND);
+      // 被折叠的中间行必须保留在 fold 段里 — 否则"展开"时无内容可渲染,
+      // 用户点击展开只是让折叠按钮消失, 隐藏的上下文行永远无法查看。
+      const foldedLines = lines.slice(i + CONTEXT_EXPAND, j - CONTEXT_EXPAND);
+      const folded = foldedLines.length;
       result.push({ type: 'lines', lines: head });
-      result.push({ type: 'fold', count: folded, oldStart: head[head.length - 1].oldLine, newStart: head[head.length - 1].newLine, oldEnd: tail[0]?.oldLine ?? null, newEnd: tail[0]?.newLine ?? null });
+      result.push({
+        type: 'fold',
+        count: folded,
+        oldStart: head[head.length - 1].oldLine,
+        newStart: head[head.length - 1].newLine,
+        oldEnd: tail[0]?.oldLine ?? null,
+        newEnd: tail[0]?.newLine ?? null,
+        lines: foldedLines,
+      });
       result.push({ type: 'lines', lines: tail });
     }
     i = j;
@@ -103,11 +118,14 @@ export function splitHunkLines(lines: DiffLine[]): Array<{ type: 'lines'; lines:
   return result;
 }
 
-function FoldRow({ count, oldStart, newStart, oldEnd, newEnd }: { count: number; oldStart: number | null; newStart: number | null; oldEnd: number | null; newEnd: number | null }): React.JSX.Element | null {
+function FoldRow({ count, oldStart, newStart, oldEnd, newEnd, lines, lineIndex }: { count: number; oldStart: number | null; newStart: number | null; oldEnd: number | null; newEnd: number | null; lines: DiffLine[]; lineIndex: number }): React.JSX.Element[] | React.JSX.Element {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   if (expanded) {
-    return null;
+    // 展开: 渲染之前被折叠的中间行 (行号沿用原 diff 行号, 与未折叠视图一致)
+    return lines.map((line, index) => (
+      <DiffLineRow key={`fold-line-${lineIndex}-${index}`} line={line} />
+    ));
   }
   const label = t("diffView.expand", { count });
   return (
@@ -138,7 +156,7 @@ function HunkContent({ hunk }: { hunk: DiffHunk }): React.JSX.Element[] {
         rows.push(<DiffLineRow key={`line-${lineIndex++}`} line={line} />);
       }
     } else {
-      rows.push(<FoldRow key={`fold-${lineIndex++}`} count={segment.count} oldStart={segment.oldStart} newStart={segment.newStart} oldEnd={segment.oldEnd} newEnd={segment.newEnd} />);
+      rows.push(<FoldRow key={`fold-${lineIndex++}`} count={segment.count} oldStart={segment.oldStart} newStart={segment.newStart} oldEnd={segment.oldEnd} newEnd={segment.newEnd} lines={segment.lines} lineIndex={lineIndex} />);
     }
   }
   return rows;

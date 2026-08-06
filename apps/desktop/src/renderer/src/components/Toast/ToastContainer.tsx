@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { useMotionPresenceList, type MotionPresenceState } from "../../hooks/useMotionPresence";
 import { useToastStore } from "../../stores/toast-store";
 
@@ -39,11 +39,16 @@ function ToastItem({
   motionState: MotionPresenceState;
   onDismiss: () => void;
 }): React.ReactElement {
+  // onDismiss 由父组件内联生成, 每次渲染都是新引用 — 直接放进 effect 依赖会
+  // 导致父组件每次重渲染都清理并重设定时器, 新 toast 加入会无限重置旧 toast
+  // 的自动关闭倒计时。用 ref 持有最新回调, effect 只依赖 duration。
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
   useEffect(() => {
     if (!toast.duration) return;
-    const timer = setTimeout(onDismiss, toast.duration);
+    const timer = setTimeout(() => onDismissRef.current(), toast.duration);
     return () => clearTimeout(timer);
-  }, [toast.duration, onDismiss]);
+  }, [toast.duration]);
 
   return (
     <div

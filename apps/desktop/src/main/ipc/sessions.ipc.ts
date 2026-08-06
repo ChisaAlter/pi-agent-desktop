@@ -16,6 +16,7 @@ import {
     type Session,
     type SessionSearchInput,
     type ToolCall,
+    type Workspace,
 } from "@shared";
 import type {
     SessionMetadataUpdates,
@@ -43,6 +44,12 @@ export interface SessionsIpcDeps {
         fromMessageId?: string;
         messages: Message[];
     }) => Promise<void>;
+    /**
+     * Resolves a workspace by id. When provided, `session:create` verifies
+     * the target workspace exists before inserting — 曾缺失该校验, 渲染层可
+     * 为任意/已删除的 workspaceId 创建悬挂会话行, 污染 session:list。
+     */
+    getWorkspace?: (workspaceId: string) => Workspace | undefined;
 }
 
 function toMessage(raw: unknown): Message {
@@ -123,6 +130,11 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
             }
             if (id !== undefined && (typeof id !== "string" || !/^[A-Za-z0-9._-]{1,120}$/.test(id))) {
                 return ipcError("ipcErrors.session.invalidId", "session id must match [A-Za-z0-9._-]+ (max 120)");
+            }
+            // 安全审查 I3: 注释声称"校验 workspace 存在" — 补上真实校验,
+            // 防止为不存在的 workspaceId 创建悬挂会话行。
+            if (deps.getWorkspace && !deps.getWorkspace(workspaceId)) {
+                return ipcError("ipcErrors.session.workspaceNotFound", `Workspace not found: ${workspaceId}`, { id: workspaceId });
             }
             try {
                 const session = await repository.createSession(workspaceId, title, id);

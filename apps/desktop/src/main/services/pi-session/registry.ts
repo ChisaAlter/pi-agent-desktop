@@ -3,10 +3,11 @@
 // get() reuses sessions; lazy-inits bridge + interceptor + subscriptions on first call
 // Event types use @shared/events PiEvent (no 'as any')
 
-import { createWorkspaceSession, resolveBundledDesktopExtensionPaths, type WorkspaceSession } from "./factory";
+import { createWorkspaceSession, resolveBundledDesktopExtensionPaths, isPermissionSystemAvailable, type WorkspaceSession } from "./factory";
 import { createEventBridge, type IpcSender } from "./event-bridge";
 import { createApprovalInterceptor } from "../approval/interceptor";
 import { createExtensionUiBridge } from "../extensions/extension-ui-bridge";
+import type { MemoryGuardDeps } from "../memory/memory-path-guard";
 import type { AgentMode, PermissionMode } from "@shared";
 import type { PiEvent } from "@shared/events";
 import type { PendingEdits } from "../approval/pending-edits";
@@ -57,6 +58,15 @@ export class WorkspaceRegistry {
      * registry can be created early without depending on the goal service.
      */
     private onDisposeWorkspaceHook?: (workspaceId: string) => void;
+    /**
+     * Optional memory-path-guard provider threaded into the interceptor for
+     * every workspace's subscription (see `buildMemoryGuard` in
+     * `memory/memory-path-guard.ts`). Set externally from `main/index.ts`
+     * after the markdown memory service exists; the registry can be created
+     * early without depending on it. `undefined` keeps the legacy
+     * deferred-edit flow.
+     */
+    private memoryGuardProvider?: (workspaceId: string, workspacePath: string) => MemoryGuardDeps | undefined;
 
     /**
      * Install a stop-gate hook invoked on every `turn_end` Pi event forwarded
@@ -75,6 +85,15 @@ export class WorkspaceRegistry {
      */
     setOnDisposeWorkspace(hook: ((workspaceId: string) => void) | undefined): void {
         this.onDisposeWorkspaceHook = hook;
+    }
+
+    /**
+     * Install the memory-path-guard provider used when subscribing a
+     * workspace's interceptor. Safe to call at any time — live subscriptions
+     * resolve the latest provider dynamically.
+     */
+    setMemoryGuardProvider(provider: ((workspaceId: string, workspacePath: string) => MemoryGuardDeps | undefined) | undefined): void {
+        this.memoryGuardProvider = provider;
     }
 
     /**
@@ -215,6 +234,8 @@ export class WorkspaceRegistry {
                     workspacePath,
                     getMode,
                     getPermissionMode,
+                    memoryGuard: this.memoryGuardProvider?.(workspaceId, workspacePath),
+                    isPermissionSystemReady: () => isPermissionSystemAvailable(),
                 });
                 // 卡死看门狗: agent_start 起计时, agent_end/turn_end/extension_error 清除.
                 // 采用"最后活动时间"检测: 任何 agent 事件都更新 lastActivity 并重置计时器,

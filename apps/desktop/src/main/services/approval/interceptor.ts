@@ -45,6 +45,14 @@ export interface InterceptorDeps {
      * existing `approval:deferred` flow unchanged.
      */
     memoryGuard?: MemoryGuard;
+    /**
+     * Reports whether the bundled `pi-permission-system` extension is
+     * available. When it returns `false`, high-risk tool calls are aborted
+     * with an `extension_error` instead of being silently delegated to a
+     * missing extension (fail-closed). When `undefined` (legacy callers) or
+     * `true`, the delegation behavior is unchanged.
+     */
+    isPermissionSystemReady?: () => boolean;
 }
 
 export interface ApprovalInterceptor {
@@ -122,6 +130,19 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                 if (c.risk === "high") {
                     // Runtime permission decisions are handled by pi-permission-system.
                     // This interceptor now only keeps post-edit diff/review telemetry.
+                    // Fail-closed: when the permission extension is not resolvable
+                    // (packaging regression / missing bundle), high-risk calls are
+                    // aborted instead of executing ungated.
+                    if (deps.isPermissionSystemReady?.() === false) {
+                        const message = "权限系统未就绪，高危操作已被阻止。请重启应用后重试。";
+                        deps.abort();
+                        deps.send("pi:event", workspaceId, {
+                            type: "extension_error",
+                            message,
+                            workspaceId,
+                            toolCallId,
+                        });
+                    }
                     return;
                 }
 
@@ -242,7 +263,12 @@ export function createApprovalInterceptor(workspaceId: string, deps: Interceptor
                     }
                 }
 
-                const oldContent = change.newContent ?? "";
+                // 变更前快照在 change.oldContent (track 时读取落盘内容); 此时
+                // change.newContent 仍是模型意图写入的内容 (args.content),
+                // 用它当"旧内容"会得到 意图vs实际 的错误 diff (覆盖写时恒为空、
+                // edit 时整文件显示为新增)。null/undefined 快照按空处理即可,
+                // 撤销语义不受影响。
+                const oldContent = change.oldContent ?? "";
                 const diff = generateUnifiedDiff(oldContent, newContent, change.filePath);
                 deps.pendingEdits.review(change.id, diff, newContent);
                 deps.send("approval:review", workspaceId, {

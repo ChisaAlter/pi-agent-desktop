@@ -192,9 +192,20 @@ export async function gitOriginalContent(
     if (!gitRoot) return "";
     const gitPath = toGitPath(workspacePath, filePath);
     if (typeof gitPath !== "string") return gitPath;
+    // `git show HEAD:<path>` 的路径永远相对 repo 根 (`-C` 只改 cwd, 不影响
+    // tree 内路径语义)。当 workspace 是 repo 的子目录 (嵌套仓库) 时, 必须把
+    // workspace 相对 repo 根的目录前缀拼到前面, 否则原内容解析必然失败,
+    // 撤销/对比功能在嵌套仓库工作区恒为空且无提示。
+    let treePrefix = "";
+    try {
+        const prefix = (await execGit(["rev-parse", "--show-prefix"], workspacePath)).trim();
+        if (prefix) treePrefix = prefix;
+    } catch {
+        // 前缀解析失败时保持旧行为 (空前缀), 不阻断主流程。
+    }
     try {
         return await execGit(
-            ["-C", gitRoot, "show", `HEAD:${gitPath}`],
+            ["-C", gitRoot, "show", `HEAD:${treePrefix}${gitPath}`],
             gitRoot,
             10000,
             32 * 1024 * 1024,

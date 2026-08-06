@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSessionStore } from "../../stores/session-store";
 import { useWorkspaceStore } from "../../stores/workspace-store";
+import { addToast } from "../../stores/toast-store";
 import { useI18n } from "../../i18n";
 import { isIpcError } from "@shared";
 
@@ -56,6 +57,10 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState("");
     const [error, setError] = useState<string | null>(null);
+    // I1: Electron 渲染进程不支持 window.prompt (直接返回 null), 旧的"新建空白
+    // 项目"入口是死功能。改为菜单内联命名表单: 输入名称 → 选父目录 → 创建。
+    const [blankNaming, setBlankNaming] = useState(false);
+    const [blankName, setBlankName] = useState("");
     const ref = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -100,9 +105,15 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
         setOpen(false);
         try {
             const result = await window.piAPI?.selectWorkspace?.(workspace.path);
-            if (isIpcError(result)) setError(result.fallback);
+            if (isIpcError(result)) {
+                setError(result.fallback);
+                // 菜单已关闭, 菜单内的 error 不可见 — 用 toast 兜底反馈。
+                addToast(result.fallback);
+            }
         } catch (err) {
-            setError(err instanceof Error ? err.message : String(err));
+            const message = err instanceof Error ? err.message : String(err);
+            setError(message);
+            addToast(message);
         }
     };
 
@@ -113,6 +124,7 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
             if (!selected) return;
             if (isIpcError(selected)) {
                 setError(selected.fallback);
+                addToast(selected.fallback);
                 return;
             }
             const workspace = await createWorkspace(basename(selected), selected);
@@ -120,31 +132,44 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
             clearCurrentSessionSelection();
             setOpen(false);
             const result = await window.piAPI?.selectWorkspace?.(workspace.path);
-            if (isIpcError(result)) setError(result.fallback);
+            if (isIpcError(result)) {
+                setError(result.fallback);
+                addToast(result.fallback);
+            }
         } catch (err) {
-            setError(err instanceof Error ? err.message : String(err));
+            const message = err instanceof Error ? err.message : String(err);
+            setError(message);
+            addToast(message);
         }
     };
 
-    const addBlankWorkspace = async (): Promise<void> => {
+    const addBlankWorkspace = async (name: string): Promise<void> => {
         setError(null);
-        const name = window.prompt(t("workspaceSwitcher.promptName"), "NewProject")?.trim();
-        if (!name) return;
+        const trimmed = name.trim();
+        if (!trimmed) return;
         try {
             const parentPath = await window.piAPI?.selectDirectory?.();
             if (!parentPath) return;
             if (isIpcError(parentPath)) {
                 setError(parentPath.fallback);
+                addToast(parentPath.fallback);
                 return;
             }
-            const workspace = await createEmptyWorkspace(name, parentPath);
+            const workspace = await createEmptyWorkspace(trimmed, parentPath);
             if (!workspace) return;
+            setBlankNaming(false);
+            setBlankName("");
             clearCurrentSessionSelection();
             setOpen(false);
             const result = await window.piAPI?.selectWorkspace?.(workspace.path);
-            if (isIpcError(result)) setError(result.fallback);
+            if (isIpcError(result)) {
+                setError(result.fallback);
+                addToast(result.fallback);
+            }
         } catch (err) {
-            setError(err instanceof Error ? err.message : String(err));
+            const message = err instanceof Error ? err.message : String(err);
+            setError(message);
+            addToast(message);
         }
     };
 
@@ -210,15 +235,56 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
                         )}
                     </div>
                     <div className="border-t border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] p-1">
-                        <button
-                            type="button"
-                            role="menuitem"
-                            onClick={() => void addBlankWorkspace()}
-                            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[12px] text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
-                        >
-                            <IconPlus />
-                            <span>{t("workspaceSwitcher.newBlankProject")}</span>
-                        </button>
+                        {blankNaming ? (
+                            <div className="px-2 py-2">
+                                <label htmlFor="blank-workspace-name" className="mb-1 block text-[11px] text-[var(--mm-text-tertiary)]">
+                                    {t("workspaceSwitcher.promptName")}
+                                </label>
+                                <div className="flex items-center gap-1.5">
+                                    <input
+                                        id="blank-workspace-name"
+                                        type="text"
+                                        value={blankName}
+                                        onChange={(event) => setBlankName(event.target.value)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === "Enter") void addBlankWorkspace(blankName);
+                                            if (event.key === "Escape") setBlankNaming(false);
+                                        }}
+                                        placeholder="NewProject"
+                                        autoFocus
+                                        className="min-w-0 flex-1 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-[12px] text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => void addBlankWorkspace(blankName)}
+                                        disabled={!blankName.trim()}
+                                        className="shrink-0 rounded-md bg-[var(--mm-accent-blue)] px-2 py-1 text-[12px] text-white hover:opacity-90 disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
+                                    >
+                                        {t("workspaceSwitcher.confirm")}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setBlankNaming(false)}
+                                        className="shrink-0 rounded-md px-2 py-1 text-[12px] text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
+                                    >
+                                        {t("workspaceSwitcher.cancel")}
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                role="menuitem"
+                                onClick={() => {
+                                    setBlankName("");
+                                    setBlankNaming(true);
+                                }}
+                                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[12px] text-[var(--mm-text-primary)] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
+                            >
+                                <IconPlus />
+                                <span>{t("workspaceSwitcher.newBlankProject")}</span>
+                            </button>
+                        )}
                         <button
                             type="button"
                             role="menuitem"

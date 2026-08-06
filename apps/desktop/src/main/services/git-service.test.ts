@@ -583,8 +583,16 @@ describe("git-service protected path policy", () => {
             expect.any(Function),
         );
 
-        mockResults.push("C:/repo\n", "file body\n");
+        // C10: 嵌套仓库修复 — gitOriginalContent 先解析 workspace 相对 repo 根
+        // 的目录前缀 (--show-prefix), 再拼进 HEAD:<path>。顶层工作区前缀为空。
+        mockResults.push("C:/repo\n", "\n", "file body\n");
         await expect(gitOriginalContent("C:/repo", "src\\a.ts")).resolves.toBe("file body\n");
+        expect(execFileMock).toHaveBeenCalledWith(
+            "git",
+            ["rev-parse", "--show-prefix"],
+            expect.objectContaining({ cwd: "C:/repo" }),
+            expect.any(Function),
+        );
         expect(execFileMock).toHaveBeenCalledWith(
             "git",
             ["-C", "C:/repo", "show", "HEAD:src/a.ts"],

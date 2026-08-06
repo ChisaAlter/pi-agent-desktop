@@ -1158,6 +1158,17 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
     });
 
     ipcMain.handle("pi:send", async (event, workspaceId: string, text: string, options?: SendPromptOptions) => {
+        // 安全: settings 窗口无会话 UI, 也不得抢占工作区的审批路由。若来自
+        // settings 的调用到达这里并 setWorkspaceWindow, 后续审批请求会被路由
+        // 到无审批 UI 的设置窗 — 而 approval:respond 又被 isFromSettings 拦截,
+        // 形成"请求没人看、响应发不出"的静默死锁。因此直接拒绝。
+        if (isFromSettings(event.sender)) {
+            return ipcError(
+                "ipcErrors.chat.promptFailed",
+                "设置窗口不能发送对话消息",
+                { workspaceId },
+            );
+        }
         const ws = workspaceId ? deps.getWorkspace(workspaceId) : undefined;
         if (!ws) {
             return ipcError(
