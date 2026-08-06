@@ -417,7 +417,8 @@
       "directoryPickerUnavailable": "目录选择不可用 (preload 未注入)",
       "createWorkspaceFailed": "创建 workspace 失败: {{message}}",
       "imageTooLarge": "图片大小不能超过 5MB",
-      "svgNotSupported": "暂不支持 SVG 图片"
+      "svgNotSupported": "暂不支持 SVG 图片",
+      "visionEmptyResult": "识图模型未返回可读内容"
     },
     "shortcuts": {
       "send": "发送",

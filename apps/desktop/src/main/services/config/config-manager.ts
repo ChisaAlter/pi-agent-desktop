@@ -634,9 +634,12 @@ export class ConfigManager {
             .filter((model) => model.id.length > 0);
     }
 
-    async describeImages(images: readonly VisionImageInput[]): Promise<{ text: string }> {
+    async describeImages(
+        images: readonly VisionImageInput[],
+        fallbackVision?: { providerId: string; modelId: string },
+    ): Promise<{ text: string }> {
         if (images.length === 0) throw new Error("至少需要一张图片");
-        const vision = await this.resolveVisionConfig();
+        const vision = await this.resolveVisionConfig(fallbackVision);
         const baseUrl = vision.provider.baseUrl;
         if (!baseUrl) {
             throw new Error(`识图 provider ${vision.providerId} 缺少 baseUrl`);
@@ -829,14 +832,19 @@ export class ConfigManager {
             yamlModels.providers?.[providerId]?.apiKey
         );
     }
-    private async resolveVisionConfig(): Promise<ResolvedVisionConfig> {
+    private async resolveVisionConfig(fallbackVision?: { providerId: string; modelId: string }): Promise<ResolvedVisionConfig> {
         const [settings, models, yamlModels] = await Promise.all([
             this.getSettingsConfig(),
             this.getModelsConfig(),
             this.getYamlModelsConfig(),
         ]);
-        const providerId = this.getStringSetting(settings.parsed, "visionProvider");
-        const modelId = this.getStringSetting(settings.parsed, "visionModel");
+        // 优先级: 显式识图配置 (settings.json 中 provider+model 都填了才生效)
+        // > 回退配置 (桌面端当前对话模型 / 桌面设置里的识图模型)。
+        const explicitProvider = this.getStringSetting(settings.parsed, "visionProvider");
+        const explicitModel = this.getStringSetting(settings.parsed, "visionModel");
+        const hasExplicit = Boolean(explicitProvider && explicitModel);
+        const providerId = hasExplicit ? explicitProvider : fallbackVision?.providerId;
+        const modelId = hasExplicit ? explicitModel : fallbackVision?.modelId;
         if (!providerId || !modelId) {
             throw new Error("请先在设置中选择识图模型");
         }

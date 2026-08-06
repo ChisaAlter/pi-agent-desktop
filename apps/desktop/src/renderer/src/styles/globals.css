@@ -1247,14 +1247,12 @@ code {
 
 .pi-composer-model-capsule {
   display: flex;
-  height: 32px;
+  height: 28px;
   width: 100%;
-  min-width: 12rem;
+  min-width: 0;
   max-width: 18rem;
   align-items: stretch;
-  border: 1px solid var(--mm-border);
-  border-radius: 6px;
-  background: var(--mm-bg-control);
+  /* 与模式/权限触发器一致: 无边框无背景, 只留文本 */
 }
 
 .pi-composer-model-slot {
@@ -1278,7 +1276,7 @@ code {
   justify-content: center;
   padding: 0 10px;
   border: 0;
-  border-radius: 5px 0 0 5px;
+  border-radius: 4px;
   background: transparent;
   color: var(--mm-text-secondary);
   font-size: 11px;
@@ -1297,8 +1295,7 @@ code {
   justify-content: center;
   padding: 0 6px;
   border: 0;
-  border-left: 1px solid var(--mm-border);
-  border-radius: 0 5px 5px 0;
+  border-radius: 4px;
   background: transparent;
   color: var(--mm-text-secondary);
   font-size: 11px;

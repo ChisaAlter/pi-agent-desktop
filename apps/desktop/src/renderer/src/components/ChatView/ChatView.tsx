@@ -82,6 +82,11 @@ function resolveTotalTokens(
   return undefined;
 }
 
+/** Token 速度滑动窗口: 只统计最近 5s 内 output token 增量, 避免整段平均被开头/结尾拖慢. */
+const TOKEN_RATE_WINDOW_MS = 5_000;
+/** 窗口跨度低于该值 (秒) 时速度不稳定, 沿用上一个值. */
+const TOKEN_RATE_MIN_SPAN_SEC = 0.3;
+
 function RightRailToggleIcon({ collapsed }: { collapsed: boolean }): React.JSX.Element {
   return (
     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
@@ -300,6 +305,10 @@ export function ChatView({
   const animatedTokenSessionIdRef = useRef<string | null>(currentSession?.id ?? null);
   const animatedTokenValueRef = useRef(0);
   const [animatedTotalTokens, setAnimatedTotalTokens] = useState(() => resolveTotalTokens(currentSession?.usage) ?? 0);
+  // Token 速度: 流式输出期间按 usage 更新采样 output token 增量 / 时间
+  const tokenRateSamplesRef = useRef<Array<{ t: number; output: number }>>([]);
+  const tokenRateSessionIdRef = useRef<string | null>(currentSession?.id ?? null);
+  const [tokenRate, setTokenRate] = useState<number | null>(null);
   const hasAgent = Boolean(currentAgent);
   const shouldUseSessionMessages = Boolean(currentSession);
 
@@ -580,6 +589,41 @@ export function ChatView({
     };
   }, []);
 
+  // Token 速度采样: usage 每次更新 (updatedAt 变化) 记一个样本, 保留最近 5s 窗口
+  const currentOutputTokens = currentSession?.usage?.outputTokens ?? 0;
+  const usageUpdatedAt = currentSession?.usage?.updatedAt ?? 0;
+  useEffect(() => {
+    if (tokenRateSessionIdRef.current !== currentSession?.id) {
+      tokenRateSessionIdRef.current = currentSession?.id ?? null;
+      tokenRateSamplesRef.current = [];
+      setTokenRate(null);
+    }
+    if (!isStreaming) {
+      tokenRateSamplesRef.current = [];
+      setTokenRate(null);
+      return;
+    }
+    const now = usageUpdatedAt > 0 ? usageUpdatedAt : Date.now();
+    const samples = tokenRateSamplesRef.current;
+    samples.push({ t: now, output: currentOutputTokens });
+    while (samples.length > 1 && now - samples[0].t > TOKEN_RATE_WINDOW_MS) {
+      samples.shift();
+    }
+    if (samples.length >= 2) {
+      const first = samples[0];
+      const last = samples[samples.length - 1];
+      const dtSec = (last.t - first.t) / 1000;
+      const dOutput = last.output - first.output;
+      if (dtSec >= TOKEN_RATE_MIN_SPAN_SEC && dOutput > 0) {
+        setTokenRate(dOutput / dtSec);
+      }
+    }
+  }, [currentSession?.id, currentOutputTokens, usageUpdatedAt, isStreaming]);
+
+  const tokenRateSummary = tokenRate !== null && tokenRate > 0
+    ? `· ${tokenRate >= 10 ? Math.round(tokenRate).toString() : tokenRate.toFixed(1)} tok/s`
+    : null;
+
   const displayedTotalTokens = totalTokens === undefined && !isStreaming
     ? undefined
     : animatedTotalTokens;
@@ -792,6 +836,14 @@ export function ChatView({
         </div>
         <div className="pi-motion-status-pill flex h-7 shrink-0 items-center justify-end gap-3 text-[var(--mm-text-secondary)]" data-motion-state={isStreaming ? "running" : isConnected ? "connected" : "disconnected"}>
           <span className="inline-flex h-7 shrink-0 items-center font-mono tabular-nums leading-none text-[var(--mm-text-primary)]">{usageSummary}</span>
+          {tokenRateSummary ? (
+            <span
+              data-testid="chat-token-rate"
+              className="inline-flex h-7 shrink-0 items-center font-mono tabular-nums leading-none text-[var(--mm-text-secondary)]"
+            >
+              {tokenRateSummary}
+            </span>
+          ) : null}
           <span className="inline-flex items-center gap-2">
             <span className={`h-1.5 w-1.5 rounded-full ${isStreaming ? "pi-motion-running-dot bg-[var(--color-success)]" : isConnected ? "bg-[var(--color-success)]" : "bg-[var(--color-error)]"}`} aria-hidden="true" />
             <span key={connectionLabel} className="pi-motion-status-text inline-flex h-7 items-center leading-none" role="status" aria-label={connectionLabel}>{connectionLabel}</span>

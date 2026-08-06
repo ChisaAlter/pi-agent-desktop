@@ -168,7 +168,92 @@ describe("setupConfigIpc", () => {
         expect(result).toEqual({ text: "图里有设置面板" });
         expect(manager.describeImages).toHaveBeenCalledWith([
             { name: "settings.png", dataUrl: "data:image/png;base64,Zm9v", mimeType: "image/png" },
+        ], undefined);
+    });
+
+    it("falls back to the current conversation model when no vision model is configured", async () => {
+        const manager = createManagerStub();
+
+        setupConfigIpc(manager as ConfigManager, {
+            getSettings: () => ({
+                theme: "dark",
+                fontSize: 14,
+                model: "grok-4.5",
+                provider: "grok4.5",
+                temperature: 0.7,
+                maxTokens: 4096,
+                autoSave: true,
+                showLineNumbers: true,
+                wordWrap: true,
+                schemaVersion: 1,
+            }),
+        });
+        await handlers.get("pi:describe-images")!({}, [
+            { name: "chat.png", dataUrl: "data:image/png;base64,Zm9v", mimeType: "image/png" },
         ]);
+
+        expect(manager.describeImages).toHaveBeenCalledWith(
+            [{ name: "chat.png", dataUrl: "data:image/png;base64,Zm9v", mimeType: "image/png" }],
+            { providerId: "grok4.5", modelId: "grok-4.5" },
+        );
+    });
+
+    it("uses the explicitly configured vision model over the current conversation model", async () => {
+        const manager = createManagerStub();
+
+        setupConfigIpc(manager as ConfigManager, {
+            getSettings: () => ({
+                theme: "dark",
+                fontSize: 14,
+                model: "grok-4.5",
+                provider: "grok4.5",
+                visionProvider: "minimax",
+                visionModel: "MiniMax-VL",
+                temperature: 0.7,
+                maxTokens: 4096,
+                autoSave: true,
+                showLineNumbers: true,
+                wordWrap: true,
+                schemaVersion: 1,
+            }),
+        });
+        await handlers.get("pi:describe-images")!({}, [
+            { name: "chat.png", dataUrl: "data:image/png;base64,Zm9v", mimeType: "image/png" },
+        ]);
+
+        expect(manager.describeImages).toHaveBeenCalledWith(
+            [{ name: "chat.png", dataUrl: "data:image/png;base64,Zm9v", mimeType: "image/png" }],
+            { providerId: "minimax", modelId: "MiniMax-VL" },
+        );
+    });
+
+    it("ignores a half-configured vision pair and falls back to the current conversation model", async () => {
+        const manager = createManagerStub();
+
+        setupConfigIpc(manager as ConfigManager, {
+            getSettings: () => ({
+                theme: "dark",
+                fontSize: 14,
+                model: "grok-4.5",
+                provider: "grok4.5",
+                visionProvider: "minimax",
+                visionModel: "",
+                temperature: 0.7,
+                maxTokens: 4096,
+                autoSave: true,
+                showLineNumbers: true,
+                wordWrap: true,
+                schemaVersion: 1,
+            }),
+        });
+        await handlers.get("pi:describe-images")!({}, [
+            { name: "chat.png", dataUrl: "data:image/png;base64,Zm9v", mimeType: "image/png" },
+        ]);
+
+        expect(manager.describeImages).toHaveBeenCalledWith(
+            [{ name: "chat.png", dataUrl: "data:image/png;base64,Zm9v", mimeType: "image/png" }],
+            { providerId: "grok4.5", modelId: "grok-4.5" },
+        );
     });
 
     // wave-101 residual

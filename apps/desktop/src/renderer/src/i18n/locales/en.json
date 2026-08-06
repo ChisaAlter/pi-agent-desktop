@@ -417,7 +417,8 @@
       "directoryPickerUnavailable": "Directory picker unavailable (preload not injected)",
       "createWorkspaceFailed": "Create workspace failed: {{message}}",
       "imageTooLarge": "Image size cannot exceed 5MB",
-      "svgNotSupported": "SVG images are not supported"
+      "svgNotSupported": "SVG images are not supported",
+      "visionEmptyResult": "Vision model returned no readable text"
     },
     "shortcuts": {
       "send": "Send",

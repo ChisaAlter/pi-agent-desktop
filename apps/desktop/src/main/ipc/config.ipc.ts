@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain } from "electron";
+import log from "electron-log/main";
 import { ipcError } from "@shared";
-import type { ManagedModelDeleteInput, ManagedModelSaveInput, PiAuthFile, PiModelsFile, PiSettingsFile } from "@shared";
+import type { AppSettings, ManagedModelDeleteInput, ManagedModelSaveInput, PiAuthFile, PiModelsFile, PiSettingsFile } from "@shared";
 import { z } from "zod";
 import type { ConfigManager } from "../services/config/config-manager";
 import { isSafeUrl } from "../services/ssrf-guard";
@@ -8,10 +9,16 @@ import { isSafeUrl } from "../services/ssrf-guard";
 const describeImagesInputSchema = z.array(z.object({
     name: z.string().trim().min(1),
     dataUrl: z.string().trim().startsWith("data:"),
-    mimeType: z.string().trim().min(1).optional(),
+    // mimeType 只是元数据, 实际识别用 dataUrl (自带 MIME 类型).
+    // 真实剪贴板粘贴 (截图工具等) 的 DataTransferItem.type 可能是空字符串,
+    // 校验 min(1) 会把合法的图拒之门外 — 只做类型检查即可.
+    mimeType: z.string().optional(),
 })).min(1).max(6);
 
-export function setupConfigIpc(configManager: ConfigManager, opts: { onManagedModelsChanged?: () => void } = {}): void {
+export function setupConfigIpc(
+    configManager: ConfigManager,
+    opts: { onManagedModelsChanged?: () => void; getSettings?: () => AppSettings } = {},
+): void {
     // 生产分级通知：
     // - heavy: 模型清单/鉴权变更 → 重建 live session（贵）
     // - light: 仅默认模型切换 → 只广播 pi-config:changed，禁止 refreshWorkspace/disposeAll
@@ -89,9 +96,40 @@ export function setupConfigIpc(configManager: ConfigManager, opts: { onManagedMo
     ipcMain.handle("pi:describe-images", async (_event, rawImages: unknown) => {
         const parsed = describeImagesInputSchema.safeParse(rawImages);
         if (!parsed.success) {
-            return ipcError("ipcErrors.config.invalidImages", "无效的图片输入", { issues: JSON.stringify(parsed.error.issues) });
+            // 校验失败要能看到具体字段, 否则用户/日志只能看到笼统的"无效的图片输入"
+            const issues = parsed.error.issues
+                .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+                .join("; ");
+            log.warn("[config.ipc] describe-images invalid input:", issues);
+            return ipcError("ipcErrors.config.invalidImages", `无效的图片输入 (${issues})`, { issues });
         }
-        return configManager.describeImages(parsed.data);
+        // 输入摘要 (不含图片内容) — 帮助定位用户侧传参问题
+        log.info("[config.ipc] describe-images input:", parsed.data.map((image) => ({
+            name: image.name,
+            mimeType: image.mimeType ?? null,
+            dataUrlPrefix: image.dataUrl.slice(0, 40),
+        })));
+        // 未显式配置识图模型时, 回退到桌面设置的识图模型, 再回退到当前对话模型 —
+        // 保证多数支持多模态的模型开箱即用, 而不是把用户堵在"请先设置识图模型"的死路上。
+        // 注意: 识图 provider/model 必须成对出现才算显式配置, 半配状态会混搭出无效模型。
+        const app = opts.getSettings?.();
+        let fallback: { providerId: string; modelId: string } | undefined;
+        if (app) {
+            const visionProvider = app.visionProvider?.trim() || "";
+            const visionModel = app.visionModel?.trim() || "";
+            const hasVisionConfig = Boolean(visionProvider && visionModel);
+            const providerId = hasVisionConfig ? visionProvider : app.provider?.trim() || "";
+            const modelId = hasVisionConfig ? visionModel : app.model?.trim() || "";
+            if (providerId && modelId) fallback = { providerId, modelId };
+        }
+        try {
+            return await configManager.describeImages(parsed.data, fallback);
+        } catch (err) {
+            // 记录完整堆栈到日志, 避免错误条只能显示误导性的摘要
+            log.error("[config.ipc] describeImages failed:", err);
+            const message = err instanceof Error ? err.message : String(err);
+            return ipcError("ipcErrors.config.visionFailed", `识图失败: ${message}`);
+        }
     });
 }
 

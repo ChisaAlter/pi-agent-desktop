@@ -873,6 +873,86 @@ describe("ChatView", () => {
     expect(screen.queryByText(/输出 /)).toBeNull();
   });
 
+  it("shows token rate next to token usage while streaming", () => {
+    mockedStreamError = null;
+    mockedIsStreaming = true;
+    const now = Date.now();
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              usage: {
+                inputTokens: 1000,
+                outputTokens: 500,
+                totalTokens: 1500,
+                updatedAt: now - 2_000,
+              },
+            }
+          : session
+      )),
+    }));
+
+    const { rerender } = render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+    expect(screen.queryByTestId("chat-token-rate")).toBeNull();
+
+    // 2 秒内 output +200 → 100 tok/s
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              usage: {
+                ...session.usage,
+                outputTokens: 700,
+                totalTokens: 1700,
+                updatedAt: now,
+              },
+            }
+          : session
+      )),
+    }));
+    rerender(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByTestId("chat-token-rate").textContent).toContain("100 tok/s");
+  });
+
+  it("hides token rate when not streaming", () => {
+    mockedStreamError = null;
+    mockedIsStreaming = false;
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              usage: {
+                inputTokens: 1000,
+                outputTokens: 700,
+                totalTokens: 1700,
+                updatedAt: Date.now(),
+              },
+            }
+          : session
+      )),
+    }));
+
+    render(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    expect(screen.queryByTestId("chat-token-rate")).toBeNull();
+  });
+
   it("keeps very small token counts readable in the top strip", () => {
     mockedStreamError = null;
     useSessionStore.setState((state) => ({

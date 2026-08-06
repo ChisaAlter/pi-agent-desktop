@@ -4,11 +4,13 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../../i18n";
 import { ManagedModelsPanel } from "./ManagedModelsPanel";
+import { useSettingsStore } from "../../../stores/settings-store";
 
 describe("ManagedModelsPanel model actions", () => {
     beforeEach(() => {
         Object.assign(window, {
             piAPI: {
+                setSettings: vi.fn(async () => undefined),
                 configListManagedModels: vi.fn(async () => ({
                     configDir: "C:/Users/test/.pi/agent",
                     defaultProvider: "minimax",
@@ -25,6 +27,13 @@ describe("ManagedModelsPanel model actions", () => {
                         hasApiKey: true,
                     }],
                 })),
+            },
+        });
+        useSettingsStore.setState({
+            settings: {
+                ...useSettingsStore.getState().settings,
+                visionProvider: "",
+                visionModel: "",
             },
         });
     });
@@ -167,5 +176,187 @@ describe("ManagedModelsPanel model actions", () => {
         const deleteDialog = await screen.findByRole("dialog", { name: "删除模型确认" });
         expect(within(deleteDialog).getByRole("button", { name: "取消" }).className).toContain("focus-visible:ring-2");
         expect(within(deleteDialog).getByRole("button", { name: "确认删除" }).className).toContain("focus-visible:ring-2");
+    });
+
+    it("renders the vision model card with providers from the managed model list", async () => {
+        Object.defineProperty(window, "piAPI", {
+            configurable: true,
+            value: {
+                setSettings: vi.fn(async () => undefined),
+                configListManagedModels: vi.fn(async () => ({
+                    configDir: "C:/Users/test/.pi/agent",
+                    defaultProvider: "alpha",
+                    defaultModel: "alpha-model",
+                    models: [
+                        {
+                            providerId: "zeta",
+                            providerName: "Zeta Provider",
+                            modelId: "zeta-model",
+                            modelName: "Zeta Model",
+                            baseUrl: "https://zeta.example.com/v1",
+                            source: "json" as const,
+                            isDefault: false,
+                            hasApiKey: true,
+                        },
+                        {
+                            providerId: "alpha",
+                            providerName: "Alpha Provider",
+                            modelId: "alpha-model",
+                            modelName: "Alpha Model",
+                            baseUrl: "https://alpha.example.com/v1",
+                            source: "json" as const,
+                            isDefault: true,
+                            hasApiKey: true,
+                        },
+                    ],
+                })),
+            },
+        });
+
+        render(
+            <I18nProvider>
+                <ManagedModelsPanel onPiConfigChanged={vi.fn(async () => undefined)} />
+            </I18nProvider>,
+        );
+
+        const providerSelect = await screen.findByLabelText("识图 Provider");
+        expect(within(providerSelect).getAllByRole("option").map((option) => option.textContent)).toEqual([
+            "使用当前对话模型",
+            "Zeta Provider",
+            "Alpha Provider",
+        ]);
+        const modelSelect = screen.getByLabelText("识图模型");
+        expect(within(modelSelect).getAllByRole("option").map((option) => option.textContent)).toEqual([
+            "使用当前对话模型",
+        ]);
+        expect((modelSelect as HTMLSelectElement).disabled).toBe(true);
+    });
+
+    it("persists the selected vision provider and model to settings", async () => {
+        Object.defineProperty(window, "piAPI", {
+            configurable: true,
+            value: {
+                setSettings: vi.fn(async () => undefined),
+                configListManagedModels: vi.fn(async () => ({
+                    configDir: "C:/Users/test/.pi/agent",
+                    defaultProvider: "alpha",
+                    defaultModel: "alpha-model",
+                    models: [
+                        {
+                            providerId: "alpha",
+                            providerName: "Alpha Provider",
+                            modelId: "alpha-model",
+                            modelName: "Alpha Model",
+                            baseUrl: "https://alpha.example.com/v1",
+                            source: "json" as const,
+                            isDefault: true,
+                            hasApiKey: true,
+                        },
+                    ],
+                })),
+            },
+        });
+
+        render(
+            <I18nProvider>
+                <ManagedModelsPanel onPiConfigChanged={vi.fn(async () => undefined)} />
+            </I18nProvider>,
+        );
+
+        const providerSelect = await screen.findByLabelText("识图 Provider");
+        fireEvent.change(providerSelect, { target: { value: "alpha" } });
+        const modelSelect = screen.getByLabelText("识图模型");
+        expect((modelSelect as HTMLSelectElement).disabled).toBe(false);
+        fireEvent.change(modelSelect, { target: { value: "alpha-model" } });
+
+        await waitFor(() => {
+            expect(window.piAPI.setSettings).toHaveBeenCalledWith(
+                expect.objectContaining({ visionProvider: "alpha", visionModel: "alpha-model" }),
+            );
+        });
+    });
+
+    it("clears the vision model back to the current conversation model", async () => {
+        useSettingsStore.setState({
+            settings: {
+                ...useSettingsStore.getState().settings,
+                visionProvider: "minimax",
+                visionModel: "MiniMax-M3",
+            },
+        });
+
+        render(
+            <I18nProvider>
+                <ManagedModelsPanel onPiConfigChanged={vi.fn(async () => undefined)} />
+            </I18nProvider>,
+        );
+
+        const clearButton = await screen.findByRole("button", { name: "清除，用当前对话模型" });
+        fireEvent.click(clearButton);
+
+        await waitFor(() => {
+            expect(window.piAPI.setSettings).toHaveBeenCalledWith(
+                expect.objectContaining({ visionProvider: "", visionModel: "" }),
+            );
+        });
+    });
+
+    it("clears a stale vision model when switching to a provider without it", async () => {
+        useSettingsStore.setState({
+            settings: {
+                ...useSettingsStore.getState().settings,
+                visionProvider: "zeta",
+                visionModel: "zeta-model",
+            },
+        });
+        Object.defineProperty(window, "piAPI", {
+            configurable: true,
+            value: {
+                setSettings: vi.fn(async () => undefined),
+                configListManagedModels: vi.fn(async () => ({
+                    configDir: "C:/Users/test/.pi/agent",
+                    defaultProvider: "alpha",
+                    defaultModel: "alpha-model",
+                    models: [
+                        {
+                            providerId: "zeta",
+                            providerName: "Zeta Provider",
+                            modelId: "zeta-model",
+                            modelName: "Zeta Model",
+                            baseUrl: "https://zeta.example.com/v1",
+                            source: "json" as const,
+                            isDefault: false,
+                            hasApiKey: true,
+                        },
+                        {
+                            providerId: "alpha",
+                            providerName: "Alpha Provider",
+                            modelId: "alpha-model",
+                            modelName: "Alpha Model",
+                            baseUrl: "https://alpha.example.com/v1",
+                            source: "json" as const,
+                            isDefault: true,
+                            hasApiKey: true,
+                        },
+                    ],
+                })),
+            },
+        });
+
+        render(
+            <I18nProvider>
+                <ManagedModelsPanel onPiConfigChanged={vi.fn(async () => undefined)} />
+            </I18nProvider>,
+        );
+
+        const providerSelect = await screen.findByLabelText("识图 Provider");
+        expect((providerSelect as HTMLSelectElement).value).toBe("zeta");
+        fireEvent.change(providerSelect, { target: { value: "alpha" } });
+
+        await waitFor(() => {
+            expect(window.piAPI.setSettings).toHaveBeenCalledWith(
+                expect.objectContaining({ visionProvider: "alpha", visionModel: "" }),
+            );
+        });
     });
 });

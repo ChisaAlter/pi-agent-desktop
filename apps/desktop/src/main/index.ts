@@ -802,6 +802,7 @@ function setupIPC(updaterService: AppUpdaterService): void {
   });
   autoScheduler.start();
   setupConfigIpc(configManager, {
+    getSettings: () => store.get('settings'),
     // 仅 managed models / auth / models.json 结构变更时触发（重路径）。
     // 默认模型切换不得进入这里；否则 composer 选模型会卡顿数秒（refresh 全部 session + disposeAll）。
     onManagedModelsChanged: () => {

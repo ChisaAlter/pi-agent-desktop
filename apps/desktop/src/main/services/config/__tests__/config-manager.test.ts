@@ -588,6 +588,139 @@ describe("ConfigManager", () => {
         ]);
     });
 
+    it("falls back to the provided current model when no vision config is set", async () => {
+        const fetchMock = vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                choices: [{ message: { content: [{ type: "text", text: "图中是聊天窗口" }] } }],
+            }),
+        }));
+        vi.stubGlobal("fetch", fetchMock);
+        await writeFile(
+            join(dir, "models.json"),
+            JSON.stringify({
+                providers: {
+                    grok4_5: {
+                        name: "grok4.5",
+                        baseUrl: "https://grok.example.com/v1",
+                        apiKey: "sk-grok-key",
+                        api: "openai-completions",
+                        models: [{ id: "grok-4.5", name: "grok-4.5", api: "openai-completions" }],
+                    },
+                },
+            }),
+            "utf8",
+        );
+        // settings.json 存在但没有任何识图配置
+        await writeFile(join(dir, "settings.json"), JSON.stringify({ defaultProvider: "grok4_5" }), "utf8");
+
+        const result = await manager.describeImages(
+            [{ name: "chat.png", dataUrl: "data:image/png;base64,Zm9v", mimeType: "image/png" }],
+            { providerId: "grok4_5", modelId: "grok-4.5" },
+        );
+
+        expect(result).toEqual({ text: "图中是聊天窗口" });
+        const requestInit = fetchMock.mock.calls[0]?.[1];
+        if (!requestInit || typeof requestInit !== "object" || !("body" in requestInit)) {
+            throw new Error("missing vision request body");
+        }
+        const body = JSON.parse(String(requestInit.body));
+        expect(body.model).toBe("grok-4.5");
+    });
+
+    it("prefers explicit settings.json vision config over the fallback model", async () => {
+        const fetchMock = vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({ choices: [{ message: { content: [{ type: "text", text: "显式模型识别结果" }] } }] }),
+        }));
+        vi.stubGlobal("fetch", fetchMock);
+        await writeFile(
+            join(dir, "models.json"),
+            JSON.stringify({
+                providers: {
+                    openai: {
+                        name: "OpenAI",
+                        baseUrl: "https://api.openai.com/v1",
+                        apiKey: "sk-openai-key",
+                        api: "openai-completions",
+                        models: [{ id: "gpt-4.1-mini", name: "GPT-4.1 Mini" }],
+                    },
+                    grok4_5: {
+                        name: "grok4.5",
+                        baseUrl: "https://grok.example.com/v1",
+                        apiKey: "sk-grok-key",
+                        api: "openai-completions",
+                        models: [{ id: "grok-4.5", name: "grok-4.5" }],
+                    },
+                },
+            }),
+            "utf8",
+        );
+        await writeFile(
+            join(dir, "settings.json"),
+            JSON.stringify({ visionProvider: "openai", visionModel: "gpt-4.1-mini" }),
+            "utf8",
+        );
+
+        await manager.describeImages(
+            [{ name: "chat.png", dataUrl: "data:image/png;base64,Zm9v", mimeType: "image/png" }],
+            { providerId: "grok4_5", modelId: "grok-4.5" },
+        );
+
+        const requestInit = fetchMock.mock.calls[0]?.[1];
+        if (!requestInit || typeof requestInit !== "object" || !("body" in requestInit)) {
+            throw new Error("missing vision request body");
+        }
+        expect(JSON.parse(String(requestInit.body)).model).toBe("gpt-4.1-mini");
+    });
+
+    it("throws when neither explicit vision config nor fallback model is available", async () => {
+        await expect(
+            manager.describeImages([
+                { name: "chat.png", dataUrl: "data:image/png;base64,Zm9v", mimeType: "image/png" },
+            ]),
+        ).rejects.toThrow("请先在设置中选择识图模型");
+    });
+
+    it("ignores a half-configured explicit vision pair and uses the fallback instead", async () => {
+        const fetchMock = vi.fn(async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({ choices: [{ message: { content: [{ type: "text", text: "回退识别结果" }] } }] }),
+        }));
+        vi.stubGlobal("fetch", fetchMock);
+        await writeFile(
+            join(dir, "models.json"),
+            JSON.stringify({
+                providers: {
+                    grok4_5: {
+                        name: "grok4.5",
+                        baseUrl: "https://grok.example.com/v1",
+                        apiKey: "sk-grok-key",
+                        api: "openai-completions",
+                        models: [{ id: "grok-4.5", name: "grok-4.5" }],
+                    },
+                },
+            }),
+            "utf8",
+        );
+        // 只配了 provider 没配 model → 视为未配置, 走回退
+        await writeFile(join(dir, "settings.json"), JSON.stringify({ visionProvider: "openai" }), "utf8");
+
+        await manager.describeImages(
+            [{ name: "chat.png", dataUrl: "data:image/png;base64,Zm9v", mimeType: "image/png" }],
+            { providerId: "grok4_5", modelId: "grok-4.5" },
+        );
+
+        const requestInit = fetchMock.mock.calls[0]?.[1];
+        if (!requestInit || typeof requestInit !== "object" || !("body" in requestInit)) {
+            throw new Error("missing vision request body");
+        }
+        expect(JSON.parse(String(requestInit.body)).model).toBe("grok-4.5");
+    });
+
     describe("loadPiAgentConfig", () => {
         it("returns null when config dir does not exist", () => {
             const mgr = new ConfigManager(join(tmpdir(), "nonexistent-dir-" + Date.now()));

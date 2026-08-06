@@ -1,13 +1,14 @@
 // 模型配置 tab — 从 SettingsContent.tsx 抽出.
 // 管理 Pi Agent 的 Provider 与模型, 含新增/编辑/删除/设默认/测试连接.
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslateIpcError } from '../../../i18n';
 import { isIpcError, type ManagedModelEntry, type ManagedModelsResult, type ManagedModelSaveInput } from '@shared';
 import { SectionTitle, SettingsCard, SettingsPage } from '../_shared';
 import { useFocusTrap } from '../../../hooks/useFocusTrap';
 import { useMotionPresence } from '../../../hooks/useMotionPresence';
+import { useSettingsStore } from '../../../stores/settings-store';
 
 type ModelFormState = {
     originalProviderId?: string;
@@ -126,6 +127,42 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
     useFocusTrap(dialogRef, form !== null);
     useFocusTrap(deleteDialogRef, pendingDeleteModel !== null);
     const modelRows = result?.models ?? [];
+    const { settings, updateSettings } = useSettingsStore();
+    const visionProvider = settings.visionProvider ?? '';
+    const visionModel = settings.visionModel ?? '';
+    // 识图模型选择器的候选: 已配置的 provider → 其下模型.
+    const visionProviderOptions = useMemo(() => {
+        const byProvider = new Map<string, string>();
+        for (const model of result?.models ?? []) {
+            if (!byProvider.has(model.providerId)) {
+                byProvider.set(model.providerId, model.providerName || model.providerId);
+            }
+        }
+        return [...byProvider.entries()].map(([providerId, providerName]) => ({ providerId, providerName }));
+    }, [result]);
+    const visionModelOptions = visionProvider
+        ? modelRows.filter((model) => model.providerId === visionProvider)
+        : [];
+    const changeVisionProvider = (providerId: string): void => {
+        if (!providerId) {
+            updateSettings({ visionProvider: '', visionModel: '' });
+            return;
+        }
+        // 换 provider 后旧模型可能不在新 provider 下, 一起清掉避免混搭出无效识图配置.
+        const modelStillExists = modelRows.some(
+            (model) => model.providerId === providerId && model.modelId === visionModel,
+        );
+        updateSettings({
+            visionProvider: providerId,
+            visionModel: modelStillExists ? visionModel : '',
+        });
+    };
+    const changeVisionModel = (modelId: string): void => {
+        updateSettings({ visionModel: modelId });
+    };
+    const clearVisionModel = (): void => {
+        updateSettings({ visionProvider: '', visionModel: '' });
+    };
 
     const refresh = async (): Promise<void> => {
         const next = await window.piAPI.configListManagedModels();
@@ -396,6 +433,55 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                         </div>
                     </>
                 )}
+            </SettingsCard>
+
+            <SettingsCard anchorId="model-vision" className="px-5 py-4">
+                <SectionTitle title="识图模型" description="发送图片时用于识别图片内容。未设置时自动使用当前对话模型（大多数多模态模型可直接识别）。" />
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                    <label className="block text-xs font-medium text-[var(--mm-text-secondary)]">
+                        识图 Provider
+                        <select
+                            value={visionProvider}
+                            onChange={(event) => changeVisionProvider(event.target.value)}
+                            className="mt-1 w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
+                        >
+                            <option value="">使用当前对话模型</option>
+                            {visionProviderOptions.map((option) => (
+                                <option key={option.providerId} value={option.providerId}>{option.providerName}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className="block text-xs font-medium text-[var(--mm-text-secondary)]">
+                        识图模型
+                        <select
+                            value={visionModel}
+                            onChange={(event) => changeVisionModel(event.target.value)}
+                            disabled={!visionProvider}
+                            className="mt-1 w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-3 py-2 text-sm text-[var(--mm-text-primary)] disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
+                        >
+                            <option value="">使用当前对话模型</option>
+                            {visionModelOptions.map((model) => (
+                                <option key={model.modelId} value={model.modelId}>{model.modelName}</option>
+                            ))}
+                        </select>
+                    </label>
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                    <span className="text-[10px] leading-4 text-[var(--mm-text-tertiary)]">
+                        当前生效: {visionProvider && visionModel
+                            ? `${visionProviderOptions.find((option) => option.providerId === visionProvider)?.providerName ?? visionProvider} / ${visionModel}`
+                            : `当前对话模型 (${settings.provider || '未设置'} / ${settings.model || '未设置'})`}
+                    </span>
+                    {visionProvider || visionModel ? (
+                        <button
+                            type="button"
+                            onClick={clearVisionModel}
+                            className="settings-pressable shrink-0 rounded border border-[var(--settings-border-soft)] bg-[var(--settings-bg-control)] px-2 py-1 text-[10px] text-[var(--mm-text-secondary)] transition-[transform,background-color] duration-150 ease-out hover:bg-[var(--settings-bg-control-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
+                        >
+                            清除，用当前对话模型
+                        </button>
+                    ) : null}
+                </div>
             </SettingsCard>
 
             <SettingsCard anchorId="model-provider-list" className="px-5 py-4">
