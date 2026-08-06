@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>Composer 固定高度布局契约 — HTML 原型 (阶段1 审核门)</title>
+<style>
+  /* ============ 生产 CSS token (取自 globals.css, 与 ChatInput 视觉 1:1) ============ */
+  :root {
+    --color-border: #e5e5e5;
+    --color-hover: rgba(0, 0, 0, 0.05);
+    --color-success: #10b981;
+    --color-error: #ef4444;
+    --mm-bg-input: #ffffff;
+    --mm-bg-sidebar: #eef1f4;
+    --mm-bg-popover: #ffffff;
+    --mm-bg-popover-selected: #e9e9e9;
+    --mm-bg-hover: #e8f0fa;
+    --mm-bg-active: #1a1a1a;
+    --mm-accent-blue: #0a68c4;
+    --mm-text-primary: #1a1a1a;
+    --mm-text-secondary: #666666;
+    --mm-text-tertiary: #999999;
+    --mm-text-on-active: #ffffff;
+    --mm-border: #dde4eb;
+    --mm-border-strong: #c7d2df;
+    --mm-bg-control: #fbfbfb;
+  }
+  html.dark {
+    --color-border: #333333;
+    --color-hover: rgba(255, 255, 255, 0.08);
+    --color-success: #34d399;
+    --color-error: #f87171;
+    --mm-bg-input: #171b20;
+    --mm-bg-sidebar: #242424;
+    --mm-bg-popover: #242424;
+    --mm-bg-popover-selected: #383838;
+    --mm-bg-hover: #2a2a2a;
+    --mm-bg-active: #ffffff;
+    --mm-accent-blue: #5aa7ff;
+    --mm-text-primary: #e5e5e5;
+    --mm-text-secondary: #999999;
+    --mm-text-tertiary: #666666;
+    --mm-text-on-active: #1a1a1a;
+    --mm-border: #333333;
+    --mm-border-strong: #4a5360;
+    --mm-bg-control: #171b20;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--mm-bg-sidebar); color: var(--mm-text-primary); }
+
+  /* ============ 页面外壳: header 44px + 消息占位 + composer (与生产 ChatView/App 契约一致) ============ */
+  .app { display: flex; flex-direction: column; height: 100vh; background: var(--mm-bg-input); }
+  .app-header { flex: 0 0 44px; display: flex; align-items: center; gap: 8px; padding: 0 16px 0 48px; border-bottom: 1px solid var(--mm-border); font-size: 12px; color: var(--mm-text-secondary); background: var(--mm-bg-input); }
+  .messages { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 12px 16px; font-size: 13px; color: var(--mm-text-secondary); line-height: 1.6; }
+  .messages .mock-msg { margin-bottom: 8px; color: var(--mm-text-secondary); }
+  .messages .mock-msg.user { color: var(--mm-text-primary); }
+
+  /* ============ composer wrapper (生产: pointer-events-auto w-full px-2 pb-2 pt-0) ============ */
+  .composer-wrap { flex: 0 0 auto; padding: 0 8px 8px 0; background: var(--mm-bg-input); }
+
+  /* ============ shell (生产: relative rounded-[7px] border overflow-visible flex flex-col) ============ */
+  .shell {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border: 1px solid var(--mm-border);
+    border-radius: 7px;
+    background: transparent;
+    overflow: visible; /* 生产契约: 弹窗(popover)向上弹出依赖 overflow visible */
+    transition: border-color .15s;
+  }
+  .shell:focus-within { border-color: var(--mm-border-strong); }
+
+  /* resize 手柄 (生产: absolute top-0 h-2, 细条 36x2) */
+  .resize-handle {
+    position: absolute; left: 8px; right: 8px; top: 0; z-index: 10;
+    height: 8px; cursor: ns-resize;
+    display: flex; align-items: flex-start; justify-content: center;
+  }
+  .resize-handle .grip { margin-top: 2px; height: 2px; width: 36px; border-radius: 9999px; background: var(--mm-border-strong); }
+
+  /* ============ 附件区 (生产: flex flex-wrap gap-1.5 px-4 pt-3) ============ */
+  .attachments { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 16px 0; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 8px; border: 1px solid var(--color-border); border-radius: 4px;
+    background: var(--color-hover); font-size: 12px; color: var(--mm-text-primary);
+    max-width: 100%;
+  }
+  .chip .name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip .thumb { width: 24px; height: 24px; border-radius: 4px; object-fit: cover; background: var(--mm-bg-control); display: inline-block; }
+  .chip .x { color: var(--mm-text-tertiary); }
+
+  /* ============ body (生产: relative z-0 flex gap-2 px-3 pt-3 min-h-0 flex-1) ============ */
+  .body { position: relative; z-index: 0; display: flex; gap: 8px; padding: 12px 12px 0; flex: 1 1 0; min-height: 0; }
+  .body-col { position: relative; flex: 1 1 0; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  textarea {
+    width: 100%; min-height: 0; flex: 1 1 0;
+    resize: none; border: 0; background: transparent; padding: 0;
+    font: 14px/20px -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    color: var(--mm-text-primary); outline: none;
+  }
+  textarea::placeholder { color: var(--mm-text-tertiary); }
+
+  /* ============ 弹窗 (生产: absolute left-0 bottom-full mb-1 … 向上弹出, 验证不被裁剪) ============ */
+  .popover {
+    position: absolute; left: 0; bottom: 100%; margin-bottom: 4px;
+    width: 288px; max-height: 224px; overflow-y: auto;
+    background: var(--mm-bg-sidebar); border: 1px solid var(--color-border);
+    border-radius: 8px; box-shadow: 0 8px 24px rgba(15,23,42,.14);
+    padding: 4px 0; font-size: 12px; z-index: 50;
+  }
+  .popover .opt { padding: 8px 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--mm-text-primary); }
+  .popover .opt.hl { background: var(--mm-bg-active); color: var(--mm-text-on-active); }
+  .popover.slash { width: min(520px, calc(100vw - 48px)); max-height: 256px; }
+
+  /* ============ 错误区 (生产: px-4 pb-2 + alert) ============ */
+  .error-row { padding: 0 16px 8px; }
+  .alert {
+    border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c;
+    border-radius: 8px; padding: 8px 12px; font-size: 12px;
+  }
+  html.dark .alert { border-color: rgba(248,113,113,.35); background: rgba(248,113,113,.12); color: #f87171; }
+  .model-note { display: flex; align-items: center; gap: 8px; padding: 0 12px 8px; font-size: 11px; line-height: 16px; color: var(--mm-text-secondary); }
+  .model-note button { border: 0; background: none; color: var(--mm-accent-blue); font-size: 11px; cursor: pointer; }
+
+  /* ============ 控制栏 (生产: pi-composer-selector-row, 36px, shrink-0) ============ */
+  .controls {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    height: 36px; flex-shrink: 0; padding: 0 12px 8px;
+  }
+  .controls-left { display: flex; align-items: center; gap: 6px; flex-shrink: 0; min-width: 0; }
+  .controls-right { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; justify-content: flex-end; gap: 8px; }
+  .icon-btn {
+    width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+    border: 0; border-radius: 3px; background: transparent; color: var(--mm-text-secondary); cursor: pointer; font-size: 14px;
+  }
+  .icon-btn:hover { background: var(--mm-bg-hover); }
+  .trigger {
+    display: inline-flex; align-items: center; gap: 4px; height: 28px;
+    padding: 0 6px; border: 0; border-radius: 4px; background: transparent;
+    color: var(--mm-text-secondary); font-size: 11px; line-height: 16px; cursor: pointer;
+  }
+  .trigger:hover { background: var(--mm-bg-hover); }
+  .trigger .label { font-size: 11px; font-weight: 500; color: var(--mm-text-primary); white-space: nowrap; }
+  .model-capsule { display: flex; height: 28px; width: 100%; min-width: 0; max-width: 288px; align-items: stretch; }
+  .model-capsule .trigger { flex: 1 1 auto; min-width: 0; justify-content: center; padding: 0 10px; }
+  .model-capsule .trigger .label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+  .thinking-slot { width: 48px; flex: 0 0 48px; }
+  .send-btn {
+    width: 51px; height: 32px; border: 0; border-radius: 5px; background: var(--mm-accent-blue);
+    color: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+    box-shadow: 0 1px 2px rgba(10,35,80,.14);
+  }
+  .send-btn svg { width: 20px; height: 20px; }
+  html.dark .send-btn { color: var(--mm-text-on-active); }
+
+  /* ============ 布局模式差异 (契约 vs 现状) ============ */
+  /* 现状: 附件/错误/提示无约束 → 内容穿出 shell (overflow visible) */
+  .mode-current .attachments,
+  .mode-current .error-row,
+  .mode-current .model-note { flex-shrink: 1; min-height: auto; overflow: visible; }
+  /* 目标契约: 受控内容区, 挤压时收缩+滚动, 永不穿出 shell */
+  .mode-contract .attachments { flex-shrink: 1; min-height: 0; overflow-y: auto; }
+  .mode-contract .error-row { flex-shrink: 1; min-height: 0; overflow-y: auto; }
+  .mode-contract .model-note { flex-shrink: 1; min-height: 0; overflow-y: auto; }
+  .mode-contract .alert { word-break: break-all; white-space: pre-wrap; }
+  .mode-contract .chip .name { word-break: break-all; white-space: normal; max-width: 320px; }
+  /* 运行条 (生产: absolute bottom-full, 弹窗同层验证) */
+  .running-strip {
+    position: absolute; left: 0; right: 0; bottom: 100%; z-index: 20; margin-bottom: 4px;
+    display: flex; align-items: center; gap: 8px;
+    border: 1px solid var(--mm-border); background: var(--mm-bg-sidebar);
+    border-radius: 7px; padding: 6px 12px; font-size: 11px; color: var(--mm-text-secondary);
+  }
+  .running-strip .dot { width: 10px; height: 10px; border-radius: 9999px; background: var(--color-success); }
+
+  /* ============ 顶部测试工具条 (不属于生产) ============ */
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; background: #1f2937; color: #e5e7eb; font-size: 11px; position: sticky; top: 0; z-index: 100; }
+  .toolbar button { border: 1px solid #4b5563; background: #374151; color: #e5e7eb; border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer; }
+  .toolbar button.on { background: #2563eb; border-color: #2563eb; }
+  .toolbar select { background: #374151; color: #e5e7eb; border: 1px solid #4b5563; border-radius: 4px; font-size: 11px; padding: 3px 6px; }
+  .toolbar .hint { color: #9ca3af; }
+  .measure-strip { font-size: 10px; color: #d1d5db; padding: 2px 10px; background: #111827; border-top: 1px solid #374151; white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; }
+
+  .state-badge { position: absolute; right: 8px; top: -18px; font-size: 10px; color: var(--mm-text-tertiary); }
+
+  /* ============ 标注模式 (证据图: shell 边界 + 越界元素标红, outline 不占布局) ============ */
+  .annotate .shell { outline: 2px dashed #dc2626; outline-offset: 1px; }
+  .annotate .escapee { outline: 2px solid #dc2626; background: rgba(220, 38, 38, 0.18) !important; }
+</style>
+</head>
+<body class="mode-contract">
+  <div class="toolbar">
+    <span class="hint">状态:</span>
+    <button data-state="empty">空</button>
+    <button data-state="short">短文本</button>
+    <button data-state="long">500行长文本</button>
+    <button data-state="longnowrap">无空格URL</button>
+    <button data-state="att20">20附件</button>
+    <button data-state="att-long">长文件名附件</button>
+    <button data-state="errors">双错误+无模型</button>
+    <button data-state="combo">组合压力</button>
+    <button data-state="mention">@菜单开</button>
+    <button data-state="slash">/菜单开</button>
+    <button data-state="running">运行条</button>
+    <span style="margin-left:8px" class="hint">高度:</span>
+    <select id="heightSel"><option value="95">95px 最小</option><option value="160">160px 中</option><option value="240" selected>240px 最大</option></select>
+    <button id="themeBtn">暗色</button>
+    <button id="modeBtn" data-mode="contract" class="on">目标契约</button>
+    <button id="measureBtn">测量</button>
+    <span class="hint" id="shellH"></span>
+  </div>
+  <div id="measureStrip" class="measure-strip">（未测量）</div>
+
+  <div class="app">
+    <div class="app-header">
+      <span>Pi Agent — 消息区占位 (Header 44px)</span>
+    </div>
+    <div class="messages" id="msgArea">
+      <div class="mock-msg user">这是消息区占位。composer 固定高度时, 本区域自动收缩, 只有这里滚动。</div>
+    </div>
+    <div class="composer-wrap">
+      <div class="shell" id="shell" data-testid="chat-input-shell">
+        <div class="state-badge" id="stateBadge">empty</div>
+        <div class="resize-handle" id="resizeHandle" aria-label="调整输入框高度"><span class="grip"></span></div>
+        <div class="running-strip" id="runningStrip" style="display:none">
+          <span class="dot"></span><span>任务运行中… (absolute bottom-full, 与弹窗同层, 验证不裁剪)</span>
+        </div>
+        <div class="attachments" id="attachments" role="list" style="display:none"></div>
+        <div class="body">
+          <div class="body-col">
+            <textarea id="ta" placeholder="输入消息…" aria-label="发送"></textarea>
+            <div class="popover" id="mentionPop" style="display:none">
+              <div class="opt hl">src/components/ChatView/ChatInput.tsx</div>
+              <div class="opt">src/components/ChatView/hooks/useInputText.ts</div>
+              <div class="opt">src/components/ChatView/hooks/usePrefillConsumer.ts</div>
+              <div class="opt">src/renderer/src/App.tsx</div>
+            </div>
+            <div class="popover slash" id="slashPop" style="display:none">
+              <div class="opt hl">/plan — 先制定计划再执行</div>
+              <div class="opt">/compose — 组合模式</div>
+              <div class="opt">/build — 构建模式</div>
+              <div class="opt">/open-settings — 打开设置</div>
+            </div>
+          </div>
+        </div>
+        <div class="error-row" id="errRow1" style="display:none"><div class="alert" role="alert" id="err1"></div></div>
+        <div class="error-row" id="errRow2" style="display:none"><div class="alert" role="alert" id="err2"></div></div>
+        <div class="model-note" id="modelNote" style="display:none">
+          <span>尚未配置模型，无法开始对话</span><button>前往配置</button>
+        </div>
+        <div class="controls" data-testid="chat-input-reference-controls">
+          <div class="controls-left">
+            <button class="icon-btn" aria-label="添加文件或图片">＋</button>
+            <button class="icon-btn" aria-label="打开斜杠命令">/</button>
+            <button class="trigger"><span class="label">Build</span></button>
+            <button class="trigger"><span class="label">询问</span></button>
+          </div>
+          <div class="controls-right">
+            <div class="model-capsule">
+              <button class="trigger"><span class="label" id="modelLabel">deepseek-chat</span></button>
+            </div>
+            <div class="thinking-slot">
+              <button class="trigger"><span class="label">中等</span></button>
+            </div>
+            <button class="send-btn" aria-label="发送">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+"use strict";
+/* ============ 状态数据 ============ */
+const LONG_500 = Array.from({ length: 500 }, (_, i) => `第${i + 1}行 — 这是一段用于压力测试的中文长草稿内容，包含标点符号、English words、数字 1234567890 与 emoji 🚀🎉。`).join("\n");
+const NO_WRAP_URL = "https://example.com/very/long/path/without/spaces/" + "x".repeat(400) + "?query=" + "y".repeat(200);
+const LONG_ERR = `文件读取失败: C:\\Users\\verylongusername\\Documents\\projects\\${"n".repeat(120)}\\src\\components\\ChatView\\hooks\\useInputText.ts (ENOENT: no such file or directory)\n${NO_WRAP_URL}`;
+const ATT_NAMES = Array.from({ length: 20 }, (_, i) => `附件文件_${String(i + 1).padStart(2, "0")}_项目资料汇总报告_2026年季度版本_${"x".repeat(i % 4 === 0 ? 60 : 6)}.md`);
+const LONG_ATT_NAME = "这是一个特别特别长的附件文件名".repeat(8) + "最终版本_FINAL_v2.0.1_2026-08-06.verylongextension";
+
+const STATES = {
+  empty:        { ta: "", atts: [], errs: [], model: true, mention: false, slash: false, running: false },
+  short:        { ta: "帮我看看这个项目", atts: [], errs: [], model: true, mention: false, slash: false, running: false },
+  long:         { ta: LONG_500, atts: [], errs: [], model: true, mention: false, slash: false, running: false },
+  longnowrap:   { ta: NO_WRAP_URL, atts: [], errs: [], model: true, mention: false, slash: false, running: false },
+  att20:        { ta: "请分析这些文件", atts: ATT_NAMES, errs: [], model: true, mention: false, slash: false, running: false },
+  "att-long":   { ta: "", atts: [LONG_ATT_NAME, "普通.txt"], errs: [], model: true, mention: false, slash: false, running: false },
+  errors:       { ta: "", atts: [], errs: [LONG_ERR, "发送失败: 网络连接超时 (timeout after 30000ms)"], model: true, mention: false, slash: false, running: false },
+  combo:        { ta: LONG_500, atts: ATT_NAMES, errs: [LONG_ERR, "发送失败: 网络连接超时"], model: true, mention: false, slash: false, running: false },
+  mention:      { ta: "帮我看看 @Chat", atts: [], errs: [], model: true, mention: true, slash: false, running: false },
+  slash:        { ta: "/pla", atts: [], errs: [], model: true, mention: false, slash: true, running: false },
+  running:      { ta: "", atts: [], errs: [], model: true, mention: false, slash: false, running: true },
+};
+
+let currentState = "empty";
+let currentMode = "contract";
+
+function renderAtts(atts) {
+  const box = document.getElementById("attachments");
+  if (!atts.length) { box.style.display = "none"; box.innerHTML = ""; return; }
+  box.style.display = "flex";
+  box.innerHTML = atts.map((n, i) =>
+    `<span class="chip" role="listitem" title="${n}">
+       <span class="thumb"></span>
+       <span class="name">${n}</span>
+       <span class="x">✕</span>
+     </span>`).join("");
+}
+
+function applyState(name) {
+  currentState = name;
+  const s = STATES[name];
+  document.getElementById("ta").value = s.ta;
+  renderAtts(s.atts);
+  const e1 = document.getElementById("errRow1"), e2 = document.getElementById("errRow2");
+  e1.style.display = s.errs.length > 0 ? "" : "none";
+  e1.querySelector(".alert").textContent = s.errs[0] ?? "";
+  e2.style.display = s.errs.length > 1 ? "" : "none";
+  e2.querySelector(".alert").textContent = s.errs[1] ?? "";
+  document.getElementById("modelNote").style.display = s.model ? "" : "none";
+  document.getElementById("mentionPop").style.display = s.mention ? "" : "none";
+  document.getElementById("slashPop").style.display = s.slash ? "" : "none";
+  document.getElementById("runningStrip").style.display = s.running ? "" : "none";
+  document.getElementById("stateBadge").textContent = name;
+  document.querySelectorAll(".toolbar [data-state]").forEach(b => b.classList.toggle("on", b.dataset.state === name));
+  // 滚动区复位, 让滚动状态可复现
+  document.getElementById("mentionPop").scrollTop = 0;
+  document.getElementById("slashPop").scrollTop = 0;
+  document.getElementById("attachments").scrollTop = 0;
+  measure();
+}
+
+/* ============ 测量 ============ */
+function rectStr(r) { return r ? `(${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}x${Math.round(r.height)})` : "null"; }
+
+function measure() {
+  const shell = document.getElementById("shell");
+  const out = { state: currentState, mode: currentMode, theme: document.documentElement.classList.contains("dark") ? "dark" : "light" };
+  out.shellRect = rectStr(shell.getBoundingClientRect());
+  out.shellStyleHeight = shell.style.height;
+  out.shellActualH = Math.round(shell.getBoundingClientRect().height);
+
+  // 正常流子元素越界检查 (排除 absolute 弹层/手柄/徽标)
+  const rect = shell.getBoundingClientRect();
+  const esc = [];
+  for (const el of shell.children) {
+    if (el.classList.contains("resize-handle") || el.classList.contains("running-strip") || el.classList.contains("state-badge") || el.classList.contains("popover")) continue;
+    if (el.style.display === "none") continue;
+    const r = el.getBoundingClientRect();
+    const tag = el.className.split(" ")[0];
+    if (r.top < rect.top - 0.5 || r.bottom > rect.bottom + 0.5) {
+      esc.push(`${tag} 越界: top ${Math.round(r.top)} vs ${Math.round(rect.top)}, bottom ${Math.round(r.bottom)} vs ${Math.round(rect.bottom)}`);
+    }
+    if (el.classList.contains("controls")) {
+      out.controlsBottom = Math.round(r.bottom);
+      out.controlsDelta = Math.round(rect.bottom - r.bottom);
+    }
+  }
+  out.escapees = esc;
+
+  // textarea 自身滚动
+  const ta = document.getElementById("ta");
+  out.taScrollable = ta.scrollHeight > ta.clientHeight;
+  out.taScrollH = ta.scrollHeight; out.taClientH = ta.clientHeight;
+
+  // 附件区滚动
+  const att = document.getElementById("attachments");
+  out.attVisible = att.style.display !== "none";
+  if (out.attVisible) {
+    out.attScrollable = att.scrollHeight > att.clientHeight;
+    out.attScrollH = att.scrollHeight; out.attClientH = att.clientHeight;
+  }
+
+  // 弹窗可见性 (绝对定位在 shell 上方, 与 shell 相邻是正常契约; 裁剪只发生在视口顶部)
+  const mp = document.getElementById("mentionPop"), sp = document.getElementById("slashPop");
+  for (const [k, el] of [["mention", mp], ["slash", sp]]) {
+    if (el.style.display === "none") continue;
+    const r = el.getBoundingClientRect();
+    out[k + "Visible"] = r.height > 0;
+    out[k + "Rect"] = rectStr(r);
+    // 被视口顶部裁剪 (窗口高度不足以容纳弹窗) — 物理限制, 如实报告
+    out[k + "ViewportClip"] = r.top < 0;
+    // 弹窗底部应紧贴/接近 shell 顶部 (bottom:100% + 4px margin)
+    out[k + "GapToShell"] = Math.round(r.bottom - rect.top);
+  }
+
+  // 文档滚动
+  out.docScrollY = document.documentElement.scrollTop;
+  out.docOverflowX = document.documentElement.scrollWidth > document.documentElement.clientWidth;
+
+  // 控制栏内按钮是否可见
+  const sendBtn = document.querySelector(".send-btn");
+  const sbr = sendBtn.getBoundingClientRect();
+  out.sendBtnVisible = sbr.bottom <= rect.bottom + 0.5 && sbr.height > 0;
+
+  out.shellH = out.shellActualH;
+
+  // 标注: shell 内越界的正常流元素
+  if (window.__annotate) {
+    document.querySelectorAll(".escapee").forEach((el) => el.classList.remove("escapee"));
+    for (const el of shell.children) {
+      if (el.classList.contains("resize-handle") || el.classList.contains("running-strip") || el.classList.contains("state-badge") || el.classList.contains("popover")) continue;
+      if (el.style.display === "none") continue;
+      const r = el.getBoundingClientRect();
+      if (r.top < rect.top - 0.5 || r.bottom > rect.bottom + 0.5) {
+        el.classList.add("escapee");
+      }
+    }
+  }
+  return out;
+}
+
+function showMeasure() {
+  const out = measure();
+  document.getElementById("shellH").textContent = `shell=${out.shellActualH}px`;
+  const lines = [
+    `状态=${out.state} 模式=${out.mode} 主题=${out.theme} shell=${out.shellRect} 设定高=${out.shellStyleHeight}`,
+    `越界元素: ${out.escapees.length ? out.escapees.join(" | ") : "无 ✓"}`,
+    `控制栏 bottom=${out.controlsBottom} (delta=${out.controlsDelta}px) 发送按钮可见=${out.sendBtnVisible}`,
+    `textarea 滚动=${out.taScrollable} (${out.taScrollH}/${out.taClientH}) 附件滚动=${out.attVisible ? out.attScrollable + " (" + out.attScrollH + "/" + out.attClientH + ")" : "n/a"}`,
+    `mention=${out.mentionVisible ? "可见" : "n/a"} clipped=${out.mentionClipped} slash=${out.slashVisible ? "可见" : "n/a"} clipped=${out.slashClipped}`,
+    `document 滚动 Y=${out.docScrollY} 横向溢出=${out.docOverflowX}`,
+  ];
+  document.getElementById("measureStrip").textContent = lines.join("\n");
+  window.__lastMeasure = out;
+}
+
+/* ============ 交互 ============ */
+document.querySelectorAll(".toolbar [data-state]").forEach(b => b.addEventListener("click", () => applyState(b.dataset.state)));
+document.getElementById("heightSel").addEventListener("change", (e) => {
+  document.getElementById("shell").style.height = e.target.value + "px";
+  measure(); showMeasure();
+});
+document.getElementById("themeBtn").addEventListener("click", () => {
+  document.documentElement.classList.toggle("dark");
+  measure(); showMeasure();
+});
+document.getElementById("modeBtn").addEventListener("click", (e) => {
+  currentMode = currentMode === "contract" ? "current" : "contract";
+  document.body.classList.toggle("mode-current", currentMode === "current");
+  document.body.classList.toggle("mode-contract", currentMode === "contract");
+  e.currentTarget.classList.toggle("on", currentMode === "contract");
+  e.currentTarget.textContent = currentMode === "contract" ? "目标契约" : "现状缺陷";
+  measure(); showMeasure();
+});
+document.getElementById("measureBtn").addEventListener("click", showMeasure);
+
+// 拖拽 resize (指针事件, 与生产一致)
+const shell = document.getElementById("shell");
+const handle = document.getElementById("resizeHandle");
+handle.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  const startY = e.clientY, startH = shell.getBoundingClientRect().height;
+  const move = (ev) => {
+    const next = Math.max(95, Math.min(240, Math.round(startH + (startY - ev.clientY))));
+    shell.style.height = next + "px";
+    document.getElementById("heightSel").value = String(next);
+    measure(); showMeasure();
+  };
+  const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+});
+
+// textarea 输入也触发测量
+document.getElementById("ta").addEventListener("input", () => { measure(); showMeasure(); });
+
+// 初始
+shell.style.height = "240px";
+applyState("combo");
+showMeasure();
+</script>
+</body>
+</html>
