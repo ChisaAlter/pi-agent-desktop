@@ -112,6 +112,27 @@ function contractProblems(m, expectedHeight) {
   return p;
 }
 
+async function dragResize(dy) {
+  const pos = await evaluate(`(() => {
+    const handle = document.querySelector('[aria-label="调整输入框高度"]');
+    if (!handle) return null;
+    const r = handle.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  })()`);
+  if (!pos) throw new Error("resize handle 不可见");
+  await page.cdpSend("Input.dispatchMouseEvent", { type: "mousePressed", x: pos.x, y: pos.y, button: "left", clickCount: 1 });
+  await page.cdpSend("Input.dispatchMouseEvent", { type: "mouseMoved", x: pos.x, y: pos.y + dy, button: "left" });
+  await page.cdpSend("Input.dispatchMouseEvent", { type: "mouseReleased", x: pos.x, y: pos.y + dy, button: "left", clickCount: 1 });
+  await sleep(120);
+}
+
+async function reloadAndWait() {
+  await page.evaluate("location.reload()");
+  await sleep(2500);
+  await clickByText("pkg-verify-session");
+  await waitFor("document.querySelector('[data-testid=\"chat-input-shell\"]')", 15000, "composer 挂载");
+}
+
 async function main() {
   mkdirSync(OUT, { recursive: true });
   const port = 9600 + Math.floor(Math.random() * 100);
@@ -145,6 +166,7 @@ async function main() {
       if (r.result?.exceptionDetails) throw new Error("evaluate 异常: " + (r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text));
       return r.result?.result?.value;
     },
+    async cdpSend(method, params) { return send(method, params); },
     async screenshot(name) {
       const r = await send("Page.captureScreenshot", { format: "png" });
       writeFileSync(join(OUT, name), Buffer.from(r.result.data, "base64"));
@@ -206,7 +228,68 @@ async function main() {
     record("生产包 20 附件: chips 在 shell 内, 附件区滚动", p.length === 0, p.join("; ") || `attScroll=${m.attachment?.scrollH}/${m.attachment?.clientH}`);
   }
 
-  // 4. 卸载清理
+  // 4. 长 URL
+  {
+    await setTextarea(`https://example.com/very/long/path/${"x".repeat(500)}?q=${"y".repeat(300)}`);
+    await sleep(300);
+    const m = await geometry();
+    const p = contractProblems(m, 95);
+    await page.screenshot("pkg-04-long-url.png");
+    record("生产包长 URL: 无横向溢出", p.length === 0, p.join("; ") || "ok");
+    await setTextarea("");
+    await sleep(200);
+  }
+
+  // 5. 超大图片错误
+  {
+    await pasteFiles([{ name: "too-big.png", bytes: 6 * 1024 * 1024 }]);
+    await waitFor("document.querySelectorAll('[role=\"alert\"]').length > 0", 10000, "alert");
+    await sleep(300);
+    const m = await geometry();
+    const p = contractProblems(m, 95);
+    const alerts = await evaluate(`[...document.querySelectorAll('[role="alert"]')].map((a) => a.className)`);
+    p.push(...(alerts[0]?.includes("break-all") ? [] : ["alert 缺 break-all"]));
+    await page.screenshot("pkg-05-attachment-error.png");
+    record("生产包大图被拒: 错误受控", p.length === 0, p.join("; ") || "ok");
+  }
+
+  // 6. resize 拖拽
+  {
+    await dragResize(-80);
+    await sleep(300);
+    const m = await geometry();
+    const p = contractProblems(m, m.shell ? Math.round(m.shell.height) : undefined);
+    p.push(...(m.shell && m.shell.height > 150 ? [] : [`shell=${m.shell?.height}`]));
+    p.push(...(m.shell && m.composerVar === `${Math.round(m.shell.height) + 8}px` ? [] : [`变量=${m.composerVar}`]));
+    await page.screenshot("pkg-06-resized.png");
+    record("生产包 resize: 契约保持, 变量同步", p.length === 0, p.join("; ") || `shell=${Math.round(m.shell.height)}px var=${m.composerVar}`);
+    await dragResize(80);
+    await sleep(300);
+  }
+
+  // 7. Slash 菜单 (reload 隔离)
+  {
+    await reloadAndWait();
+    await setTextarea("/pla");
+    await waitFor("document.querySelector('[role=\"listbox\"]')", 10000, "slash 菜单");
+    await sleep(300);
+    const menuInfo = await evaluate(`(() => {
+      const menu = document.querySelector('[role="listbox"]');
+      const r = menu.getBoundingClientRect();
+      const shell = document.querySelector('[data-testid="chat-input-shell"]').getBoundingClientRect();
+      return { top: r.top, height: r.height, gap: shell.top - r.bottom };
+    })()`);
+    const p = [];
+    if (menuInfo.height <= 0) p.push("菜单高度 0");
+    if (menuInfo.top < 0) p.push(`菜单被视口裁剪 top=${Math.round(menuInfo.top)}`);
+    if (menuInfo.gap < -12 || menuInfo.gap > -2) p.push(`菜单间隙=${menuInfo.gap.toFixed(1)} (期望≈-8)`);
+    await page.screenshot("pkg-07-slash-menu.png");
+    record("生产包 Slash 菜单: 可见不被裁剪", p.length === 0, p.join("; ") || `gap=${menuInfo.gap.toFixed(1)}px top=${Math.round(menuInfo.top)}`);
+    await setTextarea("");
+    await sleep(200);
+  }
+
+  // 8. 卸载清理
   {
     await clickByText("运行");
     await waitFor("document.documentElement.style.getPropertyValue('--pi-global-composer-height') === ''", 10000, "变量清空");
@@ -216,6 +299,25 @@ async function main() {
     const m = await geometry();
     const p = contractProblems(m, 95);
     record("生产包卸载清理 + 切回恢复", p.length === 0, p.join("; ") || "ok");
+  }
+
+  // 9. 1365×768 宽窗 (reload 隔离)
+  {
+    await reloadAndWait();
+    const resizeOk = await evaluate(`(() => { try { window.resizeTo(1365, 768); return true; } catch (e) { return false; } })()`);
+    await sleep(1500);
+    const winInfo = await evaluate(`({ outer: window.outerWidth, inner: window.innerWidth })`);
+    if (resizeOk && winInfo.inner > 900) {
+      await setTextarea(Array.from({ length: 300 }, (_, i) => `行 ${i}`).join("\n"));
+      await pasteFiles(Array.from({ length: 12 }, (_, i) => ({ name: `w-${i}.png`, bytes: 64 })));
+      await waitFor("(document.querySelector('[role=\"list\"][aria-label=\"已选附件\"]')?.querySelectorAll('[role=\"listitem\"]').length ?? 0) === 12", 10000, "12 chips");
+      const m = await geometry();
+      const p = contractProblems(m, 95);
+      await page.screenshot("pkg-09-wide-1365x768.png");
+      record("生产包 1365×768 宽窗: 契约保持", p.length === 0, p.join("; ") || `innerWidth=${winInfo.inner}`);
+    } else {
+      record("生产包 1365×768 宽窗: resizeTo 不可用, 跳过", true, `resizeTo=${resizeOk} inner=${winInfo.inner}`);
+    }
   }
 
   const failed = results.filter((r) => !r.pass);
