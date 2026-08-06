@@ -238,7 +238,7 @@ export function ChatInput({
   focusKey,
   referenceFrame = false,
 }: ChatInputProps): React.JSX.Element {
-  const { textareaRef, inputValue, setInputValue } = useInputText();
+  const { textareaRef, inputValue, setInputValue } = useInputText({ autoSize: !referenceFrame });
   const shellRef = useRef<HTMLDivElement>(null);
   const [cursorPos, setCursorPos] = useState(0);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -383,7 +383,8 @@ export function ChatInput({
               kind: "image",
               name: file.name || `pasted-image-${Date.now()}.png`,
               value: dataUrl,
-              mimeType: item.type,
+              // 真实剪贴板粘贴时 DataTransferItem.type 可能为空, 用 file.type 兜底
+              mimeType: item.type || file.type || undefined,
               size: file.size,
             });
           };
@@ -441,7 +442,6 @@ export function ChatInput({
           if (!result.keepInput) {
             setInputValue("");
             setAttachmentError(null);
-            if (textareaRef.current) textareaRef.current.style.height = "auto";
           }
           sendingRef.current = false;
           setIsSending(false);
@@ -462,12 +462,19 @@ export function ChatInput({
     const imageAttachments = attachments.filter((attachment) => attachment.kind === "image");
     let imagePrefix = "";
     if (imageAttachments.length > 0) {
-      if (!settings.visionProvider || !settings.visionModel) {
-        setAttachmentError(t("chatInput.errors.visionNotConfigured"));
+      // 本地预检: value 必须是 data URL — 避免把坏附件发给主进程, 也避免报错信息含糊
+      const malformed = imageAttachments.find((a) => typeof a.value !== "string" || !a.value.startsWith("data:"));
+      if (malformed) {
+        setAttachmentError(t("chatInput.errors.visionFailed", {
+          message: `附件 ${malformed.name} 不是有效的图片数据 (${typeof malformed.value === "string" ? "缺少 data: 前缀" : `类型 ${typeof malformed.value}`})`,
+        }));
         sendingRef.current = false;
         setIsSending(false);
         return;
       }
+      // 识图模型未显式配置时, 主进程会回退到当前对话模型 (多数多模态模型开箱即用),
+      // 因此这里不再要求 visionProvider/visionModel 必填 — 只有完全没配模型时才被
+      // 上面的 hasValidModel 拦截.
       if (!window.piAPI?.describeImages) {
         setAttachmentError(t("chatInput.errors.visionUnavailable"));
         sendingRef.current = false;
@@ -475,14 +482,36 @@ export function ChatInput({
         return;
       }
       try {
-        const result = await window.piAPI.describeImages(imageAttachments.map((attachment) => ({
+        const describeInput = imageAttachments.map((attachment) => ({
           name: attachment.name,
           dataUrl: attachment.value,
           mimeType: attachment.mimeType,
+        }));
+        // 记录渲染层实际传参 (不含图片内容), 与主进程日志对照定位问题
+        logger.info("[ChatInput] describeImages args:", describeInput.map((item) => ({
+          name: item.name,
+          mimeType: item.mimeType ?? null,
+          valueType: typeof item.dataUrl,
+          valuePrefix: typeof item.dataUrl === "string" ? item.dataUrl.slice(0, 30) : null,
         })));
+        const result = await window.piAPI.describeImages(describeInput);
+        // describeImages 失败时主进程返回 ipcError, 直接透出真实原因 — 不要对 result.text 裸调 .trim()
+        if (isIpcError(result)) {
+          setAttachmentError(t("chatInput.errors.visionFailed", { message: result.fallback }));
+          sendingRef.current = false;
+          setIsSending(false);
+          return;
+        }
+        const text = typeof result?.text === "string" ? result.text.trim() : "";
+        if (!text) {
+          setAttachmentError(t("chatInput.errors.visionFailed", { message: t("chatInput.errors.visionEmptyResult") }));
+          sendingRef.current = false;
+          setIsSending(false);
+          return;
+        }
         imagePrefix = [
           "图片识别结果:",
-          result.text.trim(),
+          text,
           "",
           "用户消息:",
         ].join("\n");
@@ -514,9 +543,6 @@ export function ChatInput({
     setInputValue("");
     setAttachmentError(null);
     if (workspaceId) clearAttachments(workspaceId);
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
     try {
       if (visibleContent) {
         await onSend(outbound, { visibleContent });
@@ -942,6 +968,7 @@ export function ChatInput({
       return () => {
         document.documentElement.style.removeProperty("--pi-global-composer-left");
         document.documentElement.style.removeProperty("--pi-global-composer-right");
+        document.documentElement.style.removeProperty("--pi-global-composer-height");
       };
     }
     const shell = shellRef.current;
@@ -960,6 +987,7 @@ export function ChatInput({
       window.removeEventListener("resize", handleWindowResize);
       document.documentElement.style.removeProperty("--pi-global-composer-left");
       document.documentElement.style.removeProperty("--pi-global-composer-right");
+      document.documentElement.style.removeProperty("--pi-global-composer-height");
     };
   }, [referenceFrame, syncGlobalComposerBounds]);
 
@@ -969,7 +997,7 @@ export function ChatInput({
       <div
         ref={shellRef}
         data-testid="chat-input-shell"
-        className={`${referenceFrame ? "mx-0 flex w-full max-w-none flex-col" : "mx-auto max-w-[770px]"} relative overflow-visible rounded-[7px] border border-[var(--mm-border)] bg-transparent shadow-none transition-[border-color,box-shadow] focus-within:border-[var(--mm-border-strong)]`}
+        className={`${referenceFrame ? "mx-0 flex min-h-0 w-full max-w-none flex-col" : "mx-auto max-w-[770px]"} relative overflow-visible rounded-[7px] border border-[var(--mm-border)] bg-transparent shadow-none transition-[border-color,box-shadow] focus-within:border-[var(--mm-border-strong)]`}
         style={referenceFrame ? { height: `${composerHeight}px` } : undefined}
       >
         {referenceFrame ? (
@@ -1001,9 +1029,13 @@ export function ChatInput({
             </div>
           </div>
         )}
-        {/* 附件 chips */}
+        {/* 附件 chips — reference 模式下是受控内容区: 挤压时收缩+自身滚动, 永不穿出固定 shell */}
         {attachments.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 px-4 pt-3" role="list" aria-label={t("chatInput.attachmentsSelected")}>
+          <div
+            className={`flex flex-wrap gap-1.5 px-4 pt-3 ${referenceFrame ? "min-h-0 shrink overflow-y-auto" : ""}`}
+            role="list"
+            aria-label={t("chatInput.attachmentsSelected")}
+          >
             {attachments.map((a) => (
               <span
                 key={a.id}
@@ -1039,7 +1071,7 @@ export function ChatInput({
           className={`relative z-0 flex gap-2 px-3 ${referenceFrame ? "min-h-0 flex-1 pb-0 pt-3" : "pb-1.5 pt-3"}`}
           data-testid={referenceFrame ? "chat-input-reference-body" : undefined}
         >
-          <div className="flex-1 relative">
+          <div className={`${referenceFrame ? "min-h-0 min-w-0 flex flex-1 flex-col" : ""} relative flex-1`}>
             {!referenceFrame && currentAgentMode !== "build" && (
               <div className="mb-2 flex">
                 <span
@@ -1068,7 +1100,7 @@ export function ChatInput({
               onKeyUp={handleSelect}
               onKeyDown={handleKeyDown}
               placeholder={inputPlaceholder}
-              className="min-h-[38px] w-full resize-none border-0 bg-transparent px-0 py-0 text-sm leading-5 text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus-visible:!outline-none focus-visible:!shadow-none disabled:opacity-50"
+              className={`${referenceFrame ? "block min-h-0 flex-1 overflow-y-auto" : "min-h-[38px]"} w-full resize-none border-0 bg-transparent px-0 py-0 text-sm leading-5 text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus-visible:!outline-none focus-visible:!shadow-none disabled:opacity-50`}
               rows={1}
               disabled={!isConnected}
               aria-label={t("chatInput.send")}
@@ -1185,22 +1217,22 @@ export function ChatInput({
         </div>
 
         {attachmentError && (
-          <div className="px-4 pb-2">
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
+          <div className={`px-4 pb-2 ${referenceFrame ? "min-h-0 shrink overflow-y-auto" : ""}`}>
+            <div className={`rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 ${referenceFrame ? "break-all whitespace-pre-wrap" : ""}`} role="alert">
               {attachmentError}
             </div>
           </div>
         )}
         {sendError && (
-          <div className="px-4 pb-2">
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700" role="alert">
+          <div className={`px-4 pb-2 ${referenceFrame ? "min-h-0 shrink overflow-y-auto" : ""}`}>
+            <div className={`rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 ${referenceFrame ? "break-all whitespace-pre-wrap" : ""}`} role="alert">
               {sendError}
             </div>
           </div>
         )}
 
         {needsModelConfiguration && (
-          <div className="flex items-center gap-2 px-3 pb-2 text-[11px] leading-4 text-[var(--mm-text-secondary)]" role="status">
+          <div className={`flex items-center gap-2 px-3 pb-2 text-[11px] leading-4 text-[var(--mm-text-secondary)] ${referenceFrame ? "min-h-0 shrink overflow-y-auto" : ""}`} role="status">
             <span>{t("chatInput.model.unavailable")}</span>
             <button
               type="button"

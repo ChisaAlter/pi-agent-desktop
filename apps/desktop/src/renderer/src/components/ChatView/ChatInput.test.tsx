@@ -877,6 +877,31 @@ describe("ChatInput", () => {
     expect(screen.getByTestId("chat-input-reference-controls").className).toContain("shrink-0");
   });
 
+  it("keeps a long pasted draft inside the fixed reference composer", () => {
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>,
+    );
+
+    const textbox = screen.getByRole("textbox");
+    fireEvent.change(textbox, { target: { value: Array.from({ length: 80 }, (_, i) => `line ${i}`).join("\n") } });
+
+    expect(screen.getByTestId("chat-input-shell").className).toContain("min-h-0");
+    expect(screen.getByTestId("chat-input-reference-body").className).not.toContain("overflow-hidden");
+    expect(textbox.className).toContain("flex-1");
+    expect(textbox.className).toContain("overflow-y-auto");
+    expect((textbox as HTMLTextAreaElement).style.height).toBe("");
+  });
+
   it("renders the inline running status strip above the reference composer", () => {
     render(
       <I18nProvider>
@@ -1367,8 +1392,18 @@ describe("ChatInput", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("创建 workspace 失败: dialog crashed");
   });
 
-  it("requires a configured vision model before sending image attachments", () => {
+  it("describes images with the current conversation model when no vision model is configured", async () => {
     const onSend = vi.fn(async () => undefined);
+    const describeImages = vi.fn(async () => ({
+      text: "[图片 1: pasted.png]\n图片里有聊天窗口",
+    }));
+    Object.defineProperty(window, "piAPI", {
+      value: {
+        ...(window.piAPI ?? {}),
+        describeImages,
+      },
+      configurable: true,
+    });
     useAttachmentsStore.getState().add("ws1", {
       id: "img1",
       kind: "image",
@@ -1394,7 +1429,104 @@ describe("ChatInput", () => {
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "看图" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(screen.getByRole("alert").textContent).toContain("请先在设置中选择识图模型");
+    await waitFor(() => {
+      expect(describeImages).toHaveBeenCalledWith([
+        {
+          name: "pasted.png",
+          dataUrl: "data:image/png;base64,abc",
+          mimeType: "image/png",
+        },
+      ]);
+    });
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith(
+        [
+          "图片识别结果:",
+          "[图片 1: pasted.png]",
+          "图片里有聊天窗口",
+          "",
+          "用户消息:",
+          "看图",
+        ].join("\n"),
+        { visibleContent: "看图\n图片: pasted.png" },
+      );
+    });
+  });
+
+  it("surfaces the real ipc error instead of a misleading TypeError when describeImages fails", async () => {
+    const onSend = vi.fn(async () => undefined);
+    Object.defineProperty(window, "piAPI", {
+      value: {
+        ...(window.piAPI ?? {}),
+        describeImages: vi.fn(async () => ({
+          code: "ipcErrors.config.visionFailed",
+          fallback: "识图失败: HTTP 400 - model does not support images",
+          params: {},
+        })),
+      },
+      configurable: true,
+    });
+    useAttachmentsStore.getState().add("ws1", {
+      id: "img1",
+      kind: "image",
+      name: "pasted.png",
+      value: "data:image/png;base64,abc",
+      mimeType: "image/png",
+      size: 3,
+    });
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={onSend}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "看图" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain("HTTP 400 - model does not support images");
+    });
+    expect(screen.getByRole("alert").textContent).not.toContain("Cannot read properties of undefined");
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("shows an error when the vision service is unavailable", () => {
+    const onSend = vi.fn(async () => undefined);
+    // beforeEach 的 piAPI mock 不注入 describeImages → 视作 preload 未暴露该能力
+    useAttachmentsStore.getState().add("ws1", {
+      id: "img1",
+      kind: "image",
+      name: "pasted.png",
+      value: "data:image/png;base64,abc",
+      mimeType: "image/png",
+      size: 3,
+    });
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={onSend}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "看图" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(screen.getByRole("alert").textContent).toContain("识图服务不可用");
     expect(onSend).not.toHaveBeenCalled();
   });
 
@@ -1854,6 +1986,242 @@ describe("ChatInput", () => {
     expect(screen.getByTestId("chat-input-workspace-trigger").className).toContain(
       "focus-visible:ring-2",
     );
+  });
+
+  // ===== 固定高度布局契约 (Composer 溢出修复) =====
+
+  function renderReference(overrides: Partial<React.ComponentProps<typeof ChatInput>> = {}) {
+    return render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+          {...overrides}
+        />
+      </I18nProvider>,
+    );
+  }
+
+  it("constrains the reference attachment area to a scrollable flex region", () => {
+    renderReference();
+    act(() => {
+      useAttachmentsStore.getState().add("ws1", {
+        id: "att_1",
+        kind: "file",
+        name: "a".repeat(80) + ".md",
+        value: "C:/repo/" + "b".repeat(80) + ".md",
+      });
+      useAttachmentsStore.getState().add("ws1", {
+        id: "att_2",
+        kind: "file",
+        name: "second-file.ts",
+        value: "C:/repo/second-file.ts",
+      });
+    });
+
+    const list = screen.getByRole("list", { name: "已选附件" });
+    expect(list.className).toContain("min-h-0");
+    expect(list.className).toContain("shrink");
+    expect(list.className).toContain("overflow-y-auto");
+    // 长文件名保持现有 ellipsis 契约, 不横向撑开
+    const chipNames = within(list).getAllByText(
+      (_, el) => typeof el?.className === "string" && el.className.includes("max-w-[200px]"),
+    );
+    expect(chipNames.length).toBe(2);
+    for (const chipName of chipNames) {
+      expect(chipName.className).toContain("truncate");
+    }
+  });
+
+  it("does not constrain the attachment area in the auto-height composer", () => {
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+    act(() => {
+      useAttachmentsStore.getState().add("ws1", { id: "att_1", kind: "file", name: "a.ts", value: "C:/repo/a.ts" });
+    });
+
+    const list = screen.getByRole("list", { name: "已选附件" });
+    expect(list.className).not.toContain("min-h-0");
+    expect(list.className).not.toContain("overflow-y-auto");
+  });
+
+  it("constrains reference attachment/send errors with break-all and scroll bounds", async () => {
+    const onSend = vi.fn(async () => {
+      throw new Error("network down");
+    });
+    Object.defineProperty(window, "piAPI", {
+      value: {
+        selectFiles: vi.fn(async () => ({
+          code: "ipcErrors.files.selectFailed",
+          fallback: "打开文件选择器失败: dialog unavailable",
+        })),
+      },
+      configurable: true,
+    });
+    renderReference({ onSend });
+
+    // attachmentError: 文件选择失败
+    fireEvent.click(screen.getByRole("button", { name: "添加文件或图片" }));
+    await waitFor(() => {
+      expect(screen.getAllByRole("alert").length).toBeGreaterThanOrEqual(1);
+    });
+    const wrapper = screen.getAllByRole("alert")[0].parentElement as HTMLElement;
+    expect(wrapper.className).toContain("min-h-0");
+    expect(wrapper.className).toContain("shrink");
+    expect(wrapper.className).toContain("overflow-y-auto");
+    expect(screen.getAllByRole("alert")[0].className).toContain("break-all");
+    expect(screen.getAllByRole("alert")[0].className).toContain("whitespace-pre-wrap");
+    fireEvent.click(screen.getByRole("button", { name: "添加文件或图片" }).parentElement as HTMLElement); // 关闭附件菜单
+
+    // sendError: 发送失败 (输入会清 attachmentError, 所以先发送再触发 attachmentError)
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "hello" } });
+    const sendButton = screen
+      .getAllByRole("button", { name: "发送" })
+      .find((button) => !button.className.includes("hidden"));
+    if (!sendButton) {
+      throw new Error("Expected a visible send button in the reference composer");
+    }
+    fireEvent.click(sendButton);
+    await waitFor(() => {
+      expect(screen.getByText(/发送失败: network down/)).toBeTruthy();
+    });
+
+    // 再触发 attachmentError: 不改变 inputValue, sendError 保留 → 两个 alert 并存
+    fireEvent.click(screen.getByRole("button", { name: "添加文件或图片" }));
+    await waitFor(() => {
+      expect(screen.getAllByRole("alert").length).toBe(2);
+    });
+    const alerts = screen.getAllByRole("alert");
+    for (const alert of alerts) {
+      expect(alert.className).toContain("break-all");
+      expect(alert.className).toContain("whitespace-pre-wrap");
+      expect((alert.parentElement as HTMLElement).className).toContain("min-h-0");
+      expect((alert.parentElement as HTMLElement).className).toContain("overflow-y-auto");
+    }
+  });
+
+  it("keeps default composer errors unconstrained (auto-height behavior unchanged)", async () => {
+    Object.defineProperty(window, "piAPI", {
+      value: {
+        selectFiles: vi.fn(async () => ({
+          code: "ipcErrors.files.selectFailed",
+          fallback: "打开文件选择器失败: dialog unavailable",
+        })),
+      },
+      configurable: true,
+    });
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+    clickAddAttachment();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.className).not.toContain("break-all");
+    expect((alert.parentElement as HTMLElement).className).not.toContain("overflow-y-auto");
+  });
+
+  it("constrains the reference model-required note as a scrollable region", () => {
+    useSettingsStore.setState({
+      settings: {
+        theme: "light",
+        fontSize: 14,
+        model: "",
+        provider: "",
+        temperature: 0.7,
+        maxTokens: 4096,
+        autoSave: true,
+        showLineNumbers: true,
+        wordWrap: true,
+        schemaVersion: 1,
+        permissionLevel: "smart",
+        thinkingLevel: "medium",
+      },
+      piModels: [],
+    });
+    renderReference();
+
+    const note = screen.getByText("尚未配置可用模型").parentElement as HTMLElement;
+    expect(note.className).toContain("min-h-0");
+    expect(note.className).toContain("shrink");
+    expect(note.className).toContain("overflow-y-auto");
+  });
+
+  it("cleans up the global composer height variable on unmount", () => {
+    const { unmount } = renderReference();
+    // 挂载后 commitComposerHeight(95) → 95 + 8
+    expect(document.documentElement.style.getPropertyValue("--pi-global-composer-height")).toBe("103px");
+    unmount();
+    expect(document.documentElement.style.getPropertyValue("--pi-global-composer-height")).toBe("");
+    expect(document.documentElement.style.getPropertyValue("--pi-global-composer-left")).toBe("");
+    expect(document.documentElement.style.getPropertyValue("--pi-global-composer-right")).toBe("");
+  });
+
+  it("leaves no inline textarea height after a reference send succeeds", async () => {
+    const onSend = vi.fn(async () => undefined);
+    renderReference({ onSend });
+
+    const textbox = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(textbox, { target: { value: Array.from({ length: 40 }, (_, i) => `line ${i}`).join("\n") } });
+    const sendButton = screen
+      .getAllByRole("button", { name: "发送" })
+      .find((button) => !button.className.includes("hidden"));
+    if (!sendButton) {
+      throw new Error("Expected a visible send button in the reference composer");
+    }
+    fireEvent.click(sendButton);
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledTimes(1);
+    });
+    expect(textbox.value).toBe("");
+    expect(textbox.style.height).toBe("");
+  });
+
+  it("leaves no inline textarea height after a reference send failure restores the draft", async () => {
+    const onSend = vi.fn(async () => {
+      throw new Error("boom");
+    });
+    renderReference({ onSend });
+
+    const textbox = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(textbox, { target: { value: "draft text" } });
+    const sendButton = screen
+      .getAllByRole("button", { name: "发送" })
+      .find((button) => !button.className.includes("hidden"));
+    if (!sendButton) {
+      throw new Error("Expected a visible send button in the reference composer");
+    }
+    fireEvent.click(sendButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(/发送失败: boom/)).toBeTruthy();
+    });
+    expect(textbox.value).toBe("draft text");
+    expect(textbox.style.height).toBe("");
   });
 
 });

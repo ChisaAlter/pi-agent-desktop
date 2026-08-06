@@ -8,11 +8,12 @@ import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
 const TEXTAREA_MAX_HEIGHT = 200;
 
-export function useInputText(): {
+export function useInputText(options: { autoSize?: boolean } = {}): {
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   inputValue: string;
   setInputValue: React.Dispatch<React.SetStateAction<string>>;
 } {
+  const { autoSize = true } = options;
   const [inputValue, setInputValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -25,8 +26,12 @@ export function useInputText(): {
   }, []);
 
   useLayoutEffect(() => {
-    adjustTextareaHeight();
-  }, [inputValue, adjustTextareaHeight]);
+    if (autoSize) {
+      adjustTextareaHeight();
+    } else if (textareaRef.current) {
+      textareaRef.current.style.height = "";
+    }
+  }, [autoSize, inputValue, adjustTextareaHeight]);
 
   return { textareaRef, inputValue, setInputValue };
 }

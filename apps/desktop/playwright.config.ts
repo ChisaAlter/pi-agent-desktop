@@ -19,6 +19,8 @@ export default defineConfig({
     testDir: './e2e',
     // Spec files: *.spec.ts under ./e2e
     testMatch: /.*\.spec\.ts$/,
+    // 临时调试 spec 以 .tmp.spec.ts 命名 (头部注释声明不进入正式套件), 显式排除
+    testIgnore: /.*\.tmp\.spec\.ts$/,
     // Note: a11y.spec.ts is now a real Playwright spec (was previously a
     // vitest placeholder; see a11y-baseline slice M7). Do NOT ignore it.
     // Electron is single-instance by design; do not run specs in parallel.
