@@ -1,10 +1,12 @@
 import { ipcMain, shell } from "electron";
 import log from "electron-log/main";
-import { ipcError } from "@shared";
+import { ipcError, isIpcError } from "@shared";
 import { buildFileTree } from "../file-tree";
 import { detectProject } from "../project-detector";
 import { getProtectedPathReason } from "../services/protected-paths";
+import { resolveCanonicalTarget } from "../services/path-canonical";
 import { projectDetectSchema, projectFileTreeSchema } from "./schemas";
+import { createRegisteredWorkspaceResolver, type RegisteredWorkspacePath } from "./workspace-authorization";
 
 function protectedPathError(path: string, reason: string) {
     return ipcError("ipcErrors.files.protectedPath", reason, { path });
@@ -32,7 +34,17 @@ function isUrlSchemeButNotHttp(target: string): boolean {
     return /^[a-z][a-z0-9+.-]+:/i.test(target) && !isExternalUrl(target);
 }
 
-export function setupProjectShellIpc(): void {
+const BLOCKED_SHELL_EXTENSIONS = /\.(?:appref-ms|application|bat|cmd|com|cpl|exe|gadget|hta|inf|ins|isp|jar|js|jse|lnk|msc|msi|msix|msp|mst|pif|ps1|py|pyw|reg|scr|scf|sh|url|vb|vbe|vbs|ws|wsc|wsf|wsh)(?:[ .:]*)$/i;
+
+function isExecutableShellTarget(target: string): boolean {
+    return BLOCKED_SHELL_EXTENSIONS.test(target);
+}
+
+export function setupProjectShellIpc(opts: {
+    getRegisteredWorkspaces: () => readonly RegisteredWorkspacePath[];
+}): void {
+    const resolveRegisteredWorkspace = createRegisteredWorkspaceResolver(opts.getRegisteredWorkspaces);
+
     ipcMain.handle("project:detect", async (_event, workspacePath: string) => {
         try {
             projectDetectSchema.parse([workspacePath]);
@@ -46,7 +58,11 @@ export function setupProjectShellIpc(): void {
         }
         const reason = getProtectedPathReason(workspacePath);
         if (reason) return protectedPathError(workspacePath, reason);
-        return detectProject(workspacePath);
+        const authorizedWorkspacePath = await resolveRegisteredWorkspace(workspacePath);
+        if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
+        const canonicalReason = getProtectedPathReason(authorizedWorkspacePath);
+        if (canonicalReason) return protectedPathError(workspacePath, canonicalReason);
+        return detectProject(authorizedWorkspacePath);
     });
 
     ipcMain.handle("project:file-tree", async (_event, workspacePath: string, maxDepth?: number) => {
@@ -63,7 +79,11 @@ export function setupProjectShellIpc(): void {
         }
         const reason = getProtectedPathReason(workspacePath);
         if (reason) return protectedPathError(workspacePath, reason);
-        return buildFileTree(workspacePath, { maxDepth: maxDepth || 4 });
+        const authorizedWorkspacePath = await resolveRegisteredWorkspace(workspacePath);
+        if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
+        const canonicalReason = getProtectedPathReason(authorizedWorkspacePath);
+        if (canonicalReason) return protectedPathError(workspacePath, canonicalReason);
+        return buildFileTree(authorizedWorkspacePath, { maxDepth: maxDepth || 4 });
     });
 
     ipcMain.handle("shell:open-path", async (_event, targetPath: string) => {
@@ -87,7 +107,19 @@ export function setupProjectShellIpc(): void {
             }
             const reason = getProtectedPathReason(targetPath);
             if (reason) return protectedPathError(targetPath, reason);
-            const result = await shell.openPath(targetPath);
+            const workspacePath = await resolveRegisteredWorkspace(targetPath, "descendant");
+            if (isIpcError(workspacePath)) return workspacePath;
+            const canonicalTargetPath = await resolveCanonicalTarget(targetPath);
+            const canonicalReason = getProtectedPathReason(canonicalTargetPath, workspacePath);
+            if (canonicalReason) return protectedPathError(targetPath, canonicalReason);
+            if (isExecutableShellTarget(canonicalTargetPath)) {
+                return ipcError(
+                    "ipcErrors.shell.executableBlocked",
+                    `不允许直接启动可执行文件或脚本: ${targetPath}`,
+                    { path: targetPath },
+                );
+            }
+            const result = await shell.openPath(canonicalTargetPath);
             if (result) {
                 return ipcError(
                     "ipcErrors.shell.openPathFailed",
@@ -110,7 +142,12 @@ export function setupProjectShellIpc(): void {
         const reason = getProtectedPathReason(targetPath);
         if (reason) return protectedPathError(targetPath, reason);
         try {
-            shell.showItemInFolder(targetPath);
+            const workspacePath = await resolveRegisteredWorkspace(targetPath, "descendant");
+            if (isIpcError(workspacePath)) return workspacePath;
+            const canonicalTargetPath = await resolveCanonicalTarget(targetPath);
+            const canonicalReason = getProtectedPathReason(canonicalTargetPath, workspacePath);
+            if (canonicalReason) return protectedPathError(targetPath, canonicalReason);
+            shell.showItemInFolder(canonicalTargetPath);
         } catch (err) {
             log.error("[project-shell.ipc] shell:reveal-path failed:", err);
             return ipcError(

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,12 +10,16 @@ const {
     searchSkillsMock,
     listInstalledMock,
     checkSkillhubInstalledMock,
+    execFileMock,
+    execFileSyncMock,
 } = vi.hoisted(() => ({
     installSkillMock: vi.fn(),
     uninstallSkillMock: vi.fn(),
     searchSkillsMock: vi.fn(),
     listInstalledMock: vi.fn(async () => [] as string[]),
     checkSkillhubInstalledMock: vi.fn(async () => true),
+    execFileMock: vi.fn(),
+    execFileSyncMock: vi.fn(),
 }));
 
 vi.mock("electron", () => ({
@@ -31,6 +35,11 @@ vi.mock("electron-log/main", () => ({
         error: vi.fn(),
         warn: vi.fn(),
     },
+}));
+
+vi.mock("child_process", () => ({
+    execFile: execFileMock,
+    execFileSync: execFileSyncMock,
 }));
 
 vi.mock("../../services/skills/skillhub-adapter", () => ({
@@ -56,6 +65,8 @@ describe("setupSkillsIpc", () => {
         listInstalledMock.mockResolvedValue([]);
         checkSkillhubInstalledMock.mockReset();
         checkSkillhubInstalledMock.mockResolvedValue(true);
+        execFileMock.mockReset();
+        execFileSyncMock.mockReset();
         stateDir = mkdtempSync(join(tmpdir(), "skills-ipc-"));
         stateFile = join(stateDir, "skills-state.json");
         setupSkillsIpc({
@@ -207,6 +218,95 @@ describe("setupSkillsIpc", () => {
             const result = await handler({}, url);
             expect(result).toMatchObject({ code: "ipcErrors.skills.invalidUrl" });
         }
+    });
+
+    it("runs github import asynchronously and cleans temporary directories on success", async () => {
+        const workspace = mkdtempSync(join(tmpdir(), "skills-import-"));
+        handlers.clear();
+        setupSkillsIpc({
+            getWorkspacePath: () => workspace,
+            getStateFile: () => stateFile,
+        });
+
+        let finishClone: (() => void) | undefined;
+        let stagingPath = "";
+        let hooksPath = "";
+        execFileMock.mockImplementationOnce((
+            _file: string,
+            args: string[],
+            options: { env?: Record<string, string> },
+            callback: (error: Error | null, stdout: string, stderr: string) => void,
+        ) => {
+            stagingPath = args.at(-1) ?? "";
+            hooksPath = options.env?.GIT_TEMPLATE_DIR ?? "";
+            mkdirSync(stagingPath, { recursive: true });
+            writeFileSync(join(stagingPath, "SKILL.md"), "# imported\n", "utf8");
+            finishClone = () => callback(null, "", "");
+            return {};
+        });
+
+        const importPromise = handlers.get("skills:github-import")!({}, "https://github.com/acme/demo.git");
+        await vi.waitFor(() => expect(finishClone).toBeTypeOf("function"));
+        let settled = false;
+        void Promise.resolve(importPromise).then(() => { settled = true; });
+        await Promise.resolve();
+        expect(settled).toBe(false);
+
+        finishClone?.();
+        await expect(importPromise).resolves.toMatchObject({
+            success: true,
+            skillMdFound: true,
+            slug: "demo",
+        });
+        expect(execFileSyncMock).not.toHaveBeenCalled();
+        expect(existsSync(stagingPath)).toBe(false);
+        expect(existsSync(hooksPath)).toBe(false);
+        rmSync(workspace, { recursive: true, force: true });
+    });
+
+    it("cleans temporary directories when asynchronous git clone fails", async () => {
+        const workspace = mkdtempSync(join(tmpdir(), "skills-import-fail-"));
+        handlers.clear();
+        setupSkillsIpc({
+            getWorkspacePath: () => workspace,
+            getStateFile: () => stateFile,
+        });
+
+        let stagingPath = "";
+        let hooksPath = "";
+        execFileMock.mockImplementationOnce((
+            _file: string,
+            args: string[],
+            options: { env?: Record<string, string> },
+            callback: (error: Error | null, stdout: string, stderr: string) => void,
+        ) => {
+            stagingPath = args.at(-1) ?? "";
+            hooksPath = options.env?.GIT_TEMPLATE_DIR ?? "";
+            mkdirSync(stagingPath, { recursive: true });
+            callback(new Error("clone failed"), "", "fatal");
+            return {};
+        });
+
+        const result = await handlers.get("skills:github-import")!({}, "https://github.com/acme/demo.git");
+
+        expect(result).toMatchObject({ code: "ipcErrors.skills.githubImportFailed" });
+        expect(stagingPath).not.toBe("");
+        expect(hooksPath).not.toBe("");
+        expect(existsSync(stagingPath)).toBe(false);
+        expect(existsSync(hooksPath)).toBe(false);
+        rmSync(workspace, { recursive: true, force: true });
+    });
+
+    it("rejects SSH github imports without advertising them as supported", async () => {
+        const result = await handlers.get("skills:github-import")!({}, "git@github.com:acme/demo.git");
+
+        expect(result).toMatchObject({
+            code: "ipcErrors.skills.invalidUrl",
+            fallback: expect.stringContaining("只支持 https://"),
+        });
+        expect((result as { fallback: string }).fallback).not.toContain("或 git@");
+        expect(execFileMock).not.toHaveBeenCalled();
+        expect(execFileSyncMock).not.toHaveBeenCalled();
     });
 
     it("writes SKILL.md under the workspace skills directory", async () => {

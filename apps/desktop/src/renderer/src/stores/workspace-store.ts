@@ -170,6 +170,33 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
 
   removeWorkspace: (workspaceId: string) => {
     const before = get();
+    const removedIndex = before.workspaces.findIndex((workspace) => workspace.id === workspaceId);
+    const removedWorkspace = removedIndex >= 0 ? before.workspaces[removedIndex] : undefined;
+    const remainingBefore = before.workspaces.filter((workspace) => workspace.id !== workspaceId);
+    const optimisticCurrentId = before.currentWorkspaceId === workspaceId
+      ? (remainingBefore[0]?.id ?? null)
+      : before.currentWorkspaceId;
+    const rollbackRemoval = (message: string): void => {
+      set((state) => {
+        let workspaces = state.workspaces;
+        if (removedWorkspace && !workspaces.some((workspace) => workspace.id === workspaceId)) {
+          const insertAt = Math.min(removedIndex, workspaces.length);
+          workspaces = [
+            ...workspaces.slice(0, insertAt),
+            removedWorkspace,
+            ...workspaces.slice(insertAt),
+          ];
+        }
+        return {
+          workspaces,
+          currentWorkspaceId:
+            before.currentWorkspaceId === workspaceId && state.currentWorkspaceId === optimisticCurrentId
+              ? workspaceId
+              : state.currentWorkspaceId,
+          lastError: message,
+        };
+      });
+    };
     set(state => {
       const newWorkspaces = state.workspaces.filter(w => w.id !== workspaceId);
       const newCurrentId = state.currentWorkspaceId === workspaceId
@@ -193,21 +220,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
         .then((result) => {
           if (isIpcError(result)) {
             logger.error('[workspace-store] deleteWorkspace failed:', result.fallback);
-            set({
-              workspaces: before.workspaces,
-              currentWorkspaceId: before.currentWorkspaceId,
-              lastError: result.fallback,
-            });
+            rollbackRemoval(result.fallback);
             addToast(result.fallback, "error");
           }
         })
         .catch((e) => {
           logger.error('[workspace-store] deleteWorkspace failed:', e);
-          set({
-            workspaces: before.workspaces,
-            currentWorkspaceId: before.currentWorkspaceId,
-            lastError: e instanceof Error ? e.message : String(e),
-          });
+          rollbackRemoval(e instanceof Error ? e.message : String(e));
           addToast(e instanceof Error ? e.message : "删除工作区失败", "error");
         });
     }

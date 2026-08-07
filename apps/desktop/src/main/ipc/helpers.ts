@@ -125,8 +125,8 @@ interface SessionImporter {
 
 /**
  * claude-sessions.ipc.ts + codex-sessions.ipc.ts share an identical scan/import
- * shape. This wires both handlers for the given prefix. Schemas use .parse()
- * (throws on invalid), matching the prior inlined behavior.
+ * shape. This wires both handlers for the given prefix and keeps validation
+ * failures inside the structured IPC error contract.
  */
 export function setupSessionImporterIpc(
     prefix: "claude-sessions" | "codex-sessions",
@@ -135,11 +135,29 @@ export function setupSessionImporterIpc(
     importSchema: ZodSchema,
 ): void {
     ipcMain.handle(`${prefix}:scan`, async (_event, ...args: unknown[]) => {
-        const [workspacePath] = scanSchema.parse(args) as [string];
+        const parsed = scanSchema.safeParse(args);
+        if (!parsed.success) {
+            log.warn(`[${prefix}.ipc] scan invalid args:`, parsed.error);
+            return ipcError(
+                "ipcErrors.sessionImporter.invalidArgs",
+                `${prefix} scan 参数无效: ${parsed.error.issues[0]?.message ?? "unknown"}`,
+                { prefix, operation: "scan" },
+            );
+        }
+        const [workspacePath] = parsed.data as [string];
         return importer.scan(workspacePath);
     });
     ipcMain.handle(`${prefix}:import`, async (_event, ...args: unknown[]) => {
-        const [workspacePath, sourcePaths] = importSchema.parse(args) as [string, string[]];
+        const parsed = importSchema.safeParse(args);
+        if (!parsed.success) {
+            log.warn(`[${prefix}.ipc] import invalid args:`, parsed.error);
+            return ipcError(
+                "ipcErrors.sessionImporter.invalidArgs",
+                `${prefix} import 参数无效: ${parsed.error.issues[0]?.message ?? "unknown"}`,
+                { prefix, operation: "import" },
+            );
+        }
+        const [workspacePath, sourcePaths] = parsed.data as [string, string[]];
         return importer.import(workspacePath, sourcePaths);
     });
 }

@@ -171,6 +171,36 @@ describe("setupConfigIpc", () => {
         ], undefined);
     });
 
+    it("rejects images over 5 MiB before dispatching them to the model", async () => {
+        const manager = createManagerStub();
+        setupConfigIpc(manager as ConfigManager);
+        const oversizedDataUrl = `data:image/png;base64,${Buffer.alloc(5 * 1024 * 1024 + 1).toString("base64")}`;
+
+        const result = await handlers.get("pi:describe-images")!({}, [{
+            name: "too-large.png",
+            dataUrl: oversizedDataUrl,
+            mimeType: "image/png",
+        }]);
+
+        expect(result).toMatchObject({ code: "ipcErrors.config.invalidImages" });
+        expect(manager.describeImages).not.toHaveBeenCalled();
+    });
+
+    it("rejects oversized data URL metadata before dispatching to the model", async () => {
+        const manager = createManagerStub();
+        setupConfigIpc(manager as ConfigManager);
+        const oversizedMetadata = `data:image/png;${"x".repeat(1024)};base64,Zm9v`;
+
+        const result = await handlers.get("pi:describe-images")!({}, [{
+            name: "metadata.png",
+            dataUrl: oversizedMetadata,
+            mimeType: "image/png",
+        }]);
+
+        expect(result).toMatchObject({ code: "ipcErrors.config.invalidImages" });
+        expect(manager.describeImages).not.toHaveBeenCalled();
+    });
+
     it("falls back to the current conversation model when no vision model is configured", async () => {
         const manager = createManagerStub();
 

@@ -565,6 +565,78 @@ describe("App sidebar session navigation", () => {
         expect(screen.getByTestId("chat-view").getAttribute("data-focus-message-id")).toBe("m_palette_hit");
     });
 
+    it("跨 workspace 路由会在切换后保留目标 session", async () => {
+        const workspaces = [
+            {
+                id: "ws_1",
+                name: "Workspace",
+                path: "C:/Ai/pi-desktop",
+                createdAt: new Date(0),
+                lastActiveAt: new Date(0),
+            },
+            {
+                id: "ws_2",
+                name: "Other Workspace",
+                path: "C:/Ai/other",
+                createdAt: new Date(0),
+                lastActiveAt: new Date(0),
+            },
+        ];
+        const sessions = [
+            {
+                id: "s_1",
+                title: "Session 1",
+                workspaceId: "ws_1",
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                messages: [],
+            },
+            {
+                id: "s_2",
+                title: "Other Session",
+                workspaceId: "ws_2",
+                createdAt: new Date(1),
+                updatedAt: new Date(1),
+                messages: [],
+            },
+            {
+                id: "s_3",
+                title: "Newer Other Session",
+                workspaceId: "ws_2",
+                createdAt: new Date(2),
+                updatedAt: new Date(2),
+                messages: [],
+            },
+        ];
+        useWorkspaceStore.setState({
+            workspaces,
+            currentWorkspaceId: "ws_1",
+        });
+        useSessionStore.setState({
+            sessions,
+            currentSessionId: null,
+        });
+        render(<App />);
+
+        act(() => {
+            useWorkspaceStore.setState({ workspaces, currentWorkspaceId: "ws_1" });
+            useSessionStore.setState({ sessions, currentSessionId: "s_1" });
+        });
+        expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("ws_1");
+        expect(useSessionStore.getState().currentSessionId).toBe("s_1");
+
+        act(() => {
+            window.dispatchEvent(new CustomEvent("app:switch-section", {
+                detail: { section: "session:s_2" },
+            }));
+        });
+
+        await waitFor(() => {
+            expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("ws_2");
+            expect(useSessionStore.getState().currentSessionId).toBe("s_2");
+        });
+    });
+
     it("工作区仍在异步恢复时不会误弹 onboarding", async () => {
         useWorkspaceStore.setState({
             workspaces: [],

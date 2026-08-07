@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { isIpcError } from "@shared";
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 
@@ -53,22 +54,25 @@ describe("claude/codex session importer IPC wrappers", () => {
     ).resolves.toEqual({ p: "D:/repo", sources: ["b.jsonl"], kind: "codex" });
   });
 
-  // wave-100 residual: schema throws (not ipcError wrap) for invalid args
-  it("rejects empty workspacePath for claude scan/import", async () => {
+  it("returns structured errors for an empty Claude workspacePath", async () => {
     const importer = { scan: vi.fn(), import: vi.fn() };
     setupClaudeSessionsIpc(importer as never);
-    await expect(handlers.get("claude-sessions:scan")!({}, "")).rejects.toThrow();
-    await expect(handlers.get("claude-sessions:import")!({}, "", ["a.jsonl"])).rejects.toThrow();
+    const scanResult = await handlers.get("claude-sessions:scan")!({}, "");
+    const importResult = await handlers.get("claude-sessions:import")!({}, "", ["a.jsonl"]);
+    expect(isIpcError(scanResult)).toBe(true);
+    expect(isIpcError(importResult)).toBe(true);
     expect(importer.scan).not.toHaveBeenCalled();
     expect(importer.import).not.toHaveBeenCalled();
   });
 
-  it("rejects empty source path entries and oversized import arrays for codex", async () => {
+  it("returns structured errors for invalid Codex source path arrays", async () => {
     const importer = { scan: vi.fn(), import: vi.fn() };
     setupCodexSessionsIpc(importer as never);
-    await expect(handlers.get("codex-sessions:import")!({}, "D:/repo", [""])).rejects.toThrow();
+    const emptyPathResult = await handlers.get("codex-sessions:import")!({}, "D:/repo", [""]);
     const tooMany = Array.from({ length: 101 }, (_, i) => `s${i}.jsonl`);
-    await expect(handlers.get("codex-sessions:import")!({}, "D:/repo", tooMany)).rejects.toThrow();
+    const oversizedResult = await handlers.get("codex-sessions:import")!({}, "D:/repo", tooMany);
+    expect(isIpcError(emptyPathResult)).toBe(true);
+    expect(isIpcError(oversizedResult)).toBe(true);
     expect(importer.import).not.toHaveBeenCalled();
   });
 

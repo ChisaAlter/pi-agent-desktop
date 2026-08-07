@@ -5,12 +5,14 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { isIpcError } from "@shared";
+import { resolve } from "path";
 
 // vi.mock factories are hoisted above const declarations, so any variable
 // referenced directly inside a factory MUST be created via vi.hoisted() to
 // avoid TDZ errors. `handlers` is only referenced lazily inside a callback
 // (ipcMain.handle's wrapper), so it can stay as a regular const.
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
+const registeredWorkspacePath = resolve("C:/repo");
 
 const { gitServiceMock, getProtectedPathReasonMock, execFileMock, execFileSyncMock } = vi.hoisted(() => ({
     // Mocked git-service functions — each test configures return/reject behavior.
@@ -95,7 +97,29 @@ describe("git IPC", () => {
         ) => callback(null, "", ""));
         execFileSyncMock.mockReset();
         execFileSyncMock.mockReturnValue("");
-        setupGitIpc();
+        setupGitIpc({
+            getRegisteredWorkspaces: () => [{ path: registeredWorkspacePath }],
+        });
+    });
+
+    it("rejects Git operations for an unregistered workspace root", async () => {
+        gitServiceMock.getGitStatus.mockResolvedValue({ branch: "main" });
+
+        const result = await handlers.get("git:status")!({}, "C:/other-repo");
+
+        expect(result).toMatchObject({ code: "ipcErrors.workspace.unregisteredPath" });
+        expect(gitServiceMock.getGitStatus).not.toHaveBeenCalled();
+    });
+
+    it("rejects a registered Git root when its canonical path is protected", async () => {
+        getProtectedPathReasonMock.mockImplementation((path: string) =>
+            path === registeredWorkspacePath ? "路径位于敏感凭据目录" : null,
+        );
+
+        const result = await handlers.get("git:status")!({}, "C:/repo");
+
+        expect(result).toMatchObject({ code: "ipcErrors.git.protectedPath" });
+        expect(gitServiceMock.getGitStatus).not.toHaveBeenCalled();
     });
 
     // ── git:status ───────────────────────────────────────────────────────
@@ -108,7 +132,7 @@ describe("git IPC", () => {
             const result = await handler({}, "C:/repo");
 
             expect(result).toEqual(status);
-            expect(gitServiceMock.getGitStatus).toHaveBeenCalledWith("C:/repo");
+            expect(gitServiceMock.getGitStatus).toHaveBeenCalledWith(registeredWorkspacePath);
         });
 
         it("returns ipcError when getGitStatus throws", async () => {
@@ -134,7 +158,9 @@ describe("git IPC", () => {
             const first = handler({}, "C:/repo");
             const second = handler({}, "C:/repo");
 
-            expect(gitServiceMock.getGitStatus).toHaveBeenCalledTimes(1);
+            await vi.waitFor(() => {
+                expect(gitServiceMock.getGitStatus).toHaveBeenCalledTimes(1);
+            });
             resolveStatus({ branch: "main" });
             await expect(first).resolves.toEqual({ branch: "main" });
             await expect(second).resolves.toEqual({ branch: "main" });
@@ -150,7 +176,7 @@ describe("git IPC", () => {
             const result = await handler({}, "C:/repo", "src/index.ts");
 
             expect(result).toBe("diff --git a/file b/file\n...");
-            expect(gitServiceMock.gitDiff).toHaveBeenCalledWith("C:/repo", "src/index.ts");
+            expect(gitServiceMock.gitDiff).toHaveBeenCalledWith(registeredWorkspacePath, "src/index.ts");
         });
 
         it("returns ipcError when gitDiff throws", async () => {
@@ -185,7 +211,7 @@ describe("git IPC", () => {
             const result = await handler({}, "C:/repo", ["file1.ts", "file2.ts"]);
 
             expect(isIpcError(result)).toBe(false);
-            expect(gitServiceMock.gitAdd).toHaveBeenCalledWith("C:/repo", ["file1.ts", "file2.ts"]);
+            expect(gitServiceMock.gitAdd).toHaveBeenCalledWith(registeredWorkspacePath, ["file1.ts", "file2.ts"]);
         });
 
         it("returns ipcError when gitAdd throws", async () => {
@@ -228,7 +254,7 @@ describe("git IPC", () => {
             const result = await handler({}, "C:/repo", "fix: update file");
 
             expect(result).toBe("[main abc123] fix: update file");
-            expect(gitServiceMock.gitCommit).toHaveBeenCalledWith("C:/repo", "fix: update file");
+            expect(gitServiceMock.gitCommit).toHaveBeenCalledWith(registeredWorkspacePath, "fix: update file");
         });
 
         it("returns ipcError when gitCommit throws", async () => {
@@ -272,7 +298,7 @@ describe("git IPC", () => {
             const result = await handler({}, "C:/repo");
 
             expect(result).toBe("Everything up-to-date");
-            expect(gitServiceMock.gitPush).toHaveBeenCalledWith("C:/repo");
+            expect(gitServiceMock.gitPush).toHaveBeenCalledWith(registeredWorkspacePath);
         });
 
         it("returns ipcError when push fails", async () => {
@@ -401,6 +427,16 @@ describe("git IPC", () => {
                 expect(result.code).toBe("ipcErrors.git.logFailed");
             }
         });
+
+        it.each([0, -1, 1.5, 1001])("rejects invalid count %s before running git", async (count) => {
+            const result = await handlers.get("git:log")!({}, "C:/repo", count);
+
+            expect(isIpcError(result)).toBe(true);
+            if (isIpcError(result)) {
+                expect(result.code).toBe("ipcErrors.git.invalidArgs");
+            }
+            expect(execFileMock).not.toHaveBeenCalled();
+        });
     });
 
     // ── git:changed-files ────────────────────────────────────────────────
@@ -413,7 +449,7 @@ describe("git IPC", () => {
             const result = await handler({}, "C:/repo");
 
             expect(result).toEqual(files);
-            expect(gitServiceMock.gitChangedFiles).toHaveBeenCalledWith("C:/repo");
+            expect(gitServiceMock.gitChangedFiles).toHaveBeenCalledWith(registeredWorkspacePath);
         });
 
         it("returns ipcError for empty workspacePath (schema)", async () => {
@@ -436,7 +472,7 @@ describe("git IPC", () => {
             const result = await handler({}, "C:/repo");
 
             expect(result).toBe("staged diff content");
-            expect(gitServiceMock.gitDiffStaged).toHaveBeenCalledWith("C:/repo");
+            expect(gitServiceMock.gitDiffStaged).toHaveBeenCalledWith(registeredWorkspacePath);
         });
 
         it("returns ipcError when gitDiffStaged throws", async () => {
@@ -461,7 +497,7 @@ describe("git IPC", () => {
             const result = await handler({}, "C:/repo", ["file1.ts"]);
 
             expect(isIpcError(result)).toBe(false);
-            expect(gitServiceMock.gitUnstage).toHaveBeenCalledWith("C:/repo", ["file1.ts"]);
+            expect(gitServiceMock.gitUnstage).toHaveBeenCalledWith(registeredWorkspacePath, ["file1.ts"]);
         });
 
         it("returns ipcError when gitUnstage throws", async () => {
@@ -486,7 +522,7 @@ describe("git IPC", () => {
             const result = await handler({}, "C:/repo", "src/file.ts");
 
             expect(result).toBe("original content");
-            expect(gitServiceMock.gitOriginalContent).toHaveBeenCalledWith("C:/repo", "src/file.ts");
+            expect(gitServiceMock.gitOriginalContent).toHaveBeenCalledWith(registeredWorkspacePath, "src/file.ts");
         });
 
         it("returns ipcError for empty workspacePath (schema)", async () => {
@@ -566,6 +602,16 @@ describe("git IPC", () => {
             if (isIpcError(result)) {
                 expect(result.code).toBe("ipcErrors.git.protectedPath");
             }
+        });
+
+        it("returns ipcError for an empty workspace path", async () => {
+            const result = await handlers.get("git:branches")!({}, "");
+
+            expect(isIpcError(result)).toBe(true);
+            if (isIpcError(result)) {
+                expect(result.code).toBe("ipcErrors.git.invalidArgs");
+            }
+            expect(execFileMock).not.toHaveBeenCalled();
         });
     });
 });

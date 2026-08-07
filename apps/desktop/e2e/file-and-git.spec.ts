@@ -120,6 +120,14 @@ test.describe('Pi Desktop — File & Git Workflow', () => {
 
         await page.getByRole("button", { name: "展开右侧栏" }).click();
         await page.getByRole("button", { name: /查看变更文件/ }).click();
+
+        const changesOverlay = page.getByTestId('git-changes-overlay');
+        await expect(changesOverlay).toBeVisible({ timeout: 10_000 });
+        await expect(changesOverlay.getByText('README.md')).toBeVisible({ timeout: 10_000 });
+        await changesOverlay.getByRole('button', { name: '关闭变更列表' }).click();
+
+        await page.getByRole('tab', { name: '工作台' }).click();
+        await page.getByRole('tab', { name: 'Git', exact: true }).click();
         await expect(page.getByRole('region', { name: 'Git 面板' })).toBeVisible({ timeout: 10_000 });
         await expect(page.getByText(/0 staged \/ 1 changes/)).toBeVisible({ timeout: 10_000 });
 

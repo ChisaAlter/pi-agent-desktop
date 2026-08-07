@@ -26,6 +26,7 @@ import type { SessionAttachmentStore } from "../services/session-attachment-stor
 import {
     appendMessageSchema,
     archiveSessionSchema,
+    isBase64PayloadWithinImageLimit,
     updateSessionMetadataSchema,
     updateMessageSchema,
     updateToolCallSchema,
@@ -61,7 +62,10 @@ const saveAttachmentsSchema = z.object({
     images: z.array(z.object({
         name: z.string().min(1),
         mimeType: z.string().min(1),
-        data: z.string().min(1),
+        data: z.string().min(1).refine(
+            isBase64PayloadWithinImageLimit,
+            "image payload exceeds 5 MiB",
+        ),
         size: z.number().int().nonnegative().optional(),
     })).min(1).max(6),
 });

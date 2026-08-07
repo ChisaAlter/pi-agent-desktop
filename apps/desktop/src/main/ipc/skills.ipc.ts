@@ -16,7 +16,7 @@ import { isSafeUrl } from "../services/ssrf-guard";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync, renameSync } from "fs";
 import { dirname, basename, join } from "path";
 import { tmpdir } from "os";
-import { execFileSync } from "child_process";
+import { execFile } from "child_process";
 
 interface SkillsIpcDeps {
     /** workspace path (cwd for skillhub install) */
@@ -60,6 +60,34 @@ function replaceDirectoryWithBackup(stagingPath: string, targetPath: string): vo
         }
         throw error;
     }
+}
+
+function cloneSkillRepository(
+    repoUrl: string,
+    stagingPath: string,
+    cwd: string,
+    emptyHooksDir: string,
+): Promise<void> {
+    return new Promise((resolve, reject) => {
+        execFile("git", [
+            "clone",
+            "-c", `core.hooksPath=${emptyHooksDir}`,
+            repoUrl,
+            stagingPath,
+        ], {
+            cwd,
+            timeout: 60_000,
+            windowsHide: true,
+            maxBuffer: 10 * 1024 * 1024,
+            env: { ...process.env, GIT_TEMPLATE_DIR: emptyHooksDir },
+        }, (error) => {
+            if (error) {
+                reject(error);
+                return;
+            }
+            resolve();
+        });
+    });
 }
 
 const STATE_FILE_VERSION = 1;
@@ -223,13 +251,12 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
             );
         }
 
-        // 安全校验: repoUrl 必须是合法的 https:// 或 git@ 地址，防止 git 参数注入
-        const isValidUrl = /^https:\/\/[a-zA-Z0-9._~:/?#[\]@!$&'()*+,;=-]+$/.test(repoUrl) ||
-            /^git@[a-zA-Z0-9._-]+:[a-zA-Z0-9._~/-]+\.git$/.test(repoUrl);
+        // 仅允许 HTTPS。SSH 地址无法复用 HTTP SSRF 防护，明确拒绝而不是先宣称支持再失败。
+        const isValidUrl = /^https:\/\/[a-zA-Z0-9._~:/?#[\]@!$&'()*+,;=-]+$/.test(repoUrl);
         if (!isValidUrl) {
             return ipcError(
                 "ipcErrors.skills.invalidUrl",
-                `无效的仓库地址: ${repoUrl}，只支持 https:// 或 git@ 格式`,
+                `无效的仓库地址: ${repoUrl}，只支持 https:// 格式`,
                 { url: repoUrl },
             );
         }
@@ -273,17 +300,7 @@ export function setupSkillsIpc(deps: SkillsIpcDeps): void {
             const emptyHooksDir = join(tmpdir(), `pi-empty-hooks-${process.pid}-${Date.now()}`);
             mkdirSync(emptyHooksDir, { recursive: true });
             try {
-                execFileSync("git", [
-                    "clone",
-                    "-c", `core.hooksPath=${emptyHooksDir}`,
-                    repoUrl,
-                    stagingPath,
-                ], {
-                    cwd,
-                    timeout: 60_000,
-                    stdio: ["pipe", "pipe", "pipe"],
-                    env: { ...process.env, GIT_TEMPLATE_DIR: emptyHooksDir },
-                });
+                await cloneSkillRepository(repoUrl, stagingPath, cwd, emptyHooksDir);
             } finally {
                 try {
                     rmSync(emptyHooksDir, { recursive: true, force: true });

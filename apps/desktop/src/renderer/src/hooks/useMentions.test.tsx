@@ -96,4 +96,80 @@ describe("useMentions", () => {
     });
     expect(result.current.candidates).toEqual([]);
   });
+
+  it("ignores an older query response that resolves after the latest query", async () => {
+    type Entry = { path: string; name: string; size: number; isDirectory: boolean };
+    let resolveOld: ((entries: Entry[]) => void) | null = null;
+    let resolveNew: ((entries: Entry[]) => void) | null = null;
+    Object.defineProperty(window, "piAPI", {
+      configurable: true,
+      value: {
+        filesList: vi.fn((_workspace: string, query: string) => new Promise<Entry[]>((resolve) => {
+          if (query === "old") resolveOld = resolve;
+          if (query === "new") resolveNew = resolve;
+        })),
+      },
+    });
+    const { result, rerender } = renderHook(
+      ({ text, cursor }) => useMentions(text, cursor, "C:/ws"),
+      { initialProps: { text: "@old", cursor: 4 } },
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120);
+    });
+    rerender({ text: "@new", cursor: 4 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120);
+    });
+
+    await act(async () => {
+      resolveNew?.([{ path: "src/new.ts", name: "new.ts", size: 1, isDirectory: false }]);
+      await Promise.resolve();
+    });
+    expect(result.current.candidates.map((candidate) => candidate.path)).toEqual(["src/new.ts"]);
+
+    await act(async () => {
+      resolveOld?.([{ path: "src/old.ts", name: "old.ts", size: 1, isDirectory: false }]);
+      await Promise.resolve();
+    });
+    expect(result.current.candidates.map((candidate) => candidate.path)).toEqual(["src/new.ts"]);
+  });
+
+  it("ignores an older workspace response when the same query moves workspaces", async () => {
+    type Entry = { path: string; name: string; size: number; isDirectory: boolean };
+    let resolveFirstWorkspace: ((entries: Entry[]) => void) | null = null;
+    let resolveSecondWorkspace: ((entries: Entry[]) => void) | null = null;
+    Object.defineProperty(window, "piAPI", {
+      configurable: true,
+      value: {
+        filesList: vi.fn((workspace: string) => new Promise<Entry[]>((resolve) => {
+          if (workspace === "C:/first") resolveFirstWorkspace = resolve;
+          if (workspace === "C:/second") resolveSecondWorkspace = resolve;
+        })),
+      },
+    });
+    const { result, rerender } = renderHook(
+      ({ workspace }) => useMentions("@app", 4, workspace),
+      { initialProps: { workspace: "C:/first" } },
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120);
+    });
+    rerender({ workspace: "C:/second" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120);
+    });
+
+    await act(async () => {
+      resolveSecondWorkspace?.([{ path: "second/app.ts", name: "app.ts", size: 1, isDirectory: false }]);
+      await Promise.resolve();
+    });
+    expect(result.current.candidates.map((candidate) => candidate.path)).toEqual(["second/app.ts"]);
+
+    await act(async () => {
+      resolveFirstWorkspace?.([{ path: "first/app.ts", name: "app.ts", size: 1, isDirectory: false }]);
+      await Promise.resolve();
+    });
+    expect(result.current.candidates.map((candidate) => candidate.path)).toEqual(["second/app.ts"]);
+  });
 });

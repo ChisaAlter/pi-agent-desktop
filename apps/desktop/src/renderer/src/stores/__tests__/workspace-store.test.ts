@@ -175,6 +175,34 @@ describe("workspace-store: removeWorkspace", () => {
             expect(useWorkspaceStore.getState().lastError).toBe("delete transport failed");
         });
     });
+
+    it("删除失败只合并被删 workspace 并保留等待期间的新状态", async () => {
+        const a = { id: "a", name: "a", path: "/a", createdAt: new Date(0), lastActiveAt: new Date(0) };
+        const b = { id: "b", name: "b", path: "/b", createdAt: new Date(1), lastActiveAt: new Date(1) };
+        const c = { id: "c", name: "c", path: "/c", createdAt: new Date(2), lastActiveAt: new Date(2) };
+        let resolveDelete: ((result: { __brand: "IpcError"; code: string; fallback: string }) => void) | null = null;
+        mockApi.deleteWorkspace.mockImplementationOnce(() => new Promise((resolve) => {
+            resolveDelete = resolve;
+        }));
+        useWorkspaceStore.setState({ workspaces: [a, b], currentWorkspaceId: "b", lastError: null });
+
+        useWorkspaceStore.getState().removeWorkspace("b");
+        useWorkspaceStore.setState((state) => ({
+            workspaces: [...state.workspaces, c],
+            currentWorkspaceId: "c",
+        }));
+        resolveDelete?.({
+            __brand: "IpcError",
+            code: "ipcErrors.workspace.deleteFailed",
+            fallback: "删除工作区失败: disk locked",
+        });
+
+        await vi.waitFor(() => {
+            expect(useWorkspaceStore.getState().workspaces.map((workspace) => workspace.id)).toEqual(["a", "b", "c"]);
+            expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("c");
+            expect(useWorkspaceStore.getState().lastError).toBe("删除工作区失败: disk locked");
+        });
+    });
 });
 
 describe("workspace-store: setCurrentWorkspace", () => {

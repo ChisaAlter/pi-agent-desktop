@@ -1,5 +1,6 @@
 import { ipcRenderer } from "electron";
 import { vi, describe, it, expect, beforeAll, beforeEach } from "vitest";
+import type { PiAPI } from "@shared";
 
 vi.mock("electron", () => ({
     contextBridge: { exposeInMainWorld: vi.fn() },
@@ -149,6 +150,23 @@ describe("preload surface audit", () => {
         expect(ipcRenderer.invoke).toHaveBeenCalledWith("pi:describe-images", [
             { mimeType: "image/png", data: "abc" },
         ]);
+    });
+
+    it("preserves structured describeImages IPC errors in its public contract", async () => {
+        const ipcFailure: Awaited<ReturnType<NonNullable<PiAPI["describeImages"]>>> = {
+            __brand: "IpcError",
+            code: "ipcErrors.config.invalidImages",
+            fallback: "invalid images",
+            params: undefined,
+        };
+        vi.mocked(ipcRenderer.invoke).mockResolvedValueOnce(ipcFailure);
+        const describeImages = piAPI.describeImages as NonNullable<PiAPI["describeImages"]>;
+
+        await expect(describeImages([{
+            name: "bad.png",
+            dataUrl: "data:image/png;base64,%%%%",
+            mimeType: "image/png",
+        }])).resolves.toBe(ipcFailure);
     });
 
     it("enforces product invoke allowlist and rejects high-risk channels", async () => {

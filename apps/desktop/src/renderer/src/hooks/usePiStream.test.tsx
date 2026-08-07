@@ -2,6 +2,7 @@
 
 import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { IpcError, SendAgentPromptInput } from "@shared";
 import type { PiEvent } from "@shared/events";
 import { usePiStream } from "./usePiStream";
 import { useSessionStore } from "../stores/session-store";
@@ -10,9 +11,10 @@ import { useAgentStore } from "../stores/agent-store";
 import { useAgentModeStore } from "../stores/agent-mode-store";
 
 let emitPiEvent: ((event: PiEvent) => void) | null = null;
+let startAgentStreaming: ReturnType<typeof usePiStream>["startStreaming"] | null = null;
 const sendPrompt = vi.fn<(_workspaceId: string, _message: string, _options?: unknown) => Promise<unknown>>(async () => undefined);
 const stopPrompt = vi.fn<(_workspaceId: string) => Promise<unknown>>(async () => undefined);
-const agentsPrompt = vi.fn(async () => undefined);
+const agentsPrompt = vi.fn<(_input: SendAgentPromptInput) => Promise<void | IpcError>>(async () => undefined);
 const agentsAbort = vi.fn(async () => undefined);
 const agentsRuntimeState = vi.fn(async (agentId: string) => ({ agentId, status: "idle", isStreaming: false }));
 const planSetEnabled = vi.fn(async () => undefined);
@@ -39,16 +41,18 @@ function HookStateHost() {
 
 function AgentHookStateHost() {
     const state = usePiStream("agent_1");
+    startAgentStreaming = state.startStreaming;
     return (
         <div>
+            <div data-testid="agent-streaming">{String(state.isStreaming)}</div>
             <div data-testid="agent-stream-error">{state.error ?? ""}</div>
-            <button type="button" onClick={() => void state.startStreaming("ws1", "agent follow up")}>
+            <button type="button" onClick={() => void state.startStreaming("ws1", "agent follow up").catch(() => undefined)}>
                 send-agent-follow-up
             </button>
-            <button type="button" onClick={() => void state.startStreaming("ws1", "/execute_plan plan-probe.md", { visibleContent: "执行计划：plan-probe.md" })}>
+            <button type="button" onClick={() => void state.startStreaming("ws1", "/execute_plan plan-probe.md", { visibleContent: "执行计划：plan-probe.md" }).catch(() => undefined)}>
                 send-agent-execute-plan
             </button>
-            <button type="button" onClick={() => void state.startStreaming("ws1", "你好?")}>
+            <button type="button" onClick={() => void state.startStreaming("ws1", "你好?").catch(() => undefined)}>
                 send-agent-plan-greeting
             </button>
             <button
@@ -56,7 +60,7 @@ function AgentHookStateHost() {
                 onClick={() => void state.startStreaming("ws1", "请直接执行下面这份计划，不要重新生成计划。", {
                     visibleContent: "执行计划：plan-probe.md",
                     waitForAgentIdle: true,
-                })}
+                }).catch(() => undefined)}
             >
                 send-agent-plan-execution-prompt
             </button>
@@ -102,6 +106,7 @@ function PlanHookStateHost() {
 
 beforeEach(() => {
     emitPiEvent = null;
+    startAgentStreaming = null;
     sendPrompt.mockClear();
     agentsPrompt.mockReset();
     agentsPrompt.mockResolvedValue(undefined);
@@ -628,6 +633,49 @@ describe("usePiStream", () => {
 
         expect(screen.getByTestId("agent-stream-error").textContent).toContain("Plan 模式禁止执行 bash");
         expect(screen.getByTestId("agent-stream-error").textContent).not.toContain("Request was aborted");
+    });
+
+    it("rejects a resolved agentsPrompt IpcError after ending a new stream", async () => {
+        agentsPrompt.mockResolvedValueOnce({
+            __brand: "IpcError",
+            code: "ipcErrors.agents.promptFailed",
+            fallback: "发送失败: unsupported image type",
+        });
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            await expect(startAgentStreaming?.("ws1", "agent follow up")).rejects.toThrow("unsupported image type");
+        });
+
+        expect(screen.getByTestId("agent-stream-error").textContent).toContain("unsupported image type");
+        expect(screen.getByTestId("agent-streaming").textContent).toBe("false");
+        expect((window.dispatchEvent as ReturnType<typeof vi.fn>).mock.calls.some((call) => {
+            const event = call[0] as Event;
+            return event.type === "pi:stream-end";
+        })).toBe(true);
+    });
+
+    it("rejects a resolved follow-up IpcError without stopping the active stream", async () => {
+        agentsPrompt.mockResolvedValueOnce({
+            __brand: "IpcError",
+            code: "ipcErrors.agents.promptFailed",
+            fallback: "发送 follow-up 失败: queue unavailable",
+        });
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+        });
+
+        await act(async () => {
+            await expect(startAgentStreaming?.("ws1", "queued follow up")).rejects.toThrow("queue unavailable");
+        });
+
+        expect(screen.getByTestId("agent-stream-error").textContent).toContain("queue unavailable");
+        expect(screen.getByTestId("agent-streaming").textContent).toBe("true");
     });
 
     it("shows stop IPC fallback instead of silently swallowing it", async () => {

@@ -60,6 +60,26 @@ describe("setupAgentsIpc", () => {
         expect(registry.syncPermissions).toHaveBeenCalledWith("agent_2");
     });
 
+    it.each([
+        ["image over 5 MiB", "A".repeat(4 * Math.ceil((5 * 1024 * 1024 + 1) / 3))],
+        ["malformed base64", "%%%%"],
+    ])("rejects prompt %s before invoking the registry", async (_case, data) => {
+        const registry = { prompt: vi.fn() } as unknown as AgentRuntimeRegistry;
+        setupAgentsIpc(registry);
+
+        const result = await handlers.get("agents:prompt")?.({}, {
+            agentId: "agent_1",
+            message: "inspect",
+            images: [{ type: "image", data, mimeType: "image/png" }],
+        });
+
+        expect(result).toMatchObject({
+            __brand: "IpcError",
+            code: "ipcErrors.agents.invalidPrompt",
+        });
+        expect(registry.prompt).not.toHaveBeenCalled();
+    });
+
     it("returns ipcError for an invalid permission sync agent id", async () => {
         const registry = { syncPermissions: vi.fn() } as unknown as AgentRuntimeRegistry;
         setupAgentsIpc(registry);

@@ -511,7 +511,7 @@ test.describe("Generated UI v1 real Electron acceptance", () => {
             expect.arrayContaining([
                 expect.objectContaining({
                     uiId: "runtime_legacy_card",
-                    content: "",
+                    content: "本轮生成式 UI 验收已开始。",
                     sectionKinds: ["summary", "status_list", "action_bar"],
                     actionCount: 1,
                 }),
@@ -534,6 +534,9 @@ test.describe("Generated UI v1 real Electron acceptance", () => {
                 }),
             ]),
         );
+        const runtimeLegacyMessageId = persistedBeforeRestart?.generatedUiMessages
+            .find((message) => message.uiId === "runtime_legacy_card")?.messageId;
+        expect(runtimeLegacyMessageId).toBeTruthy();
 
         await scrollChat(page, "end");
         await page.screenshot({
@@ -624,7 +627,7 @@ test.describe("Generated UI v1 real Electron acceptance", () => {
         expect(persistedAfterRestart).toEqual(
             expect.arrayContaining([
                 expect.objectContaining({ id: "historic_custom_card_message", hasCustomCard: true, generatedUiId: null }),
-                expect.objectContaining({ id: "cm_runtime_legacy_card", hasCustomCard: false, generatedUiId: "runtime_legacy_card" }),
+                expect.objectContaining({ id: runtimeLegacyMessageId, hasCustomCard: false, generatedUiId: "runtime_legacy_card" }),
                 expect.objectContaining({ id: "cm_runtime_generated_ui", hasCustomCard: false, generatedUiId: "runtime_generated_ui" }),
                 expect.objectContaining({ id: "cm_runtime_generated_ui_v2", hasCustomCard: false, generatedUiId: "runtime_generated_ui_v2" }),
                 expect.objectContaining({ id: "cm_runtime_fallback", hasCustomCard: false, generatedUiId: "runtime_fallback" }),

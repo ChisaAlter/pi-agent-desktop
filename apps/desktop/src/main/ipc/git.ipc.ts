@@ -1,10 +1,11 @@
 import { ipcMain } from 'electron';
 import { execFile } from 'child_process';
 import log from 'electron-log/main';
-import { ipcError } from '@shared';
+import { ipcError, isIpcError } from '@shared';
 import { gitAdd, gitCommit, gitPush, gitDiff, gitDiffStaged, getGitStatus, gitUnstage, gitCheckout, gitCreateBranch, gitOriginalContent, gitChangedFiles } from '../services/git-service';
 import { getProtectedPathReason } from '../services/protected-paths';
-import { gitAddSchema, gitCommitSchema, gitPushSchema, gitDiffSchema, gitDiffStagedSchema, gitCheckoutSchema, gitCreateBranchSchema, gitOriginalContentSchema, gitChangedFilesSchema, gitStatusSchema } from './schemas';
+import { gitAddSchema, gitCommitSchema, gitPushSchema, gitDiffSchema, gitDiffStagedSchema, gitCheckoutSchema, gitCreateBranchSchema, gitOriginalContentSchema, gitChangedFilesSchema, gitStatusSchema, gitLogSchema, gitBranchesSchema } from './schemas';
+import { createRegisteredWorkspaceResolver, type RegisteredWorkspacePath } from './workspace-authorization';
 
 
 interface GitBranchEntry {
@@ -59,7 +60,20 @@ function parseBranches(output: string): GitBranchEntry[] {
 async function listBranches(workspacePath: string): Promise<GitBranchEntry[]> {
   return parseBranches(await runGit(workspacePath, ['branch', '-a']));
 }
-export function setupGitIpc(): void {
+export function setupGitIpc(opts: {
+  getRegisteredWorkspaces: () => readonly RegisteredWorkspacePath[];
+}): void {
+  const resolveRegisteredWorkspace = createRegisteredWorkspaceResolver(opts.getRegisteredWorkspaces);
+  const authorizeWorkspace = async (workspacePath: string) => {
+    const authorizedWorkspacePath = await resolveRegisteredWorkspace(workspacePath);
+    if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
+    const protectedReason = getProtectedPathReason(authorizedWorkspacePath);
+    if (protectedReason) {
+      return ipcError("ipcErrors.git.protectedPath", protectedReason, { path: workspacePath });
+    }
+    return authorizedWorkspacePath;
+  };
+
   ipcMain.handle('git:status', async (_, workspacePath: string) => {
     try {
       gitStatusSchema.parse([workspacePath]);
@@ -71,8 +85,10 @@ export function setupGitIpc(): void {
         { path: String(workspacePath ?? "") },
       );
     }
+    const authorizedWorkspacePath = await authorizeWorkspace(workspacePath);
+    if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
     try {
-      return await deduplicateGitRead(gitReadKey('git:status', workspacePath), () => getGitStatus(workspacePath));
+      return await deduplicateGitRead(gitReadKey('git:status', authorizedWorkspacePath), () => getGitStatus(authorizedWorkspacePath));
     } catch (err) {
       log.error("[git.ipc] git:status failed:", err);
       return ipcError(
@@ -94,8 +110,10 @@ export function setupGitIpc(): void {
         { path: String(filePath ?? "") },
       );
     }
+    const authorizedWorkspacePath = await authorizeWorkspace(workspacePath);
+    if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
     try {
-      return await deduplicateGitRead(gitReadKey('git:diff', workspacePath, filePath), () => gitDiff(workspacePath, filePath));
+      return await deduplicateGitRead(gitReadKey('git:diff', authorizedWorkspacePath, filePath), () => gitDiff(authorizedWorkspacePath, filePath));
     } catch (err) {
       log.error("[git.ipc] git:diff failed:", err);
       return ipcError(
@@ -116,9 +134,11 @@ export function setupGitIpc(): void {
         `git staged diff 参数无效: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    const authorizedWorkspacePath = await authorizeWorkspace(workspacePath);
+    if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
     try {
       // gitDiffStaged delegates to git with the standard ['diff', '--staged'] argv.
-      return await deduplicateGitRead(gitReadKey('git:diff-staged', workspacePath), () => gitDiffStaged(workspacePath));
+      return await deduplicateGitRead(gitReadKey('git:diff-staged', authorizedWorkspacePath), () => gitDiffStaged(authorizedWorkspacePath));
     } catch (err) {
       log.error("[git.ipc] git:diff-staged failed:", err);
       return ipcError(
@@ -138,9 +158,11 @@ export function setupGitIpc(): void {
         `git add 参数无效: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    const authorizedWorkspacePath = await authorizeWorkspace(workspacePath);
+    if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
     if (files.length === 0) return;
     try {
-      return await gitAdd(workspacePath, files);
+      return await gitAdd(authorizedWorkspacePath, files);
     } catch (err) {
       log.error("[git.ipc] git:add exec failed:", err);
       return ipcError(
@@ -160,9 +182,11 @@ export function setupGitIpc(): void {
         `git unstage 参数无效: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    const authorizedWorkspacePath = await authorizeWorkspace(workspacePath);
+    if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
     if (files.length === 0) return undefined;
     try {
-      return await gitUnstage(workspacePath, files);
+      return await gitUnstage(authorizedWorkspacePath, files);
     } catch (err) {
       log.error("[git.ipc] git:unstage exec failed:", err);
       return ipcError(
@@ -182,8 +206,10 @@ export function setupGitIpc(): void {
         `git commit 参数无效: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+    const authorizedWorkspacePath = await authorizeWorkspace(workspacePath);
+    if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
     try {
-      return await gitCommit(workspacePath, message);
+      return await gitCommit(authorizedWorkspacePath, message);
     } catch (err) {
       log.error("[git.ipc] git:commit exec failed:", err);
       return ipcError(
@@ -199,8 +225,10 @@ export function setupGitIpc(): void {
     } catch (err) {
       return ipcError("ipcErrors.git.invalidArgs", `git push 参数无效: ${err instanceof Error ? err.message : String(err)}`);
     }
+    const authorizedWorkspacePath = await authorizeWorkspace(workspacePath);
+    if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
     try {
-      return await gitPush(workspacePath);
+      return await gitPush(authorizedWorkspacePath);
     } catch (err) {
       log.error("[git.ipc] git:push exec failed:", err);
       return ipcError("ipcErrors.git.pushFailed", `git push 失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -208,15 +236,23 @@ export function setupGitIpc(): void {
   });
 
   ipcMain.handle('git:log', async (_, workspacePath: string, count: number = 20) => {
+    try {
+      gitLogSchema.parse([workspacePath, count]);
+    } catch (err) {
+      log.warn("[git.ipc] git:log invalid args:", err);
+      return ipcError("ipcErrors.git.invalidArgs", `git log 参数无效: ${err instanceof Error ? err.message : String(err)}`);
+    }
     const logPathReason = getProtectedPathReason(workspacePath);
     if (logPathReason) {
       return ipcError("ipcErrors.git.protectedPath", logPathReason, { path: workspacePath });
     }
+    const authorizedWorkspacePath = await authorizeWorkspace(workspacePath);
+    if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
     try {
       // 用 NUL 分隔字段 + 行, 避免 %s commit message 含 " 或换行导致 JSON.parse 失败.
       // %x00 = NUL. 每条提交按 hash/author/date/message 顺序输出, NUL 分隔字段与记录.
       const format = '--pretty=format:%H%x00%an%x00%ai%x00%s%x00';
-      const output = await deduplicateGitRead(gitReadKey('git:log', workspacePath, count), () => runGit(workspacePath, ['log', format, '-n', String(count), '-z']));
+      const output = await deduplicateGitRead(gitReadKey('git:log', authorizedWorkspacePath, count), () => runGit(authorizedWorkspacePath, ['log', format, '-n', String(count), '-z']));
       // -z 用 NUL 分隔记录, format 内也用 NUL 分隔字段; 拆分后每 4 个一段为一条提交.
       const tokens = output.split('\x00');
       const entries: { hash: string; author: string; date: string; message: string }[] = [];
@@ -241,12 +277,20 @@ export function setupGitIpc(): void {
   });
 
   ipcMain.handle('git:branches', async (_, workspacePath: string) => {
+    try {
+      gitBranchesSchema.parse([workspacePath]);
+    } catch (err) {
+      log.warn("[git.ipc] git:branches invalid args:", err);
+      return ipcError("ipcErrors.git.invalidArgs", `git branches 参数无效: ${err instanceof Error ? err.message : String(err)}`);
+    }
     const branchPathReason = getProtectedPathReason(workspacePath);
     if (branchPathReason) {
       return ipcError("ipcErrors.git.protectedPath", branchPathReason, { path: workspacePath });
     }
+    const authorizedWorkspacePath = await authorizeWorkspace(workspacePath);
+    if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
     try {
-      return await deduplicateGitRead(gitReadKey('git:branches', workspacePath), () => listBranches(workspacePath));
+      return await deduplicateGitRead(gitReadKey('git:branches', authorizedWorkspacePath), () => listBranches(authorizedWorkspacePath));
     } catch (err) {
       log.error("[git.ipc] git:branches failed:", err);
       return ipcError(
@@ -266,11 +310,13 @@ export function setupGitIpc(): void {
     } catch (err) {
       return ipcError("ipcErrors.git.invalidArgs", `git checkout 参数无效: ${err instanceof Error ? err.message : String(err)}`);
     }
+    const authorizedWorkspacePath = await authorizeWorkspace(workspacePath);
+    if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
     try {
-      const result = await gitCheckout(workspacePath, branch);
+      const result = await gitCheckout(authorizedWorkspacePath, branch);
       if (result && typeof result === 'object' && 'code' in result) return result;
       // 重新获取分支列表
-      return await listBranches(workspacePath);
+      return await listBranches(authorizedWorkspacePath);
     } catch (err) {
       log.error("[git.ipc] git:checkout failed:", err);
       return ipcError("ipcErrors.git.checkoutFailed", `切换分支失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -287,10 +333,12 @@ export function setupGitIpc(): void {
     } catch (err) {
       return ipcError("ipcErrors.git.invalidArgs", `git create-branch 参数无效: ${err instanceof Error ? err.message : String(err)}`);
     }
+    const authorizedWorkspacePath = await authorizeWorkspace(workspacePath);
+    if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
     try {
-      const result = await gitCreateBranch(workspacePath, branchName);
+      const result = await gitCreateBranch(authorizedWorkspacePath, branchName);
       if (result && typeof result === 'object' && 'code' in result) return result;
-      return await listBranches(workspacePath);
+      return await listBranches(authorizedWorkspacePath);
     } catch (err) {
       log.error("[git.ipc] git:create-branch failed:", err);
       return ipcError("ipcErrors.git.createBranchFailed", `创建分支失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -303,8 +351,10 @@ export function setupGitIpc(): void {
     } catch (err) {
       return ipcError("ipcErrors.git.invalidArgs", `git original-content 参数无效: ${err instanceof Error ? err.message : String(err)}`);
     }
+    const authorizedWorkspacePath = await authorizeWorkspace(workspacePath);
+    if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
     try {
-      return await deduplicateGitRead(gitReadKey('git:original-content', workspacePath, filePath), () => gitOriginalContent(workspacePath, filePath));
+      return await deduplicateGitRead(gitReadKey('git:original-content', authorizedWorkspacePath, filePath), () => gitOriginalContent(authorizedWorkspacePath, filePath));
     } catch (err) {
       log.error("[git.ipc] git:original-content failed:", err);
       return ipcError("ipcErrors.git.originalContentFailed", `读取 HEAD 原始内容失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -317,8 +367,10 @@ export function setupGitIpc(): void {
     } catch (err) {
       return ipcError("ipcErrors.git.invalidArgs", `git changed-files 参数无效: ${err instanceof Error ? err.message : String(err)}`);
     }
+    const authorizedWorkspacePath = await authorizeWorkspace(workspacePath);
+    if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
     try {
-      return await deduplicateGitRead(gitReadKey('git:changed-files', workspacePath), () => gitChangedFiles(workspacePath));
+      return await deduplicateGitRead(gitReadKey('git:changed-files', authorizedWorkspacePath), () => gitChangedFiles(authorizedWorkspacePath));
     } catch (err) {
       log.error("[git.ipc] git:changed-files failed:", err);
       return ipcError("ipcErrors.git.changedFilesFailed", `读取改动文件列表失败: ${err instanceof Error ? err.message : String(err)}`);

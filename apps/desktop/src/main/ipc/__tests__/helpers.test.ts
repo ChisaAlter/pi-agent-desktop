@@ -174,24 +174,6 @@ describe("ipc helpers", () => {
       });
     });
 
-    // wave-93 residual — setupSessionImporterIpc uses schema.parse() and lets throws surface
-    it("throws ZodError on scan/import schema failures (parse, not ipcError wrap)", async () => {
-      const importer = {
-        scan: vi.fn(async () => ({ ok: true })),
-        import: vi.fn(async () => ({ ok: true })),
-      };
-      const scanSchema = z.tuple([z.string()]);
-      const importSchema = z.tuple([z.string(), z.array(z.string())]);
-      setupSessionImporterIpc("codex-sessions", importer, scanSchema, importSchema);
-
-      const scan = handlers.get("codex-sessions:scan")!;
-      await expect(scan({}, 123)).rejects.toThrow();
-      const imp = handlers.get("codex-sessions:import")!;
-      await expect(imp({}, "C:/ws", "not-array")).rejects.toThrow();
-      expect(importer.scan).not.toHaveBeenCalled();
-      expect(importer.import).not.toHaveBeenCalled();
-    });
-
     it("propagates importer throws (no withAction wrap)", async () => {
       const importer = {
         scan: vi.fn(async () => {
@@ -391,7 +373,7 @@ describe("ipc helpers", () => {
       expect(logError).not.toHaveBeenCalled();
     });
 
-    it("setupSessionImporterIpc throws on invalid scan args via schema.parse", async () => {
+    it("setupSessionImporterIpc returns a structured error for invalid scan args", async () => {
       const importer = {
         scan: vi.fn(async () => ({})),
         import: vi.fn(async () => ({})),
@@ -400,7 +382,11 @@ describe("ipc helpers", () => {
       const importSchema = z.tuple([z.string(), z.array(z.string())]);
       setupSessionImporterIpc("claude-sessions", importer, scanSchema, importSchema);
       const scan = handlers.get("claude-sessions:scan")!;
-      await expect(scan({}, 123)).rejects.toThrow();
+      const result = await scan({}, 123);
+      expect(isIpcError(result)).toBe(true);
+      if (isIpcError(result)) {
+        expect(result.code).toBe("ipcErrors.sessionImporter.invalidArgs");
+      }
       expect(importer.scan).not.toHaveBeenCalled();
     });
   });
@@ -461,7 +447,7 @@ describe("ipc helpers", () => {
       }
     });
 
-    it("setupSessionImporterIpc import rejects invalid second arg and does not call importer", async () => {
+    it("setupSessionImporterIpc returns a structured error for invalid import args", async () => {
       const importer = {
         scan: vi.fn(async () => ({})),
         import: vi.fn(async () => ({})),
@@ -470,7 +456,11 @@ describe("ipc helpers", () => {
       const importSchema = z.tuple([z.string(), z.array(z.string())]);
       setupSessionImporterIpc("codex-sessions", importer, scanSchema, importSchema);
       const imp = handlers.get("codex-sessions:import")!;
-      await expect(imp({}, "C:/ws", "not-array")).rejects.toThrow();
+      const invalid = await imp({}, "C:/ws", "not-array");
+      expect(isIpcError(invalid)).toBe(true);
+      if (isIpcError(invalid)) {
+        expect(invalid.code).toBe("ipcErrors.sessionImporter.invalidArgs");
+      }
       expect(importer.import).not.toHaveBeenCalled();
       // valid path still works after failed parse
       await expect(imp({}, "C:/ws", ["one"])).resolves.toEqual({});

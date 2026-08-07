@@ -339,6 +339,7 @@ describe("setupChatIpc", () => {
             registry: { get: vi.fn(), has: vi.fn() } as any,
             getWorkspace: () => undefined,
             getDefaultWorkspace: () => undefined,
+            getRegisteredWorkspaces: () => [{ path: "C:/repo" }],
             pendingEdits: { autoApprove: false } as any,
         });
 
@@ -361,6 +362,7 @@ describe("setupChatIpc", () => {
             registry: { get: vi.fn(), has: vi.fn() } as any,
             getWorkspace: () => undefined,
             getDefaultWorkspace: () => undefined,
+            getRegisteredWorkspaces: () => [{ path: "C:/repo" }],
             pendingEdits: { autoApprove: false } as any,
         });
 
@@ -379,6 +381,7 @@ describe("setupChatIpc", () => {
             registry: { get: vi.fn(), has: vi.fn() } as any,
             getWorkspace: () => undefined,
             getDefaultWorkspace: () => undefined,
+            getRegisteredWorkspaces: () => [{ path: "C:/repo" }],
             pendingEdits: { autoApprove: false } as any,
         });
 
@@ -402,6 +405,7 @@ describe("setupChatIpc", () => {
             registry: { get: vi.fn(), has: vi.fn() } as any,
             getWorkspace: () => undefined,
             getDefaultWorkspace: () => undefined,
+            getRegisteredWorkspaces: () => [{ path: "C:/repo" }],
             pendingEdits: { autoApprove: false } as any,
         });
 

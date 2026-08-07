@@ -633,6 +633,14 @@ function AppShell(): React.ReactElement {
     }, []);
     const handleSelectHistory = useCallback((sessionId: string, messageId?: string) => {
         setActiveSection("chat");
+        const session = useSessionStore.getState().sessions.find((item) => item.id === sessionId);
+        const workspace = session
+            ? useWorkspaceStore.getState().workspaces.find((item) => item.id === session.workspaceId)
+            : undefined;
+        if (workspace) {
+            useWorkspaceStore.getState().setCurrentWorkspace(workspace.id);
+            void selectWorkspaceForRoute(workspace.path);
+        }
         useSessionStore.getState().setCurrentSession(sessionId);
         setSearchTarget(messageId ? { sessionId, messageId } : null);
     }, []);
@@ -682,7 +690,6 @@ function AppShell(): React.ReactElement {
         }
         if (section.startsWith("session:")) {
             const sessionId = section.slice("session:".length);
-            useSessionStore.getState().setCurrentSession(sessionId);
             const session = useSessionStore.getState().sessions.find((item) => item.id === sessionId);
             const workspace = session
                 ? useWorkspaceStore.getState().workspaces.find((item) => item.id === session.workspaceId)
@@ -691,6 +698,7 @@ function AppShell(): React.ReactElement {
                 useWorkspaceStore.getState().setCurrentWorkspace(workspace.id);
                 void selectWorkspaceForRoute(workspace.path);
             }
+            useSessionStore.getState().setCurrentSession(sessionId);
             setActiveSection("chat");
             return;
         }
@@ -1024,11 +1032,11 @@ function AppShell(): React.ReactElement {
                                     ? useWorkspaceStore.getState().workspaces.find((item) => item.id === session.workspaceId)
                                     : undefined;
                                 setActiveSection("chat");
-                                useSessionStore.getState().setCurrentSession(sessionId);
                                 if (workspace) {
                                     useWorkspaceStore.getState().setCurrentWorkspace(workspace.id);
                                     void selectWorkspaceForRoute(workspace.path);
                                 }
+                                useSessionStore.getState().setCurrentSession(sessionId);
                                 setSearchTarget({ sessionId, messageId });
                                 setShowSearchHistory(false);
                             }}

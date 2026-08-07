@@ -1143,6 +1143,14 @@ export function ChatInput({
             <span className="mt-[3px] h-[2px] w-9 rounded-full bg-[var(--mm-border-strong)] opacity-70" aria-hidden />
           </div>
         ) : null}
+        {/* 思考/处理中: 边框光束 (border-beam) — 沿 shell 1px 边框环流动 */}
+        {(isProcessing || isDescribingImages) && (
+          <div
+            className="pi-border-beam"
+            aria-hidden="true"
+            data-testid="chat-input-border-beam"
+          />
+        )}
         {(isProcessing || isDescribingImages) && (
           <div
             role="status"

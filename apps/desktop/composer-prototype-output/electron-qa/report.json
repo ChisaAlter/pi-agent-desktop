@@ -1,0 +1,50 @@
+{
+  "generatedAt": "2026-08-06T10:00:39.272Z",
+  "results": [
+    {
+      "name": "基线: 空 composer 95px/变量103px/控制栏贴底",
+      "pass": true,
+      "details": "shell=95px"
+    },
+    {
+      "name": "500 行长文本: textarea 自身滚动, shell 不变",
+      "pass": true,
+      "details": "scrollH=8750/clientH=47"
+    },
+    {
+      "name": "无空格超长 URL: 无横向溢出",
+      "pass": true,
+      "details": "ok"
+    },
+    {
+      "name": "20 图片附件: chips 在 shell 内, 附件区滚动, 控制栏贴底",
+      "pass": true,
+      "details": "attScroll=178/47"
+    },
+    {
+      "name": "超大图片被拒: 错误受控在 shell 内",
+      "pass": true,
+      "details": "图片大小不能超过 5MB"
+    },
+    {
+      "name": "resize 拖拽: 契约保持, 变量同步",
+      "pass": true,
+      "details": "shell=175px var=183px"
+    },
+    {
+      "name": "Slash 菜单: 向上弹出可见, 不被裁剪",
+      "pass": true,
+      "details": "gap=-7.7px top=437"
+    },
+    {
+      "name": "卸载清理变量 + 切回恢复",
+      "pass": true,
+      "details": "ok"
+    },
+    {
+      "name": "1365×768 宽窗: 契约保持",
+      "pass": true,
+      "details": "innerWidth=1366"
+    }
+  ]
+}

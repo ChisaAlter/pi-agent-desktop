@@ -126,8 +126,6 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
   }, [query, sessions, workspaces]);
 
   const openSession = (session: Session, readOnly: boolean): void => {
-    if (readOnly) openReadOnlySession(session.id);
-    else useSessionStore.getState().setCurrentSession(session.id);
     const workspace = workspaces.find((item) => item.id === session.workspaceId);
     if (workspace) {
       useWorkspaceStore.getState().setCurrentWorkspace(workspace.id);
@@ -135,6 +133,8 @@ export function SessionCenter({ onOpenChat }: SessionCenterProps): React.JSX.Ele
         if (message) setNotice({ message: `打开会话时切换 workspace 失败：${message}`, tone: "error" });
       });
     }
+    if (readOnly) openReadOnlySession(session.id);
+    else useSessionStore.getState().setCurrentSession(session.id);
     onOpenChat?.();
   };
   const continueAndOpen = async (session: Session, fromMessageId?: string): Promise<void> => {

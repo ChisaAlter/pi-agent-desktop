@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { I18nProvider } from "../../i18n";
 import { useSessionStore } from "../../stores/session-store";
@@ -130,6 +130,44 @@ describe("SessionCenter", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("创建会话分支失败：创建会话失败: disk full");
     expect(onOpenChat).not.toHaveBeenCalled();
     expect(useSessionStore.getState().currentSessionId).toBe("s1");
+  });
+
+  it("keeps the requested session selected when opening it from another workspace", () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        ...useWorkspaceStore.getState().workspaces,
+        { id: "ws2", name: "other", path: "C:/other", createdAt: new Date(0), lastActiveAt: new Date(0) },
+      ],
+      currentWorkspaceId: "ws1",
+    });
+    useSessionStore.setState((state) => ({
+      sessions: [
+        ...state.sessions,
+        {
+          id: "s2",
+          title: "Other target session",
+          workspaceId: "ws2",
+          createdAt: new Date(1),
+          updatedAt: new Date(1),
+          messages: [],
+        },
+      ],
+      currentSessionId: "s1",
+    }));
+    render(
+      <I18nProvider>
+        <SessionCenter />
+      </I18nProvider>,
+    );
+
+    const targetArticle = screen
+      .getByRole("textbox", { name: "重命名会话 Other target session" })
+      .closest("article");
+    expect(targetArticle).not.toBeNull();
+    fireEvent.click(within(targetArticle!).getByRole("button", { name: "打开" }));
+
+    expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("ws2");
+    expect(useSessionStore.getState().currentSessionId).toBe("s2");
   });
 
   it("shows session activity stats and branch counts for quick recovery", () => {

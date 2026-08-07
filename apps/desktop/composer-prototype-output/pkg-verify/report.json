@@ -1,0 +1,51 @@
+{
+  "generatedAt": "2026-08-06T14:43:14.815Z",
+  "exe": "C:\\Ai\\pi-desktop\\apps\\desktop\\dist\\win-unpacked\\Pi Desktop.exe",
+  "results": [
+    {
+      "name": "生产包基线: 95px/变量103px/控制栏贴底",
+      "pass": true,
+      "details": "shell=95px"
+    },
+    {
+      "name": "生产包 500 行: textarea 滚动, shell 不变",
+      "pass": true,
+      "details": "scrollH=8750/47"
+    },
+    {
+      "name": "生产包 20 附件: chips 在 shell 内, 附件区滚动",
+      "pass": true,
+      "details": "attScroll=146/47"
+    },
+    {
+      "name": "生产包长 URL: 无横向溢出",
+      "pass": true,
+      "details": "ok"
+    },
+    {
+      "name": "生产包大图被拒: 错误受控",
+      "pass": true,
+      "details": "ok"
+    },
+    {
+      "name": "生产包 resize: 契约保持, 变量同步",
+      "pass": true,
+      "details": "shell=175px var=183px"
+    },
+    {
+      "name": "生产包 Slash 菜单: 可见不被裁剪",
+      "pass": true,
+      "details": "gap=-8.0px top=437"
+    },
+    {
+      "name": "生产包卸载清理 + 切回恢复",
+      "pass": true,
+      "details": "ok"
+    },
+    {
+      "name": "生产包 1365×768 宽窗: 契约保持",
+      "pass": true,
+      "details": "innerWidth=1365"
+    }
+  ]
+}

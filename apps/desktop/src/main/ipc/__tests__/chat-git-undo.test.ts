@@ -1,5 +1,6 @@
 // Security tests for the git:undo IPC handler (path traversal + accidental deletion guards).
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resolve } from "path";
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 const { execFileMock, rmMock } = vi.hoisted(() => ({
@@ -31,19 +32,24 @@ vi.mock("child_process", () => ({
     execFile: execFileMock,
 }));
 
-vi.mock("node:fs/promises", () => ({
-    mkdir: vi.fn(),
-    writeFile: vi.fn(),
-    rm: rmMock,
-}));
+vi.mock("node:fs/promises", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("node:fs/promises")>();
+    return {
+        ...actual,
+        mkdir: vi.fn(),
+        writeFile: vi.fn(),
+        rm: rmMock,
+    };
+});
 
 import { setupChatIpc } from "../chat.ipc";
 
-function setup() {
+function setup(registeredPaths: string[] = ["C:/repo"]) {
     setupChatIpc({
         registry: { get: vi.fn(), has: vi.fn() } as any,
         getWorkspace: () => undefined,
         getDefaultWorkspace: () => undefined,
+        getRegisteredWorkspaces: () => registeredPaths.map((path) => ({ path })),
         pendingEdits: { autoApprove: false } as any,
     });
 }
@@ -76,6 +82,33 @@ describe("git:undo security guards", () => {
         handlers.clear();
         execFileMock.mockReset();
         rmMock.mockReset();
+    });
+
+    it("rejects an unregistered workspace before running git or deleting files", async () => {
+        execFileSuccess("");
+        setup(["C:/registered-repo"]);
+
+        const result = await handlers.get("git:undo")?.({}, "C:/repo", "new.txt");
+
+        expect(result).toMatchObject({ code: "ipcErrors.workspace.unregisteredPath" });
+        expect(execFileMock).not.toHaveBeenCalled();
+        expect(rmMock).not.toHaveBeenCalled();
+    });
+
+    it("uses the canonical registered root for git execution", async () => {
+        execFileSuccess("");
+        setup(["C:/repo/."]);
+
+        const result = await handlers.get("git:undo")?.({}, "C:/repo/./", "src/app.ts");
+
+        expect(result).toBeUndefined();
+        expect(execFileMock).toHaveBeenCalledWith(
+            "git",
+            ["checkout", "--", "src/app.ts"],
+            expect.objectContaining({ cwd: resolve("C:/repo") }),
+            expect.any(Function),
+        );
+        expect(rmMock).not.toHaveBeenCalled();
     });
 
     it("rejects path traversal attempts like ../etc/passwd without running git or deleting files", async () => {

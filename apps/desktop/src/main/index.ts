@@ -729,6 +729,7 @@ function setupIPC(updaterService: AppUpdaterService): void {
     getDefaultWorkspace: () => {
       return getMostRecentlyActiveWorkspace(store.get('workspaces'));
     },
+    getRegisteredWorkspaces: () => store.get('workspaces'),
     getWorkspacePlanMode,
     setWorkspacePlanMode,
     // 只允许主聊天窗发起 approval/permission/plan/autoApprove;
@@ -833,7 +834,10 @@ function setupIPC(updaterService: AppUpdaterService): void {
   setupClaudeSessionsIpc(claudeSessionImporter);
 
   // File search (for @ references and CommandPalette)
-  setupFilesIpc({ getMainWindow: () => mainWindow });
+  setupFilesIpc({
+    getMainWindow: () => mainWindow,
+    getRegisteredWorkspaces: () => store.get('workspaces'),
+  });
 
   // Skills panel (SkillHub integration)
   setupSkillsIpc({
@@ -931,9 +935,13 @@ function setupIPC(updaterService: AppUpdaterService): void {
   });
 
   setupPackagesIpc();
-  setupProjectShellIpc();
+  setupProjectShellIpc({
+    getRegisteredWorkspaces: () => store.get('workspaces'),
+  });
 
-  setupGitIpc();
+  setupGitIpc({
+    getRegisteredWorkspaces: () => store.get('workspaces'),
+  });
 
   setupSettingsIpc({
     store,

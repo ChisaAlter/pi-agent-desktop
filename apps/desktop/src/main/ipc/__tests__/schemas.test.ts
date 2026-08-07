@@ -680,6 +680,17 @@ describe("agents IPC schemas residual", () => {
         expect(() => agentsSetThinkingSchema.parse(["", "low"])).toThrow(ZodError);
     });
 
+    it.each([
+        ["image over 5 MiB", "A".repeat(4 * Math.ceil((5 * 1024 * 1024 + 1) / 3))],
+        ["malformed base64", "%%%%"],
+    ])("rejects %s in agentsPrompt images", (_case, data) => {
+        expect(() => agentsPromptSchema.parse({
+            agentId: "a1",
+            message: "inspect",
+            images: [{ type: "image", data, mimeType: "image/png" }],
+        })).toThrow(ZodError);
+    });
+
     it("caps codex import sourcePaths at 100 non-empty strings", () => {
         expect(() => codexImportSchema.parse(["C:/ws", ["a.jsonl"]])).not.toThrow();
         expect(() => codexImportSchema.parse(["C:/ws", [""]])).toThrow(ZodError);

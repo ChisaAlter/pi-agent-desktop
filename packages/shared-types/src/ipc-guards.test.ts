@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { PiAPI } from "./index";
 import {
   SETTINGS_WINDOW_TABS,
   ipcError,
@@ -48,6 +49,13 @@ describe("ipcError / isIpcError", () => {
     expect(err.params).toBeUndefined();
     expect(err.__brand).toBe("IpcError");
     expect(isIpcError(err)).toBe(true);
+  });
+
+  it("allows describeImages to return a structured IPC error", () => {
+    const result: Awaited<ReturnType<NonNullable<PiAPI["describeImages"]>>> =
+      ipcError("ipcErrors.config.invalidImages", "invalid images");
+
+    expect(isIpcError(result)).toBe(true);
   });
 
   it("accepts brand-only IpcError and legacy shape when code+fallback strings exist", () => {
@@ -581,4 +589,3 @@ describe("ipc-guards residual (wave-288)", () => {
     expect(isIpcError("IpcError")).toBe(false);
   });
 });
-

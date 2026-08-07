@@ -35,24 +35,16 @@ export function useMentions(
     const [candidates, setCandidates] = useState<MentionCandidate[]>([]);
     const [highlightIndex, setHighlightIndex] = useState(0);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const requestGenerationRef = useRef(0);
 
     // 检测 @mention 并搜索文件
     useEffect(() => {
+        const requestGeneration = ++requestGenerationRef.current;
         const mention = findActiveMention(text, cursorPosition);
 
         if (!mention || !workspacePath) {
             setActiveMention(null);
             setCandidates([]);
-            return;
-        }
-
-        // 与上次 query 相同则不重复搜索
-        if (
-            activeMention &&
-            activeMention.start === mention.start &&
-            activeMention.query === mention.query
-        ) {
-            // query 没变, 只更新位置
             return;
         }
 
@@ -65,6 +57,7 @@ export function useMentions(
         debounceRef.current = setTimeout(async () => {
             try {
                 const result = await window.piAPI?.filesList(workspacePath, mention.query);
+                if (requestGeneration !== requestGenerationRef.current) return;
                 if (!result || isIpcError(result)) {
                     setCandidates([]);
                     return;
@@ -82,6 +75,7 @@ export function useMentions(
                 setCandidates(scored);
                 setHighlightIndex(0);
             } catch {
+                if (requestGeneration !== requestGenerationRef.current) return;
                 setCandidates([]);
             }
         }, 120);
@@ -89,7 +83,6 @@ export function useMentions(
         return () => {
             if (debounceRef.current) clearTimeout(debounceRef.current);
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [text, cursorPosition, workspacePath]);
 
     const selectCandidate = useCallback(
@@ -103,6 +96,8 @@ export function useMentions(
     );
 
     const close = useCallback(() => {
+        requestGenerationRef.current += 1;
+        if (debounceRef.current) clearTimeout(debounceRef.current);
         setActiveMention(null);
         setCandidates([]);
         setHighlightIndex(0);

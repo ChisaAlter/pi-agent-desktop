@@ -5,10 +5,14 @@ import type { AppSettings, ManagedModelDeleteInput, ManagedModelSaveInput, PiAut
 import { z } from "zod";
 import type { ConfigManager } from "../services/config/config-manager";
 import { isSafeUrl } from "../services/ssrf-guard";
+import { isDataUrlWithinImageLimit } from "./schemas";
 
 const describeImagesInputSchema = z.array(z.object({
     name: z.string().trim().min(1),
-    dataUrl: z.string().trim().startsWith("data:"),
+    dataUrl: z.string().trim().startsWith("data:").refine(
+        isDataUrlWithinImageLimit,
+        "image payload exceeds 5 MiB",
+    ),
     // mimeType 只是元数据, 实际识别用 dataUrl (自带 MIME 类型).
     // 真实剪贴板粘贴 (截图工具等) 的 DataTransferItem.type 可能是空字符串,
     // 校验 min(1) 会把合法的图拒之门外 — 只做类型检查即可.

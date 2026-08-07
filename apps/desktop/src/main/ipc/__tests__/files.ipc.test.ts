@@ -16,6 +16,7 @@ vi.mock("electron", () => ({
 }));
 
 let root: string | null = null;
+let additionalRegisteredPaths: string[] = [];
 
 function makeWorkspace(): string {
     root = join(tmpdir(), `pi-files-ipc-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -31,7 +32,46 @@ afterEach(() => {
 describe("files IPC", () => {
     beforeEach(() => {
         handlers.clear();
-        setupFilesIpc();
+        additionalRegisteredPaths = [];
+        setupFilesIpc({
+            getRegisteredWorkspaces: () => [
+                ...(root ? [{ path: root }] : []),
+                ...additionalRegisteredPaths.map((path) => ({ path })),
+            ],
+        });
+    });
+
+    it("still authorizes a valid workspace when another registered path is invalid", async () => {
+        const workspace = makeWorkspace();
+        writeFileSync(join(workspace, "note.txt"), "content", "utf-8");
+        additionalRegisteredPaths.push("\0");
+
+        const result = await handlers.get("files:list")!({}, workspace);
+
+        expect(isIpcError(result)).toBe(false);
+        expect(result).toEqual(expect.arrayContaining([
+            expect.objectContaining({ name: "note.txt" }),
+        ]));
+    });
+
+    it("rejects list and write operations for an unregistered workspace root", async () => {
+        const workspace = makeWorkspace();
+        const unregistered = join(tmpdir(), `pi-unregistered-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        mkdirSync(unregistered, { recursive: true });
+        const target = join(unregistered, "note.txt");
+        writeFileSync(target, "before", "utf-8");
+
+        try {
+            const listResult = await handlers.get("files:list")!({}, unregistered);
+            const writeResult = await handlers.get("files:writeTextFile")!({}, target, "after", unregistered);
+
+            expect(listResult).toMatchObject({ code: "ipcErrors.workspace.unregisteredPath" });
+            expect(writeResult).toMatchObject({ code: "ipcErrors.workspace.unregisteredPath" });
+            expect(readFileSync(target, "utf-8")).toBe("before");
+            expect(workspace).not.toBe(unregistered);
+        } finally {
+            rmSync(unregistered, { recursive: true, force: true });
+        }
     });
 
     it("writes UTF-8 text files inside the workspace", async () => {

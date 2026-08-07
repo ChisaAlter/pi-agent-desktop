@@ -1264,13 +1264,16 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     if (shouldQueueAfterIdle) {
                         await waitForAgentRuntimeIdle(aid);
                     }
-                    await window.piAPI.agentsPrompt({
+                    const result = await window.piAPI.agentsPrompt({
                         agentId: aid,
                         message: content,
                         streamingBehavior: "followUp",
                         mode: selectedMode,
                         ...(options.images && options.images.length > 0 ? { images: options.images } : {}),
                     });
+                    if (isIpcError(result)) {
+                        throw new Error(result.fallback);
+                    }
                 } else {
                     const result = await window.piAPI.sendPrompt(workspaceId, content, { mode: selectedMode });
                     if (isIpcError(result)) {
@@ -1279,6 +1282,8 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 }
             } catch (err) {
                 setError(String(err));
+                promptInFlightRef.current = false;
+                throw err;
             }
             promptInFlightRef.current = false;
             return;
@@ -1351,13 +1356,16 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 if (shouldQueueAfterIdle) {
                     await waitForAgentRuntimeIdle(aid);
                 }
-                await window.piAPI.agentsPrompt({
+                const result = await window.piAPI.agentsPrompt({
                     agentId: aid,
                     message: outbound,
                     mode: selectedMode,
                     ...(options.images && options.images.length > 0 ? { images: options.images } : {}),
                     ...(shouldQueueAfterIdle ? { streamingBehavior: "followUp" as const } : {}),
                 });
+                if (isIpcError(result)) {
+                    throw new Error(result.fallback);
+                }
             } else {
                 try {
                     // Legacy sendPrompt path remains text-only; prefer agentsPrompt for images.
@@ -1411,6 +1419,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             }
             // Notify useTaskProgress: streaming error
             window.dispatchEvent(new CustomEvent("pi:stream-end"));
+            throw err;
         }
     }, [appendAgentMessage, discardPendingStreamRender, flushPendingUi, flushStreamPersist, getTargetSession]);
 

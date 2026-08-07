@@ -194,7 +194,7 @@ const piAPI: PiAPI = {
     agentsResolveActive: (workspaceId, selection) =>
         ipcRenderer.invoke("agents:resolve-active", workspaceId, selection) as Promise<AgentTab | undefined>,
     agentsCreate: (input) => ipcRenderer.invoke("agents:create", input) as Promise<AgentTab>,
-    agentsPrompt: (input) => ipcRenderer.invoke("agents:prompt", input) as Promise<void>,
+    agentsPrompt: (input) => ipcRenderer.invoke("agents:prompt", input) as Promise<void | IpcError>,
     agentsAbort: (agentId) => ipcRenderer.invoke("agents:abort", agentId) as Promise<void>,
     agentsAbortBySession: (sessionId) => ipcRenderer.invoke("agents:abort-by-session", sessionId) as Promise<void>,
     agentsAbortWorkspace: (workspaceId) => ipcRenderer.invoke("agents:abort-workspace", workspaceId) as Promise<void>,
@@ -447,7 +447,7 @@ const piAPI: PiAPI = {
     // v1.1.0: 识图功能 (vision). 通道当前未注册 ipcMain.handle, invoke 会 reject,
     // 由渲染层 try/catch 走 visionFailed 错误文案 — 待主进程补 handler 后自动生效.
     describeImages: (images) =>
-        ipcRenderer.invoke("pi:describe-images", images) as Promise<{ text: string }>,
+        ipcRenderer.invoke("pi:describe-images", images) as Promise<{ text: string } | IpcError>,
 
     // v2.0: Generic invoke for low-frequency channels without dedicated piAPI methods
     invoke: (channel: string, ...args: unknown[]) => {

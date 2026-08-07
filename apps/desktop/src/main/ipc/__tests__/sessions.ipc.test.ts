@@ -592,3 +592,46 @@ describe("IPC channel 名称字面量", () => {
         );
     });
 });
+
+describe("session:save-attachments", () => {
+    beforeEach(() => handlers.clear());
+
+    it("rejects images over 5 MiB before invoking the attachment store", async () => {
+        const saveImages = vi.fn(async () => []);
+        setupWithStore([], {
+            attachmentStore: { saveImages } as never,
+        });
+        const oversizedBase64 = Buffer.alloc(5 * 1024 * 1024 + 1).toString("base64");
+
+        const result = await handlers.get("session:save-attachments")!({}, {
+            sessionId: "session-1",
+            images: [{
+                name: "too-large.png",
+                mimeType: "image/png",
+                data: oversizedBase64,
+            }],
+        });
+
+        expect(result).toMatchObject({ code: "ipcErrors.session.saveAttachmentsInvalid" });
+        expect(saveImages).not.toHaveBeenCalled();
+    });
+
+    it("rejects malformed base64 before invoking the attachment store", async () => {
+        const saveImages = vi.fn(async () => []);
+        setupWithStore([], {
+            attachmentStore: { saveImages } as never,
+        });
+
+        const result = await handlers.get("session:save-attachments")!({}, {
+            sessionId: "session-1",
+            images: [{
+                name: "invalid.png",
+                mimeType: "image/png",
+                data: "%%%%",
+            }],
+        });
+
+        expect(result).toMatchObject({ code: "ipcErrors.session.saveAttachmentsInvalid" });
+        expect(saveImages).not.toHaveBeenCalled();
+    });
+});

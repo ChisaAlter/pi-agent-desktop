@@ -1520,7 +1520,7 @@ export interface PiAPI {
     agentsFindByWorkspaceAndSession(workspaceId: string, sessionId: string): Promise<AgentTab | undefined>;
     agentsResolveActive(workspaceId: string, selection?: AgentRuntimeSelection): Promise<AgentTab | undefined>;
     agentsCreate(input: CreateAgentInput): Promise<AgentTab>;
-    agentsPrompt(input: SendAgentPromptInput): Promise<void>;
+    agentsPrompt(input: SendAgentPromptInput): Promise<void | IpcError>;
     agentsAbort(agentId: string): Promise<void>;
     agentsAbortBySession(sessionId: string): Promise<void>;
     agentsAbortWorkspace(workspaceId: string): Promise<void>;
@@ -1726,7 +1726,7 @@ export interface PiAPI {
         name: string;
         dataUrl: string;
         mimeType?: string;
-    }>): Promise<{ text: string }>;
+    }>): Promise<{ text: string } | IpcError>;
 
     // v2.0: Generic invoke for low-frequency channels (converged from 60+ direct methods)
     invoke(channel: string, ...args: unknown[]): Promise<unknown>;

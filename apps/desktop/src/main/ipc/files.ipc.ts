@@ -4,7 +4,7 @@
 
 import { ipcMain, dialog, type BrowserWindow } from "electron";
 import log from "electron-log/main";
-import { ipcError } from "@shared";
+import { ipcError, isIpcError } from "@shared";
 import { basename } from "path";
 import { open, stat, writeFile } from "fs/promises";
 import { scanFiles } from "../services/search/file-scanner";
@@ -12,6 +12,7 @@ import { buildFileTree, listDirectory } from "../file-tree";
 import { getProtectedPathReason } from "../services/protected-paths";
 import { assertWorkspacePathAllowed } from "../services/path-canonical";
 import { getFileTreeSchema, listFilesSchema, readTextFileSchema, searchFilesSchema, writeTextFileSchema } from "./schemas";
+import { createRegisteredWorkspaceResolver, type RegisteredWorkspacePath } from "./workspace-authorization";
 
 function toFileEntry(path: string) {
     const name = path.split(/[\\/]/).pop() ?? path;
@@ -37,8 +38,12 @@ function setCached(key: string, data: unknown): void {
     scanCache.set(key, { ts: Date.now(), data });
 }
 
-export function setupFilesIpc(opts?: { getMainWindow?: () => BrowserWindow | null }): void {
-    const getMainWindow = opts?.getMainWindow ?? (() => null);
+export function setupFilesIpc(opts: {
+    getMainWindow?: () => BrowserWindow | null;
+    getRegisteredWorkspaces: () => readonly RegisteredWorkspacePath[];
+}): void {
+    const getMainWindow = opts.getMainWindow ?? (() => null);
+    const resolveRegisteredWorkspace = createRegisteredWorkspaceResolver(opts.getRegisteredWorkspaces);
 
     ipcMain.handle("files:getTree", async (_event, workspacePath: string, options?: { maxDepth?: number; maxEntries?: number }) => {
         try {
@@ -52,14 +57,20 @@ export function setupFilesIpc(opts?: { getMainWindow?: () => BrowserWindow | nul
             );
         }
         try {
-            const reason = getProtectedPathReason(workspacePath);
+            const lexicalReason = getProtectedPathReason(workspacePath);
+            if (lexicalReason) {
+                return ipcError("ipcErrors.files.protectedPath", lexicalReason, { path: workspacePath });
+            }
+            const authorizedWorkspacePath = await resolveRegisteredWorkspace(workspacePath);
+            if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
+            const reason = getProtectedPathReason(authorizedWorkspacePath);
             if (reason) {
                 return ipcError("ipcErrors.files.protectedPath", reason, { path: workspacePath });
             }
             if (options?.maxDepth === 1) {
-                return await listDirectory(workspacePath, { maxEntries: options.maxEntries });
+                return await listDirectory(authorizedWorkspacePath, { maxEntries: options.maxEntries });
             }
-            return await buildFileTree(workspacePath, options ?? { maxDepth: 4 });
+            return await buildFileTree(authorizedWorkspacePath, options ?? { maxDepth: 4 });
         } catch (err) {
             log.error("[files.ipc] tree error:", err);
             return ipcError(
@@ -82,9 +93,15 @@ export function setupFilesIpc(opts?: { getMainWindow?: () => BrowserWindow | nul
             );
         }
         try {
+            const lexicalReason = getProtectedPathReason(workspacePath);
+            if (lexicalReason) {
+                return ipcError("ipcErrors.files.protectedPath", lexicalReason, { path: workspacePath });
+            }
+            const authorizedWorkspacePath = await resolveRegisteredWorkspace(workspacePath);
+            if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
             // Canonical 校验: 词法 + realpath, 拦截 symlink/junction 逃逸出工作区。
             // 与 agent 侧 `guarded-tools.ts` 保持同一安全标准。
-            const guard = await assertWorkspacePathAllowed(targetPath, workspacePath);
+            const guard = await assertWorkspacePathAllowed(targetPath, authorizedWorkspacePath);
             if (!guard.allowed) {
                 return ipcError("ipcErrors.files.protectedPath", guard.reason, { path: targetPath });
             }
@@ -138,8 +155,14 @@ export function setupFilesIpc(opts?: { getMainWindow?: () => BrowserWindow | nul
             );
         }
         try {
+            const lexicalReason = getProtectedPathReason(workspacePath);
+            if (lexicalReason) {
+                return ipcError("ipcErrors.files.protectedPath", lexicalReason, { path: workspacePath });
+            }
+            const authorizedWorkspacePath = await resolveRegisteredWorkspace(workspacePath);
+            if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
             // Canonical 校验: 词法 + realpath, 拦截 symlink/junction 逃逸。
-            const guard = await assertWorkspacePathAllowed(targetPath, workspacePath);
+            const guard = await assertWorkspacePathAllowed(targetPath, authorizedWorkspacePath);
             if (!guard.allowed) {
                 return ipcError("ipcErrors.files.protectedPath", guard.reason, { path: targetPath });
             }
@@ -160,7 +183,7 @@ export function setupFilesIpc(opts?: { getMainWindow?: () => BrowserWindow | nul
             // next files:search / files:list sees the updated file mtime.
             // Without this, a write immediately followed by a CommandPalette
             // search would return a stale entry until the TTL elapsed.
-            scanCache.delete(workspacePath);
+            scanCache.delete(authorizedWorkspacePath);
             return {
                 path: targetPath,
                 size: stats.size,
@@ -189,17 +212,23 @@ export function setupFilesIpc(opts?: { getMainWindow?: () => BrowserWindow | nul
             );
         }
         try {
-            const reason = getProtectedPathReason(workspacePath);
+            const lexicalReason = getProtectedPathReason(workspacePath);
+            if (lexicalReason) {
+                return ipcError("ipcErrors.files.protectedPath", lexicalReason, { path: workspacePath });
+            }
+            const authorizedWorkspacePath = await resolveRegisteredWorkspace(workspacePath);
+            if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
+            const reason = getProtectedPathReason(authorizedWorkspacePath);
             if (reason) {
                 return ipcError("ipcErrors.files.protectedPath", reason, { path: workspacePath });
             }
             const q = query.toLowerCase();
             const limit = Math.max(1, Math.min(options?.limit ?? 80, 200));
             // SubTask 40.4: 30s TTL cache keyed by workspacePath
-            let files = getCached<string[]>(workspacePath);
+            let files = getCached<string[]>(authorizedWorkspacePath);
             if (!files) {
-                files = await scanFiles(workspacePath);
-                setCached(workspacePath, files);
+                files = await scanFiles(authorizedWorkspacePath);
+                setCached(authorizedWorkspacePath, files);
             }
             return files
                 .filter((f) => f.toLowerCase().includes(q))
@@ -227,15 +256,21 @@ export function setupFilesIpc(opts?: { getMainWindow?: () => BrowserWindow | nul
             );
         }
         try {
-            const reason = getProtectedPathReason(workspacePath);
+            const lexicalReason = getProtectedPathReason(workspacePath);
+            if (lexicalReason) {
+                return ipcError("ipcErrors.files.protectedPath", lexicalReason, { path: workspacePath });
+            }
+            const authorizedWorkspacePath = await resolveRegisteredWorkspace(workspacePath);
+            if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
+            const reason = getProtectedPathReason(authorizedWorkspacePath);
             if (reason) {
                 return ipcError("ipcErrors.files.protectedPath", reason, { path: workspacePath });
             }
             // SubTask 40.4: 30s TTL cache keyed by workspacePath
-            let files = getCached<string[]>(workspacePath);
+            let files = getCached<string[]>(authorizedWorkspacePath);
             if (!files) {
-                files = await scanFiles(workspacePath);
-                setCached(workspacePath, files);
+                files = await scanFiles(authorizedWorkspacePath);
+                setCached(authorizedWorkspacePath, files);
             }
             if (!query) return files.slice(0, 100).map(toFileEntry);
             const q = query.toLowerCase();

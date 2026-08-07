@@ -8,7 +8,7 @@ import { execFile } from "child_process";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "path";
 import log from "electron-log/main";
-import { ipcError, normalizeLongHorizonSettings } from "@shared";
+import { ipcError, isIpcError, normalizeLongHorizonSettings } from "@shared";
 import type { LongHorizonMemoryRecord } from "@shared";
 import { WorkspaceRegistry } from "../services/pi-session/registry";
 import type { IpcSender } from "../services/pi-session/event-bridge";
@@ -44,6 +44,7 @@ import { ApprovalKeepSchema, ApprovalUndoSchema, gitUndoSchema, GoalEvaluateSche
 import { buildAgentModePrompt, goalSlashCommands, normalizeAgentMode } from "../services/agent-modes";
 import { buildMiMoCodeRuntimePort } from "../services/mimocode-runtime-port";
 import { resolveBundledDesktopExtensionPaths } from "../services/pi-session/factory";
+import { createRegisteredWorkspaceResolver, type RegisteredWorkspacePath } from "./workspace-authorization";
 
 interface WorkspaceLite {
     id: string;
@@ -63,6 +64,8 @@ interface ChatIpcDeps {
     getWorkspace: (id: string) => WorkspaceLite | undefined;
     /** 同步拿 default workspace 路径 (legacy callers only) */
     getDefaultWorkspace: () => WorkspaceLite | undefined;
+    /** 主进程持久化的工作区列表；filesystem mutation 以此为权限来源。 */
+    getRegisteredWorkspaces?: () => readonly RegisteredWorkspacePath[];
     /** 持久化 PendingEdits 状态 (可选, 用于窗口重启时恢复) */
     pendingEdits: PendingEdits;
     /** 新工作台运行时；存在时 legacy pi:* 入口转发到 agent 语义 */
@@ -609,6 +612,9 @@ async function appendRecentUserIntentToMarkdownMemory(
 
 export function setupChatIpc(deps: ChatIpcDeps): void {
     const agentModeByWorkspace = new Map<string, AgentMode>();
+    const resolveRegisteredWorkspace = createRegisteredWorkspaceResolver(
+        deps.getRegisteredWorkspaces ?? (() => []),
+    );
     // approval / permission / plan / autoApprove 只应由主聊天窗发起;
     // settings 窗不展示审批 UI, 也不应改 autoApprove。这里做软绑定:
     // sender 是 settings 窗 → 静默忽略, 不影响主窗正常批准/拒绝。
@@ -1316,7 +1322,13 @@ export function setupChatIpc(deps: ChatIpcDeps): void {
             );
         }
 
-        const workspaceRoot = resolve(workspacePath);
+        const authorizedWorkspacePath = await resolveRegisteredWorkspace(workspacePath);
+        if (isIpcError(authorizedWorkspacePath)) return authorizedWorkspacePath;
+        const workspaceRoot = authorizedWorkspacePath;
+        const workspaceReason = getProtectedPathReason(workspaceRoot);
+        if (workspaceReason) {
+            return ipcError("ipcErrors.files.protectedPath", workspaceReason, { path: workspacePath });
+        }
         const targetPath = isAbsolute(filePath) ? resolve(filePath) : resolve(workspaceRoot, filePath);
         const reason = getProtectedPathReason(targetPath, workspaceRoot);
         if (reason) {

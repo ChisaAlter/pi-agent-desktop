@@ -4,6 +4,31 @@
 
 import { z } from "zod";
 
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_IMAGE_DATA_URL_METADATA_LENGTH = 256;
+const BASE64_PAYLOAD_PATTERN = /^[A-Za-z0-9+/]*={0,2}$/;
+
+export function isBase64PayloadWithinImageLimit(payload: string): boolean {
+    if (!payload || !BASE64_PAYLOAD_PATTERN.test(payload)) return false;
+    const remainder = payload.length % 4;
+    if (remainder === 1 || (payload.includes("=") && remainder !== 0)) return false;
+    const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
+    const decodedBytes = Math.floor(payload.length * 3 / 4) - padding;
+    return decodedBytes <= MAX_IMAGE_BYTES;
+}
+
+export function isDataUrlWithinImageLimit(dataUrl: string): boolean {
+    if (!dataUrl.startsWith("data:")) return false;
+    const separator = dataUrl.indexOf(",");
+    if (separator < 0) return false;
+    const metadata = dataUrl.slice(5, separator).toLowerCase();
+    if (metadata.length > MAX_IMAGE_DATA_URL_METADATA_LENGTH) return false;
+    const payload = dataUrl.slice(separator + 1);
+    return metadata.split(";").includes("base64")
+        ? isBase64PayloadWithinImageLimit(payload)
+        : payload.length <= MAX_IMAGE_BYTES;
+}
+
 // workspace:create — 验证 name 和 path 都是非空 string
 export const workspaceCreateSchema = z.tuple([
     z.string().min(1, "name must be a non-empty string"),
@@ -451,7 +476,9 @@ export const agentsCreateSchema = z.object({
 
 const piImageContentSchema = z.object({
     type: z.literal("image"),
-    data: z.string().min(1, "image data must be non-empty base64").max(7_000_000),
+    data: z.string()
+        .min(1, "image data must be non-empty base64")
+        .refine(isBase64PayloadWithinImageLimit, "image data must be valid base64 up to 5 MiB"),
     mimeType: z.enum(["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"]),
 });
 

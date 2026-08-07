@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resolve } from "path";
 
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 const { openPathMock, openExternalMock, showItemInFolderMock } = vi.hoisted(() => ({
@@ -35,7 +36,17 @@ describe("setupProjectShellIpc", () => {
         openPathMock.mockReset();
         openExternalMock.mockReset();
         showItemInFolderMock.mockReset();
-        setupProjectShellIpc();
+        setupProjectShellIpc({
+            getRegisteredWorkspaces: () => [{ path: "C:/repo" }],
+        });
+    });
+
+    it("rejects project operations for an unregistered workspace root", async () => {
+        const detectResult = await handlers.get("project:detect")!({}, "C:/other-repo");
+        const treeResult = await handlers.get("project:file-tree")!({}, "C:/other-repo", 2);
+
+        expect(detectResult).toMatchObject({ code: "ipcErrors.workspace.unregisteredPath" });
+        expect(treeResult).toMatchObject({ code: "ipcErrors.workspace.unregisteredPath" });
     });
 
     it("blocks protected legacy project detection paths", async () => {
@@ -63,7 +74,7 @@ describe("setupProjectShellIpc", () => {
         const result = await handler({}, "C:/repo/src/app.ts");
 
         expect(result).toBe("");
-        expect(openPathMock).toHaveBeenCalledWith("C:/repo/src/app.ts");
+        expect(openPathMock).toHaveBeenCalledWith(resolve("C:/repo/src/app.ts"));
     });
 
     it("returns an IPC error when Electron shell cannot open a path", async () => {
@@ -77,7 +88,7 @@ describe("setupProjectShellIpc", () => {
             fallback: "打开路径失败: No application is associated with the specified file",
             params: { path: "C:/repo/archive.unknown" },
         });
-        expect(openPathMock).toHaveBeenCalledWith("C:/repo/archive.unknown");
+        expect(openPathMock).toHaveBeenCalledWith(resolve("C:/repo/archive.unknown"));
     });
 
     it("does not open protected paths through Electron shell", async () => {
@@ -122,6 +133,18 @@ describe("setupProjectShellIpc", () => {
         expect(openPathMock).not.toHaveBeenCalled();
     });
 
+    it("rejects model-generated executable and workspace-external open targets", async () => {
+        const handler = handlers.get("shell:open-path")!;
+
+        const executableResult = await handler({}, "C:/repo/tools/setup.exe");
+        const externalResult = await handler({}, "C:/Windows/System32/calc.exe");
+
+        expect(executableResult).toMatchObject({ code: "ipcErrors.shell.executableBlocked" });
+        expect(externalResult).toMatchObject({ code: "ipcErrors.workspace.unregisteredPath" });
+        expect(openPathMock).not.toHaveBeenCalled();
+        expect(openExternalMock).not.toHaveBeenCalled();
+    });
+
     it("does not reveal protected paths through Electron shell", async () => {
         const handler = handlers.get("shell:reveal-path")!;
         const result = await handler({}, "C:/repo/.ssh/id_ed25519");
@@ -137,7 +160,7 @@ describe("setupProjectShellIpc", () => {
         const result = await handler({}, "C:/repo/src/app.ts");
 
         expect(result).toBeUndefined();
-        expect(showItemInFolderMock).toHaveBeenCalledWith("C:/repo/src/app.ts");
+        expect(showItemInFolderMock).toHaveBeenCalledWith(resolve("C:/repo/src/app.ts"));
     });
 
     // wave-102 residual
@@ -169,6 +192,6 @@ describe("setupProjectShellIpc", () => {
         openPathMock.mockResolvedValueOnce("");
         const result = await handlers.get("shell:open-path")!({}, "C:/repo/readme.txt");
         expect(result).toBe("");
-        expect(openPathMock).toHaveBeenCalledWith("C:/repo/readme.txt");
+        expect(openPathMock).toHaveBeenCalledWith(resolve("C:/repo/readme.txt"));
     });
 });
