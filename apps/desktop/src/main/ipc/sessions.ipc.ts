@@ -22,6 +22,7 @@ import type {
     SessionMetadataUpdates,
     SessionRepository,
 } from "../services/session-repository";
+import type { SessionAttachmentStore } from "../services/session-attachment-store";
 import {
     appendMessageSchema,
     archiveSessionSchema,
@@ -30,9 +31,11 @@ import {
     updateToolCallSchema,
 } from "./schemas";
 import { normalizeLegacyMessagePayload } from "./tool-call-normalization";
+import { z } from "zod";
 
 export interface SessionsIpcDeps {
     repository: SessionRepository;
+    attachmentStore?: SessionAttachmentStore;
     onSessionUpdated?: (session: Session) => void;
     onSessionDeleted?: (sessionId: string, workspaceId?: string) => void;
     renameNativeSession?: (sessionId: string, title: string) => Promise<void>;
@@ -51,6 +54,22 @@ export interface SessionsIpcDeps {
      */
     getWorkspace?: (workspaceId: string) => Workspace | undefined;
 }
+
+const saveAttachmentsSchema = z.object({
+    sessionId: z.string().min(1),
+    messageId: z.string().min(1).optional(),
+    images: z.array(z.object({
+        name: z.string().min(1),
+        mimeType: z.string().min(1),
+        data: z.string().min(1),
+        size: z.number().int().nonnegative().optional(),
+    })).min(1).max(6),
+});
+
+const getAttachmentSchema = z.object({
+    sessionId: z.string().min(1),
+    storageKey: z.string().min(1),
+});
 
 function toMessage(raw: unknown): Message {
     // zod 已经校验过 id/role/content/timestamp;passthrough 允许其他字段
@@ -222,6 +241,11 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
                 } catch (err) {
                     log.warn("[sessions.ipc] session:delete native file cleanup failed:", id, err);
                 }
+                try {
+                    await deps.attachmentStore?.deleteSessionAttachments(id);
+                } catch (err) {
+                    log.warn("[sessions.ipc] session:delete attachment cleanup failed:", id, err);
+                }
             } catch (err) {
                 log.error("[sessions.ipc] session:delete failed:", err);
                 return ipcError(
@@ -232,6 +256,49 @@ export function setupSessionsIpc(deps: SessionsIpcDeps): void {
             }
             return undefined;
         });
+    });
+
+    ipcMain.handle("session:save-attachments", async (_event, raw: unknown) => {
+        const parsed = saveAttachmentsSchema.safeParse(raw);
+        if (!parsed.success) {
+            return ipcError("ipcErrors.session.saveAttachmentsInvalid", "无效的附件参数");
+        }
+        if (!deps.attachmentStore) {
+            return ipcError("ipcErrors.session.attachmentsUnavailable", "附件存储不可用");
+        }
+        try {
+            const attachments = await deps.attachmentStore.saveImages(parsed.data.sessionId, parsed.data.images);
+            if (parsed.data.messageId) {
+                await repository.updateMessage(parsed.data.sessionId, parsed.data.messageId, { attachments });
+            }
+            return { attachments };
+        } catch (err) {
+            log.error("[sessions.ipc] session:save-attachments failed:", err);
+            return ipcError(
+                "ipcErrors.session.saveAttachmentsFailed",
+                err instanceof Error ? err.message : String(err),
+            );
+        }
+    });
+
+    ipcMain.handle("session:get-attachment", async (_event, raw: unknown) => {
+        const parsed = getAttachmentSchema.safeParse(raw);
+        if (!parsed.success) {
+            return ipcError("ipcErrors.session.getAttachmentInvalid", "无效的附件读取参数");
+        }
+        if (!deps.attachmentStore) {
+            return ipcError("ipcErrors.session.attachmentsUnavailable", "附件存储不可用");
+        }
+        try {
+            const dataUrl = await deps.attachmentStore.readAsDataUrl(parsed.data.sessionId, parsed.data.storageKey);
+            return { dataUrl };
+        } catch (err) {
+            log.error("[sessions.ipc] session:get-attachment failed:", err);
+            return ipcError(
+                "ipcErrors.session.getAttachmentFailed",
+                err instanceof Error ? err.message : String(err),
+            );
+        }
     });
 
     ipcMain.handle("session:archive", async (_event, id: string, archived: boolean) => {

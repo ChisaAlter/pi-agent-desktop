@@ -45,7 +45,6 @@ describe("ProjectGroupedSessionList", () => {
         onSelectSession={() => undefined}
         onArchiveSession={() => undefined}
         onDeleteSession={() => undefined}
-        onSwitchWorkspace={() => undefined}
       />,
     );
 
@@ -63,7 +62,7 @@ describe("ProjectGroupedSessionList", () => {
     expect(screen.queryByRole("button", { name: "缩进会话" })).toBeNull();
   });
 
-  it("keeps workspace group order stable when switching workspaces", () => {
+  it("keeps workspace group order stable when expanding another group without switching workspace", () => {
     useWorkspaceStore.setState({
       workspaces: [
         { id: "w1", name: "repo", path: "C:/repo", createdAt: new Date(0), lastActiveAt: new Date("2026-06-02T00:00:00.000Z") },
@@ -76,6 +75,7 @@ describe("ProjectGroupedSessionList", () => {
         makeSession({ id: "s1", title: "repo 会话", workspaceId: "w1" }),
         makeSession({ id: "s2", title: "docs 会话", workspaceId: "w2" }),
       ],
+      currentSessionId: "s1",
     });
 
     function Harness(): React.JSX.Element {
@@ -83,11 +83,10 @@ describe("ProjectGroupedSessionList", () => {
       return (
         <ProjectGroupedSessionList
           currentWorkspaceId={currentWorkspaceId}
-          currentSessionId={null}
+          currentSessionId="s1"
           onSelectSession={() => undefined}
           onArchiveSession={() => undefined}
           onDeleteSession={() => undefined}
-          onSwitchWorkspace={(workspaceId) => useWorkspaceStore.getState().setCurrentWorkspace(workspaceId)}
         />
       );
     }
@@ -98,14 +97,16 @@ describe("ProjectGroupedSessionList", () => {
       Array.from(container.querySelectorAll<HTMLButtonElement>('button[title="C:/repo"], button[title="C:/docs"]'))
         .map((button) => (button.textContent ?? "").replace(/[▾▸\d\s]/g, ""));
 
-    const beforeSwitch = workspaceButtons();
-    expect(beforeSwitch).toEqual(["repo", "docs"]);
+    const beforeExpand = workspaceButtons();
+    expect(beforeExpand).toEqual(["repo", "docs"]);
 
     fireEvent.click(screen.getByText("docs"));
 
-    const afterSwitch = workspaceButtons();
-    expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("w2");
-    expect(afterSwitch).toEqual(["repo", "docs"]);
+    const afterExpand = workspaceButtons();
+    // Group header only expands/collapses; current workspace stays put.
+    expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("w1");
+    expect(screen.getByRole("button", { name: "docs 会话" })).toBeTruthy();
+    expect(afterExpand).toEqual(["repo", "docs"]);
   });
 
   it("keeps hidden project actions from intercepting clicks until hover or focus", () => {
@@ -121,7 +122,6 @@ describe("ProjectGroupedSessionList", () => {
         onSelectSession={() => undefined}
         onArchiveSession={() => undefined}
         onDeleteSession={() => undefined}
-        onSwitchWorkspace={() => undefined}
       />,
     );
 
@@ -161,7 +161,6 @@ describe("ProjectGroupedSessionList", () => {
         onSelectSession={() => undefined}
         onArchiveSession={() => undefined}
         onDeleteSession={() => undefined}
-        onSwitchWorkspace={() => undefined}
       />,
     );
 
@@ -183,7 +182,6 @@ describe("ProjectGroupedSessionList", () => {
         onSelectSession={() => undefined}
         onArchiveSession={() => undefined}
         onDeleteSession={() => undefined}
-        onSwitchWorkspace={() => undefined}
       />,
     );
 
@@ -205,7 +203,6 @@ describe("ProjectGroupedSessionList", () => {
         onSelectSession={onSelect}
         onArchiveSession={onArchive}
         onDeleteSession={() => undefined}
-        onSwitchWorkspace={() => undefined}
       />,
     );
 

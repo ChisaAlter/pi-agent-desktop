@@ -81,7 +81,6 @@ vi.mock("./SessionRow", () => ({
 describe("ProjectGroupedSessionList", () => {
   it("expands current workspace group and selects a session", () => {
     const onSelect = vi.fn();
-    const onSwitch = vi.fn();
     render(
       <I18nProvider>
         <ProjectGroupedSessionList
@@ -90,7 +89,6 @@ describe("ProjectGroupedSessionList", () => {
           onSelectSession={onSelect}
           onArchiveSession={vi.fn()}
           onDeleteSession={vi.fn()}
-          onSwitchWorkspace={onSwitch}
         />
       </I18nProvider>,
     );
@@ -107,23 +105,35 @@ describe("ProjectGroupedSessionList", () => {
     expect(onSelect).toHaveBeenCalledWith("s1");
   });
 
-  it("switches workspace when group header is clicked", () => {
-    const onSwitch = vi.fn();
+  it("toggles expand/collapse only when group header is clicked, without selecting a session", () => {
+    const onSelect = vi.fn();
     render(
       <I18nProvider>
         <ProjectGroupedSessionList
           currentWorkspaceId="w1"
           currentSessionId="s1"
-          onSelectSession={vi.fn()}
+          onSelectSession={onSelect}
           onArchiveSession={vi.fn()}
           onDeleteSession={vi.fn()}
-          onSwitchWorkspace={onSwitch}
         />
       </I18nProvider>,
     );
 
+    const betaHeader = screen.getByText("Beta").closest("button");
+    expect(betaHeader).toBeTruthy();
+    // Beta starts collapsed
+    expect(betaHeader!.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("row-Beta Chat")).toBeNull();
+
     fireEvent.click(screen.getByText("Beta"));
-    expect(onSwitch).toHaveBeenCalledWith("w2");
+    expect(betaHeader!.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("row-Beta Chat")).toBeTruthy();
+    expect(onSelect).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("Beta"));
+    // AnimatedCollapse keeps content briefly; contract is collapse state, not immediate unmount.
+    expect(betaHeader!.getAttribute("aria-expanded")).toBe("false");
+    expect(onSelect).not.toHaveBeenCalled();
   });
 
   it("opens a workspace removal menu and confirms through the callback", () => {
@@ -136,7 +146,6 @@ describe("ProjectGroupedSessionList", () => {
           onSelectSession={vi.fn()}
           onArchiveSession={vi.fn()}
           onDeleteSession={vi.fn()}
-          onSwitchWorkspace={vi.fn()}
           onRemoveWorkspace={onRemove}
         />
       </I18nProvider>,

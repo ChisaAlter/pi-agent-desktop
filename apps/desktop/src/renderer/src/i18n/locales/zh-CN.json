@@ -319,10 +319,13 @@
       "modelRequired": "请先配置模型后再开始对话",
       "reference": "输入消息，使用 / 调用命令、@ 引用文件...",
       "planRunning": "正在执行计划，输入内容会作为补充指令发送",
-      "taskRunning": "任务运行中，输入内容会作为追加指令发送"
+      "taskRunning": "任务运行中，输入内容会作为追加指令发送",
+      "describingImages": "正在识别图片，请稍候..."
     },
     "send": "发送",
     "sendFollowUp": "发送追加指令",
+    "describingImages": "识图中",
+    "imageOnlyPlaceholder": "（图片）",
     "stop": "停止",
     "pauseExecution": "暂停执行",
     "resizeComposer": "调整输入框高度",
@@ -401,7 +404,8 @@
     },
     "running": {
       "plan": "正在执行计划 · 新输入会作为补充指令进入当前执行",
-      "task": "任务运行中 · 新输入会作为追加指令进入当前会话"
+      "task": "任务运行中 · 新输入会作为追加指令进入当前会话",
+      "describingImages": "正在识别图片 · 识别完成后才会把图文发送给模型"
     },
     "errors": {
       "unknown": "未知错误",

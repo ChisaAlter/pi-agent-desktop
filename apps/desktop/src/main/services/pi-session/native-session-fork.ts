@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { Message as DesktopMessage } from "@shared";
+import type { SessionAttachmentStore } from "../session-attachment-store";
 import { loadPiSdk } from "./sdk-runtime";
 
 export interface NativeSessionForkInput {
@@ -11,6 +12,9 @@ export interface NativeSessionForkInput {
     fromMessageId?: string;
     provider?: string;
     model?: string;
+    /** When provided, rehydrate image attachments into Pi multimodal user content. */
+    attachmentStore?: SessionAttachmentStore;
+    sourceSessionId?: string;
 }
 
 export async function forkNativeSession(input: NativeSessionForkInput): Promise<void> {
@@ -23,7 +27,7 @@ export async function forkNativeSession(input: NativeSessionForkInput): Promise<
     }
 
     if (!existsSync(input.sourcePath)) {
-        createNativeSessionFromDesktopHistory(sdk.SessionManager, input, targetDir, targetPath);
+        await createNativeSessionFromDesktopHistory(sdk.SessionManager, input, targetDir, targetPath);
         return;
     }
 
@@ -43,19 +47,20 @@ export async function forkNativeSession(input: NativeSessionForkInput): Promise<
 
 type SessionManagerConstructor = Awaited<ReturnType<typeof loadPiSdk>>["SessionManager"];
 
-function createNativeSessionFromDesktopHistory(
+async function createNativeSessionFromDesktopHistory(
     SessionManager: SessionManagerConstructor,
     input: NativeSessionForkInput,
     targetDir: string,
     targetPath: string,
-): void {
+): Promise<void> {
     const manager = SessionManager.create(input.targetCwd, targetDir);
     const selected = selectDesktopMessages(input.messages, input.fromMessageId);
     for (const message of selected) {
         if (message.role === "user") {
+            const content = await buildUserContentForFork(message, input);
             manager.appendMessage({
                 role: "user",
-                content: message.content,
+                content,
                 timestamp: toTimestamp(message.timestamp),
             });
             continue;
@@ -82,6 +87,29 @@ function createNativeSessionFromDesktopHistory(
     }
     if (selected.length === 0) manager.appendSessionInfo("Pi Desktop continued session");
     moveGeneratedSession(manager.getSessionFile(), targetPath);
+}
+
+async function buildUserContentForFork(
+    message: DesktopMessage,
+    input: NativeSessionForkInput,
+): Promise<string | Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }>> {
+    const attachments = message.attachments ?? [];
+    if (!attachments.length || !input.attachmentStore || !input.sourceSessionId) {
+        return message.content;
+    }
+    const parts: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [];
+    if (message.content.trim()) {
+        parts.push({ type: "text", text: message.content });
+    }
+    for (const attachment of attachments) {
+        try {
+            const image = await input.attachmentStore.readImage(input.sourceSessionId, attachment.storageKey);
+            parts.push({ type: "image", data: image.data, mimeType: image.mimeType });
+        } catch {
+            parts.push({ type: "text", text: `[图片附件缺失: ${attachment.name}]` });
+        }
+    }
+    return parts.length > 0 ? parts : message.content;
 }
 
 export function selectDesktopMessages(messages: DesktopMessage[], fromMessageId?: string): DesktopMessage[] {

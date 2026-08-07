@@ -36,6 +36,37 @@ function clickAddAttachment(): void {
   fireEvent.click(screen.getByRole("menuitem", { name: "添加文件或图片" }));
 }
 
+/** onSend mock that resolves deferred vision transport the way ChatView does. */
+function createOnSendMock(
+  impl?: (
+    message: string,
+    options?: {
+      visibleContent?: string;
+      resolveTransport?: () => Promise<string>;
+      images?: Array<{ type: "image"; data: string; mimeType: string }>;
+      imageDataUrls?: Array<{ name: string; dataUrl: string; mimeType?: string }>;
+    },
+  ) => Promise<void>,
+) {
+  return vi.fn(async (
+    message: string,
+    options?: {
+      visibleContent?: string;
+      resolveTransport?: () => Promise<string>;
+      images?: Array<{ type: "image"; data: string; mimeType: string }>;
+      imageDataUrls?: Array<{ name: string; dataUrl: string; mimeType?: string }>;
+    },
+  ) => {
+    if (impl) {
+      await impl(message, options);
+      return;
+    }
+    if (options?.resolveTransport) {
+      await options.resolveTransport();
+    }
+  });
+}
+
 describe("ChatInput", () => {
   beforeEach(() => {
     Object.defineProperty(window, "piAPI", {
@@ -1394,7 +1425,13 @@ describe("ChatInput", () => {
   });
 
   it("describes images with the current conversation model when no vision model is configured", async () => {
-    const onSend = vi.fn(async () => undefined);
+    let resolvedTransport: string | undefined;
+    const onSend = createOnSendMock(async (message, options) => {
+      expect(message).toBe("看图");
+      expect(options?.visibleContent).toBe("看图\n图片: pasted.png");
+      expect(options?.images).toBeUndefined();
+      resolvedTransport = options?.resolveTransport ? await options.resolveTransport() : message;
+    });
     const describeImages = vi.fn(async () => ({
       text: "[图片 1: pasted.png]\n图片里有聊天窗口",
     }));
@@ -1440,22 +1477,183 @@ describe("ChatInput", () => {
       ]);
     });
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith(
-        [
-          "图片识别结果:",
-          "[图片 1: pasted.png]",
-          "图片里有聊天窗口",
-          "",
-          "用户消息:",
-          "看图",
-        ].join("\n"),
-        { visibleContent: "看图\n图片: pasted.png" },
-      );
+      expect(resolvedTransport).toBe([
+        "图片识别结果:",
+        "[图片 1: pasted.png]",
+        "图片里有聊天窗口",
+        "",
+        "用户消息:",
+        "看图",
+      ].join("\n"));
     });
   });
 
+  it("direct-sends native images when the conversation model supports vision", async () => {
+    const onSend = createOnSendMock();
+    const describeImages = vi.fn(async () => ({ text: "should not run" }));
+    Object.defineProperty(window, "piAPI", {
+      value: {
+        ...(window.piAPI ?? {}),
+        describeImages,
+      },
+      configurable: true,
+    });
+    useSettingsStore.setState((state) => ({
+      settings: { ...state.settings, model: "vision-model", provider: "mimo" },
+      piModels: [
+        {
+          id: "vision-model",
+          name: "Vision Model",
+          description: "supports images",
+          provider: "mimo",
+          providerName: "MiMo",
+          input: ["text", "image"],
+        },
+      ],
+    }));
+    useAttachmentsStore.getState().add("ws1", {
+      id: "img1",
+      kind: "image",
+      name: "pasted.png",
+      value: "data:image/png;base64,abc",
+      mimeType: "image/png",
+      size: 3,
+    });
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={onSend}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "看图" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith(
+        "看图",
+        expect.objectContaining({
+          visibleContent: "看图\n图片: pasted.png",
+          images: [{ type: "image", data: "abc", mimeType: "image/png" }],
+        }),
+      );
+    });
+    expect(describeImages).not.toHaveBeenCalled();
+  });
+
+  it("stages send immediately: clears composer, shows describing status, and only then finishes transport", async () => {
+    let resolveDescribe: ((value: { text: string }) => void) | undefined;
+    const describeImages = vi.fn(
+      () => new Promise<{ text: string }>((resolve) => {
+        resolveDescribe = resolve;
+      }),
+    );
+    const onSend = createOnSendMock();
+    Object.defineProperty(window, "piAPI", {
+      value: {
+        ...(window.piAPI ?? {}),
+        describeImages,
+      },
+      configurable: true,
+    });
+    useAttachmentsStore.getState().add("ws1", {
+      id: "img1",
+      kind: "image",
+      name: "pasted.png",
+      value: "data:image/png;base64,abc",
+      mimeType: "image/png",
+      size: 3,
+    });
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={onSend}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    const textbox = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(textbox, { target: { value: "看图" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    // onSend is invoked immediately so ChatView can stage the user bubble before vision returns.
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledTimes(1);
+    });
+    expect(textbox.value).toBe("");
+    expect(useAttachmentsStore.getState().list("ws1")).toEqual([]);
+    expect(screen.getByTestId("chat-input-describing-images").textContent).toContain("正在识别图片");
+    expect(screen.getByRole("button", { name: "识图中" })).toBeTruthy();
+    expect(describeImages).toHaveBeenCalled();
+
+    resolveDescribe?.({ text: "[图片 1: pasted.png]\n图里有设置面板" });
+    await waitFor(() => {
+      expect(screen.queryByTestId("chat-input-describing-images")).toBeNull();
+    });
+  });
+
+  it("restores draft and attachments when vision fails after the composer was cleared", async () => {
+    const onSend = createOnSendMock();
+    Object.defineProperty(window, "piAPI", {
+      value: {
+        ...(window.piAPI ?? {}),
+        describeImages: vi.fn(async () => ({
+          code: "ipcErrors.config.visionFailed",
+          fallback: "识图失败: HTTP 400 - model does not support images",
+          params: {},
+        })),
+      },
+      configurable: true,
+    });
+    useAttachmentsStore.getState().add("ws1", {
+      id: "img1",
+      kind: "image",
+      name: "pasted.png",
+      value: "data:image/png;base64,abc",
+      mimeType: "image/png",
+      size: 3,
+    });
+
+    render(
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={false}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={onSend}
+          onStop={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+
+    const textbox = screen.getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(textbox, { target: { value: "看图" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toContain("HTTP 400 - model does not support images");
+    });
+    expect(textbox.value).toBe("看图");
+    expect(useAttachmentsStore.getState().list("ws1")).toHaveLength(1);
+    expect(onSend).toHaveBeenCalledTimes(1);
+  });
+
   it("surfaces the real ipc error instead of a misleading TypeError when describeImages fails", async () => {
-    const onSend = vi.fn(async () => undefined);
+    const onSend = createOnSendMock();
     Object.defineProperty(window, "piAPI", {
       value: {
         ...(window.piAPI ?? {}),
@@ -1496,11 +1694,11 @@ describe("ChatInput", () => {
       expect(screen.getByRole("alert").textContent).toContain("HTTP 400 - model does not support images");
     });
     expect(screen.getByRole("alert").textContent).not.toContain("Cannot read properties of undefined");
-    expect(onSend).not.toHaveBeenCalled();
+    expect(onSend).toHaveBeenCalledTimes(1);
   });
 
   it("shows an error when the vision service is unavailable", () => {
-    const onSend = vi.fn(async () => undefined);
+    const onSend = createOnSendMock();
     // beforeEach 的 piAPI mock 不注入 describeImages → 视作 preload 未暴露该能力
     useAttachmentsStore.getState().add("ws1", {
       id: "img1",
@@ -1528,11 +1726,16 @@ describe("ChatInput", () => {
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
     expect(screen.getByRole("alert").textContent).toContain("识图服务不可用");
+    // Preflight rejects before onSend so the parent never stages a bubble.
     expect(onSend).not.toHaveBeenCalled();
   });
 
   it("describes image attachments before injecting them into the main prompt", async () => {
-    const onSend = vi.fn(async () => undefined);
+    let resolvedTransport: string | undefined;
+    const onSend = createOnSendMock(async (message, options) => {
+      expect(message).toBe("看图");
+      resolvedTransport = options?.resolveTransport ? await options.resolveTransport() : message;
+    });
     Object.defineProperty(window, "piAPI", {
       value: {
         describeImages: vi.fn(async () => ({
@@ -1583,18 +1786,19 @@ describe("ChatInput", () => {
       ]);
     });
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith(
-        [
-          "图片识别结果:",
-          "[图片 1: pasted.png]",
-          "图片里有设置面板",
-          "",
-          "用户消息:",
-          "看图",
-        ].join("\n"),
-        { visibleContent: "看图\n图片: pasted.png" },
-      );
+      expect(resolvedTransport).toBe([
+        "图片识别结果:",
+        "[图片 1: pasted.png]",
+        "图片里有设置面板",
+        "",
+        "用户消息:",
+        "看图",
+      ].join("\n"));
     });
+    expect(onSend).toHaveBeenCalledWith(
+      "看图",
+      expect.objectContaining({ visibleContent: "看图\n图片: pasted.png" }),
+    );
   });
 
   it("turns the primary action into stop instead of sending a follow-up instruction while a task is running", () => {

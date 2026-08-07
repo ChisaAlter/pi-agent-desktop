@@ -299,7 +299,6 @@ export function MiniMaxCodeSidebar({
                                 onToggleFavorite={toggleFavorite}
                                 onRenameSession={renameSession}
                                 onDeleteSession={deleteSession}
-                                onSwitchWorkspace={(wid) => useWorkspaceStore.getState().setCurrentWorkspace(wid)}
                                 onRemoveWorkspace={(wid) => useWorkspaceStore.getState().removeWorkspace(wid)}
                                 onNewConversationInWorkspace={(wid) => {
                                     // Switch first; defer new-task so App.routeSection reads the new currentWorkspace.

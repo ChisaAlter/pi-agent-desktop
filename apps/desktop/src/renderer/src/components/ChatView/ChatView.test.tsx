@@ -1230,6 +1230,8 @@ describe("ChatView", () => {
     expect(useSessionStore.getState().sessions[0]?.messages[0]?.content).toBe("draft hello");
     await waitFor(() => expect(startStreaming).toHaveBeenCalledWith("ws1", "draft hello", {
       agentId: `agent_${createdSessionId}`,
+      visibleContent: "draft hello",
+      skipOptimisticUserMessage: true,
     }));
   });
 
@@ -1270,6 +1272,8 @@ describe("ChatView", () => {
     });
     expect(startStreaming).toHaveBeenCalledWith("ws1", "draft hello", {
       agentId: "agent_s1",
+      visibleContent: "draft hello",
+      skipOptimisticUserMessage: true,
     });
   });
 
@@ -1369,6 +1373,8 @@ describe("ChatView", () => {
 
     await waitFor(() => expect(startStreaming).toHaveBeenCalledWith("ws2", "draft hello", {
       agentId: expect.stringMatching(/^agent_/),
+      visibleContent: "draft hello",
+      skipOptimisticUserMessage: true,
     }));
   });
 
@@ -1517,6 +1523,7 @@ describe("ChatView", () => {
           agentId: "agent_s1",
           visibleContent: "执行计划：test-plan.md",
           waitForAgentIdle: true,
+          skipOptimisticUserMessage: true,
         },
       );
     });
@@ -1572,6 +1579,7 @@ describe("ChatView", () => {
           agentId: "agent_s1",
           visibleContent: "执行计划：inline-plan.md",
           waitForAgentIdle: true,
+          skipOptimisticUserMessage: true,
         },
       );
     });
@@ -1642,6 +1650,7 @@ describe("ChatView", () => {
           agentId: "agent_s1",
           visibleContent: "执行计划：inline-plan.md",
           waitForAgentIdle: true,
+          skipOptimisticUserMessage: true,
         },
       );
     });

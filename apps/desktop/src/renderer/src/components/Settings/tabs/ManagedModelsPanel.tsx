@@ -23,6 +23,7 @@ type ModelFormState = {
     contextWindow: string;
     maxTokens: string;
     reasoning: boolean;
+    supportsVision: boolean;
     thinkingLevelMap: string;
     setDefault: boolean;
 };
@@ -38,6 +39,7 @@ const emptyModelForm: ModelFormState = {
     contextWindow: '',
     maxTokens: '',
     reasoning: false,
+    supportsVision: false,
     thinkingLevelMap: '',
     setDefault: false,
 };
@@ -75,6 +77,7 @@ function modelToForm(model: ManagedModelEntry): ModelFormState {
         contextWindow: model.contextWindow ? String(model.contextWindow) : '',
         maxTokens: model.maxTokens ? String(model.maxTokens) : '',
         reasoning: Boolean(model.reasoning),
+        supportsVision: Array.isArray(model.input) && model.input.includes("image"),
         thinkingLevelMap: model.thinkingLevelMap ? JSON.stringify(model.thinkingLevelMap) : '',
         setDefault: model.isDefault,
     };
@@ -255,6 +258,7 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
             contextWindow: parseOptionalInteger(form.contextWindow),
             maxTokens: parseOptionalInteger(form.maxTokens),
             reasoning: form.reasoning,
+            input: form.supportsVision ? ["text", "image"] : ["text"],
             thinkingLevelMap,
             setDefault: form.setDefault,
         };
@@ -325,6 +329,10 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                     <label className="flex items-center gap-2 text-sm text-[var(--mm-text-secondary)]">
                         <input type="checkbox" checked={displayedForm.reasoning} onChange={(event) => setForm({ ...displayedForm, reasoning: event.target.checked })} />
                         推理模型
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-[var(--mm-text-secondary)]">
+                        <input type="checkbox" checked={displayedForm.supportsVision} onChange={(event) => setForm({ ...displayedForm, supportsVision: event.target.checked })} />
+                        支持图片输入（直传图片给对话模型）
                     </label>
                     <FormInput
                         className="col-span-2"
@@ -436,7 +444,10 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
             </SettingsCard>
 
             <SettingsCard anchorId="model-vision" className="px-5 py-4">
-                <SectionTitle title="识图模型" description="发送图片时用于识别图片内容。未设置时自动使用当前对话模型（大多数多模态模型可直接识别）。" />
+                <SectionTitle
+                    title="识图回退模型"
+                    description="仅当当前对话模型不支持图片输入时使用：先把图片转成文字再发给对话模型。对话模型已勾选「支持图片输入」时会直传图片，不会走这里。"
+                />
                 <div className="mt-3 grid grid-cols-2 gap-3">
                     <label className="block text-xs font-medium text-[var(--mm-text-secondary)]">
                         识图 Provider
@@ -461,14 +472,16 @@ export function ManagedModelsPanel({ onPiConfigChanged }: { onPiConfigChanged: (
                         >
                             <option value="">使用当前对话模型</option>
                             {visionModelOptions.map((model) => (
-                                <option key={model.modelId} value={model.modelId}>{model.modelName}</option>
+                                <option key={model.modelId} value={model.modelId}>
+                                    {model.modelName}{Array.isArray(model.input) && model.input.includes("image") ? " · 支持图片" : ""}
+                                </option>
                             ))}
                         </select>
                     </label>
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">
                     <span className="text-[10px] leading-4 text-[var(--mm-text-tertiary)]">
-                        当前生效: {visionProvider && visionModel
+                        回退生效: {visionProvider && visionModel
                             ? `${visionProviderOptions.find((option) => option.providerId === visionProvider)?.providerName ?? visionProvider} / ${visionModel}`
                             : `当前对话模型 (${settings.provider || '未设置'} / ${settings.model || '未设置'})`}
                     </span>

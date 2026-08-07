@@ -88,7 +88,9 @@ export function setupSettingsIpc(opts: {
         provider: p.id,
         providerName: p.name,
         description: `${p.name} · ${m.reasoning ? '推理' : '通用'} · ${m.contextWindow ? `${Math.round(m.contextWindow / 1000)}K` : '未知'}上下文`,
-        maxTokens: m.maxTokens
+        maxTokens: m.maxTokens,
+        // Multimodal capability from models.json/yml; missing input ⇒ text-only.
+        input: Array.isArray(m.input) ? m.input.filter((item): item is string => typeof item === "string") : undefined,
       }))
     );
 

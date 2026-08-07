@@ -15,7 +15,6 @@ export interface ProjectGroupedSessionListProps {
   onToggleFavorite?: (id: string) => void;
   onRenameSession?: (id: string, title: string) => void;
   onDeleteSession: (id: string) => void;
-  onSwitchWorkspace: (workspaceId: string) => void;
   /** Remove the workspace from the app without deleting its files on disk. */
   onRemoveWorkspace?: (workspaceId: string) => void;
   /** Create a new conversation under the given workspace (switch first, then new-task). */
@@ -27,7 +26,6 @@ interface GroupHeaderProps {
   workspace: Workspace;
   expanded: boolean;
   onToggle: () => void;
-  onSwitch: () => void;
   onNewConversation?: () => void;
   onRemove?: () => void;
   newConversationLabel: string;
@@ -72,7 +70,6 @@ function GroupHeader({
   workspace,
   expanded,
   onToggle,
-  onSwitch,
   onNewConversation,
   onRemove,
   newConversationLabel,
@@ -180,10 +177,7 @@ function GroupHeader({
     >
       <button
         type="button"
-        onClick={() => {
-          onSwitch();
-          onToggle();
-        }}
+        onClick={onToggle}
         aria-expanded={expanded}
         title={workspace.path}
         className="flex min-w-0 flex-1 items-center gap-2 rounded-[var(--mm-radius-sm)] px-1 text-[12px] font-medium text-[var(--mm-text-primary)] transition-[color,transform] duration-150 ease-[cubic-bezier(0.2,0,0,1)] hover:text-[var(--mm-text-primary)] active:scale-[0.98] motion-reduce:transition-none focus:outline-none focus-visible:bg-[var(--mm-bg-hover)] focus-visible:ring-1 focus-visible:ring-[var(--mm-accent-blue)]"
@@ -241,7 +235,6 @@ export function ProjectGroupedSessionList({
   onToggleFavorite = () => undefined,
   onRenameSession = () => undefined,
   onDeleteSession,
-  onSwitchWorkspace,
   onNewConversationInWorkspace,
   onRemoveWorkspace,
   hideEmptyState = false,
@@ -303,7 +296,6 @@ export function ProjectGroupedSessionList({
               workspace={workspace}
               expanded={expanded}
               onToggle={() => toggleGroup(workspace.id)}
-              onSwitch={() => onSwitchWorkspace(workspace.id)}
               onNewConversation={
                 onNewConversationInWorkspace
                   ? () => onNewConversationInWorkspace(workspace.id)

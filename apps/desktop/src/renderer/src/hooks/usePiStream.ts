@@ -74,6 +74,13 @@ export interface StartStreamingOptions {
     visibleContent?: string;
     agentId?: string;
     waitForAgentIdle?: boolean;
+    /**
+     * When true, skip the local optimistic user row.
+     * Used when the caller already staged the user message before vision preflight.
+     */
+    skipOptimisticUserMessage?: boolean;
+    /** Native multimodal images for agentsPrompt (raw base64). */
+    images?: import("@shared").PiImageContent[];
 }
 
 type AssistantMessageEvent =
@@ -1239,16 +1246,18 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         const visibleContent = options.visibleContent ?? content;
         const shouldQueueAfterIdle = options.waitForAgentIdle || isExecutePlanCommand(content);
         if (isFollowUpWhileStreaming) {
-            if (aid) {
-                appendAgentMessage(aid, "user", visibleContent);
-            }
-            if (session) {
-                useSessionStore.getState().addMessage(session.id, {
-                    id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-                    role: "user",
-                    content: visibleContent,
-                    timestamp: new Date(),
-                });
+            if (!options.skipOptimisticUserMessage) {
+                if (aid) {
+                    appendAgentMessage(aid, "user", visibleContent);
+                }
+                if (session) {
+                    useSessionStore.getState().addMessage(session.id, {
+                        id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                        role: "user",
+                        content: visibleContent,
+                        timestamp: new Date(),
+                    });
+                }
             }
             try {
                 if (aid) {
@@ -1260,6 +1269,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                         message: content,
                         streamingBehavior: "followUp",
                         mode: selectedMode,
+                        ...(options.images && options.images.length > 0 ? { images: options.images } : {}),
                     });
                 } else {
                     const result = await window.piAPI.sendPrompt(workspaceId, content, { mode: selectedMode });
@@ -1313,16 +1323,20 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
 
         // Agent runtime will later echo the canonical message list. Add an
         // optimistic row now so permission prompts cannot leave the chat empty.
-        if (aid) {
-            appendAgentMessage(aid, "user", visibleContent);
-        } else if (!aid && session) {
-            sessionIdRef.current = session.id;
-            useSessionStore.getState().addMessage(session.id, {
-                id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-                role: "user",
-                content: visibleContent,
-                timestamp: new Date(),
-            });
+        // Callers that already staged the user bubble (image vision preflight)
+        // pass skipOptimisticUserMessage to avoid a duplicate row.
+        if (!options.skipOptimisticUserMessage) {
+            if (aid) {
+                appendAgentMessage(aid, "user", visibleContent);
+            } else if (!aid && session) {
+                sessionIdRef.current = session.id;
+                useSessionStore.getState().addMessage(session.id, {
+                    id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                    role: "user",
+                    content: visibleContent,
+                    timestamp: new Date(),
+                });
+            }
         }
 
         try {
@@ -1341,10 +1355,12 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     agentId: aid,
                     message: outbound,
                     mode: selectedMode,
+                    ...(options.images && options.images.length > 0 ? { images: options.images } : {}),
                     ...(shouldQueueAfterIdle ? { streamingBehavior: "followUp" as const } : {}),
                 });
             } else {
                 try {
+                    // Legacy sendPrompt path remains text-only; prefer agentsPrompt for images.
                     const result = await window.piAPI.sendPrompt(workspaceId, outbound, { mode: selectedMode });
                     if (isIpcError(result)) {
                         setError(result.fallback);

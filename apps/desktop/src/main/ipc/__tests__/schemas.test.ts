@@ -659,6 +659,15 @@ describe("agents IPC schemas residual", () => {
         expect(() =>
             agentsPromptSchema.parse({ agentId: "a1", message: "hi", streamingBehavior: "followUp" }),
         ).not.toThrow();
+        expect(
+            agentsPromptSchema.parse({
+                agentId: "a1",
+                message: "hi",
+                images: [{ type: "image", data: "abc", mimeType: "image/png" }],
+            }),
+        ).toMatchObject({
+            images: [{ type: "image", data: "abc", mimeType: "image/png" }],
+        });
         expect(() =>
             agentsPromptSchema.parse({ agentId: "a1", message: "hi", streamingBehavior: "other" as never }),
         ).toThrow(ZodError);

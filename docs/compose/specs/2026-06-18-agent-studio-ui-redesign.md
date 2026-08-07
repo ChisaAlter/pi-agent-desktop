@@ -54,6 +54,12 @@ Full UI layout restructuring across 4 areas:
 - 更早 (Earlier): older sessions
 - Use `Intl.DateTimeFormat` for locale-aware date grouping
 
+**Group header click contract** (date groups and workspace folders):
+- Clicking a group header only expands or collapses that group.
+- It must **not** switch the active workspace, select a session, or route to the first conversation under that group.
+- Selecting a conversation requires an explicit click on a session row.
+- Workspace group **+** remains the only header action that switches workspace and opens a new conversation.
+
 **Group mode state**: Persist in `settings-store` (user preference).
 
 ## [S5] Right Rail Collapsibility
@@ -125,6 +131,7 @@ New Zustand state in `settings-store`:
 
 - Visual verification: all 5 tabs render correct content
 - Left sidebar: date grouping works, workspace grouping works, toggle persists
+- Left sidebar group headers expand/collapse only; session selection requires clicking a session row
 - Right rail: collapse/expand animation smooth, state persists
 - Settings window: opens independently, all tabs functional
 - Regression: existing chat, skills, git panels unchanged

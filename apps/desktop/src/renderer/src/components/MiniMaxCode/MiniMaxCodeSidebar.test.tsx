@@ -381,7 +381,7 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
         expect(screen.getByText("还没有会话。")).toBeTruthy();
     });
 
-    it("GroupHeader 单击只折叠不切换 workspace，点击名称才切换", () => {
+    it("GroupHeader 单击只折叠/展开，不切换 workspace、不跳转会话", () => {
         useWorkspaceStore.setState({
             workspaces: [
                 { id: "w1", name: "项目一", path: "/p1", createdAt: new Date(), lastActiveAt: new Date("2026-06-06T12:00:00Z") },
@@ -398,11 +398,31 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
             currentSessionId: "s1",
         });
 
-        renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" currentWorkspaceId="w1" onSectionChange={appRoute} groupMode="workspace" />);
+        const onSectionChange = vi.fn(appRoute);
+        renderWithI18n(
+            <MiniMaxCodeSidebar
+                currentSection="chat"
+                currentWorkspaceId="w1"
+                onSectionChange={onSectionChange}
+                groupMode="workspace"
+            />,
+        );
+
+        // 项目二默认折叠
+        expect(screen.queryByRole("button", { name: "任务2" })).toBeNull();
 
         fireEvent.click(screen.getByText("项目二"));
 
-        expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("w2");
+        // 仅展开分组，不切 workspace，也不走 session: 路由
+        expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("w1");
+        expect(useSessionStore.getState().currentSessionId).toBe("s1");
+        expect(onSectionChange).not.toHaveBeenCalled();
+        expect(screen.getByRole("button", { name: "任务2" })).toBeTruthy();
+
+        fireEvent.click(screen.getByText("项目二"));
+        expect(screen.queryByRole("button", { name: "任务2" })).toBeNull();
+        expect(useWorkspaceStore.getState().currentWorkspaceId).toBe("w1");
+        expect(useSessionStore.getState().currentSessionId).toBe("s1");
     });
 
     it("多 workspace 分组 — 两个分组都渲染", () => {

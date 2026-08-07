@@ -47,6 +47,7 @@ Chat chrome regressions to cover when touching layout/Git rail/session list:
 - left collapse leaves no full-height seam/gutter; expand/collapse control remains reachable from the center workspace;
 - right rail open shows **Git 工具** (not the old always-on progress empty state when no goal/plan exists);
 - **变更** opens the in-chat changes overlay (`git-changes-overlay`) with file rows, not a forced navigation to the workbench Git panel;
+- workspace group headers expand/collapse only and do not switch workspace or select a session; session jump requires clicking a session row;
 - workspace group **+** creates a new conversation after switching workspace;
 - unit coverage lives in `MiniMaxCodeLayout`, `RightRail`, `GitRailControls`, `GitChangesOverlay`, `SessionRow`, and `ProjectGroupedSessionList` tests; E2E hooks include `right-rail-git-workflow`, `main-token-stats`, smoke/visual-audit right-rail entry points.
 
@@ -56,6 +57,7 @@ Composer (chat input) regressions when touching `ChatInput` / global composer mo
 - shell background is opaque (dialogue must not show through);
 - attachment chips render **above** the shell as a horizontal rail, not inside the fixed body;
 - resize updates `--pi-global-composer-height` and keeps stick-to-bottom messages pushed up rather than under the shell;
+- image send stages the user bubble immediately; vision-capable models direct-send `images` without describe; text-only models show describing status and inject caption text; failure restores draft/attachments and removes the staged bubble; history can reload thumbnails from `session-attachments`;
 - unit coverage: `ChatInput.test.tsx`, `useInputText.test.tsx`; E2E: `e2e/composer-layout.spec.ts` (build first); optional CDP helper `scripts/electron-composer-qa.mjs`;
 - product contract: [composer-layout.md](composer-layout.md).
 

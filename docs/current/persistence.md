@@ -10,6 +10,7 @@
 | Desktop session metadata and messages | `SqliteSessionRepository` | `userData/sessions.db` | Active repository; uses `node:sqlite` `DatabaseSync` |
 | SQLite recovery copy | Repository backup | `userData/sessions.backup.db` | Refreshed on repository close when possible |
 | Native Pi session history | Pi SDK `SessionManager` JSONL | `userData/pi-sessions/<deterministic-name>.jsonl` | Reopened when a desktop session resumes |
+| Session image attachments | Filesystem (`SessionAttachmentStore`) | `userData/session-attachments/<sessionId>/` | Message rows store metadata (`attachments[]`); bytes stay on disk. Deleted with the session |
 | Markdown memory | Markdown files plus SQLite index | `userData/memory/` and `userData/memory/index.sqlite` | The files are primary; the index supports search |
 | Long-horizon tasks, goals, checkpoints | Main-process long-horizon services | Service-specific stores under `userData` or workspace artifacts | Do not describe these as part of the desktop session database |
 | Compose run snapshots | `WorkflowRunStore` in memory | Process lifetime only | A full app restart loses active run state; spec/plan/report files remain if already written |

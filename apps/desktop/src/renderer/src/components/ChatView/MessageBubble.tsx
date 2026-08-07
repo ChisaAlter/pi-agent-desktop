@@ -4,6 +4,7 @@
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { Message } from '../../stores/session-store';
+import { useSessionStore } from '../../stores/session-store';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { CommandCard } from './CommandCard';
 import { CustomMessageCard } from './CustomMessageCard';
@@ -15,7 +16,7 @@ import { usePlanStore } from '../../stores/plan-store';
 import { useSettingsStore } from '../../stores/settings-store';
 import { formatTime, formatIso } from '../../utils/format';
 import { contentWithGeneratedUiText, stripUiDuplicatedText } from '../../utils/generated-ui';
-import type { GeneratedUiCard as GeneratedUiCardData } from '@shared';
+import { isIpcError, type GeneratedUiCard as GeneratedUiCardData, type MessageAttachment } from '@shared';
 
 type ChatMessage = Message & {
   thinkingCount?: number;
@@ -395,6 +396,9 @@ function MessageBubbleImpl({
                     {visibleContent || (userCommand.badge ? userCommand.badge : "")}
                   </div>
                 )}
+                {message.attachments && message.attachments.length > 0 ? (
+                  <MessageAttachmentGallery attachments={message.attachments} />
+                ) : null}
               </div>
             ) : (
               <>
@@ -498,6 +502,64 @@ function MessageBubbleImpl({
   );
 }
 
+function MessageAttachmentGallery({ attachments }: { attachments: MessageAttachment[] }): React.JSX.Element {
+  const currentSessionId = useSessionStore((state) => state.currentSessionId);
+  const [urls, setUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async (): Promise<void> => {
+      if (!currentSessionId || !window.piAPI?.getSessionAttachment) return;
+      const next: Record<string, string> = {};
+      await Promise.all(
+        attachments.map(async (attachment) => {
+          try {
+            const result = await window.piAPI.getSessionAttachment!({
+              sessionId: currentSessionId,
+              storageKey: attachment.storageKey,
+            });
+            if (!isIpcError(result) && result.dataUrl) {
+              next[attachment.id] = result.dataUrl;
+            }
+          } catch {
+            // ignore missing attachment
+          }
+        }),
+      );
+      if (!cancelled) setUrls(next);
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [attachments, currentSessionId]);
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-2" data-testid="message-attachments">
+      {attachments.map((attachment) => (
+        <figure
+          key={attachment.id}
+          className="overflow-hidden rounded-[8px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)]"
+          title={attachment.name}
+        >
+          {urls[attachment.id] ? (
+            <img
+              src={urls[attachment.id]}
+              alt={attachment.name}
+              className="h-20 w-20 object-cover"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex h-20 w-20 items-center justify-center px-1 text-center text-[10px] text-[var(--mm-text-tertiary)]">
+              {attachment.name}
+            </div>
+          )}
+        </figure>
+      ))}
+    </div>
+  );
+}
+
 function areEqual(prev: MessageBubbleProps, next: MessageBubbleProps): boolean {
   // Only re-render when this message's identity/data or streaming/search state changes.
   // Avoids re-rendering when unrelated parent state (other sessions, sidebar, etc.) changes.
@@ -510,6 +572,7 @@ function areEqual(prev: MessageBubbleProps, next: MessageBubbleProps): boolean {
     prev.message.generatedUi === next.message.generatedUi &&
     prev.message.customCard === next.message.customCard &&
     prev.message.planAction === next.message.planAction &&
+    prev.message.attachments === next.message.attachments &&
     prev.isStreaming === next.isStreaming &&
     prev.isSearchTarget === next.isSearchTarget &&
     prev.onGeneratedUiSend === next.onGeneratedUiSend &&

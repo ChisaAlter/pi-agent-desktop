@@ -28,6 +28,13 @@ function messageToMarkdown(message: Message): string {
 
   let content = contentWithGeneratedUiText(message.content, message.generatedUi);
 
+  if (message.attachments && message.attachments.length > 0) {
+    const attachmentLines = message.attachments
+      .map((attachment) => `- 图片: ${attachment.name} (\`attachments/${attachment.storageKey}\`)`)
+      .join("\n");
+    content += `\n\n**附件**\n\n${attachmentLines}`;
+  }
+
   if (message.toolCalls && message.toolCalls.length > 0) {
     const toolSummary = message.toolCalls
       .map((tc) => `- \`${tc.name}\`: ${tc.status}`)
@@ -79,6 +86,8 @@ export function exportSessionAsJSON(session: Session): string {
       messages: session.messages.map((m) => ({
         ...m,
         timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
+        // Keep attachment metadata (storageKey/name); bytes stay on disk, not embedded.
+        attachments: m.attachments,
       })),
       usage: session.usage,
       tags: session.tags,
@@ -101,6 +110,9 @@ export function exportSessionAsHTML(session: Session): string {
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/\n/g, "<br>");
+      const attachments = (m.attachments ?? [])
+        .map((attachment) => `<div class="attachment">📎 ${escapeHtml(attachment.name)} <code>${escapeHtml(attachment.storageKey)}</code></div>`)
+        .join("");
 
       return `
         <div class="message ${m.role}">
@@ -109,6 +121,7 @@ export function exportSessionAsHTML(session: Session): string {
             <span class="time">${time}</span>
           </div>
           <div class="content">${content}</div>
+          ${attachments}
         </div>
       `;
     })

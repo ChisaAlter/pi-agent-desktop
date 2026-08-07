@@ -21,6 +21,8 @@ export interface PiModelInfo {
   providerName: string;
   description: string;
   maxTokens?: number;
+  /** Model input modalities from models.json/yml, e.g. ["text","image"]. */
+  input?: string[];
 }
 
 /** loadPiConfig 返的形状 (主进程 settings:load-pi-config 还没强类型化, 临时结构) */

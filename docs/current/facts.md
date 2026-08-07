@@ -92,9 +92,10 @@ These are checked-in renderer behaviors, not roadmap items:
 - Left sidebar collapse control is floating on the **center** workspace; collapsed left rail leaves **no** residual border/gutter seam.
 - Right floating rail on chat is a compact **Git 工具** card (changes / branch / commit-or-push). Progress appears only with a plan goal or plan steps.
 - Clicking **变更** opens a right-side in-chat changes panel with per-file `+/-` and inline file diffs; it does not navigate to the workbench Git view.
-- Workspace-grouped session headers use a **+** control to start a new conversation in that workspace (no trailing count/chevron on the header).
+- Workspace-grouped session headers only expand/collapse on click; they do not switch workspace or jump to the first session. A hover/focus **+** control starts a new conversation in that workspace (no trailing count/chevron on the header).
 - Git status for the rail is session-cached per workspace and refreshed while the rail is visible; first open may briefly show detecting state instead of “no Git”.
 - Chat composer is a **fixed-height opaque** reference shell (95–240px) in `#pi-global-composer-root`. Attachments are a **horizontal rail above** the shell. Textarea and bottom controls must not overlap (small gap, no hard divider). Resizing the composer **pushes** the message list up via flex + stick-to-bottom on `pi:composer-height-change`. See [composer-layout.md](composer-layout.md).
+- Image messages clear the composer and stage the user bubble immediately. Models with `input: ["text","image"]` receive images natively; others fall back to `describeImages` (optional dedicated vision model). Attachments persist under `session-attachments/` for history thumbnails.
 
 See [architecture.md](architecture.md) for the layout contract and [testing-and-qa.md](testing-and-qa.md) for the unit/E2E coverage expectations.
 

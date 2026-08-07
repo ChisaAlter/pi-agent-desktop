@@ -449,9 +449,16 @@ export const agentsCreateSchema = z.object({
     provider: z.string().optional(),
 });
 
+const piImageContentSchema = z.object({
+    type: z.literal("image"),
+    data: z.string().min(1, "image data must be non-empty base64").max(7_000_000),
+    mimeType: z.enum(["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"]),
+});
+
 export const agentsPromptSchema = z.object({
     agentId: z.string().min(1, "agentId must be a non-empty string"),
     message: z.string().min(1, "message must be a non-empty string"),
+    images: z.array(piImageContentSchema).max(6).optional(),
     streamingBehavior: z.enum(["steer", "followUp"]).optional(),
     mode: agentModeSchema.optional(),
 });

@@ -73,6 +73,7 @@ import { forkNativeSession } from './services/pi-session/native-session-fork';
 import { loadPiSdk } from './services/pi-session/sdk-runtime';
 import { registerSingleInstance } from './services/single-instance';
 import { SqliteSessionRepository } from './services/sqlite-session-repository';
+import { ensureSessionAttachmentRoot, SessionAttachmentStore } from './services/session-attachment-store';
 import { resolveMainWindowChromeOptions, resolveMainWindowPerformancePreferences } from './services/main-window-options';
 import { createMutationQueue, createKeyedMutator, type KeyedStore } from './utils/mutation-queue';
 import { getSettingsWindow as getSharedSettingsWindow } from './ipc/settings-window.ipc';
@@ -884,8 +885,12 @@ function setupIPC(updaterService: AppUpdaterService): void {
         agentRegistry.stopBySession(sessionId);
     rmSync(resolveNativeSessionPath(app.getPath("userData"), sessionId), { force: true });
   };
+  const sessionAttachmentStore = new SessionAttachmentStore(
+    ensureSessionAttachmentRoot(app.getPath('userData')),
+  );
   setupSessionsIpc({
     repository: sessions,
+    attachmentStore: sessionAttachmentStore,
     getWorkspace: (workspaceId) => store.get('workspaces').find((candidate) => candidate.id === workspaceId),
     renameNativeSession: async (sessionId, title) => {
       const activeAgent = agentRegistry.findBySessionId(sessionId);
@@ -910,6 +915,8 @@ function setupIPC(updaterService: AppUpdaterService): void {
         fromMessageId,
         provider: settings.provider,
         model: settings.model,
+        attachmentStore: sessionAttachmentStore,
+        sourceSessionId,
       });
     },
     deleteNativeSession: removeNativeSessionFile,

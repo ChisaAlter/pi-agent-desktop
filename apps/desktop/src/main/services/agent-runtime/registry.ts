@@ -315,6 +315,7 @@ function promptFailureDetails(error: unknown): string {
                 await this.promptRuntime(runtime, outbound, input.streamingBehavior, {
                     returnEarly: true,
                     onAccepted: resolveAccepted,
+                    images: input.images,
                 });
             });
             // onAccepted 已 resolve 后 operation 仍可能 reject (重复调用无副作用);
@@ -343,7 +344,11 @@ function promptFailureDetails(error: unknown): string {
         runtime: AgentRuntime,
         text: string,
         streamingBehavior?: SendAgentPromptInput["streamingBehavior"],
-        options?: { returnEarly?: boolean; onAccepted?: () => void },
+        options?: {
+            returnEarly?: boolean;
+            onAccepted?: () => void;
+            images?: SendAgentPromptInput["images"];
+        },
     ): Promise<void> {
         runtime.tab.status = "running";
         runtime.tab.updatedAt = Date.now();
@@ -351,7 +356,7 @@ function promptFailureDetails(error: unknown): string {
         this.armWatchdog(runtime);
         this.emitState();
         let failureHandled = false;
-        // 捕获启动时的纪元: 运行期间用户 abort/stop 会递增, 此时 SDK prompt
+        // 捕获启动时的纪元: 运行期间用户 abort/stop 会递增, 此时 SDK abort
         // 的拒绝是"用户停止"而非失败 — 不翻转 error 状态、不追加错误消息。
         const epochAtStart = runtime.abortEpoch;
         const handleFailureOnce = (error: unknown): void => {
@@ -361,10 +366,16 @@ function promptFailureDetails(error: unknown): string {
             this.handlePromptFailure(runtime, error);
         };
         try {
-            const promptPromise = Promise.resolve(runtime.session.session.prompt(
-                text,
-                streamingBehavior ? { streamingBehavior } : undefined,
-            ));
+            // Preserve the historical second-arg shape: undefined when neither
+            // streamingBehavior nor images is set (tests and SDK both rely on it).
+            const promptOptions =
+                streamingBehavior || (options?.images && options.images.length > 0)
+                    ? {
+                        ...(streamingBehavior ? { streamingBehavior } : {}),
+                        ...(options?.images && options.images.length > 0 ? { images: options.images } : {}),
+                    }
+                    : undefined;
+            const promptPromise = Promise.resolve(runtime.session.session.prompt(text, promptOptions));
             if (!options?.returnEarly) {
                 await promptPromise;
                 return;

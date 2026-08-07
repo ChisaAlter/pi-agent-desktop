@@ -319,10 +319,13 @@
       "modelRequired": "Configure a model before starting a conversation",
       "reference": "Type a message, use / for commands or @ to reference files...",
       "planRunning": "Executing a plan. New input will be sent as follow-up instructions.",
-      "taskRunning": "Task running. New input will be sent as additional instructions."
+      "taskRunning": "Task running. New input will be sent as additional instructions.",
+      "describingImages": "Recognizing images, please wait..."
     },
     "send": "Send",
     "sendFollowUp": "Send follow-up",
+    "describingImages": "Recognizing",
+    "imageOnlyPlaceholder": "(image)",
     "stop": "Stop",
     "pauseExecution": "Pause execution",
     "resizeComposer": "Resize composer",
@@ -401,7 +404,8 @@
     },
     "running": {
       "plan": "Executing plan · new input will enter the current execution as follow-up instructions",
-      "task": "Task running · new input will enter the current session as additional instructions"
+      "task": "Task running · new input will enter the current session as additional instructions",
+      "describingImages": "Recognizing images · message is sent only after recognition finishes"
     },
     "errors": {
       "unknown": "Unknown error",

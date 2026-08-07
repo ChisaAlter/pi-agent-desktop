@@ -66,6 +66,26 @@ export interface SessionSearchResult {
     matchLength: number;
 }
 
+/** Multimodal image part for SDK prompt / IPC (raw base64, not data URL). */
+export interface PiImageContent {
+    type: "image";
+    data: string;
+    mimeType: string;
+}
+
+/** Durable image attachment metadata stored on Message (bytes live on disk). */
+export interface MessageAttachment {
+    id: string;
+    kind: "image";
+    name: string;
+    mimeType: string;
+    size: number;
+    /** Relative key under session-attachments/<sessionId>/ */
+    storageKey: string;
+    /** Optional thumbnail key under the same session directory. */
+    thumbKey?: string;
+}
+
 export interface Message {
     id: string;
     role: "user" | "assistant" | "system";
@@ -76,6 +96,8 @@ export interface Message {
     generatedUi?: GeneratedUiCard;
     customCard?: CustomMessageCard;
     planAction?: PlanMessageAction;
+    /** Image attachments (metadata only; bytes stored under session-attachments/). */
+    attachments?: MessageAttachment[];
     /** v1.2: Parent message ID for tree-structured conversations (Pi JSONL v3 branching). undefined = root message. */
     parentId?: string;
 }
@@ -160,6 +182,8 @@ export interface SendPromptOptions {
 export interface SendAgentPromptInput {
     agentId: string;
     message: string;
+    /** Native multimodal images for AgentSession.prompt (raw base64). */
+    images?: PiImageContent[];
     streamingBehavior?: "steer" | "followUp";
     mode?: AgentMode;
 }
@@ -1477,6 +1501,17 @@ export interface PiAPI {
         toolCallId: string,
         updates: Partial<ToolCall>,
     ): Promise<void | IpcError>;
+    /** Persist image bytes under session-attachments/ and optionally attach to a message. */
+    saveSessionAttachments?(input: {
+        sessionId: string;
+        messageId?: string;
+        images: Array<{ name: string; mimeType: string; data: string; size?: number }>;
+    }): Promise<{ attachments: MessageAttachment[] } | IpcError>;
+    /** Read a stored attachment as a data URL for history thumbnails. */
+    getSessionAttachment?(input: {
+        sessionId: string;
+        storageKey: string;
+    }): Promise<{ dataUrl: string } | IpcError>;
 
     // Agents workbench
     agentsList(): Promise<AgentTab[]>;

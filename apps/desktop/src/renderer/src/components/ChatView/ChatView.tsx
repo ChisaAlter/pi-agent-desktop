@@ -18,12 +18,13 @@ import { useSettingsStore } from '../../stores/settings-store';
 import { WorkspaceSwitcher } from '../TopTabBar/WorkspaceSwitcher';
 import { SEARCH_FOCUS_CLEAR_DELAY_MS } from './search-focus';
 import type { Message } from '../../stores/session-store';
-import { isIpcError, type AgentMessage } from '@shared';
+import { isIpcError, type AgentMessage, type PiImageContent } from '@shared';
 import { buildPlanExecutionPrompt } from './plan-execution-prompt';
 import { usePlanSyncEffect } from './hooks/usePlanSyncEffect';
 import { MINIMAX_CHROME_ICON_BUTTON_CLASSNAME } from '../MiniMaxCode/chromeButton';
 import { contentWithGeneratedUiText } from '../../utils/generated-ui';
 import { resolveActiveAgent } from '../../utils/active-agent';
+import { isVisionUnsupportedError } from '../../utils/vision';
 
 // Ref-based callback that always sees the latest state but has stable identity.
 // Used to avoid stale closures (e.g. handleStop reading an outdated messages array).
@@ -367,8 +368,25 @@ export function ChatView({
   // SubTask 7.2: plan card → conversation sync extracted into usePlanSyncEffect.
   usePlanSyncEffect(currentSession?.id ?? null, isStreaming);
 
-  const handleSend = useEventCallback(async (message: string, options?: { visibleContent?: string; waitForAgentIdle?: boolean }) => {
+  const handleSend = useEventCallback(async (
+    message: string,
+    options?: {
+      visibleContent?: string;
+      waitForAgentIdle?: boolean;
+      /**
+       * Stage the user bubble immediately, then await this for the final
+       * model-bound transport text (vision preflight lives here).
+       */
+      resolveTransport?: () => Promise<string>;
+      /** Native multimodal images for direct vision models. */
+      images?: PiImageContent[];
+      /** Original data URLs for auto-fallback to describeImages after direct-send rejection. */
+      imageDataUrls?: Array<{ name: string; dataUrl: string; mimeType?: string }>;
+    },
+  ) => {
     if (!currentWorkspace) return;
+    let stagedMessageId: string | null = null;
+    let stagedSessionId: string | null = null;
     try {
       if (getCurrentSession()?.readOnly) {
         setSendError(t("chatView.errors.readOnlyHistory"));
@@ -387,20 +405,118 @@ export function ChatView({
         const agent = await createAgent(currentWorkspace.id, `${sessionForSend.title || t("chatView.session.untitled")} Agent`, sessionForSend.id);
         agentIdForSend = agent.id;
       }
-      if (agentIdForSend && !isStreaming) {
-        useSessionStore.getState().addMessage(sessionForSend.id, {
-          id: `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-          role: "user",
-          content: options?.visibleContent ?? message,
-          timestamp: new Date(),
+      // Always stage the visible user bubble before vision/model work so the chat
+      // does not look frozen while describeImages or multimodal prompt setup runs.
+      const visibleContent = options?.visibleContent ?? message;
+      stagedMessageId = `u_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      stagedSessionId = sessionForSend.id;
+      useSessionStore.getState().addMessage(sessionForSend.id, {
+        id: stagedMessageId,
+        role: "user",
+        content: visibleContent,
+        timestamp: new Date(),
+      });
+
+      // Persist image bytes for history thumbnails / fork / export (metadata only in sqlite).
+      if (options?.images && options.images.length > 0 && window.piAPI?.saveSessionAttachments) {
+        try {
+          const saved = await window.piAPI.saveSessionAttachments({
+            sessionId: sessionForSend.id,
+            messageId: stagedMessageId,
+            images: options.images.map((image, index) => ({
+              name: options.imageDataUrls?.[index]?.name ?? `image-${index + 1}`,
+              mimeType: image.mimeType,
+              data: image.data,
+            })),
+          });
+          if (!isIpcError(saved) && saved.attachments?.length) {
+            useSessionStore.getState().updateMessage(sessionForSend.id, stagedMessageId, {
+              attachments: saved.attachments,
+            }, { persist: false });
+          }
+        } catch (attachErr) {
+          // Non-fatal: chat can continue even if disk persistence fails.
+          console.warn("[ChatView] saveSessionAttachments failed:", attachErr);
+        }
+      } else if (options?.imageDataUrls && options.imageDataUrls.length > 0 && window.piAPI?.saveSessionAttachments) {
+        // Describe-fallback path still keeps durable thumbnails from original data URLs.
+        try {
+          const images = options.imageDataUrls
+            .map((item) => {
+              const match = /^data:([^;,]+);base64,(.+)$/i.exec(item.dataUrl);
+              if (!match) return null;
+              return {
+                name: item.name,
+                mimeType: item.mimeType || match[1] || "image/png",
+                data: match[2],
+              };
+            })
+            .filter((item): item is { name: string; mimeType: string; data: string } => Boolean(item));
+          if (images.length > 0) {
+            const saved = await window.piAPI.saveSessionAttachments({
+              sessionId: sessionForSend.id,
+              messageId: stagedMessageId,
+              images,
+            });
+            if (!isIpcError(saved) && saved.attachments?.length) {
+              useSessionStore.getState().updateMessage(sessionForSend.id, stagedMessageId, {
+                attachments: saved.attachments,
+              }, { persist: false });
+            }
+          }
+        } catch (attachErr) {
+          console.warn("[ChatView] saveSessionAttachments (fallback) failed:", attachErr);
+        }
+      }
+
+      const transport = options?.resolveTransport
+        ? await options.resolveTransport()
+        : message;
+
+      const streamOptions = {
+        visibleContent,
+        skipOptimisticUserMessage: true,
+        ...(options?.waitForAgentIdle ? { waitForAgentIdle: true } : {}),
+        ...(agentIdForSend ? { agentId: agentIdForSend } : {}),
+        ...(options?.images && options.images.length > 0 ? { images: options.images } : {}),
+      };
+
+      try {
+        await startStreaming(currentWorkspace.id, transport, streamOptions);
+      } catch (directErr) {
+        // Auto-fallback: model claimed vision but provider rejected images → describe then resend as text.
+        const directMessage = directErr instanceof Error ? directErr.message : String(directErr);
+        const canFallback =
+          Boolean(options?.images?.length)
+          && Boolean(options?.imageDataUrls?.length)
+          && Boolean(window.piAPI?.describeImages)
+          && isVisionUnsupportedError(directMessage);
+        if (!canFallback) throw directErr;
+
+        const describeImages = window.piAPI.describeImages;
+        if (!describeImages) throw directErr;
+        const result = await describeImages(options?.imageDataUrls ?? []);
+        if (isIpcError(result)) throw new Error(result.fallback);
+        const text = typeof result?.text === "string" ? result.text.trim() : "";
+        if (!text) throw new Error(t("chatInput.errors.visionEmptyResult"));
+        const fallbackTransport = [
+          "图片识别结果:",
+          text,
+          "",
+          "用户消息:",
+          message,
+        ].join("\n");
+        await startStreaming(currentWorkspace.id, fallbackTransport, {
+          visibleContent,
+          skipOptimisticUserMessage: true,
+          ...(options?.waitForAgentIdle ? { waitForAgentIdle: true } : {}),
+          ...(agentIdForSend ? { agentId: agentIdForSend } : {}),
         });
       }
-      if (options) {
-        await startStreaming(currentWorkspace.id, message, agentIdForSend ? { ...options, agentId: agentIdForSend } : options);
-      } else {
-        await startStreaming(currentWorkspace.id, message, agentIdForSend ? { agentId: agentIdForSend } : undefined);
-      }
     } catch (err) {
+      if (stagedSessionId && stagedMessageId) {
+        useSessionStore.getState().removeMessage(stagedSessionId, stagedMessageId);
+      }
       setSendError(err instanceof Error ? err.message : String(err));
       // 关键: 必须向上抛出, ChatInput.handleSend 的 catch 依赖 onSend 抛异常
       // 来恢复草稿 + 附件 + 焦点。吞掉异常会让用户输入被清空且无法重试。

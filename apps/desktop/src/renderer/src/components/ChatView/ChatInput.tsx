@@ -16,15 +16,35 @@ import { useWorkspaceStore } from "../../stores/workspace-store";
 import { useAgentStore } from "../../stores/agent-store";
 import { logger } from "../../utils/logger";
 import { isIpcError, type AgentMode, type PermissionMode, type PiThinkingLevel } from "@shared";
+import type { Attachment } from "../../types/attachments";
+import type { PiImageContent } from "@shared";
+import { dataUrlToImageContent, modelSupportsVision } from "../../utils/vision";
 import { useInputText } from "./hooks/useInputText";
 import { usePrefillConsumer } from "./hooks/usePrefillConsumer";
 import { useInputShortcuts } from "./hooks/useInputShortcuts";
+
+export interface ChatInputSendOptions {
+  visibleContent?: string;
+  /**
+   * When set, the parent should stage the user bubble immediately using
+   * `visibleContent` (or `message`), then await this to build the final
+   * transport text (e.g. after vision preflight) before starting the model.
+   */
+  resolveTransport?: () => Promise<string>;
+  /** Native multimodal images when the conversation model supports vision. */
+  images?: PiImageContent[];
+  /**
+   * Optional original image attachments so the parent can auto-fallback to
+   * describeImages when a direct image prompt is rejected by the provider.
+   */
+  imageDataUrls?: Array<{ name: string; dataUrl: string; mimeType?: string }>;
+}
 
 interface ChatInputProps {
   isConnected: boolean;
   isProcessing: boolean;
   runContext?: "plan_execution" | null;
-  onSend: (message: string, options?: { visibleContent?: string }) => Promise<void>;
+  onSend: (message: string, options?: ChatInputSendOptions) => Promise<void>;
   onStop: () => void;
   workspaceId?: string;
   workspacePath?: string;
@@ -244,6 +264,8 @@ export function ChatInput({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
+  /** True only while waiting on describeImages (vision preflight). */
+  const [isDescribingImages, setIsDescribingImages] = useState(false);
   const [composerHeight, setComposerHeight] = useState(COMPOSER_MIN_HEIGHT);
   const slashListboxRef = useRef<HTMLDivElement>(null);
   const slashOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -410,8 +432,30 @@ export function ChatInput({
     return () => window.removeEventListener("chat-input:focus", focusComposer);
   }, [textareaRef]);
 
+  const restoreDraft = useCallback((
+    draftSnapshot: string,
+    attachmentSnapshot: Attachment[],
+  ): void => {
+    setInputValue(draftSnapshot);
+    if (workspaceId) {
+      clearAttachments(workspaceId);
+      for (const attachment of attachmentSnapshot) {
+        addAttachment(workspaceId, attachment);
+      }
+    }
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      const nextPos = draftSnapshot.length;
+      textarea.setSelectionRange(nextPos, nextPos);
+      syncCursorPosition(textarea);
+    });
+  }, [addAttachment, clearAttachments, setInputValue, syncCursorPosition, textareaRef, workspaceId]);
+
   const handleSend = async (): Promise<void> => {
-    if (sendingRef.current || !inputValue.trim() || !isConnected) return;
+    const hasImageDraft = attachments.some((attachment) => attachment.kind === "image");
+    if (sendingRef.current || (!inputValue.trim() && !hasImageDraft) || !isConnected) return;
     const slashDraft = parseSlashCommandDraft(inputValue);
     if (slashDraft && attachments.length > 0) {
       setAttachmentError(t("chatInput.errors.slashWithAttachment"));
@@ -419,7 +463,9 @@ export function ChatInput({
     }
     sendingRef.current = true;
     setIsSending(true);
+    setIsDescribingImages(false);
     setSendError(null);
+    setAttachmentError(null);
     if (slashDraft && window.piAPI?.runBuiltinSlashCommand) {
       try {
         const result = await window.piAPI.runBuiltinSlashCommand({
@@ -459,8 +505,19 @@ export function ChatInput({
       setIsSending(false);
       return;
     }
-    const imageAttachments = attachments.filter((attachment) => attachment.kind === "image");
-    let imagePrefix = "";
+
+    // Snapshot draft/attachments first so send feels immediate:
+    // clear composer, stage user bubble via onSend, then either direct-send images
+    // or resolve vision caption transport in the background.
+    const draftSnapshot = inputValue;
+    const attachmentSnapshot = attachments.map((attachment) => ({ ...attachment }));
+    const imageAttachments = attachmentSnapshot.filter((attachment) => attachment.kind === "image");
+    const fileAttachments = attachmentSnapshot.filter((attachment) => attachment.kind === "file");
+    const visibleContent = (imageAttachments.length > 0 || fileAttachments.length > 0)
+      ? buildVisibleAttachmentSummary(draftSnapshot, attachmentSnapshot)
+      : undefined;
+    const userText = draftSnapshot.trim() || (imageAttachments.length > 0 ? t("chatInput.imageOnlyPlaceholder") : "");
+
     if (imageAttachments.length > 0) {
       // 本地预检: value 必须是 data URL — 避免把坏附件发给主进程, 也避免报错信息含糊
       const malformed = imageAttachments.find((a) => typeof a.value !== "string" || !a.value.startsWith("data:"));
@@ -472,57 +529,23 @@ export function ChatInput({
         setIsSending(false);
         return;
       }
-      // 识图模型未显式配置时, 主进程会回退到当前对话模型 (多数多模态模型开箱即用),
-      // 因此这里不再要求 visionProvider/visionModel 必填 — 只有完全没配模型时才被
-      // 上面的 hasValidModel 拦截.
-      if (!window.piAPI?.describeImages) {
-        setAttachmentError(t("chatInput.errors.visionUnavailable"));
-        sendingRef.current = false;
-        setIsSending(false);
-        return;
-      }
-      try {
-        const describeInput = imageAttachments.map((attachment) => ({
-          name: attachment.name,
-          dataUrl: attachment.value,
-          mimeType: attachment.mimeType,
-        }));
-        // 记录渲染层实际传参 (不含图片内容), 与主进程日志对照定位问题
-        logger.info("[ChatInput] describeImages args:", describeInput.map((item) => ({
-          name: item.name,
-          mimeType: item.mimeType ?? null,
-          valueType: typeof item.dataUrl,
-          valuePrefix: typeof item.dataUrl === "string" ? item.dataUrl.slice(0, 30) : null,
-        })));
-        const result = await window.piAPI.describeImages(describeInput);
-        // describeImages 失败时主进程返回 ipcError, 直接透出真实原因 — 不要对 result.text 裸调 .trim()
-        if (isIpcError(result)) {
-          setAttachmentError(t("chatInput.errors.visionFailed", { message: result.fallback }));
-          sendingRef.current = false;
-          setIsSending(false);
-          return;
-        }
-        const text = typeof result?.text === "string" ? result.text.trim() : "";
-        if (!text) {
-          setAttachmentError(t("chatInput.errors.visionFailed", { message: t("chatInput.errors.visionEmptyResult") }));
-          sendingRef.current = false;
-          setIsSending(false);
-          return;
-        }
-        imagePrefix = [
-          "图片识别结果:",
-          text,
-          "",
-          "用户消息:",
-        ].join("\n");
-      } catch (err) {
-        setAttachmentError(t("chatInput.errors.visionFailed", { message: errorMessage(err, t("chatInput.errors.unknown")) }));
-        sendingRef.current = false;
-        setIsSending(false);
-        return;
-      }
     }
-    const fileAttachments = attachments.filter((attachment) => attachment.kind === "file");
+
+    const selectedModelInfo = piModels?.find((m) => m.id === settings.model && m.provider === settings.provider);
+    const canDirectSendImages = imageAttachments.length > 0 && modelSupportsVision(selectedModelInfo);
+    const needsDescribeFallback = imageAttachments.length > 0 && !canDirectSendImages;
+
+    if (needsDescribeFallback && !window.piAPI?.describeImages) {
+      setAttachmentError(t("chatInput.errors.visionUnavailable"));
+      sendingRef.current = false;
+      setIsSending(false);
+      return;
+    }
+
+    // Clear composer immediately so image sends don't look frozen while vision/model work runs.
+    setInputValue("");
+    if (workspaceId) clearAttachments(workspaceId);
+
     const attachmentPrefix = fileAttachments.length > 0
       ? [
           "附加文件:",
@@ -531,47 +554,101 @@ export function ChatInput({
           "用户消息:",
         ].join("\n")
       : "";
-    const prefixes = [attachmentPrefix, imagePrefix].filter(Boolean);
-    const outbound = prefixes.length > 0
-      ? `${prefixes.join("\n")}\n${inputValue.trim()}`
-      : inputValue.trim();
-    const visibleContent = prefixes.length > 0
-      ? buildVisibleAttachmentSummary(inputValue, attachments)
-      : undefined;
-    const draftSnapshot = inputValue;
-    const attachmentSnapshot = attachments.map((attachment) => ({ ...attachment }));
-    setInputValue("");
-    setAttachmentError(null);
-    if (workspaceId) clearAttachments(workspaceId);
+
+    const buildFileOnlyOutbound = (): string => (
+      attachmentPrefix
+        ? `${attachmentPrefix}\n${userText}`
+        : userText
+    );
+
+    const buildDescribeTransport = async (): Promise<string> => {
+      const describeInput = imageAttachments.map((attachment) => ({
+        name: attachment.name,
+        dataUrl: attachment.value,
+        mimeType: attachment.mimeType,
+      }));
+      logger.info("[ChatInput] describeImages args:", describeInput.map((item) => ({
+        name: item.name,
+        mimeType: item.mimeType ?? null,
+        valueType: typeof item.dataUrl,
+        valuePrefix: typeof item.dataUrl === "string" ? item.dataUrl.slice(0, 30) : null,
+      })));
+      const describeImages = window.piAPI.describeImages;
+      if (!describeImages) {
+        throw new Error(t("chatInput.errors.visionUnavailable"));
+      }
+      const result = await describeImages(describeInput);
+      if (isIpcError(result)) {
+        throw new Error(result.fallback);
+      }
+      const text = typeof result?.text === "string" ? result.text.trim() : "";
+      if (!text) {
+        throw new Error(t("chatInput.errors.visionEmptyResult"));
+      }
+      const imagePrefix = [
+        "图片识别结果:",
+        text,
+        "",
+        "用户消息:",
+      ].join("\n");
+      const prefixes = [attachmentPrefix, imagePrefix].filter(Boolean);
+      return `${prefixes.join("\n")}\n${userText}`;
+    };
+
     try {
-      if (visibleContent) {
-        await onSend(outbound, { visibleContent });
+      if (imageAttachments.length > 0 && canDirectSendImages) {
+        const images: PiImageContent[] = [];
+        for (const attachment of imageAttachments) {
+          const image = dataUrlToImageContent(attachment.value, attachment.mimeType ?? "image/png");
+          if (!image) {
+            throw new Error(`附件 ${attachment.name} 不是有效的图片数据`);
+          }
+          images.push(image);
+        }
+        const outbound = buildFileOnlyOutbound();
+        await onSend(outbound, {
+          visibleContent,
+          images,
+          imageDataUrls: imageAttachments.map((attachment) => ({
+            name: attachment.name,
+            dataUrl: attachment.value,
+            mimeType: attachment.mimeType,
+          })),
+        });
+      } else if (imageAttachments.length > 0) {
+        setIsDescribingImages(true);
+        // Stage the user bubble immediately (via ChatView), then resolve vision transport.
+        await onSend(userText, {
+          visibleContent,
+          imageDataUrls: imageAttachments.map((attachment) => ({
+            name: attachment.name,
+            dataUrl: attachment.value,
+            mimeType: attachment.mimeType,
+          })),
+          resolveTransport: buildDescribeTransport,
+        });
+      } else if (visibleContent) {
+        await onSend(buildFileOnlyOutbound(), { visibleContent });
       } else {
-        await onSend(outbound);
+        await onSend(userText);
       }
     } catch (err) {
-      setSendError(t("chatInput.errors.sendFailed", { message: errorMessage(err, t("chatInput.errors.unknown")) }));
-      setInputValue(draftSnapshot);
-      if (workspaceId) {
-        clearAttachments(workspaceId);
-        for (const attachment of attachmentSnapshot) {
-          addAttachment(workspaceId, attachment);
-        }
+      const message = errorMessage(err, t("chatInput.errors.unknown"));
+      // Vision preflight failures use attachmentError; other send failures use sendError.
+      if (imageAttachments.length > 0) {
+        setAttachmentError(t("chatInput.errors.visionFailed", { message }));
+      } else {
+        setSendError(t("chatInput.errors.sendFailed", { message }));
       }
-      requestAnimationFrame(() => {
-        const textarea = textareaRef.current;
-        if (!textarea) return;
-        textarea.focus();
-        const nextPos = draftSnapshot.length;
-        textarea.setSelectionRange(nextPos, nextPos);
-        syncCursorPosition(textarea);
-      });
+      restoreDraft(draftSnapshot, attachmentSnapshot);
       sendingRef.current = false;
       setIsSending(false);
+      setIsDescribingImages(false);
       return;
     }
     sendingRef.current = false;
     setIsSending(false);
+    setIsDescribingImages(false);
   };
 
   const handleKeyDown = useInputShortcuts({
@@ -847,7 +924,11 @@ export function ChatInput({
 
   const isSlashCommandDraft = parseSlashCommandDraft(inputValue) !== null;
   const needsModelConfiguration = !isProcessing && !hasValidModel;
-  const canSend = inputValue.trim().length > 0 && isConnected && !isSending && (hasValidModel || isSlashCommandDraft);
+  const hasImageAttachments = attachments.some((attachment) => attachment.kind === "image");
+  const canSend = (inputValue.trim().length > 0 || hasImageAttachments)
+    && isConnected
+    && !isSending
+    && (hasValidModel || isSlashCommandDraft);
   const currentPermissionLabel = permissionOptions.find((p) => p.value === currentPermission)?.label ?? t("chatInput.permissions.smart.label");
   const selectedModelInfo = piModels?.find((m) => m.id === settings.model && m.provider === settings.provider);
   // 优先显示友好模型名；回退 provider/model，空格省略以多塞几个字符
@@ -866,6 +947,8 @@ export function ChatInput({
     ? t("chatInput.placeholder.modelRequired")
     : !isConnected
       ? t("chatInput.placeholder.noConnection")
+      : isDescribingImages
+      ? t("chatInput.placeholder.describingImages")
       : referenceFrame
       ? t("chatInput.placeholder.reference")
     : isProcessing
@@ -873,15 +956,25 @@ export function ChatInput({
         ? t("chatInput.placeholder.planRunning")
         : t("chatInput.placeholder.taskRunning")
       : t("chatInput.placeholder.ready");
-  const runningLabel = runContext === "plan_execution"
+  const runningLabel = isDescribingImages
+    ? t("chatInput.running.describingImages")
+    : runContext === "plan_execution"
     ? t("chatInput.running.plan")
     : t("chatInput.running.task");
   const stopLabel = runContext === "plan_execution" ? t("chatInput.pauseExecution") : t("chatInput.stop");
   const stopAriaLabel = runContext === "plan_execution" ? t("chatInput.pauseExecution") : t("chatView.stopGeneration");
   const showStopAction = isProcessing;
   const primaryActionDisabled = showStopAction ? false : !canSend;
-  const primaryActionLabel = showStopAction ? stopLabel : t("chatInput.send");
-  const primaryActionAriaLabel = showStopAction ? stopAriaLabel : t("chatInput.send");
+  const primaryActionLabel = showStopAction
+    ? stopLabel
+    : isDescribingImages
+      ? t("chatInput.describingImages")
+      : t("chatInput.send");
+  const primaryActionAriaLabel = showStopAction
+    ? stopAriaLabel
+    : isDescribingImages
+      ? t("chatInput.describingImages")
+      : t("chatInput.send");
   const handlePrimaryAction = (): void => {
     if (showStopAction) {
       onStop();
@@ -1050,13 +1143,14 @@ export function ChatInput({
             <span className="mt-[3px] h-[2px] w-9 rounded-full bg-[var(--mm-border-strong)] opacity-70" aria-hidden />
           </div>
         ) : null}
-        {isProcessing && (
+        {(isProcessing || isDescribingImages) && (
           <div
             role="status"
-            aria-label="任务运行中提醒"
+            aria-label={isDescribingImages ? t("chatInput.describingImages") : "任务运行中提醒"}
             aria-live="polite"
             className="pi-motion-running-strip absolute bottom-full left-0 right-0 z-20 mb-1 flex items-center gap-2 rounded-[7px] border border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] px-3 py-1.5 text-[11px] shadow-[0_8px_24px_rgba(15,23,42,0.12)]"
             data-motion="running-strip"
+            data-testid={isDescribingImages ? "chat-input-describing-images" : undefined}
           >
             <div className="flex min-w-0 items-center gap-2 text-[var(--mm-text-secondary)]">
               <span className="relative inline-flex h-2.5 w-2.5 shrink-0" aria-hidden="true">

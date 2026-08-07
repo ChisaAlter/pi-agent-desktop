@@ -180,6 +180,10 @@ const piAPI: PiAPI = {
             toolCallId,
             updates,
         ) as Promise<void | IpcError>,
+    saveSessionAttachments: (input) =>
+        ipcRenderer.invoke("session:save-attachments", input) as Promise<{ attachments: import("@shared").MessageAttachment[] } | IpcError>,
+    getSessionAttachment: (input) =>
+        ipcRenderer.invoke("session:get-attachment", input) as Promise<{ dataUrl: string } | IpcError>,
 
     // Agents workbench
     agentsList: () => ipcRenderer.invoke("agents:list") as Promise<AgentTab[]>,

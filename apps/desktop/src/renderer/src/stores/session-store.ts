@@ -99,6 +99,12 @@ interface SessionState {
    * usePiStream 高频路径传 false,自己 debounce + flush。
    */
   addMessage: (sessionId: string, message: Message, opts?: { persist?: boolean }) => void;
+  /**
+   * Remove a message from local session state.
+   * Used for rolling back pre-send optimistic rows (e.g. vision preflight failed).
+   * Does not call a dedicated delete IPC — only drops the in-memory row.
+   */
+  removeMessage: (sessionId: string, messageId: string) => void;
   updateMessage: (
     sessionId: string,
     messageId: string,
@@ -707,6 +713,22 @@ export const useSessionStore = create<SessionState>((set, get) => {
     if (persist && piAPI?.appendMessage) {
       observePersistResult(piAPI.appendMessage(sessionId, serializeMessageForIpc(message) as Message));
     }
+  },
+
+  removeMessage: (sessionId: string, messageId: string) => {
+    set((state) => ({
+      sessions: state.sessions.map((session) => {
+        if (session.id !== sessionId) return session;
+        const nextMessages = session.messages.filter((message) => message.id !== messageId);
+        if (nextMessages.length === session.messages.length) return session;
+        return {
+          ...session,
+          messages: nextMessages,
+          messageCount: Math.max(0, (session.messageCount ?? session.messages.length) - 1),
+          updatedAt: new Date(),
+        };
+      }),
+    }));
   },
 
   updateMessage: (sessionId: string, messageId: string, updates: Partial<Message>, opts?: { persist?: boolean }) => {
