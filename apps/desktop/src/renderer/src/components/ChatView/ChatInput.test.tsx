@@ -958,6 +958,37 @@ describe("ChatInput", () => {
     expect(screen.getByTestId("chat-input-reference-controls").className).toContain("shrink-0");
   });
 
+  it("mounts the decorative border beam only while the composer is processing", () => {
+    const renderInput = (isProcessing: boolean) => (
+      <I18nProvider>
+        <ChatInput
+          isConnected
+          isProcessing={isProcessing}
+          workspaceId="ws1"
+          workspacePath="C:/repo"
+          onSend={vi.fn(async () => undefined)}
+          onStop={vi.fn()}
+          referenceFrame
+        />
+      </I18nProvider>
+    );
+
+    const { rerender } = render(renderInput(false));
+    const shell = screen.getByTestId("chat-input-shell");
+    expect(shell.getAttribute("data-processing")).toBe("false");
+    expect(screen.queryByTestId("chat-input-border-beam")).toBeNull();
+
+    rerender(renderInput(true));
+    expect(screen.getByTestId("chat-input-shell").getAttribute("data-processing")).toBe("true");
+    const beam = screen.getByTestId("chat-input-border-beam");
+    expect(beam.getAttribute("aria-hidden")).toBe("true");
+    expect(beam.className).toContain("pi-border-beam");
+
+    rerender(renderInput(false));
+    expect(screen.getByTestId("chat-input-shell").getAttribute("data-processing")).toBe("false");
+    expect(screen.queryByTestId("chat-input-border-beam")).toBeNull();
+  });
+
   it("turns the reference composer send button into an active stop button while processing", () => {
     const onStop = vi.fn();
 

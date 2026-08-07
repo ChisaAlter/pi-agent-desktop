@@ -963,6 +963,7 @@ export function ChatInput({
     : t("chatInput.running.task");
   const stopLabel = runContext === "plan_execution" ? t("chatInput.pauseExecution") : t("chatInput.stop");
   const stopAriaLabel = runContext === "plan_execution" ? t("chatInput.pauseExecution") : t("chatView.stopGeneration");
+  const showProcessingState = isProcessing || isDescribingImages;
   const showStopAction = isProcessing;
   const primaryActionDisabled = showStopAction ? false : !canSend;
   const primaryActionLabel = showStopAction
@@ -1128,6 +1129,7 @@ export function ChatInput({
       <div
         ref={shellRef}
         data-testid="chat-input-shell"
+        data-processing={showProcessingState ? "true" : "false"}
         className={`${referenceFrame ? "mx-0 flex min-h-0 w-full max-w-none flex-col bg-[var(--mm-bg-input)]" : "mx-auto max-w-[770px]"} relative overflow-visible rounded-[7px] border border-[var(--mm-border)] shadow-none transition-[border-color,box-shadow] focus-within:border-[var(--mm-border-strong)] ${referenceFrame ? "" : "bg-transparent"}`}
         style={referenceFrame ? { height: `${composerHeight}px` } : undefined}
       >
@@ -1144,14 +1146,14 @@ export function ChatInput({
           </div>
         ) : null}
         {/* 思考/处理中: 边框光束 (border-beam) — 沿 shell 1px 边框环流动 */}
-        {(isProcessing || isDescribingImages) && (
+        {showProcessingState && (
           <div
             className="pi-border-beam"
             aria-hidden="true"
             data-testid="chat-input-border-beam"
           />
         )}
-        {(isProcessing || isDescribingImages) && (
+        {showProcessingState && (
           <div
             role="status"
             aria-label={isDescribingImages ? t("chatInput.describingImages") : "任务运行中提醒"}
