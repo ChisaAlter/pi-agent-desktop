@@ -1172,7 +1172,7 @@ code {
  * Composer 思考时光束边框 (border-beam 风格, 纯 CSS):
  * - 仅 isProcessing / isDescribingImages 时挂载, 旋转 conic-gradient 沿 1px 边框环流动
  * - mask 抠出边框环 (padding 1px + content-box exclude), 伪元素超大旋转方形携带渐变
- * - 主色跟随主题 --mm-accent-blue, 尾焰紫/粉, 两层都 pointer-events: none
+ * - 主色跟随主题 --mm-accent-blue, 尾焰青/紫, 两层都 pointer-events: none
  */
 .pi-border-beam {
   position: absolute;
@@ -1200,10 +1200,10 @@ code {
   background: conic-gradient(
     from 0deg,
     transparent 0deg,
-    color-mix(in srgb, var(--mm-accent-blue) 95%, transparent) 42deg,
-    rgba(139, 92, 246, 0.8) 82deg,
-    rgba(236, 72, 153, 0.55) 118deg,
-    transparent 152deg
+    color-mix(in srgb, var(--mm-accent-blue) 92%, transparent) 38deg,
+    rgba(34, 211, 238, 0.72) 70deg,
+    rgba(139, 92, 246, 0.56) 104deg,
+    transparent 138deg
   );
   animation: pi-border-beam-spin 2.6s linear infinite;
 }
@@ -1570,9 +1570,17 @@ code {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  /* 光束靠旋转动画才有意义, 静态会留下固定色斑 — 直接隐藏 */
   .pi-border-beam {
+    padding: 0;
+    border: 1px solid color-mix(in srgb, var(--mm-accent-blue) 62%, transparent);
+    -webkit-mask: none;
+    mask: none;
+    animation: none;
+  }
+
+  .pi-border-beam::before {
     display: none;
+    animation: none;
   }
 
   .pi-motion-message-enter,

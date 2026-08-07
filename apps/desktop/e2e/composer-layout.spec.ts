@@ -61,6 +61,32 @@ async function launchComposerApp(): Promise<{ app: ElectronApplication; page: Pa
     return { app, page };
 }
 
+async function emitCurrentAgentEvents(
+    page: Page,
+    app: ElectronApplication,
+    events: Array<Record<string, unknown>>,
+): Promise<void> {
+    const agent = await page.evaluate(async () => {
+        const agents = await window.piAPI.agentsList();
+        return agents.find((item) => item.sessionId) ?? agents[0] ?? null;
+    });
+    if (!agent) throw new Error("No agent available for composer processing events");
+
+    await app.evaluate(({ BrowserWindow }, payload) => {
+        const win = BrowserWindow.getAllWindows().find(
+            (item) => !item.isDestroyed() && item.webContents.getURL().includes("index.html"),
+        );
+        if (!win) throw new Error("No main window available for composer processing events");
+        for (const event of payload.events) {
+            win.webContents.send("agents:event", {
+                agentId: payload.agent.id,
+                workspaceId: payload.agent.workspaceId,
+                event,
+            });
+        }
+    }, { agent, events });
+}
+
 interface Geometry {
     shell: { top: number; bottom: number; height: number; width: number } | null;
     controls: { top: number; bottom: number; height: number } | null;
@@ -177,6 +203,79 @@ test.describe('Pi Desktop — composer 固定高度布局契约', () => {
         const shellBg = await page.getByTestId('chat-input-shell').evaluate((el) => getComputedStyle(el).backgroundColor);
         expect(shellBg === 'rgba(0, 0, 0, 0)' || shellBg === 'transparent', 'shell must be opaque').toBe(false);
         await page.screenshot({ path: test.info().outputPath('baseline-empty.png') });
+    });
+
+    test("处理状态: 光束跟随整个 turn, 适配 resize 与 reduced motion", async () => {
+        ({ app, page } = await launchComposerApp());
+        await waitForComposer(page);
+
+        const shell = page.getByTestId("chat-input-shell");
+        await expect(shell).toHaveAttribute("data-processing", "false");
+        await expect(page.getByTestId("chat-input-border-beam")).toHaveCount(0);
+
+        await emitCurrentAgentEvents(page, app, [{ type: "agent_start" }]);
+        await expect(shell).toHaveAttribute("data-processing", "true");
+        const beam = page.getByTestId("chat-input-border-beam");
+        await expect(beam).toBeVisible();
+
+        const activeStyle = await beam.evaluate((element) => {
+            const style = getComputedStyle(element);
+            const before = getComputedStyle(element, "::before");
+            const shellRect = element.parentElement!.getBoundingClientRect();
+            const beamRect = element.getBoundingClientRect();
+            return {
+                pointerEvents: style.pointerEvents,
+                beforeAnimation: before.animationName,
+                edgeDelta: Math.max(
+                    Math.abs(shellRect.left - beamRect.left),
+                    Math.abs(shellRect.top - beamRect.top),
+                    Math.abs(shellRect.right - beamRect.right),
+                    Math.abs(shellRect.bottom - beamRect.bottom),
+                ),
+            };
+        });
+        expect(activeStyle.pointerEvents).toBe("none");
+        expect(activeStyle.beforeAnimation).toContain("pi-border-beam-spin");
+        expect(activeStyle.edgeDelta).toBeLessThanOrEqual(1);
+
+        for (const theme of ["light", "dark"] as const) {
+            await page.evaluate((nextTheme) => {
+                document.documentElement.setAttribute("data-theme", nextTheme);
+            }, theme);
+            await page.screenshot({ path: test.info().outputPath(`processing-border-beam-${theme}.png`) });
+        }
+
+        const handle = page.getByRole("separator", { name: "调整输入框高度" });
+        const handleBox = await handle.boundingBox();
+        if (!handleBox) throw new Error("resize handle not visible");
+        await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y - 80, { steps: 6 });
+        await page.mouse.up();
+        const resizedGeometry = await composerGeometry(page);
+        expect(resizedGeometry.shell!.height).toBeGreaterThan(150);
+        expectShellContract(resizedGeometry, resizedGeometry.shell!.height);
+
+        await page.emulateMedia({ reducedMotion: "reduce" });
+        const reducedStyle = await beam.evaluate((element) => {
+            const style = getComputedStyle(element);
+            const before = getComputedStyle(element, "::before");
+            return {
+                display: style.display,
+                animation: style.animationName,
+                borderWidth: style.borderTopWidth,
+                beforeDisplay: before.display,
+            };
+        });
+        expect(reducedStyle.display).not.toBe("none");
+        expect(reducedStyle.animation).toBe("none");
+        expect(reducedStyle.borderWidth).toBe("1px");
+        expect(reducedStyle.beforeDisplay).toBe("none");
+        await page.screenshot({ path: test.info().outputPath("processing-border-beam-reduced.png") });
+
+        await emitCurrentAgentEvents(page, app, [{ type: "turn_end" }, { type: "agent_end" }]);
+        await expect(shell).toHaveAttribute("data-processing", "false");
+        await expect(page.getByTestId("chat-input-border-beam")).toHaveCount(0);
     });
 
     test('500 行长文本: textarea 自身滚动, 不覆盖控制栏, shell 高度不变, 无文档滚动', async () => {

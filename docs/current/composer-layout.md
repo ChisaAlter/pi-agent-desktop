@@ -44,6 +44,7 @@ Non-reference (auto-height) composer remains available for non-global surfaces; 
    - Chips are a horizontal rail outside the fixed shell.
    - Images show a small thumbnail; files show an icon + truncated name.
    - Many attachments scroll horizontally (`overflow-x-auto`); they must not steal vertical space from the textarea.
+6. **Processing is shown on the shell border.** While `isProcessing` or image preflight is active, a pointer-transparent 1px border beam overlays the shell without changing its geometry. Reduced-motion mode keeps a static accent border instead of rotating the beam.
 
 ### Popovers
 
@@ -96,6 +97,7 @@ Floating surfaces (permission stack, progress toast, right floating rail bottom 
 | Concern | Location |
 | --- | --- |
 | Composer UI + resize | `ChatInput.tsx` (`referenceFrame`) |
+| Processing beam + reduced-motion fallback | `styles/globals.css` |
 | Textarea auto-size (non-reference) | `hooks/useInputText.ts` |
 | Portal + stick-to-bottom on resize | `ChatView.tsx` |
 | Mount slot | `MiniMaxCodeLayout.tsx` `#pi-global-composer-root` |
