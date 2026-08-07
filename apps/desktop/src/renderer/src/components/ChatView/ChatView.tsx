@@ -333,6 +333,19 @@ export function ChatView({
     autoScrollFrameRef.current = window.requestAnimationFrame(scrollToBottom);
   }, [agentMessages, currentSession?.messages, focusMessageId]);
 
+  // 输入框被拖高时, 对话区 flex 空间同步收缩; 贴底时把最后一条消息顶上去, 避免
+  // 视觉上"输入框盖在对话下面/中间还露一块对话".
+  useEffect(() => {
+    const stickToBottomOnComposerResize = (): void => {
+      if (focusMessageId || !isNearBottomRef.current) return;
+      const scrollRegion = scrollRegionRef.current;
+      if (!scrollRegion) return;
+      scrollRegion.scrollTo({ top: scrollRegion.scrollHeight, behavior: "auto" });
+    };
+    window.addEventListener("pi:composer-height-change", stickToBottomOnComposerResize);
+    return () => window.removeEventListener("pi:composer-height-change", stickToBottomOnComposerResize);
+  }, [focusMessageId]);
+
   useEffect(() => {
     return () => {
       if (autoScrollFrameRef.current !== null && typeof window.cancelAnimationFrame === "function") {
@@ -927,9 +940,9 @@ export function ChatView({
             </div>
           )
         ) : (
-          /* 消息列表 */
+          /* 消息列表 — 底部 pb-8 留白, 最后一条消息与输入框保持间距 */
           <div
-            className="mx-auto flex w-full max-w-[780px] flex-col space-y-5 px-4 py-5 sm:px-6 lg:px-8"
+            className="mx-auto flex w-full max-w-[780px] flex-col space-y-5 px-4 pt-5 pb-8 sm:px-6 lg:px-8"
             role="log"
             aria-live="polite"
             aria-label={t('chatView.messagesAria')}

@@ -993,11 +993,49 @@ export function ChatInput({
 
   // TODO: extract sub-components (InputAttachments, InputMentionPopover, InputCommandPopover, InputToolbar)
   return (
-    <div className={`${referenceFrame ? "pointer-events-auto w-full px-2 pb-2 pt-0" : "w-full px-3 pb-6 pt-1"} bg-transparent`}>
+    <div className={`${referenceFrame ? "pointer-events-auto w-full bg-[var(--mm-bg-input)] px-2 pb-2 pt-0" : "w-full px-3 pb-6 pt-1"}`}>
+      {/* 附件条 — 输入框上方横向展示, 不挤压输入区 (reference 与普通模式统一) */}
+      {attachments.length > 0 && (
+        <div
+          className={`mb-1.5 flex items-center gap-1.5 overflow-x-auto pb-0.5 ${referenceFrame ? "px-1" : ""}`}
+          role="list"
+          aria-label={t("chatInput.attachmentsSelected")}
+        >
+          {attachments.map((a) => (
+            <span
+              key={a.id}
+              role="listitem"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-[6px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] py-1 pl-1 pr-1.5 text-xs text-[var(--mm-text-primary)]"
+              title={a.kind === "image" ? a.name : a.value}
+            >
+              {a.kind === "image" && a.value ? (
+                <img src={a.value} alt={a.name} className="h-8 w-8 rounded-[4px] object-cover" />
+              ) : (
+                <span className="flex h-8 w-8 items-center justify-center rounded-[4px] bg-[var(--mm-bg-hover)]" aria-hidden>
+                  <svg className="h-4 w-4 text-[var(--mm-text-secondary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15.172 7l-6.586 6.586a5 5 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                  </svg>
+                </span>
+              )}
+              <span className="max-w-[160px] truncate">{a.name}</span>
+              <button
+                type="button"
+                onClick={() => workspaceId && removeAttachment(workspaceId, a.id)}
+                className="ml-0.5 rounded p-0.5 text-[var(--mm-text-tertiary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
+                aria-label={t("chatInput.removeAttachment", { name: a.name })}
+              >
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
       <div
         ref={shellRef}
         data-testid="chat-input-shell"
-        className={`${referenceFrame ? "mx-0 flex min-h-0 w-full max-w-none flex-col" : "mx-auto max-w-[770px]"} relative overflow-visible rounded-[7px] border border-[var(--mm-border)] bg-transparent shadow-none transition-[border-color,box-shadow] focus-within:border-[var(--mm-border-strong)]`}
+        className={`${referenceFrame ? "mx-0 flex min-h-0 w-full max-w-none flex-col bg-[var(--mm-bg-input)]" : "mx-auto max-w-[770px]"} relative overflow-visible rounded-[7px] border border-[var(--mm-border)] shadow-none transition-[border-color,box-shadow] focus-within:border-[var(--mm-border-strong)] ${referenceFrame ? "" : "bg-transparent"}`}
         style={referenceFrame ? { height: `${composerHeight}px` } : undefined}
       >
         {referenceFrame ? (
@@ -1007,9 +1045,9 @@ export function ChatInput({
             aria-orientation="horizontal"
             tabIndex={0}
             onPointerDown={handleResizePointerDown}
-            className="absolute left-2 right-2 top-0 z-10 flex h-2 cursor-ns-resize items-start justify-center"
+            className="absolute left-2 right-2 top-0 z-10 flex h-2.5 cursor-ns-resize items-start justify-center"
           >
-            <span className="mt-[2px] h-[2px] w-9 rounded-full bg-[var(--mm-border-strong)]" aria-hidden />
+            <span className="mt-[3px] h-[2px] w-9 rounded-full bg-[var(--mm-border-strong)] opacity-70" aria-hidden />
           </div>
         ) : null}
         {isProcessing && (
@@ -1029,49 +1067,17 @@ export function ChatInput({
             </div>
           </div>
         )}
-        {/* 附件 chips — reference 模式下是受控内容区: 挤压时收缩+自身滚动, 永不穿出固定 shell */}
-        {attachments.length > 0 && (
-          <div
-            className={`flex flex-wrap gap-1.5 px-4 pt-3 ${referenceFrame ? "min-h-0 shrink overflow-y-auto" : ""}`}
-            role="list"
-            aria-label={t("chatInput.attachmentsSelected")}
-          >
-            {attachments.map((a) => (
-              <span
-                key={a.id}
-                role="listitem"
-                className="inline-flex items-center gap-1 px-2 py-1 bg-[var(--color-hover)] border border-[var(--color-border)] rounded text-xs text-[var(--mm-text-primary)]"
-                title={a.kind === "image" ? a.name : a.value}
-              >
-                {a.kind === "image" && a.value ? (
-                  <img src={a.value} alt={a.name} className="w-6 h-6 rounded object-cover flex-shrink-0" />
-                ) : (
-                  <svg className="w-3 h-3 text-[var(--mm-text-secondary)] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                  </svg>
-                )}
-                <span className="max-w-[200px] truncate">{a.name}</span>
-                <button
-                  type="button"
-                  onClick={() => workspaceId && removeAttachment(workspaceId, a.id)}
-                  className="ml-0.5 text-[var(--mm-text-tertiary)] hover:text-[var(--mm-text-primary)] transition-colors"
-                  aria-label={t("chatInput.removeAttachment", { name: a.name })}
-                >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
+        {/* 附件 chips 已移到 shell 上方附件条 — 不再占用输入区空间 */}
 
         {/* 输入框 + 发送按钮 + @mention 弹窗 */}
+        {/* 定位铁律: input row / textarea wrapper 都不带 relative — @mention 与 Slash
+            弹窗的 bottom-full 锚定在 shell (唯一 positioned 祖先), 菜单永远悬浮在
+            shell 顶边之上 (mb-1 = 4px 间隙), 不会叠进 shell 内部 (pt-3 padding 区) */}
         <div
-          className={`relative z-0 flex gap-2 px-3 ${referenceFrame ? "min-h-0 flex-1 pb-0 pt-3" : "pb-1.5 pt-3"}`}
+          className={`flex gap-2 px-3 ${referenceFrame ? "min-h-0 flex-1 pb-1.5 pt-3" : "pb-1.5 pt-3"}`}
           data-testid={referenceFrame ? "chat-input-reference-body" : undefined}
         >
-          <div className={`${referenceFrame ? "min-h-0 min-w-0 flex flex-1 flex-col" : ""} relative flex-1`}>
+          <div className={`${referenceFrame ? "min-h-0 min-w-0 flex flex-1 flex-col" : ""} flex-1`}>
             {!referenceFrame && currentAgentMode !== "build" && (
               <div className="mb-2 flex">
                 <span
@@ -1244,9 +1250,9 @@ export function ChatInput({
           </div>
         )}
 
-        {/* 控制栏 */}
+        {/* 控制栏 — 固定在输入区下方 (shrink-0, 文本滚动区不与之相交; 无分割线) */}
         {referenceFrame ? (
-          <div className="pi-composer-selector-row relative z-20 shrink-0 px-3 pb-2 pt-0" data-testid="chat-input-reference-controls">
+          <div className="pi-composer-selector-row relative z-20 shrink-0 px-3 pb-2 pt-0.5" data-testid="chat-input-reference-controls">
             <div className="pi-composer-selector-left text-[var(--mm-text-secondary)]">
               <button type="button" onClick={() => void handlePickFiles()} className="flex h-7 w-7 items-center justify-center rounded-[3px] hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]" aria-label={t("chatInput.addFileOrImage")}>
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">

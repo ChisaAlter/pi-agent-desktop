@@ -828,7 +828,7 @@ describe("ChatInput", () => {
     expect((shell as HTMLElement).style.height).toBe("155px");
   });
 
-  it("keeps the composer shell background transparent", () => {
+  it("keeps the reference composer shell opaque so chat content cannot show through", () => {
     render(
       <I18nProvider>
         <ChatInput
@@ -844,8 +844,9 @@ describe("ChatInput", () => {
     );
 
     const shellClassName = screen.getByTestId("chat-input-shell").className;
-    expect(shellClassName).toContain("bg-transparent");
-    expect(shellClassName).not.toContain("bg-[var(--mm-bg-composer)]");
+    // reference 模式必须实底: 对话内容不能从输入区透出
+    expect(shellClassName).toContain("bg-[var(--mm-bg-input)]");
+    expect(shellClassName).not.toContain("bg-transparent");
   });
 
   it("keeps reference composer controls pinned to the bottom while resizing", () => {
@@ -2007,7 +2008,7 @@ describe("ChatInput", () => {
     );
   }
 
-  it("constrains the reference attachment area to a scrollable flex region", () => {
+  it("renders the attachment rail above the reference shell with horizontal scrolling", () => {
     renderReference();
     act(() => {
       useAttachmentsStore.getState().add("ws1", {
@@ -2024,13 +2025,16 @@ describe("ChatInput", () => {
       });
     });
 
+    // 附件条在 shell 之外 (不再挤压输入区), 横向滚动而非纵向
     const list = screen.getByRole("list", { name: "已选附件" });
-    expect(list.className).toContain("min-h-0");
-    expect(list.className).toContain("shrink");
-    expect(list.className).toContain("overflow-y-auto");
+    expect(list.className).toContain("overflow-x-auto");
+    expect(list.className).not.toContain("overflow-y-auto");
+    expect(list.className).not.toContain("min-h-0");
+    const shell = screen.getByTestId("chat-input-shell");
+    expect(shell.contains(list)).toBe(false);
     // 长文件名保持现有 ellipsis 契约, 不横向撑开
     const chipNames = within(list).getAllByText(
-      (_, el) => typeof el?.className === "string" && el.className.includes("max-w-[200px]"),
+      (_, el) => typeof el?.className === "string" && el.className.includes("max-w-[160px]"),
     );
     expect(chipNames.length).toBe(2);
     for (const chipName of chipNames) {
@@ -2038,7 +2042,7 @@ describe("ChatInput", () => {
     }
   });
 
-  it("does not constrain the attachment area in the auto-height composer", () => {
+  it("renders the attachment rail above the auto-height composer", () => {
     render(
       <I18nProvider>
         <ChatInput
@@ -2056,8 +2060,11 @@ describe("ChatInput", () => {
     });
 
     const list = screen.getByRole("list", { name: "已选附件" });
+    expect(list.className).toContain("overflow-x-auto");
     expect(list.className).not.toContain("min-h-0");
     expect(list.className).not.toContain("overflow-y-auto");
+    const shell = screen.getByTestId("chat-input-shell");
+    expect(shell.contains(list)).toBe(false);
   });
 
   it("constrains reference attachment/send errors with break-all and scroll bounds", async () => {

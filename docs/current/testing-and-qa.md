@@ -50,6 +50,15 @@ Chat chrome regressions to cover when touching layout/Git rail/session list:
 - workspace group **+** creates a new conversation after switching workspace;
 - unit coverage lives in `MiniMaxCodeLayout`, `RightRail`, `GitRailControls`, `GitChangesOverlay`, `SessionRow`, and `ProjectGroupedSessionList` tests; E2E hooks include `right-rail-git-workflow`, `main-token-stats`, smoke/visual-audit right-rail entry points.
 
+Composer (chat input) regressions when touching `ChatInput` / global composer mount / message scroll:
+
+- reference shell stays fixed height under long paste; textarea scrolls; controls stay below the text body with a small gap and no hard divider;
+- shell background is opaque (dialogue must not show through);
+- attachment chips render **above** the shell as a horizontal rail, not inside the fixed body;
+- resize updates `--pi-global-composer-height` and keeps stick-to-bottom messages pushed up rather than under the shell;
+- unit coverage: `ChatInput.test.tsx`, `useInputText.test.tsx`; E2E: `e2e/composer-layout.spec.ts` (build first); optional CDP helper `scripts/electron-composer-qa.mjs`;
+- product contract: [composer-layout.md](composer-layout.md).
+
 Use isolated fixtures for providers and workspaces. A test that needs a real API key, a real network marketplace, or an existing user installation must declare that prerequisite and must not turn an unavailable environment into a product PASS.
 
 For UI changes, preserve useful acceptance screenshots under `docs/compose/acceptance/` when the existing test convention calls for them. Screenshots are evidence, not a substitute for an executable test.

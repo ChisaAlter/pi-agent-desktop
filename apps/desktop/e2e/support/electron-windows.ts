@@ -22,6 +22,14 @@ export async function getWindowByUrl(
             stablePasses += 1;
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
+            // 启动头 2-3 秒主进程被渲染层 IPC 洪峰占满时, evaluate 的 promise 可能被
+            // GC 丢弃 (Chromium "Promise was collected"), 属一次性瞬断 — 应用本身
+            // 健康, 重试即可; 与 "Execution context was destroyed" 同样处理。
+            if (message.includes("garbage collected")) {
+                stablePasses = 0;
+                await new Promise((resolve) => setTimeout(resolve, 250));
+                continue;
+            }
             if (!message.includes("Execution context was destroyed")) throw error;
             stablePasses = 0;
         }

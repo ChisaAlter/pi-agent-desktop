@@ -156,17 +156,30 @@ test.describe('Pi Desktop — composer 固定高度布局契约', () => {
         try { await app?.close(); } catch { /* ignore */ }
     });
 
-    test('基线: 空 composer 固定 95px, 控制栏贴底, 变量=103px, 无越界/无滚动', async () => {
+    test('基线: 空 composer 固定 95px, 轻量手柄, 控制栏贴底, 变量=103px, 无越界/无滚动', async () => {
         ({ app, page } = await launchComposerApp());
         await waitForComposer(page);
         const m = await composerGeometry(page);
         expectShellContract(m, 95);
         expect(m.composerVar).toBe("103px");
         expect(m.textarea!.overflowY).toBe("auto");
+        // 轻量手柄: 悬浮在 shell 顶部内侧, 无分割线/占位条
+        const handle = page.getByRole('separator', { name: '调整输入框高度' });
+        const handleBox = await handle.boundingBox();
+        if (!handleBox) throw new Error('resize handle not visible');
+        expect(Math.abs(handleBox.y - m.shell!.top)).toBeLessThanOrEqual(1.5);
+        // 输入区完全位于控制栏上方, 不相交
+        const ta = await page.locator('textarea').first().boundingBox();
+        const controls = await page.getByTestId('chat-input-reference-controls').boundingBox();
+        if (!ta || !controls) throw new Error('textarea/controls geometry missing');
+        expect(ta.y + ta.height, 'textarea bottom above controls top').toBeLessThanOrEqual(controls.y + 0.5);
+        // shell 实底, 对话不会透进输入区
+        const shellBg = await page.getByTestId('chat-input-shell').evaluate((el) => getComputedStyle(el).backgroundColor);
+        expect(shellBg === 'rgba(0, 0, 0, 0)' || shellBg === 'transparent', 'shell must be opaque').toBe(false);
         await page.screenshot({ path: test.info().outputPath('baseline-empty.png') });
     });
 
-    test('500 行长文本: textarea 自身滚动, shell 高度不变, 无文档滚动', async () => {
+    test('500 行长文本: textarea 自身滚动, 不覆盖控制栏, shell 高度不变, 无文档滚动', async () => {
         ({ app, page } = await launchComposerApp());
         await waitForComposer(page);
         const textarea = page.locator('textarea').first();
@@ -176,6 +189,11 @@ test.describe('Pi Desktop — composer 固定高度布局契约', () => {
         const m = await composerGeometry(page);
         expectShellContract(m, 95);
         expect(m.textarea!.scrollH, 'textarea scrollHeight > clientHeight').toBeGreaterThan(m.textarea!.clientH);
+        // 核心诉求: 大量文本时输入区仍在控制栏上方, 互不重叠
+        const ta = await textarea.boundingBox();
+        const controls = await page.getByTestId('chat-input-reference-controls').boundingBox();
+        if (!ta || !controls) throw new Error('textarea/controls geometry missing');
+        expect(ta.y + ta.height, 'textarea bottom stays above controls under long text').toBeLessThanOrEqual(controls.y + 0.5);
         await page.screenshot({ path: test.info().outputPath('long-text-500.png') });
     });
 
@@ -189,7 +207,7 @@ test.describe('Pi Desktop — composer 固定高度布局契约', () => {
         await page.screenshot({ path: test.info().outputPath('long-url.png') });
     });
 
-    test('20 张图片附件: chips 全在 shell 内, 附件区滚动, 控制栏贴底', async () => {
+    test('20 张图片附件: 附件条在 shell 上方横向滚动, 不挤压输入区, 控制栏贴底', async () => {
         ({ app, page } = await launchComposerApp());
         await waitForComposer(page);
         await pasteImages(page, Array.from({ length: 20 }, (_, i) => ({ name: `pasted-${i}.png`, bytes: 64 })));
@@ -200,8 +218,14 @@ test.describe('Pi Desktop — composer 固定高度布局契约', () => {
 
         const m = await composerGeometry(page);
         expectShellContract(m, 95);
-        const attScroll = await list.evaluate((el) => ({ scrollH: el.scrollHeight, clientH: el.clientHeight }));
-        expect(attScroll.scrollH, 'attachment area scrollable under pressure').toBeGreaterThan(attScroll.clientH);
+        // 附件条完全位于 shell 上方 (mb-1.5 间隙), 与输入区垂直分离
+        const railBox = await list.evaluate((el) => {
+            const r = el.getBoundingClientRect();
+            return { bottom: r.bottom, scrollW: el.scrollWidth, clientW: el.clientWidth };
+        });
+        expect(m.shell!.top - railBox.bottom, 'attachment rail sits above shell with gap').toBeGreaterThanOrEqual(2);
+        // 20 张图横向滚动而非纵向堆叠
+        expect(railBox.scrollW, 'attachment rail scrolls horizontally under pressure').toBeGreaterThan(railBox.clientW);
         await page.screenshot({ path: test.info().outputPath('attachments-20.png') });
     });
 
@@ -293,12 +317,12 @@ test.describe('Pi Desktop — composer 固定高度布局契约', () => {
         expect(m.composerVar).toBe("103px");
 
         // 切到"运行"面板 → ChatView inactive → composer 卸载 → 变量清理
-        await page.getByRole('button', { name: '运行', exact: true }).click();
+        await page.getByRole('tab', { name: '运行', exact: true }).click();
         await expect.poll(async () => page.evaluate(() => document.documentElement.style.getPropertyValue('--pi-global-composer-height')), { timeout: 10_000 }).toBe('');
         await expect(page.locator('[data-testid="chat-input-shell"]')).toHaveCount(0);
 
         // 切回"对话" → composer 重新挂载 → 变量恢复
-        await page.getByRole('button', { name: '对话', exact: true }).click();
+        await page.getByRole('tab', { name: '对话', exact: true }).click();
         await expect.poll(async () => page.evaluate(() => document.documentElement.style.getPropertyValue('--pi-global-composer-height')), { timeout: 10_000 }).toBe('103px');
         m = await composerGeometry(page);
         expectShellContract(m, 95);
@@ -318,6 +342,12 @@ test.describe('Pi Desktop — composer 固定高度布局契约', () => {
 
         const m = await composerGeometry(page);
         expectShellContract(m, 95);
+        // 附件条仍在 shell 上方 (宽窗同契约)
+        const railBox = await page.getByRole('list', { name: '已选附件' }).evaluate((el) => {
+            const r = el.getBoundingClientRect();
+            return r.bottom;
+        });
+        expect(m.shell!.top - railBox, 'attachment rail above shell on wide window').toBeGreaterThanOrEqual(2);
         await page.screenshot({ path: test.info().outputPath('wide-1365x768.png') });
     });
 });

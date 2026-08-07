@@ -84,8 +84,9 @@ The main window is still the three-slot MiniMax shell, but the floating right ut
 - **Left conversation list** groups by date or workspace. Workspace group headers expose a **+** action that switches workspace then opens a blank new conversation. Session rows show hover actions for only the active hovered/focused row; selected-row highlight is full-width.
 - **Right floating rail (chat only)** is a compact **Git 工具** card: changes (`+/-` totals), branch picker, and commit/push. It does not list project files inline. Plan progress appears under the card only when a goal or plan checklist exists.
 - **变更** opens `GitChangesOverlay` as a right-side fixed panel inside chat. The panel lists unstaged/changed files with per-file `+/-`, expands inline unified diffs, and does not route to the workbench Git tab. Git status/diff for the rail is cached per workspace for the session and refreshed while the rail is visible (collapsed rail still must not poll).
+- **Composer (chat input)** is a fixed-height reference shell portaled into `#pi-global-composer-root` at the bottom of the center column (flex `shrink-0`, opaque). Attachment chips sit **above** the shell as a horizontal rail. Long drafts scroll inside the textarea and must not cover the controls row. Dragging the composer taller shrinks the message list and, when stick-to-bottom, pushes the conversation up rather than overlaying it. Full contract: [composer-layout.md](composer-layout.md).
 
-These surfaces are renderer chrome over existing main-process Git IPC (`git:status`, `git:diff`, branch/commit/push handlers). Behavior changes belong in unit tests under `MiniMaxCode/*` and the right-rail/chat E2E specs.
+These surfaces are renderer chrome over existing main-process Git IPC (`git:status`, `git:diff`, branch/commit/push handlers). Behavior changes belong in unit tests under `MiniMaxCode/*` and the right-rail/chat E2E specs; composer geometry changes belong in `ChatInput` unit tests and `e2e/composer-layout.spec.ts`.
 
 ## Window and navigation security
 
@@ -98,6 +99,7 @@ When changing architecture, update the narrowest current document:
 - process/IPC/runtime behavior: this page and `facts.md`;
 - storage or migration behavior: [persistence.md](persistence.md);
 - permissions, approvals, protected paths: [../security/PERMISSION-MATRIX.md](../security/PERMISSION-MATRIX.md);
+- chat composer geometry / attachment rail / resize vs message list: [composer-layout.md](composer-layout.md) plus this page and `facts.md`;
 - test gates or release evidence: [testing-and-qa.md](testing-and-qa.md) and the release guide.
 
 Do not turn a historical plan into a current contract by editing it in place.

@@ -292,7 +292,7 @@ export function MiniMaxCodeLayout({
                         {centerSlot}
                         <div
                             id="pi-global-composer-root"
-                            className="pointer-events-auto relative z-30 w-full shrink-0 bg-[var(--mm-bg-input)]"
+                            className="pointer-events-auto relative z-30 w-full shrink-0 bg-[var(--mm-bg-input)] isolate"
                             aria-live="polite"
                         />
                     </main>
