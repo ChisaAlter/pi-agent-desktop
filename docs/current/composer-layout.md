@@ -44,7 +44,7 @@ Non-reference (auto-height) composer remains available for non-global surfaces; 
    - Chips are a horizontal rail outside the fixed shell.
    - Images show a small thumbnail; files show an icon + truncated name.
    - Many attachments scroll horizontally (`overflow-x-auto`); they must not steal vertical space from the textarea.
-6. **Processing is shown on the shell border.** While `isProcessing` or image preflight is active, a pointer-transparent 1px border beam overlays the shell without changing its geometry. Reduced-motion mode keeps a static accent border instead of rotating the beam.
+6. **Processing is shown on the shell border.** While `isProcessing` or image preflight is active (`showProcessingState`), a pointer-transparent overlay mounts the official [`border-beam`](https://www.npmjs.com/package/border-beam) React component around the shell without changing shell geometry. Preset: `size="md"`, `colorVariant="colorful"`, `borderRadius={7}`, theme resolved from app light/dark. Reduced-motion is handled by the package (animations stop; the overlay node may remain).
 
 ### Popovers
 
@@ -97,7 +97,7 @@ Floating surfaces (permission stack, progress toast, right floating rail bottom 
 | Concern | Location |
 | --- | --- |
 | Composer UI + resize | `ChatInput.tsx` (`referenceFrame`) |
-| Processing beam + reduced-motion fallback | `styles/globals.css` |
+| Processing beam (official package) | `ChatInput.tsx` + npm `border-beam` (`data-testid="chat-input-border-beam"`) |
 | Textarea auto-size (non-reference) | `hooks/useInputText.ts` |
 | Portal + stick-to-bottom on resize | `ChatView.tsx` |
 | Mount slot | `MiniMaxCodeLayout.tsx` `#pi-global-composer-root` |
@@ -110,7 +110,7 @@ Floating surfaces (permission stack, progress toast, right floating rail bottom 
 
 Unit:
 
-- `ChatInput.test.tsx` — opaque shell, long draft containment, attachment rail outside shell, control pinning
+- `ChatInput.test.tsx` — opaque shell, long draft containment, attachment rail outside shell, control pinning, processing beam mount/unmount (`chat-input-border-beam` + `[data-beam]`)
 - `useInputText.test.tsx` — auto-size vs fixed mode
 
 E2E (`composer-layout.spec.ts`):
@@ -119,5 +119,6 @@ E2E (`composer-layout.spec.ts`):
 - long text: scroll inside textarea, no control overlap
 - attachment rail above shell with horizontal scroll
 - error containment, resize, slash menu above shell, panel switch cleanup of CSS vars
+- processing beam: mounts on `agent_start`, keeps shell geometry, unmounts on `turn_end`/`agent_end`
 
 After product changes to this contract, rebuild before Electron E2E (`pnpm --filter @pi-desktop/desktop build`) and repackage `win-unpacked` when validating the installed desktop shortcut path.

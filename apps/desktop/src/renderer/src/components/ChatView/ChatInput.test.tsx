@@ -982,7 +982,9 @@ describe("ChatInput", () => {
     expect(screen.getByTestId("chat-input-shell").getAttribute("data-processing")).toBe("true");
     const beam = screen.getByTestId("chat-input-border-beam");
     expect(beam.getAttribute("aria-hidden")).toBe("true");
-    expect(beam.className).toContain("pi-border-beam");
+    // 官方 border-beam 包: 根节点带 data-beam, 叠层 pointer-events-none
+    expect(beam.className).toContain("pointer-events-none");
+    expect(beam.querySelector("[data-beam]")).not.toBeNull();
 
     rerender(renderInput(false));
     expect(screen.getByTestId("chat-input-shell").getAttribute("data-processing")).toBe("false");

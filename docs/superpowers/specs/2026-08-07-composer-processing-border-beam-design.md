@@ -4,7 +4,7 @@
 
 Add a restrained animated border beam to the chat composer while the assistant is processing a user request. The effect begins when the send lifecycle enters the existing streaming state, remains visible through waiting, thinking, tool execution, and streamed output, then disappears on completion, cancellation, or error.
 
-The implementation will refine the existing pure CSS `pi-border-beam` overlay. It will not add the `border-beam` npm package or introduce a second processing state.
+**Status update (2026-08-09):** Production now uses the official npm package [`border-beam`](https://www.npmjs.com/package/border-beam) (Jakub Antalik) mounted from `ChatInput.tsx` while `showProcessingState` is true. The earlier pure-CSS `.pi-border-beam` hand-roll was removed because it did not match the reference effect at https://beam.jakubantalik.com/.
 
 ## Goals
 
@@ -19,7 +19,7 @@ The implementation will refine the existing pure CSS `pi-border-beam` overlay. I
 - Replacing the existing running status strip or stop control.
 - Adding beams to message cards, the right rail, or other panels.
 - Creating separate animations for waiting, thinking, tools, and output.
-- Adding a third-party runtime dependency.
+- ~~Adding a third-party runtime dependency.~~ Superseded: production now depends on `border-beam` for the reference visual.
 
 ## State And Data Flow
 

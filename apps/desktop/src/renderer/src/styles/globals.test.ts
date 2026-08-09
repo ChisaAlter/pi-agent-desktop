@@ -33,17 +33,10 @@ describe("global interaction styles", () => {
     expect(css).toMatch(/\.markdown-body pre code\s*\{[^}]*overflow-wrap:\s*inherit/s);
   });
 
-  it("keeps the composer processing beam visible without motion when reduced motion is requested", () => {
+  it("does not keep a hand-rolled composer beam stylesheet (uses official border-beam package)", () => {
     const css = readFileSync(new URL("./globals.css", import.meta.url), "utf8");
-
-    expect(css).toMatch(/\.pi-border-beam\s*\{[^}]*pointer-events:\s*none/s);
-    expect(css).toMatch(/\.pi-border-beam::before\s*\{[^}]*pi-border-beam-spin/s);
-    expect(css).toContain("rgba(34, 211, 238, 0.72)");
-
-    const reducedMotion = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
-    expect(reducedMotion).not.toMatch(/\.pi-border-beam\s*\{[^}]*display:\s*none/s);
-    expect(reducedMotion).toMatch(/\.pi-border-beam\s*\{[^}]*animation:\s*none/s);
-    expect(reducedMotion).toMatch(/\.pi-border-beam\s*\{[^}]*border:\s*1px solid/s);
-    expect(reducedMotion).toMatch(/\.pi-border-beam::before\s*\{[^}]*display:\s*none/s);
+    // 光束效果改走 npm `border-beam` 组件, globals 不应再保留手写 .pi-border-beam
+    expect(css).not.toMatch(/\.pi-border-beam\b/);
+    expect(css).not.toMatch(/pi-border-beam-spin/);
   });
 });

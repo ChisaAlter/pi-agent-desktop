@@ -1168,61 +1168,6 @@ code {
   animation: pi-running-dot 1050ms ease-in-out infinite;
 }
 
-/*
- * Composer 思考时光束边框 (border-beam 风格, 纯 CSS):
- * - 仅 isProcessing / isDescribingImages 时挂载, 旋转 conic-gradient 沿 1px 边框环流动
- * - mask 抠出边框环 (padding 1px + content-box exclude), 伪元素超大旋转方形携带渐变
- * - 主色跟随主题 --mm-accent-blue, 尾焰青/紫, 两层都 pointer-events: none
- */
-.pi-border-beam {
-  position: absolute;
-  inset: 0;
-  z-index: 10;
-  padding: 1px; /* 边框环厚度 */
-  border-radius: inherit; /* 跟随 shell 的 rounded-[7px] */
-  overflow: hidden;
-  pointer-events: none;
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  mask-composite: exclude;
-  animation: pi-border-beam-in var(--motion-emphasized) var(--motion-ease) both;
-}
-
-.pi-border-beam::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 320%;
-  height: 320%;
-  transform: translate(-50%, -50%) rotate(0deg);
-  background: conic-gradient(
-    from 0deg,
-    transparent 0deg,
-    color-mix(in srgb, var(--mm-accent-blue) 92%, transparent) 38deg,
-    rgba(34, 211, 238, 0.72) 70deg,
-    rgba(139, 92, 246, 0.56) 104deg,
-    transparent 138deg
-  );
-  animation: pi-border-beam-spin 2.6s linear infinite;
-}
-
-@keyframes pi-border-beam-spin {
-  to {
-    transform: translate(-50%, -50%) rotate(360deg);
-  }
-}
-
-@keyframes pi-border-beam-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
 @keyframes pi-message-enter {
   from {
     opacity: 0;
@@ -1570,19 +1515,6 @@ code {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pi-border-beam {
-    padding: 0;
-    border: 1px solid color-mix(in srgb, var(--mm-accent-blue) 62%, transparent);
-    -webkit-mask: none;
-    mask: none;
-    animation: none;
-  }
-
-  .pi-border-beam::before {
-    display: none;
-    animation: none;
-  }
-
   .pi-motion-message-enter,
   .pi-motion-panel-layer[data-active="true"][data-enter-on-mount="true"],
   .pi-motion-popover[data-motion-state="enter"],

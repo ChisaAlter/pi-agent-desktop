@@ -3,6 +3,7 @@
 // v1.1: @ 文件引用弹窗 + 图片粘贴 + 暗色主题 (所有颜色走 CSS 变量)
 
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { BorderBeam } from "border-beam";
 import { useSettingsStore } from "../../stores/settings-store";
 import { useAttachmentsStore } from "../../stores/attachments-store";
 import { useI18n } from "../../i18n";
@@ -19,6 +20,7 @@ import { isIpcError, type AgentMode, type PermissionMode, type PiThinkingLevel }
 import type { Attachment } from "../../types/attachments";
 import type { PiImageContent } from "@shared";
 import { dataUrlToImageContent, modelSupportsVision } from "../../utils/vision";
+import { resolveTheme, type Theme } from "../../utils/theme";
 import { useInputText } from "./hooks/useInputText";
 import { usePrefillConsumer } from "./hooks/usePrefillConsumer";
 import { useInputShortcuts } from "./hooks/useInputShortcuts";
@@ -275,6 +277,8 @@ export function ChatInput({
     setCursorPos(textarea.selectionStart ?? textarea.value.length);
   }, []);
   const { settings, updateSettings, piModels } = useSettingsStore();
+  // BorderBeam 的 theme 只接受 light/dark/auto; 把 app 的 system 解析成当前实际主题
+  const beamTheme = resolveTheme((settings.theme as Theme | undefined) ?? "system");
   const runtimeState = useAgentStore((state) => agentId ? state.runtimeByAgent[agentId] : undefined);
   const permissionStore = usePermissionStore();
   const runtimeFeatureState = useRuntimeFeatureStore((state) => state.featureState);
@@ -1126,11 +1130,12 @@ export function ChatInput({
           ))}
         </div>
       )}
+      <div className={`${referenceFrame ? "mx-0 w-full max-w-none" : "mx-auto max-w-[770px]"} relative`}>
       <div
         ref={shellRef}
         data-testid="chat-input-shell"
         data-processing={showProcessingState ? "true" : "false"}
-        className={`${referenceFrame ? "mx-0 flex min-h-0 w-full max-w-none flex-col bg-[var(--mm-bg-input)]" : "mx-auto max-w-[770px]"} relative overflow-visible rounded-[7px] border border-[var(--mm-border)] shadow-none transition-[border-color,box-shadow] focus-within:border-[var(--mm-border-strong)] ${referenceFrame ? "" : "bg-transparent"}`}
+        className={`${referenceFrame ? "flex min-h-0 w-full flex-col bg-[var(--mm-bg-input)]" : ""} relative overflow-visible rounded-[7px] border border-[var(--mm-border)] shadow-none transition-[border-color,box-shadow] focus-within:border-[var(--mm-border-strong)] ${referenceFrame ? "" : "bg-transparent"}`}
         style={referenceFrame ? { height: `${composerHeight}px` } : undefined}
       >
         {referenceFrame ? (
@@ -1145,14 +1150,6 @@ export function ChatInput({
             <span className="mt-[3px] h-[2px] w-9 rounded-full bg-[var(--mm-border-strong)] opacity-70" aria-hidden />
           </div>
         ) : null}
-        {/* 思考/处理中: 边框光束 (border-beam) — 沿 shell 1px 边框环流动 */}
-        {showProcessingState && (
-          <div
-            className="pi-border-beam"
-            aria-hidden="true"
-            data-testid="chat-input-border-beam"
-          />
-        )}
         {showProcessingState && (
           <div
             role="status"
@@ -1761,6 +1758,26 @@ export function ChatInput({
           </div>
         </div>
         )}
+      </div>
+      {/* 官方 border-beam 包: 叠在 shell 上, 不改 shell 内部布局 */}
+      {showProcessingState ? (
+        <div
+          className="pointer-events-none absolute inset-0 z-10"
+          aria-hidden="true"
+          data-testid="chat-input-border-beam"
+        >
+          <BorderBeam
+            size="md"
+            colorVariant="colorful"
+            theme={beamTheme}
+            borderRadius={7}
+            strength={1}
+            className="h-full w-full"
+          >
+            <div className="h-full w-full rounded-[7px]" />
+          </BorderBeam>
+        </div>
+      ) : null}
       </div>
     </div>
   );

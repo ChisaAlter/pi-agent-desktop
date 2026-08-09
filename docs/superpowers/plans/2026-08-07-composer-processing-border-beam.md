@@ -6,11 +6,13 @@
 
 **Architecture:** Keep `usePiStream().isStreaming` as the only assistant-processing state and continue passing it through `ChatView` as `ChatInput.isProcessing`. Consolidate the composer-local processing expression into one boolean, expose it as a DOM state contract, and refine the existing pure CSS overlay rather than adding the third-party package.
 
-**Tech Stack:** React 19, TypeScript 5, Tailwind CSS 4, CSS masks/gradients, Vitest 4, Testing Library, Playwright Electron.
+**Status update (2026-08-09):** Shipped production now uses the official `border-beam` npm package (Jakub Antalik) instead of the pure-CSS hand-roll. Mount point remains `ChatInput` + `data-testid="chat-input-border-beam"`; current product contract lives in `docs/current/composer-layout.md`.
+
+**Tech Stack:** React 19, TypeScript 5, Tailwind CSS 4, CSS masks/gradients, Vitest 4, Testing Library, Playwright Electron. (Later: + `border-beam` package.)
 
 ## Global Constraints
 
-- Do not add the `border-beam` npm package or any other runtime dependency.
+- ~~Do not add the `border-beam` npm package or any other runtime dependency.~~ Superseded 2026-08-09: production depends on `border-beam`.
 - The beam is limited to the chat composer shell.
 - The active interval is send start through waiting, thinking, tools, streamed output, completion, cancellation, or error.
 - Preserve the 95px to 240px fixed-height composer contract and all existing controls.

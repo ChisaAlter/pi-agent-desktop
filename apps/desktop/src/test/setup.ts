@@ -18,3 +18,21 @@ if (typeof document !== "undefined" && typeof document.queryCommandSupported !==
         value: () => false,
     });
 }
+
+// border-beam 等组件在 import/mount 时会读 window.matchMedia; node 测试环境默认没有
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+    Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        writable: true,
+        value: (query: string) => ({
+            matches: false,
+            media: query,
+            onchange: null,
+            addListener: () => undefined,
+            removeListener: () => undefined,
+            addEventListener: () => undefined,
+            removeEventListener: () => undefined,
+            dispatchEvent: () => false,
+        }),
+    });
+}
