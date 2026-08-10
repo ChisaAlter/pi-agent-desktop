@@ -703,7 +703,9 @@ describe("session-store (2026-06-06 hotfix): loadSessions 行为", () => {
             id: "tc_legacy",
             name: "read",
             input: { path: "README.md" },
-            status: "running",
+            // reviveSession settles open tools at hydrate so chats don't show
+            // permanent 处理中 after restart.
+            status: "completed",
         });
         expect(toolCalls[0].startTime).toBeInstanceOf(Date);
     });

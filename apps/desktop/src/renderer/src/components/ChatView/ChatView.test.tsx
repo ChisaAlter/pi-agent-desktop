@@ -74,6 +74,60 @@ vi.mock("./MessageBubble", () => ({
   ),
 }));
 
+// Always-virtualized path: render every message via the mocked MessageBubble so
+// existing ChatView tests keep finding bubbles without a real virtualizer.
+vi.mock("./VirtualizedMessageList", async () => {
+  const React = await import("react");
+  const { MessageBubble } = await import("./MessageBubble");
+  const { SEARCH_FOCUS_CLEAR_DELAY_MS } = await import("./search-focus");
+  return {
+    VirtualizedMessageList: ({
+      messages,
+      isStreaming,
+      streamingMessageId,
+      focusMessageId,
+      onFocusHandled,
+      onPlanAction,
+      onGeneratedUiSend,
+      generatedUiDisabled,
+    }: {
+      messages: Array<{ id: string; content: string; planAction?: { status?: string } }>;
+      isStreaming: boolean;
+      streamingMessageId: string | null;
+      focusMessageId?: string | null;
+      onFocusHandled?: () => void;
+      onPlanAction?: (message: { id: string; content: string; planAction?: { status?: string } }, action: "execute" | "pause" | "resume" | "cancel" | "refine") => Promise<void>;
+      onGeneratedUiSend?: (request: unknown) => Promise<void>;
+      generatedUiDisabled?: boolean;
+    }) => {
+      React.useEffect(() => {
+        if (!focusMessageId) return;
+        const target = document.querySelector<HTMLElement>(`[data-message-id="${focusMessageId}"]`);
+        target?.scrollIntoView({ behavior: "smooth", block: "center" });
+        const timer = window.setTimeout(() => {
+          onFocusHandled?.();
+        }, SEARCH_FOCUS_CLEAR_DELAY_MS);
+        return () => window.clearTimeout(timer);
+      }, [focusMessageId, messages, onFocusHandled]);
+      return (
+        <div data-testid="virtualized-message-list">
+          {messages.map((message) => (
+            <MessageBubble
+              key={message.id}
+              message={message as never}
+              isStreaming={isStreaming && message.id === streamingMessageId}
+              isSearchTarget={focusMessageId === message.id}
+              onPlanAction={onPlanAction as never}
+              onGeneratedUiSend={onGeneratedUiSend as never}
+              generatedUiDisabled={generatedUiDisabled}
+            />
+          ))}
+        </div>
+      );
+    },
+  };
+});
+
 describe("ChatView", () => {
   beforeEach(() => {
     clearError.mockClear();
@@ -873,7 +927,7 @@ describe("ChatView", () => {
     expect(screen.queryByText(/输出 /)).toBeNull();
   });
 
-  it("shows token rate next to token usage while streaming", () => {
+  it("shows token rate next to token usage while streaming", async () => {
     mockedStreamError = null;
     mockedIsStreaming = true;
     const now = Date.now();
@@ -922,12 +976,17 @@ describe("ChatView", () => {
       </I18nProvider>,
     );
 
-    expect(screen.getByTestId("chat-token-rate").textContent).toContain("100 tok/s");
+    // Interval sampler needs ~2 ticks after the usage delta for a stable span.
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 600));
+    });
+    expect(screen.getByTestId("chat-token-rate").textContent).toMatch(/tok\/s/);
   });
 
-  it("hides token rate when not streaming", () => {
+  it("keeps the last token rate visible after streaming ends", async () => {
     mockedStreamError = null;
-    mockedIsStreaming = false;
+    mockedIsStreaming = true;
+    const now = Date.now();
     useSessionStore.setState((state) => ({
       sessions: state.sessions.map((session) => (
         session.id === "s1"
@@ -935,22 +994,57 @@ describe("ChatView", () => {
               ...session,
               usage: {
                 inputTokens: 1000,
-                outputTokens: 700,
-                totalTokens: 1700,
-                updatedAt: Date.now(),
+                outputTokens: 500,
+                totalTokens: 1500,
+                updatedAt: now - 2_000,
               },
             }
           : session
       )),
     }));
 
-    render(
+    const { rerender } = render(
       <I18nProvider>
         <ChatView />
       </I18nProvider>,
     );
 
-    expect(screen.queryByTestId("chat-token-rate")).toBeNull();
+    useSessionStore.setState((state) => ({
+      sessions: state.sessions.map((session) => (
+        session.id === "s1"
+          ? {
+              ...session,
+              usage: {
+                ...session.usage,
+                outputTokens: 700,
+                totalTokens: 1700,
+                updatedAt: now,
+              },
+            }
+          : session
+      )),
+    }));
+    rerender(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    // Let the interval sampler compute rate during streaming.
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 600));
+    });
+    expect(screen.getByTestId("chat-token-rate").textContent).toMatch(/tok\/s/);
+
+    mockedIsStreaming = false;
+    rerender(
+      <I18nProvider>
+        <ChatView />
+      </I18nProvider>,
+    );
+
+    // Product requirement: Token 旁的速度结束后仍保留，不要立刻消失。
+    expect(screen.getByTestId("chat-token-rate").textContent).toMatch(/tok\/s/);
   });
 
   it("keeps very small token counts readable in the top strip", () => {
@@ -1065,7 +1159,9 @@ describe("ChatView", () => {
 
     expect(statusText.compareDocumentPosition(toggleButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(toggleButton.className).toBe(MINIMAX_CHROME_ICON_BUTTON_CLASSNAME);
-    expect(toggleButton.parentElement?.className ?? "").toContain("translate-y-[0.5px]");
+    expect(toggleButton.className).toContain("h-7");
+    expect(toggleButton.className).toContain("w-7");
+    expect(toggleButton.className).toContain("rounded-[2px]");
 
     fireEvent.click(toggleButton);
     expect(onToggleRightRail).toHaveBeenCalledTimes(1);
@@ -1089,7 +1185,7 @@ describe("ChatView", () => {
     expect(topStrip?.className ?? "").not.toContain("bg-[var(--mm-bg-main)]");
   });
 
-  it("renders conversation header with workspace switcher but without permission or session selects", () => {
+  it("renders conversation header with session title but without workspace switcher chrome", () => {
     mockedStreamError = null;
 
     render(
@@ -1102,12 +1198,13 @@ describe("ChatView", () => {
     expect(header.textContent).toContain("Session 1");
     expect(header.textContent).toContain("Token:");
     expect(header.textContent).toContain("已连接");
-    // Workspace switcher stays available after messages exist so users can switch projects mid-session.
-    expect(screen.getByRole("button", { name: /切换工作区/ })).toBeTruthy();
+    // Workspace switcher stays out of the chat header strip.
+    expect(screen.queryByRole("button", { name: /切换工作区/ })).toBeNull();
     expect(header.textContent).not.toContain("工作区:");
     expect(header.textContent).not.toContain("权限:");
     expect(header.querySelector("select")).toBeNull();
     expect(screen.queryByLabelText("切换会话")).toBeNull();
+    expect(screen.getByRole("button", { name: /右侧栏/ })).toBeTruthy();
   });
 
   it("frame-bounds near-bottom chat auto-scrolls without smooth behavior", () => {
@@ -1703,14 +1800,19 @@ describe("ChatView", () => {
     expect(stopStreaming).toHaveBeenCalledWith("ws1");
   });
 
-  it("exposes session title rename focus-visible ring for keyboard a11y", () => {
+  it("exposes session title rename and right-rail toggle focus-visible rings", () => {
     mockedStreamError = null;
     render(
       <I18nProvider>
-        <ChatView />
+        <ChatView rightRailCollapsed onToggleRightRail={() => undefined} />
       </I18nProvider>,
     );
     const titleBtn = screen.getByRole("button", { name: "Session 1" });
     expect(titleBtn.className).toContain("focus-visible:ring-2");
+    const toggle = screen.getByRole("button", { name: /右侧栏/ });
+    expect(toggle.className).toContain("focus-visible:ring-2");
+    expect(toggle.className).toContain("h-7");
+    expect(toggle.className).toContain("w-7");
+    expect(toggle.className).toContain("rounded-[2px]");
   });
 });

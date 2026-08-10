@@ -89,21 +89,32 @@ export function MiniMaxCodeTitleBar({
                 ? "bg-[var(--color-error)]"
                 : "bg-[var(--mm-text-tertiary)]";
     const showCenterMeta = Boolean(statusLabel || subtitle);
+    // Frame no longer uses overflow:hidden (breaks native drag). Round the titlebar
+    // top corners ourselves when the window is restored.
+    const topRadiusClass = isMaximized ? "rounded-none" : "rounded-t-[var(--mm-window-radius)]";
 
     return (
         <div
             style={{ height: "var(--mm-height-titlebar)" }}
-            className={`flex w-full shrink-0 items-center border-b border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] select-none ${className}`}
+            className={`app-region-drag relative z-20 flex w-full shrink-0 items-center border-b border-[var(--mm-border)] bg-[var(--mm-bg-sidebar)] select-none ${topRadiusClass} ${className}`}
             data-mmcode-region="titlebar"
             role="banner"
             aria-label="window title bar"
+            onDoubleClick={(event) => {
+                // Double-click empty titlebar chrome to toggle maximize (Windows frameless).
+                if (isMac) return;
+                const target = event.target;
+                if (!(target instanceof Element)) return;
+                if (target.closest("button, a, input, textarea, select, [role='tab'], [data-window-drag-exclude='true']")) return;
+                void window.piAPI?.windowToggleMaximize();
+            }}
         >
             {/* 左侧 */}
             <div
                 style={{ width: isMac ? leftPad : leftWidth ?? "var(--mm-width-sidebar-left)", flexShrink: 0 }}
-                className={`app-region-drag ${variant === "settings"
+                className={variant === "settings"
                     ? "flex h-full items-center gap-1 px-2"
-                    : "relative top-[4px] flex h-full items-center gap-[8px] pl-[17px] pr-2"}`}
+                    : "relative top-[4px] flex h-full items-center gap-[8px] pl-[17px] pr-2"}
                 data-mmcode-region="titlebar-left"
             >
                 {!isMac && (
@@ -116,13 +127,13 @@ export function MiniMaxCodeTitleBar({
                 )}
             </div>
 
-            {/* 中间 drag region */}
+            {/* 中间区域：整条 titlebar 已是 drag；仅交互控件标记 no-drag */}
             <div
-                className={`flex h-full min-w-0 flex-1 items-center px-2 ${navigationSlot ? "" : "app-region-drag"}`}
+                className="flex h-full min-w-0 flex-1 items-center px-2"
                 data-mmcode-region="titlebar-center"
             >
                 {navigationSlot ?? (showCenterMeta && (
-                    <div className="pi-motion-status-pill flex min-w-0 items-center gap-2 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2.5 py-1 text-[11px] text-[var(--mm-text-secondary)]" data-motion-state={statusTone}>
+                    <div className="app-region-no-drag pi-motion-status-pill flex min-w-0 items-center gap-2 rounded-full border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2.5 py-1 text-[11px] text-[var(--mm-text-secondary)]" data-motion-state={statusTone}>
                         {statusLabel && (
                             <span className="flex shrink-0 items-center gap-1.5">
                                 <span className={`h-1.5 w-1.5 rounded-full ${statusTone === "busy" ? "pi-motion-running-dot" : ""} ${statusColor}`} aria-hidden="true" />
@@ -141,8 +152,7 @@ export function MiniMaxCodeTitleBar({
 
             {/* 右侧 */}
             <div
-                className="flex h-full items-center gap-0.5 pr-[5px]"
-                style={isMac ? ({ WebkitAppRegion: "no-drag" } as React.CSSProperties) : undefined}
+                className="app-region-no-drag flex h-full items-center gap-0.5 pr-[5px]"
                 data-mmcode-region="titlebar-right"
             >
                 {!isMac && (

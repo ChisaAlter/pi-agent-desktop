@@ -499,8 +499,9 @@ describe("ChatInput", () => {
     const permissionButton = screen.getByTestId("chat-input-permission-trigger");
     const modelPopoverRoot = modelButton.closest("[data-pi-popover-root]");
 
-    // 模型：完整字符串仍在 DOM（title/text），视觉省略靠专用 CSS 类
-    expect(modelButton.getAttribute("title")).toBe("gpt-5.6-solo-very-long-name-that-must-ellipsis");
+    // 模型：短名显示；title 带 provider 完整路径；视觉省略靠专用 CSS 类
+    expect(modelButton.getAttribute("title")).toBe("OpenAI / gpt-5.6-solo-very-long-name-that-must-ellipsis");
+    expect(modelButton.getAttribute("aria-label")).toBe("当前模型: gpt-5.6-solo-very-long-name-that-must-ellipsis");
     expect(modelLabel?.textContent).toBe("gpt-5.6-solo-very-long-name-that-must-ellipsis");
     expect(modelLabel?.className).toContain("pi-composer-label-ellipsis");
     // 布局链：slot 承载宽度，Popover 单节点填满 slot，label 才 ellipsis
@@ -799,7 +800,7 @@ describe("ChatInput", () => {
     );
 
     // settings provider "provider_a" 与 model-0 的 provider_0 不一致时回退到 id 文案
-    fireEvent.click(screen.getByRole("button", { name: "当前模型: provider_a/model-0" }));
+    fireEvent.click(screen.getByRole("button", { name: "当前模型: model-0" }));
 
     const menu = screen.getByRole("menu");
     fireEvent.scroll(menu);

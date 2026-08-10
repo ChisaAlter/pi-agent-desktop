@@ -67,6 +67,19 @@ describe("SettingsWindow", () => {
     expect(frame.getAttribute("data-settings-window-motion")).toBe("enter");
   });
 
+  it("keeps the settings titlebar outside overflow-hidden for reliable window drag", () => {
+    render(<SettingsWindow />);
+
+    const frame = screen.getByTestId("settings-window-frame");
+    const titlebar = frame.querySelector('[data-mmcode-region="titlebar"]');
+    const content = frame.querySelector(":scope > div:last-child");
+
+    expect(frame.className).not.toContain("overflow-hidden");
+    expect(titlebar?.className ?? "").toContain("app-region-drag");
+    expect(content?.className ?? "").toContain("overflow-hidden");
+    expect(content?.contains(titlebar as Node)).toBe(false);
+  });
+
   it("subscribes before requesting and applying the initial settings tab", async () => {
     const onSettingsTabSelected = window.piAPI.onSettingsTabSelected as ReturnType<typeof vi.fn>;
     const settingsWindowReady = window.piAPI.settingsWindowReady as ReturnType<typeof vi.fn>;

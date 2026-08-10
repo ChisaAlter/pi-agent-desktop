@@ -40,6 +40,21 @@ describe("MarkdownRenderer XSS surface (D-023/E-013)", () => {
         expect(container.querySelector(".markdown-body")?.getAttribute("data-streaming")).toBe("false");
     });
 
+    it("renders streaming content as plain pre-wrapped text without markdown structure", () => {
+        const { container, rerender } = render(
+            <MarkdownRenderer content={"# Title\n\n```js\nconst x = 1\n```"} isStreaming />,
+        );
+        expect(container.querySelector("h1")).toBeNull();
+        expect(container.querySelector("pre")).toBeNull();
+        expect(container.querySelector("code")).toBeNull();
+        expect(container.textContent ?? "").toContain("# Title");
+        expect(container.textContent ?? "").toContain("const x = 1");
+
+        rerender(<MarkdownRenderer content={"# Title\n\n```js\nconst x = 1\n```"} isStreaming={false} />);
+        expect(container.querySelector("h1")).toBeTruthy();
+        expect(container.querySelector("code")).toBeTruthy();
+    });
+
     // wave-90 residual — broader XSS payload matrix (D-023/E-013)
     it("does not materialize iframe/object/svg script vectors from raw HTML", () => {
         render(

@@ -26,6 +26,12 @@ interface MessageBubbleProps {
   message: ChatMessage;
   isStreaming?: boolean;
   isSearchTarget?: boolean;
+  /**
+   * Whether to show turn chrome (timestamp + copy). For multi-turn tool loops,
+   * only the final assistant fragment in a user turn should set this true.
+   * Defaults to true for standalone/user bubbles.
+   */
+  showChrome?: boolean;
   onPlanAction?: (message: ChatMessage, action: "execute" | "refine" | "cancel" | "pause" | "resume", text?: string) => Promise<void>;
   onGeneratedUiSend?: (request: GeneratedUiSendRequest) => Promise<void>;
   generatedUiDisabled?: boolean;
@@ -195,12 +201,27 @@ function PlanExecutionUserState({ content }: { content: string }): React.JSX.Ele
 
 function ToolActivity({
   toolCalls,
+  isStreaming = false,
 }: {
   toolCalls: NonNullable<Message["toolCalls"]>;
+  isStreaming?: boolean;
 }): React.JSX.Element {
-  const visibleToolCalls = toolCalls.filter((toolCall) => toolCall.name !== "render_ui" || toolCall.status === "error");
+  const visibleToolCalls = useMemo(
+    () => toolCalls
+      .filter((toolCall) => toolCall.name !== "render_ui" || toolCall.status === "error")
+      .map((toolCall) => {
+        // After the turn ends, never keep a permanent "running" spinner for
+        // stale history / lost end events. Pending tools also settle to completed.
+        if (isStreaming) return toolCall;
+        if (toolCall.status === "running" || toolCall.status === "pending") {
+          return { ...toolCall, status: "completed" as const };
+        }
+        return toolCall;
+      }),
+    [isStreaming, toolCalls],
+  );
   const [isExpanded, setIsExpanded] = useState(false);
-  const running = toolCalls.some((tc) => tc.status === "running");
+  const running = isStreaming && visibleToolCalls.some((tc) => tc.status === "running");
   const summary = useMemo(() => toolSummary(visibleToolCalls), [visibleToolCalls]);
 
   return (
@@ -240,6 +261,7 @@ function MessageBubbleImpl({
   message,
   isStreaming = false,
   isSearchTarget = false,
+  showChrome = true,
   onPlanAction,
   onGeneratedUiSend,
   generatedUiDisabled,
@@ -272,7 +294,10 @@ function MessageBubbleImpl({
     [isUser, message.generatedUi, displayContent],
   );
   const isGeneratedUiOnlyMessage = !isUser && !displayContent.trim() && Boolean(message.generatedUi);
-  const shouldRenderMessageTime = !isGeneratedUiOnlyMessage;
+  // Turn chrome: one timestamp + one copy per user turn (Cindy-style showActionBar).
+  // Hide while streaming (copy would be partial); only the turn-final bubble passes showChrome.
+  const shouldRenderMessageTime = showChrome && !isGeneratedUiOnlyMessage && (isUser || !isStreaming);
+  const shouldRenderActionBar = showChrome && !isUser && !isStreaming;
   const copyContent = assistantPlainTextContent;
   const planContent = assistantPlainTextContent;
   const [copied, setCopied] = useState(false);
@@ -365,7 +390,10 @@ function MessageBubbleImpl({
     >
       <div className={bubbleWidthClassName}>
           {shouldRenderMessageTime && (
-            <div className={`mb-1 flex items-center gap-2 px-1 text-[11px] text-[#9a9a95] ${isUser ? 'justify-end' : 'justify-start'}`}>
+            <div
+              className={`mb-1 flex items-center gap-2 px-1 text-[11px] text-[#9a9a95] ${isUser ? 'justify-end' : 'justify-start'}`}
+              data-testid="message-time"
+            >
               <time dateTime={timeIso}>{timeText}</time>
             </div>
           )}
@@ -410,11 +438,11 @@ function MessageBubbleImpl({
                   />
                 )}
 
-                {message.toolCalls?.some((toolCall) => toolCall.name === "render_ui" && toolCall.status === "running") ? (
+                {isStreaming && message.toolCalls?.some((toolCall) => toolCall.name === "render_ui" && toolCall.status === "running") ? (
                   <div className="mt-2 text-[11px] text-[var(--mm-text-tertiary)]">正在生成界面...</div>
                 ) : null}
                 {message.toolCalls && message.toolCalls.some((toolCall) => toolCall.name !== "render_ui" || toolCall.status === "error") ? (
-                  <ToolActivity toolCalls={message.toolCalls} />
+                  <ToolActivity toolCalls={message.toolCalls} isStreaming={isStreaming} />
                 ) : null}
 
                 {shouldRenderAssistantContent && (
@@ -465,7 +493,7 @@ function MessageBubbleImpl({
             )}
 
 
-            {!isUser && (
+            {shouldRenderActionBar && (
               <div className="mt-2 flex items-center justify-start gap-2" data-testid="message-footer">
                 {copyContent && (
                   <button
@@ -573,6 +601,7 @@ function areEqual(prev: MessageBubbleProps, next: MessageBubbleProps): boolean {
     prev.message.customCard === next.message.customCard &&
     prev.message.planAction === next.message.planAction &&
     prev.message.attachments === next.message.attachments &&
+    prev.showChrome === next.showChrome &&
     prev.isStreaming === next.isStreaming &&
     prev.isSearchTarget === next.isSearchTarget &&
     prev.onGeneratedUiSend === next.onGeneratedUiSend &&

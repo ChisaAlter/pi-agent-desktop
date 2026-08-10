@@ -357,7 +357,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
     const pendingUiRef = useRef<Map<string, { sessionId: string; ui: GeneratedUiCard }>>(new Map());
     /**
      * 正在流式运行的 agent id (后台固定): 切换会话后仍继续处理其事件, 直到
-     * agent_end / extension_error / 用户停止 / 计划暂停。修复"切换会话丢流":
+     * turn_end / agent_end / extension_error / 用户停止 / 计划暂停。修复"切换会话丢流":
      * 旧实现按当前视图的 agentId 过滤, 切走即永久丢失该 agent 的事件
      * (消息截断 + isStreaming 卡死)。
      */
@@ -489,6 +489,19 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         pendingStreamRenderRef.current = { content: false, thinking: false };
     }, [cancelStreamRenderFrame]);
 
+    const mirrorStreamToSession = useCallback(() => {
+        const messageId = messageIdRef.current;
+        const sessionId = sessionIdRef.current;
+        if (!messageId || !sessionId) return;
+        const updates: { content?: string; thinking?: string } = {};
+        if (textRef.current) updates.content = textRef.current;
+        if (thinkingRef.current) updates.thinking = thinkingRef.current;
+        if (Object.keys(updates).length === 0) return;
+        // One-shot session mirror (turn end / stop). Avoids rewriting sessions[]
+        // on every rAF while still keeping history durable in-memory.
+        useSessionStore.getState().updateMessage(sessionId, messageId, updates, { persist: false });
+    }, []);
+
     const flushStreamRender = useCallback(() => {
         cancelStreamRenderFrame();
         const pending = pendingStreamRenderRef.current;
@@ -513,6 +526,8 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         if (aid) {
             useAgentStore.getState().updateStreamMessage(aid, messageId, updates);
         }
+        // Keep session history in sync for display/persist paths. updateMessage now
+        // preserves other session identities and avoids updatedAt thrash on stream mirrors.
         const sessionId = sessionIdRef.current;
         if (sessionId) {
             useSessionStore.getState().updateMessage(sessionId, messageId, updates, { persist: false });
@@ -550,6 +565,36 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
         }
         return useSessionStore.getState().getCurrentSession();
     }, [getPinnedSession]);
+
+    /** Close any tool cards still left as "running" when a turn/agent ends. */
+    const finalizeOpenToolCalls = useCallback((status: "completed" | "error" = "completed") => {
+        const endTime = Date.now();
+        let localChanged = false;
+        for (const [id, tc] of toolCallsRef.current) {
+            if (tc.status === "running" || tc.status === "pending") {
+                tc.status = status;
+                tc.endTime = endTime;
+                toolCallsRef.current.set(id, tc);
+                localChanged = true;
+            }
+        }
+        if (localChanged) {
+            setToolCalls(new Map(toolCallsRef.current));
+        }
+
+        // Always close open tools on the whole session message list, even when
+        // the local stream map is empty or message ids drifted (reload / missed
+        // start event / orphan tools from a prior broken turn).
+        // Persist immediately: streamPersistRef may already be null after end.
+        const sessionId = sessionIdRef.current
+            ?? getTargetSession()?.id
+            ?? useSessionStore.getState().currentSessionId;
+        if (!sessionId) return;
+        useSessionStore.getState().finalizeOpenToolCalls(sessionId, {
+            status,
+            persist: true,
+        });
+    }, [getTargetSession]);
 
     /**
      * 把一张生成式 UI 卡片挂载为消息。优先挂到回合最后一条 assistant
@@ -596,6 +641,35 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
             mountGeneratedUi(session, ui, attachToMessageId);
         }
     }, [getTargetSession, mountGeneratedUi]);
+
+    /**
+     * End a turn / agent run for the visible UI.
+     * - keepMessage: multi-turn tool loops within one user prompt must reuse the
+     *   same assistant bubble (one time + one copy). Only true agent_end / stop /
+     *   error / new startStreaming should drop the message id.
+     */
+    const endVisibleStreaming = useCallback((opts?: {
+        error?: string | null;
+        keepMessage?: boolean;
+    }) => {
+        finalizeOpenToolCalls(opts?.error ? "error" : "completed");
+        flushStreamRender();
+        mirrorStreamToSession();
+        flushStreamPersist();
+        setIsStreaming(false);
+        isStreamingRef.current = false;
+        isTurnActiveRef.current = false;
+        promptInFlightRef.current = false;
+        flushPendingUi();
+        if (!opts?.keepMessage) {
+            setStreamingMessageId(null);
+            messageIdRef.current = null;
+            sessionIdRef.current = null;
+            pinnedStreamAgentIdRef.current = null;
+        }
+        if (opts?.error) setError(opts.error);
+        window.dispatchEvent(new CustomEvent("pi:stream-end"));
+    }, [finalizeOpenToolCalls, flushPendingUi, flushStreamPersist, flushStreamRender, mirrorStreamToSession]);
 
     const updateCurrentUsage = useCallback((updates: Partial<SessionUsageSnapshot>) => {
         const session = getTargetSession() ?? useSessionStore.getState().getCurrentSession();
@@ -759,22 +833,63 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     // 同一 turn 内重复 agent_start 不能清空已有工具调用。
                     break;
                 }
-                // 新 turn 或首次 agent_start — 完整重置
+                // Multi-turn continuation (same user prompt): keep messageId so all
+                // turns share one assistant bubble (one time + one copy).
+                // Body strategy: latest turn text replaces the visible answer
+                // (agents often restate); tools accumulate on the shared message;
+                // thinking is rehydrated then appended so intermediate notes remain.
+                const continueSameRun = Boolean(messageIdRef.current);
                 discardPendingStreamRender();
                 setIsStreaming(true);
                 isStreamingRef.current = true;
                 isTurnActiveRef.current = true;
                 setError(null);
-                setCurrentText("");
-                setCurrentThinking("");
-                textRef.current = "";
-                thinkingRef.current = "";
-                hasCompletionSignalRef.current = false;
                 lastProviderErrorRef.current = null;
-                toolCallsRef.current = new Map();
-                setToolCalls(new Map());
                 // 固定本轮的流式 agent: 即使随后切换会话, 事件仍会送达。
                 pinnedStreamAgentIdRef.current = eventAgentId;
+
+                if (continueSameRun) {
+                    const existing = getTargetSession()?.messages.find(
+                        (message) => message.id === messageIdRef.current,
+                    );
+                    // New turn answer starts empty and will replace message.content.
+                    textRef.current = "";
+                    setCurrentText("");
+                    // Keep prior thinking; later thinking_delta appends.
+                    thinkingRef.current = existing?.thinking ?? "";
+                    setCurrentThinking(thinkingRef.current);
+                    // Rebuild local tool map from the shared message so end/finalize
+                    // still sees prior tools while new ones append via addToolCall.
+                    toolCallsRef.current = new Map();
+                    for (const toolCall of existing?.toolCalls ?? []) {
+                        toolCallsRef.current.set(toolCall.id, {
+                            id: toolCall.id,
+                            name: toolCall.name,
+                            args: (toolCall.input as Record<string, unknown> | undefined)
+                                ?? toolCall.args
+                                ?? {},
+                            status: toolCall.status,
+                            result: toolCall.output ?? toolCall.result,
+                            startTime: toolCall.startTime instanceof Date
+                                ? toolCall.startTime.getTime()
+                                : Date.now(),
+                            endTime: toolCall.endTime instanceof Date
+                                ? toolCall.endTime.getTime()
+                                : undefined,
+                        });
+                    }
+                    setToolCalls(new Map(toolCallsRef.current));
+                    hasCompletionSignalRef.current = true;
+                    setStreamingMessageId(messageIdRef.current);
+                } else {
+                    setCurrentText("");
+                    setCurrentThinking("");
+                    textRef.current = "";
+                    thinkingRef.current = "";
+                    hasCompletionSignalRef.current = false;
+                    toolCallsRef.current = new Map();
+                    setToolCalls(new Map());
+                }
                 break;
             }
 
@@ -1043,14 +1158,17 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     break;
                 }
                 const isError = readToolCallIsError(event);
+                const output = readToolCallOutput(event);
                 const tc = toolCallsRef.current.get(toolCallId);
                 if (tc) {
                     tc.status = isError ? "error" : "completed";
+                    if (output !== undefined) tc.result = output;
                     tc.endTime = Date.now();
                     setToolCalls(new Map(toolCallsRef.current));
                     if (sessionIdRef.current && messageIdRef.current) {
                         useSessionStore.getState().updateToolCall(sessionIdRef.current, messageIdRef.current, toolCallId, {
                             status: isError ? "error" : "completed",
+                            ...(output !== undefined ? { output } : {}),
                             endTime: new Date(tc.endTime),
                         }, { persist: false });
                         scheduleStreamPersist();
@@ -1061,18 +1179,10 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
 
             case "turn_end":
                 syncUsageFromAssistantMessage((event as { message?: unknown }).message);
-                flushStreamRender();
-                // Force flush accumulated content/thinking/toolCalls
-                // 在 turn_end 这一刻把整个 assistant message 落盘一次
-                flushStreamPersist();
-                isTurnActiveRef.current = false;
-                flushPendingUi();
-                // 非 agent 模式下清除 message/session 引用; agent 模式跨 turn 保持
-                if (!agentIdRef.current) {
-                    setStreamingMessageId(null);
-                    messageIdRef.current = null;
-                    sessionIdRef.current = null;
-                }
+                // Finalize tools + leave the "运行中" chrome, but keep the assistant
+                // message id so the next agent_start (multi-turn tool loop) appends
+                // into the same bubble — one time stamp + one copy control per user prompt.
+                endVisibleStreaming({ keepMessage: true });
                 break;
 
             case "usage_update":
@@ -1156,18 +1266,7 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                     setError("Pi 本轮没有返回内容，请检查模型/API Key 配置后重试。");
                 }
                 // Safety flush (in case turn_end doesn't fire)
-                flushStreamRender();
-                flushStreamPersist();
-                setIsStreaming(false);
-                isStreamingRef.current = false;
-                isTurnActiveRef.current = false;
-                flushPendingUi();
-                setStreamingMessageId(null);
-                messageIdRef.current = null;
-                sessionIdRef.current = null;
-                pinnedStreamAgentIdRef.current = null;
-                // Notify useTaskProgress: agent ended
-                window.dispatchEvent(new CustomEvent("pi:stream-end"));
+                endVisibleStreaming();
                 // 只在本轮产生了用户可见结果时提示，避免纯工具阶段反复响铃
                 if (hasCompletionSignalRef.current && !lastProviderErrorRef.current) {
                     playCompleteSound();
@@ -1181,30 +1280,44 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
 
             case "extension_error":
                 lastProviderErrorRef.current = eventMessage(event, "Pi 扩展错误");
-                setError(lastProviderErrorRef.current);
-                flushStreamRender();
-                flushStreamPersist();
-                isTurnActiveRef.current = false;
-                // 异常中断也是回合结束: 已到达的 UI 卡片必须挂载, 否则永久丢失
-                flushPendingUi();
-                setIsStreaming(false);
-                isStreamingRef.current = false;
-                setStreamingMessageId(null);
-                messageIdRef.current = null;
-                sessionIdRef.current = null;
-                pinnedStreamAgentIdRef.current = null;
+                endVisibleStreaming({ error: lastProviderErrorRef.current });
                 if (usePlanStore.getState().activeExecution?.phase === "executing") {
                     usePlanStore.getState().markFailed();
                 }
                 hasCompletionSignalRef.current = false;
-                window.dispatchEvent(new CustomEvent("pi:stream-end"));
                 break;
         }
-    }, [discardPendingStreamRender, ensureAssistantMessage, flushPendingUi, flushStreamPersist, flushStreamRender, mountGeneratedUi, scheduleStreamPersist, scheduleStreamRender, syncUsageFromAssistantMessage, updateCurrentUsage, getTargetSession]);
+    }, [discardPendingStreamRender, endVisibleStreaming, ensureAssistantMessage, finalizeOpenToolCalls, flushPendingUi, flushStreamPersist, flushStreamRender, getTargetSession, mirrorStreamToSession, mountGeneratedUi, scheduleStreamPersist, scheduleStreamRender, syncUsageFromAssistantMessage, updateCurrentUsage]);
 
     useEffect(() => {
         handleEventRef.current = handleEvent;
     }, [handleEvent]);
+
+    // Main process marks tab idle on turn_end/agent_end. If those events are lost
+    // (or filtered while switching agents), reconcile so the UI cannot stay 运行中 forever.
+    useEffect(() => {
+        const reconcileFromAgentStatus = (
+            nextAgents: Array<{ id: string; status: string }>,
+            prevAgents: Array<{ id: string; status: string }>,
+        ): void => {
+            if (!isStreamingRef.current && !promptInFlightRef.current) return;
+            const targetId = pinnedStreamAgentIdRef.current ?? agentIdRef.current;
+            if (!targetId) return;
+            const next = nextAgents.find((agent) => agent.id === targetId);
+            const prev = prevAgents.find((agent) => agent.id === targetId);
+            if (!next || !prev) return;
+            const wasBusy = prev.status === "running" || prev.status === "starting";
+            const stillBusy = next.status === "running" || next.status === "starting";
+            if (!wasBusy || stillBusy) return;
+            // Runtime idled without agent_end (or between multi-turns). Keep the
+            // assistant message so a subsequent agent_start can continue the bubble.
+            endVisibleStreaming({ keepMessage: true });
+        };
+        return useAgentStore.subscribe((state, previousState) => {
+            if (state.agents === previousState.agents) return;
+            reconcileFromAgentStatus(state.agents, previousState.agents);
+        });
+    }, [endVisibleStreaming]);
 
     useEffect(() => {
         const unsubscribe = usePlanStore.subscribe((state, previousState) => {
@@ -1446,23 +1559,12 @@ export function usePiStream(agentId?: string | null): UsePiStreamReturn {
                 return;
             }
             if (streamGenerationRef.current !== stopGeneration) return;
-            flushStreamRender();
-            // 用户停止会吞掉后续 agent_end/turn_end: 已生成的 UI 卡片必须在此挂载
-            flushPendingUi();
-            setIsStreaming(false);
-            isStreamingRef.current = false;
-            promptInFlightRef.current = false;
+            // 用户停止会吞掉后续 agent_end/turn_end: 关闭仍 running 的工具卡,
+            // 挂载已生成的 UI 卡片, 并退出可见流式状态。
             hasCompletionSignalRef.current = false;
-            setStreamingMessageId(null);
-            pinnedStreamAgentIdRef.current = null;
-            // 安全审查 C9: 必须与 pauseVisibleStreamingForPlanDecision 一致地清空
-            // messageIdRef/sessionIdRef. userStoppedRef 会吞掉后续 agent_end/turn_end,
-            // 常规清理路径不再执行; 不清空则下一次 startStreaming 复用被停止轮次的
-            // messageId — 同会话时新回复覆盖被停止的半截回复, 跨会话时回复静默丢失.
-            messageIdRef.current = null;
-            sessionIdRef.current = null;
+            endVisibleStreaming();
         })();
-    }, [flushPendingUi, flushStreamRender]);
+    }, [endVisibleStreaming]);
 
     const clearError = useCallback(() => {
         setError(null);

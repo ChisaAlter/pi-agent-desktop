@@ -90,7 +90,9 @@ export function WorkspaceSwitcher({ variant = "topbar", align = "left" }: Worksp
     const triggerClass = variant === "strip"
         ? "flex h-7 max-w-[240px] items-center gap-1.5 rounded-md border border-transparent px-1.5 text-[12px] leading-none text-[var(--mm-text-secondary)] transition-colors hover:border-[var(--mm-border)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
         : variant === "inline"
-          ? "flex min-h-6 max-w-full items-center gap-1.5 rounded-md border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 py-1 text-[11px] text-[var(--mm-text-primary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
+          // Match MINIMAX_CHROME_ICON_BUTTON height/radius so left workspace control
+          // and right rail toggle align in the chat header strip.
+          ? "flex h-7 max-w-full items-center gap-1.5 rounded-[2px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] px-2 text-[12px] leading-none text-[var(--mm-text-primary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
           : "flex h-[24px] items-center gap-1 rounded-[4px] px-1.5 text-[11px] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]";
     const menuAlignClass = align === "right" ? "right-0" : "left-0";
 

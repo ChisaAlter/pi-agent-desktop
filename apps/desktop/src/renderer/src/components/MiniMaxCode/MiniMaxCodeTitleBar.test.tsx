@@ -23,13 +23,28 @@ describe("MiniMaxCodeTitleBar", () => {
         <MiniMaxCodeTitleBar title="Pi Desktop" statusLabel="就绪" statusTone="ready" />
       </I18nProvider>,
     );
-    expect(screen.getByRole("banner")).toBeTruthy();
+    const banner = screen.getByRole("banner");
+    expect(banner).toBeTruthy();
+    expect(banner.className).toContain("app-region-drag");
+    expect(banner.className).toContain("rounded-t-[var(--mm-window-radius)]");
     expect(screen.getByText("Pi Desktop")).toBeTruthy();
     expect(screen.getByText("就绪")).toBeTruthy();
+    expect(screen.getByText("就绪").closest(".app-region-no-drag")).toBeTruthy();
 
     const minimize = await screen.findByRole("button", { name: /最小化|Minimize/i });
     fireEvent.click(minimize);
     expect(window.piAPI!.windowMinimize).toHaveBeenCalled();
+  });
+
+  it("double-clicks empty titlebar chrome to toggle maximize", async () => {
+    render(
+      <I18nProvider>
+        <MiniMaxCodeTitleBar title="Pi Desktop" />
+      </I18nProvider>,
+    );
+    await screen.findByRole("button", { name: /最大化|Maximize/i });
+    fireEvent.doubleClick(screen.getByRole("banner"));
+    expect(window.piAPI!.windowToggleMaximize).toHaveBeenCalledTimes(1);
   });
 
   it("uses onClose override for close button", async () => {

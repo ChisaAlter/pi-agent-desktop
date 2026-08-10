@@ -1,4 +1,10 @@
 import type { NativeImage } from "electron";
+import {
+  createWindowsFirstClickController,
+  type FocusCapableApp,
+  type FocusCapableWindow,
+  type ForegroundScheduler,
+} from "./windows-first-click";
 
 type CloseEventLike = {
   preventDefault(): void;
@@ -6,22 +12,18 @@ type CloseEventLike = {
 
 type TrayIconLike = string | NativeImage;
 
-type MainWindowLike = {
+type MainWindowLike = FocusCapableWindow & {
   on(event: "close" | "show" | "hide", listener: ((event: CloseEventLike) => void) | (() => void)): void;
   hide(): void;
-  show(): void;
-  focus(): void;
-  restore(): void;
-  isDestroyed(): boolean;
-  isVisible(): boolean;
-  isMinimized(): boolean;
 };
 
 type TrayLike = {
-  on(event: "click", listener: () => void): void;
+  on(event: "click" | "right-click" | "double-click", listener: () => void): void;
   destroy(): void;
   setToolTip(text: string): void;
   setContextMenu(menu: unknown): void;
+  /** Prefer this over permanent setContextMenu on Windows so left-click is not swallowed. */
+  popUpContextMenu?(menu?: unknown): void;
 };
 
 type OverlayLifecycleLike = {
@@ -36,6 +38,18 @@ interface MainWindowLifecycleControllerOptions {
   buildTrayMenu: (actions: { show: () => void; quit: () => void }) => unknown;
   onQuitRequested: () => void;
   beforeShowMainWindow?: () => void;
+  /** Optional platform override for tests; defaults to process.platform. */
+  platform?: NodeJS.Platform;
+  /** Optional app-level focus steal (Electron app.focus({ steal: true })). */
+  focusApp?: () => void;
+  schedule?: ForegroundScheduler;
+  /** Electron app object for steal-focus; used to keep first-click foreground reliable. */
+  focusAppObject?: FocusCapableApp;
+  /**
+   * Optional shared first-click controller so tray/taskbar/pointer share one
+   * debounce + always-on-top hold token. When omitted, a local controller is created.
+   */
+  firstClickController?: ReturnType<typeof createWindowsFirstClickController>;
 }
 
 export interface MainWindowLifecycleController {
@@ -53,6 +67,19 @@ export function createMainWindowLifecycleController(
 ): MainWindowLifecycleController {
   let tray: TrayLike | null = null;
   let quitting = false;
+  const platform = options.platform ?? process.platform;
+  const schedule =
+    options.schedule ??
+    ((callback: () => void, delayMs = 0) => {
+      setTimeout(callback, delayMs);
+    });
+  const firstClick =
+    options.firstClickController ??
+    createWindowsFirstClickController({
+      platform,
+      schedule,
+      focusApp: options.focusAppObject ?? (options.focusApp ? { focus: () => options.focusApp?.() } : undefined),
+    });
 
   const syncOverlayVisibility = (): void => {
     options.overlay?.refreshVisibility();
@@ -62,11 +89,8 @@ export function createMainWindowLifecycleController(
     const win = options.getMainWindow();
     if (!win || win.isDestroyed()) return;
     options.beforeShowMainWindow?.();
-    if (win.isMinimized()) {
-      win.restore();
-    }
-    win.show();
-    win.focus();
+    // Synchronous raise — tray click already has foreground rights on Windows.
+    firstClick.raise(win);
     syncOverlayVisibility();
   };
 
@@ -89,6 +113,8 @@ export function createMainWindowLifecycleController(
       win.on("close", (event) => {
         if (quitting) return;
         event.preventDefault();
+        // Fully leave the taskbar so the tray icon is the only restore surface.
+        win.setSkipTaskbar(true);
         win.hide();
         syncOverlayVisibility();
       });
@@ -99,11 +125,24 @@ export function createMainWindowLifecycleController(
       if (tray) return tray;
       tray = options.createTray(icon);
       tray.setToolTip("Pi Desktop");
-      tray.setContextMenu(options.buildTrayMenu({
+      const contextMenu = options.buildTrayMenu({
         show: restoreMainWindow,
         quit: requestQuit,
-      }));
-      tray.on("click", restoreMainWindow);
+      });
+      // Windows: a permanent tray context menu often swallows the first left-click
+      // while the app is in the background. Bind left-click to restore, and only
+      // pop the menu on right-click. Debounce inside raise() collapses
+      // click + double-click into a single restore.
+      if (platform === "win32") {
+        tray.on("click", restoreMainWindow);
+        tray.on("double-click", restoreMainWindow);
+        tray.on("right-click", () => {
+          tray?.popUpContextMenu?.(contextMenu);
+        });
+      } else {
+        tray.setContextMenu(contextMenu);
+        tray.on("click", restoreMainWindow);
+      }
       return tray;
     },
     hasTray() {

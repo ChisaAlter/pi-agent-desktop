@@ -273,14 +273,20 @@ export function ChatInput({
   const slashOptionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const sendingRef = useRef(false);
   const resizeStateRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const composerHeightRef = useRef(COMPOSER_MIN_HEIGHT);
+  const resizeFrameRef = useRef<number | null>(null);
+  const pendingResizeHeightRef = useRef<number | null>(null);
   const syncCursorPosition = useCallback((textarea: HTMLTextAreaElement) => {
     setCursorPos(textarea.selectionStart ?? textarea.value.length);
   }, []);
-  const { settings, updateSettings, piModels } = useSettingsStore();
+  const settings = useSettingsStore((state) => state.settings);
+  const updateSettings = useSettingsStore((state) => state.updateSettings);
+  const piModels = useSettingsStore((state) => state.piModels);
   // BorderBeam 的 theme 只接受 light/dark/auto; 把 app 的 system 解析成当前实际主题
   const beamTheme = resolveTheme((settings.theme as Theme | undefined) ?? "system");
   const runtimeState = useAgentStore((state) => agentId ? state.runtimeByAgent[agentId] : undefined);
-  const permissionStore = usePermissionStore();
+  const permissionMode = usePermissionStore((state) => state.mode);
+  const setPermissionMode = usePermissionStore((state) => state.setMode);
   const runtimeFeatureState = useRuntimeFeatureStore((state) => state.featureState);
   const refreshRuntimeFeatureState = useRuntimeFeatureStore((state) => state.refresh);
   const { t } = useI18n();
@@ -335,8 +341,16 @@ export function ChatInput({
     return agentModeOptions.some((option) => option.value === mode) ? mode : "build";
   });
   const setAgentMode = useAgentModeStore((state) => state.setMode);
-  const { workspaces, getCurrentWorkspace, setCurrentWorkspace, addWorkspace, createWorkspace } = useWorkspaceStore();
-  const { add: addAttachment, remove: removeAttachment, clear: clearAttachments, list: listAttachments } = useAttachmentsStore();
+  const workspaces = useWorkspaceStore((state) => state.workspaces);
+  const getCurrentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace);
+  const setCurrentWorkspace = useWorkspaceStore((state) => state.setCurrentWorkspace);
+  const addWorkspace = useWorkspaceStore((state) => state.addWorkspace);
+  const createWorkspace = useWorkspaceStore((state) => state.createWorkspace);
+  const addAttachment = useAttachmentsStore((state) => state.add);
+  const removeAttachment = useAttachmentsStore((state) => state.remove);
+  const clearAttachments = useAttachmentsStore((state) => state.clear);
+  // 订阅数组本身而非 list 函数引用 — 否则 add/remove 不会触发重渲染。
+  const attachmentsByWorkspace = useAttachmentsStore((state) => state.byWorkspace);
 
   const mention = useMentions(inputValue, cursorPos, workspacePath);
   const {
@@ -357,7 +371,7 @@ export function ChatInput({
     selectCandidate: selectSlashCandidate,
   } = slash;
 
-  const attachments = workspaceId ? listAttachments(workspaceId) : [];
+  const attachments = workspaceId ? (attachmentsByWorkspace[workspaceId] ?? []) : [];
   const selectedProvider = settings.provider.trim();
   const selectedModel = settings.model.trim();
   const hasValidModel = Boolean(
@@ -702,7 +716,7 @@ export function ChatInput({
   }, [workspaceId, addAttachment, t]);
 
   const currentPermission = normalizePermissionMode(
-    (workspaceId ? settings.workspacePermissionModes?.[workspaceId] : undefined) ?? settings.permissionLevel ?? permissionStore.mode,
+    (workspaceId ? settings.workspacePermissionModes?.[workspaceId] : undefined) ?? settings.permissionLevel ?? permissionMode,
   );
   const currentModel = settings.model;
   const currentWorkspace =
@@ -712,10 +726,10 @@ export function ChatInput({
     .slice(0, 6);
 
   useEffect(() => {
-    if (permissionStore.mode !== currentPermission) {
-      permissionStore.setMode(currentPermission, workspaceId);
+    if (permissionMode !== currentPermission) {
+      setPermissionMode(currentPermission, workspaceId);
     }
-  }, [currentPermission, permissionStore, workspaceId]);
+  }, [currentPermission, permissionMode, setPermissionMode, workspaceId]);
 
   const resolveActiveAgentId = useCallback(async (): Promise<string | null> => {
     if (agentId) return agentId;
@@ -732,12 +746,12 @@ export function ChatInput({
   const handlePermissionSelect = useCallback(
     (value: PermissionMode) => {
       // 生产：本地 + settings 立即更新；主进程按 workspace 作用域生效
-      permissionStore.setMode(value, workspaceId);
+      setPermissionMode(value, workspaceId);
       updateSettings({
         ...(workspaceId ? { workspacePermissionModes: { ...settings.workspacePermissionModes, [workspaceId]: value } } : { permissionLevel: value }),
       });
     },
-    [permissionStore, updateSettings, workspaceId, settings.workspacePermissionModes],
+    [setPermissionMode, updateSettings, workspaceId, settings.workspacePermissionModes],
   );
   const handleModelSelect = useCallback(
     (model: { id: string; name: string; provider: string }) => {
@@ -797,20 +811,44 @@ export function ChatInput({
     })();
   }, [resolveActiveAgentId, setAgentMode, workspaceId]);
 
-  const commitComposerHeight = useCallback((height: number) => {
+  const applyComposerHeightDom = useCallback((height: number) => {
     const next = Math.max(COMPOSER_MIN_HEIGHT, Math.min(COMPOSER_MAX_HEIGHT, Math.round(height)));
-    setComposerHeight(next);
+    // 提前返回需同时满足: ref 高度一致 + shell inline 高度一致 + CSS 变量已发布。
+    // 首次挂载时 JSX 已把 shell 设为 95px, 但变量尚未发布 — 不能提前返回。
+    if (
+      next === composerHeightRef.current
+      && shellRef.current?.style.height === `${next}px`
+      && document.documentElement.style.getPropertyValue("--pi-global-composer-height") === `${next + 8}px`
+    ) {
+      return next;
+    }
+    composerHeightRef.current = next;
+    if (shellRef.current) {
+      shellRef.current.style.height = `${next}px`;
+    }
     document.documentElement.style.setProperty("--pi-global-composer-height", `${next + 8}px`);
     window.dispatchEvent(new CustomEvent("pi:composer-height-change", { detail: { height: next } }));
+    return next;
   }, []);
+
+  const commitComposerHeight = useCallback((height: number, opts?: { syncReact?: boolean }) => {
+    const next = applyComposerHeightDom(height);
+    if (opts?.syncReact !== false) {
+      setComposerHeight(next);
+    }
+  }, [applyComposerHeightDom]);
 
   const handleResizePointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     resizeStateRef.current = {
       startY: event.clientY,
-      startHeight: composerHeight,
+      startHeight: composerHeightRef.current,
     };
     event.currentTarget.setPointerCapture?.(event.pointerId);
+  }, []);
+
+  useEffect(() => {
+    composerHeightRef.current = composerHeight;
   }, [composerHeight]);
 
   useEffect(() => {
@@ -819,21 +857,55 @@ export function ChatInput({
   }, [commitComposerHeight, composerHeight, referenceFrame]);
 
   useEffect(() => {
+    const flushPendingResize = (): void => {
+      resizeFrameRef.current = null;
+      const pending = pendingResizeHeightRef.current;
+      if (pending === null) return;
+      pendingResizeHeightRef.current = null;
+      // Drag path: DOM + CSS only; React state commits on pointerup.
+      applyComposerHeightDom(pending);
+    };
     const handlePointerMove = (event: PointerEvent): void => {
       const state = resizeStateRef.current;
       if (!state) return;
-      commitComposerHeight(state.startHeight + (state.startY - event.clientY));
+      const next = Math.max(
+        COMPOSER_MIN_HEIGHT,
+        Math.min(COMPOSER_MAX_HEIGHT, Math.round(state.startHeight + (state.startY - event.clientY))),
+      );
+      pendingResizeHeightRef.current = next;
+      if (resizeFrameRef.current !== null) return;
+      if (typeof window.requestAnimationFrame !== "function") {
+        flushPendingResize();
+        return;
+      }
+      resizeFrameRef.current = window.requestAnimationFrame(flushPendingResize);
     };
     const handlePointerUp = (): void => {
+      if (resizeFrameRef.current !== null && typeof window.cancelAnimationFrame === "function") {
+        window.cancelAnimationFrame(resizeFrameRef.current);
+        resizeFrameRef.current = null;
+      }
+      if (pendingResizeHeightRef.current !== null) {
+        applyComposerHeightDom(pendingResizeHeightRef.current);
+        pendingResizeHeightRef.current = null;
+      }
+      if (resizeStateRef.current) {
+        setComposerHeight(composerHeightRef.current);
+      }
       resizeStateRef.current = null;
     };
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
     return () => {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+      if (resizeFrameRef.current !== null && typeof window.cancelAnimationFrame === "function") {
+        window.cancelAnimationFrame(resizeFrameRef.current);
+      }
     };
-  }, [commitComposerHeight]);
+  }, [applyComposerHeightDom]);
   const openSlashCommands = useCallback(() => {
     setInputValue((current) => {
       const next = current.trimStart().startsWith("/")
@@ -935,10 +1007,19 @@ export function ChatInput({
     && (hasValidModel || isSlashCommandDraft);
   const currentPermissionLabel = permissionOptions.find((p) => p.value === currentPermission)?.label ?? t("chatInput.permissions.smart.label");
   const selectedModelInfo = piModels?.find((m) => m.id === settings.model && m.provider === settings.provider);
-  // 优先显示友好模型名；回退 provider/model，空格省略以多塞几个字符
-  const currentModelLabel = selectedModelInfo?.name
-    || [settings.provider, currentModel].filter(Boolean).join("/")
-    || t("chatInput.model.notConfigured");
+  // Prefer the short model id/name for the trigger chip; keep the full path in title/aria.
+  // Avoid "provider/very-long-id" which overflows the compact capsule even with ellipsis.
+  const currentModelLabel = (
+    selectedModelInfo?.name
+    || currentModel
+    || selectedModelInfo?.id
+    || t("chatInput.model.notConfigured")
+  ).trim();
+  const currentModelTitle = selectedModelInfo
+    ? [selectedModelInfo.providerName || selectedModelInfo.provider, selectedModelInfo.name || selectedModelInfo.id]
+      .filter(Boolean)
+      .join(" / ")
+    : [settings.provider, currentModel].filter(Boolean).join(" / ") || currentModelLabel;
   const configuredThinking = settings.thinkingLevel === "none" ? "off" : settings.thinkingLevel;
   // 优先用本地 settings（用户刚点的值），runtime 仅作尚未写入时的回退。
   // 否则切模型期间 runtime 旧值会压住本地选择，造成“点了没反应”。
@@ -1432,7 +1513,7 @@ export function ChatInput({
                     type="button"
                     className="pi-composer-model-btn focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
                     aria-label={t("chatInput.model.current", { model: currentModelLabel })}
-                    title={currentModelLabel}
+                    title={currentModelTitle}
                     data-testid="chat-input-model-trigger"
                   >
                     <SelectorLabel text={currentModelLabel} truncate />

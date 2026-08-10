@@ -332,10 +332,10 @@ test.describe("continuous acceptance F06-F10 continuation", () => {
       await seedWorkspace(page);
 
       await record("F06-C01", "F06", "新对话入口从真实侧栏进入并显示空会话输入", async () => {
-        await page!.getByRole("button", { name: "新建对话", exact: true }).click();
+        await page!.getByRole("button", { name: "新对话", exact: true }).click();
         await expect(page!.locator('[data-testid="chat-input-shell"]')).toBeVisible();
         await expect(page!.getByRole("button", { name: "发送" })).toBeDisabled();
-        return "点击侧栏新建对话后 ChatInput 可见，空输入发送禁用。";
+        return "点击侧栏新对话后 ChatInput 可见，空输入发送禁用。";
       }, "new-conversation");
       await record("F06-C02", "F06", "活动会话可被选择并刷新 aria-current", async () => {
         await page!.getByRole("button", { name: "验收活动会话", exact: true }).click();

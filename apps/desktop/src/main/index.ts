@@ -1,6 +1,6 @@
 // Electron Main Process Entry Point
 
-import { app, BrowserWindow, Menu, Tray, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, Tray, nativeImage } from 'electron';
 import { existsSync, mkdirSync, rmSync } from 'fs';
 import { dirname, join } from 'path';
 import { is } from '@electron-toolkit/utils';
@@ -75,6 +75,7 @@ import { registerSingleInstance } from './services/single-instance';
 import { SqliteSessionRepository } from './services/sqlite-session-repository';
 import { ensureSessionAttachmentRoot, SessionAttachmentStore } from './services/session-attachment-store';
 import { resolveMainWindowChromeOptions, resolveMainWindowPerformancePreferences } from './services/main-window-options';
+import { createWindowsFirstClickController } from './services/windows-first-click';
 import { createMutationQueue, createKeyedMutator, type KeyedStore } from './utils/mutation-queue';
 import { getSettingsWindow as getSharedSettingsWindow } from './ipc/settings-window.ipc';
 import type { PiAgentConfig } from './types';
@@ -95,6 +96,10 @@ const MAIN_WINDOW_WIDTH = 896;
 const MAIN_WINDOW_HEIGHT = 756;
 let restoreRequestedBeforeReady = false;
 
+// One shared controller for tray / taskbar / pointer / second-instance so
+// debounce + always-on-top hold tokens cannot fight each other.
+const windowsFirstClick = createWindowsFirstClickController({ focusAppObject: app });
+
 function restoreExistingMainWindow(): void {
   if (mainWindowLifecycle) {
     mainWindowLifecycle.restoreMainWindow();
@@ -109,8 +114,9 @@ function restoreExistingMainWindow(): void {
   if (mainWindow.isMinimized()) {
     mainWindow.restore();
   }
-  mainWindow.show();
-  mainWindow.focus();
+  // Lifecycle may not be ready yet during second-instance races; still apply the
+  // Windows foreground boost so the first restore click is not a no-op.
+  windowsFirstClick.ensureForeground(mainWindow);
 }
 
 const isPrimaryInstance = registerSingleInstance(app, restoreExistingMainWindow);
@@ -564,6 +570,9 @@ function createWindow(): void {
       nodeIntegration: false
     }
   });
+
+  // Shared controller: soft taskbar activation (no always-on-top / no webContents thrash).
+  windowsFirstClick.attachTaskbarActivation(mainWindow);
 
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show();
@@ -1168,6 +1177,14 @@ app.whenReady().then(() => {
       { label: "退出", click: quit },
     ]),
     onQuitRequested: () => app.quit(),
+    focusAppObject: app,
+    firstClickController: windowsFirstClick,
+  });
+  // Renderer pointerdown helper uses the same shared controller.
+  ipcMain.removeAllListeners("window:foreground-on-pointer");
+  ipcMain.on("window:foreground-on-pointer", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    windowsFirstClick.ensureForeground(mainWindow);
   });
   if (mainWindow) {
     mainWindowLifecycle.attachMainWindow(mainWindow);

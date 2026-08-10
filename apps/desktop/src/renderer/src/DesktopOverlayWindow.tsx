@@ -172,9 +172,9 @@ function DesktopOverlayShell(): React.JSX.Element {
   }, [progress.visible, progress.runContext]);
 
   return (
-    <div className="min-h-screen w-screen bg-transparent">
-      <div className="flex min-h-screen items-end justify-end">
-        <div ref={contentRef} className="flex w-full max-w-sm flex-col items-end gap-2">
+    <div className="min-h-screen w-screen bg-transparent" style={{ pointerEvents: "none" }}>
+      <div className="flex min-h-screen items-end justify-end" style={{ pointerEvents: "none" }}>
+        <div ref={contentRef} className="flex w-full max-w-sm flex-col items-end gap-2" style={{ pointerEvents: "auto" }}>
           <DesktopProgressCard progress={progress} />
         </div>
       </div>

@@ -144,6 +144,10 @@ function promptFailureDetails(error: unknown): string {
     private readonly creating = new Map<string, Promise<AgentTab>>();
     private readonly workspaceGenerations = new Map<string, number>();
     private readonly invalidatedWorkspaces = new Set<string>();
+    /** Coalesce agents:state broadcasts during high-frequency stream events. */
+    private emitStateTimer: NodeJS.Timeout | null = null;
+    private emitStateDirty = false;
+    private static readonly EMIT_STATE_THROTTLE_MS = 80;
 
     constructor(private readonly deps: AgentRuntimeRegistryDeps) {}
 
@@ -624,17 +628,21 @@ function promptFailureDetails(error: unknown): string {
     private handleEvent(runtime: AgentRuntime, event: PiEvent): void {
         if (!this.isRuntimeValid(runtime)) return;
         runtime.tab.updatedAt = Date.now();
+        let statusChanged = false;
         if (event.type === "agent_start") {
+            statusChanged = runtime.tab.status !== "running" || !runtime.isStreaming;
             runtime.tab.status = "running";
             runtime.isStreaming = true;
             this.armWatchdog(runtime);
         }
         if (event.type === "extension_error") {
+            statusChanged = runtime.tab.status !== "error" || runtime.isStreaming;
             runtime.tab.status = "error";
             runtime.isStreaming = false;
             this.disarmWatchdog(runtime);
         }
         if (event.type === "agent_end" || event.type === "turn_end") {
+            statusChanged = runtime.tab.status !== "idle" || runtime.isStreaming;
             runtime.tab.status = "idle";
             runtime.isStreaming = false;
             this.disarmWatchdog(runtime);
@@ -663,7 +671,14 @@ function promptFailureDetails(error: unknown): string {
                 event,
             });
         }
-        this.emitState();
+        // Content deltas (message_update etc.) must not broadcast full agents:state
+        // every token — that freezes renderer subscribers. Emit immediately only when
+        // tab status/streaming flags change; otherwise throttle.
+        if (statusChanged) {
+            this.emitStateImmediate();
+        } else {
+            this.scheduleEmitState();
+        }
     }
 
     async syncPermissions(agentId: string, modeOverride?: AgentMode): Promise<AgentPermissionSyncResult> {
@@ -805,8 +820,27 @@ function promptFailureDetails(error: unknown): string {
     }
 
     private emitState(): void {
+        this.emitStateImmediate();
+    }
+
+    private emitStateImmediate(): void {
+        if (this.emitStateTimer) {
+            clearTimeout(this.emitStateTimer);
+            this.emitStateTimer = null;
+        }
+        this.emitStateDirty = false;
         this.deps.send("agents:state", this.list());
         this.emitRuntimeStates();
+    }
+
+    private scheduleEmitState(): void {
+        this.emitStateDirty = true;
+        if (this.emitStateTimer) return;
+        this.emitStateTimer = setTimeout(() => {
+            this.emitStateTimer = null;
+            if (!this.emitStateDirty) return;
+            this.emitStateImmediate();
+        }, AgentRuntimeRegistry.EMIT_STATE_THROTTLE_MS);
     }
 
     private emitRuntimeStates(): void {

@@ -56,22 +56,36 @@ const seedWorkspaceAndSessions = (): void => {
 };
 
 describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
-    it("草稿态只高亮新建对话", () => {
+    it("草稿态只高亮新对话", () => {
         seedWorkspaceAndSessions();
         useSessionStore.setState({ currentSessionId: null });
 
         renderWithI18n(<MiniMaxCodeSidebar currentSection="new-task" currentWorkspaceId="w1" onSectionChange={appRoute} />);
 
-        expect(screen.getByRole("button", { name: "新建对话" }).getAttribute("aria-current")).toBe("page");
+        expect(screen.getByRole("button", { name: "新对话" }).getAttribute("aria-current")).toBe("page");
     });
 
-    it("提供新建对话入口", () => {
+    it("提供新对话入口", () => {
         let selected = "";
         renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" onSectionChange={(section) => { selected = section; }} />);
 
-        fireEvent.click(screen.getByRole("button", { name: "新建对话" }));
+        fireEvent.click(screen.getByRole("button", { name: "新对话" }));
 
         expect(selected).toBe("new-task");
+    });
+
+    it("提供搜索入口并调用 onOpenSearchHistory", () => {
+        const onOpenSearchHistory = vi.fn();
+        renderWithI18n(
+            <MiniMaxCodeSidebar
+                currentSection="chat"
+                onSectionChange={() => undefined}
+                onOpenSearchHistory={onOpenSearchHistory}
+            />,
+        );
+
+        fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+        expect(onOpenSearchHistory).toHaveBeenCalledTimes(1);
     });
 
     it("提供按时间/按工作区分组切换控件", () => {
@@ -129,20 +143,33 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
         expect(dateButton.className).toContain("shadow-");
     });
 
-    it("reserves a 42px top strip so the sidebar header aligns with the workspace strip", () => {
+    it("stacks new-conversation and search actions vertically", () => {
         renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" onSectionChange={() => undefined} />);
 
         const nav = screen.getByRole("navigation", { name: "会话列表" });
-        const headerStrip = nav.firstElementChild as HTMLElement | null;
-        const newTaskRow = screen.getByRole("button", { name: "新建对话" }).parentElement;
-        const quickCreate = screen.getByRole("button", { name: "快速新建对话" });
+        const actions = nav.querySelector('[data-mmcode-region="sidebar-actions"]') as HTMLElement | null;
+        const newConversation = screen.getByRole("button", { name: "新对话" });
+        const search = screen.getByRole("button", { name: "搜索" });
 
         expect(nav.className).not.toContain("pt-5");
-        expect(headerStrip?.className ?? "").toContain("min-h-[42px]");
-        expect(headerStrip?.className ?? "").toContain("items-center");
-        expect(newTaskRow?.className ?? "").toContain("h-7");
-        expect(quickCreate.className).toContain("h-7");
-        expect(screen.getByRole("button", { name: "新建对话" }).className).toContain("h-7");
+        expect(actions?.className ?? "").toContain("flex-col");
+        expect(actions?.className ?? "").toContain("gap-1.5");
+        expect(newConversation.className).toContain("h-8");
+        expect(newConversation.className).toContain("w-full");
+        expect(newConversation.className).toContain("justify-center");
+        expect(newConversation.className).toContain("pi-sidebar-new-chat-border");
+        // Search uses transparent fill so the sidebar surface shows through.
+        expect(search.className).toContain("h-8");
+        expect(search.className).toContain("w-full");
+        expect(search.className).toContain("justify-center");
+        expect(search.className).toContain("bg-transparent");
+        expect(search.className).not.toContain("pi-sidebar-new-chat-border");
+        expect(newConversation.querySelector(".pi-sidebar-action-beam")).toBeNull();
+        expect(search.querySelector(".pi-sidebar-action-beam")).toBeNull();
+        expect(actions?.contains(newConversation)).toBe(true);
+        expect(actions?.contains(search)).toBe(true);
+        expect(newConversation.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(screen.queryByRole("button", { name: "快速新建对话" })).toBeNull();
     });
 
     it("不在会话侧栏展示 pi-agent 在线状态", () => {
@@ -157,9 +184,12 @@ describe("MiniMaxCodeSidebar — 任务历史点击行为", () => {
         expect(screen.queryByRole("status", { name: "pi-agent 不在线" })).toBeNull();
     });
 
-    it("exposes new conversation control focus-visible ring for keyboard a11y", () => {
+    it("exposes new conversation and search control focus-visible rings for keyboard a11y", () => {
         renderWithI18n(<MiniMaxCodeSidebar currentSection="chat" onSectionChange={() => undefined} />);
-        expect(screen.getByRole("button", { name: "新建对话" }).className).toContain(
+        expect(screen.getByRole("button", { name: "新对话" }).className).toContain(
+            "focus-visible:ring-2",
+        );
+        expect(screen.getByRole("button", { name: "搜索" }).className).toContain(
             "focus-visible:ring-2",
         );
     });

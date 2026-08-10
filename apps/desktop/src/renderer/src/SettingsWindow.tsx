@@ -89,8 +89,9 @@ function SettingsShell(): React.JSX.Element {
             className="flex h-screen w-screen overflow-hidden bg-transparent p-0 text-[var(--mm-text-primary)]"
             style={{ "--mm-height-titlebar": "34px" } as React.CSSProperties}
         >
+            {/* Keep titlebar outside overflow-hidden so native window drag hit-testing stays reliable. */}
             <div
-                className={`settings-window-enter flex min-h-0 flex-1 flex-col overflow-hidden border border-[var(--mm-border)] bg-[var(--mm-bg-main)] ${
+                className={`settings-window-enter flex min-h-0 flex-1 flex-col border border-[var(--mm-border)] bg-[var(--mm-bg-main)] ${
                     isMaximized ? 'rounded-none shadow-none' : 'rounded-[var(--mm-window-radius)] shadow-[var(--mm-window-shadow)]'
                 }`}
                 data-testid="settings-window-frame"
@@ -99,7 +100,7 @@ function SettingsShell(): React.JSX.Element {
                 data-mm-window-kind="settings"
             >
                 <MiniMaxCodeTitleBar title={t('settings.title')} variant="settings" className="settings-window-titlebar" onClose={handleCloseWindow} />
-                <div className="flex min-h-0 flex-1 overflow-hidden">
+                <div className={`flex min-h-0 flex-1 overflow-hidden ${isMaximized ? '' : 'rounded-b-[var(--mm-window-radius)]'}`}>
                     <SettingsContent />
                 </div>
             </div>

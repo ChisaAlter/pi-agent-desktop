@@ -14,7 +14,11 @@ import { addToast } from './toast-store';
 import { i18n } from '../i18n';
 import { getPiAPI } from '../utils/pi-api';
 import { cloneGeneratedUiCard } from '../utils/generated-ui';
-import { normalizeToolCallsForPersistence, normalizeToolCallsForRuntime } from '../utils/tool-call';
+import {
+  finalizeOpenToolCallsList,
+  normalizeToolCallsForPersistence,
+  normalizeToolCallsForRuntime,
+} from '../utils/tool-call';
 
 // 2026-06-06 hotfix: 用 @shared 提供的 Message/ToolCall 类型,不再本地 duplicate
 // 主进程 store 里的 timestamp/startTime/endTime 是 string(JSON 反序列化后), 内存里
@@ -124,6 +128,18 @@ interface SessionState {
     updates: Partial<ToolCall>,
     opts?: { persist?: boolean },
   ) => void;
+  /**
+   * Close any tool cards still left as running/pending after a turn ends.
+   * Prefer messageId when known; otherwise scan the whole session.
+   */
+  finalizeOpenToolCalls: (
+    sessionId: string,
+    opts?: {
+      messageId?: string | null;
+      status?: "completed" | "error";
+      persist?: boolean;
+    },
+  ) => boolean;
   /** 添加流式完成的消息（来自 usePiStream） */
   addStreamingMessage: (
     sessionId: string,
@@ -175,15 +191,24 @@ function serializeMessageForIpc(message: Message): Message {
         ? message.timestamp.toISOString()
         : String(message.timestamp)
     ) as unknown as Date,
-    toolCalls: normalizedToolCalls?.map((tc) => ({
-      ...tc,
-      startTime: (
-        tc.startTime instanceof Date ? tc.startTime.toISOString() : String(tc.startTime)
-      ) as unknown as Date,
-      endTime: tc.endTime
-        ? ((tc.endTime instanceof Date ? tc.endTime.toISOString() : String(tc.endTime)) as unknown as Date)
-        : undefined,
-    })),
+    toolCalls: normalizedToolCalls?.map((tc) => {
+      const next: Record<string, unknown> = { ...tc };
+      if (tc.startTime instanceof Date) {
+        next.startTime = tc.startTime.toISOString();
+      } else if (tc.startTime != null) {
+        next.startTime = String(tc.startTime);
+      } else {
+        delete next.startTime;
+      }
+      if (tc.endTime instanceof Date) {
+        next.endTime = tc.endTime.toISOString();
+      } else if (tc.endTime != null) {
+        next.endTime = String(tc.endTime);
+      } else {
+        delete next.endTime;
+      }
+      return next;
+    }) as ToolCall[] | undefined,
   };
 }
 
@@ -207,15 +232,24 @@ function serializeUpdatesForIpc<T>(updates: T): T {
         after: normalizedToolCalls.length,
       });
     }
-    result.toolCalls = normalizedToolCalls.map((tc) => ({
-      ...tc,
-      startTime: (
-        tc.startTime instanceof Date ? tc.startTime.toISOString() : String(tc.startTime)
-      ) as unknown as Date,
-      endTime: tc.endTime
-        ? ((tc.endTime instanceof Date ? tc.endTime.toISOString() : String(tc.endTime)) as unknown as Date)
-        : undefined,
-    }));
+    result.toolCalls = normalizedToolCalls.map((tc) => {
+      const next: Record<string, unknown> = { ...tc };
+      if (tc.startTime instanceof Date) {
+        next.startTime = tc.startTime.toISOString();
+      } else if (tc.startTime != null) {
+        next.startTime = String(tc.startTime);
+      } else {
+        delete next.startTime;
+      }
+      if (tc.endTime instanceof Date) {
+        next.endTime = tc.endTime.toISOString();
+      } else if (tc.endTime != null) {
+        next.endTime = String(tc.endTime);
+      } else {
+        delete next.endTime;
+      }
+      return next;
+    });
   }
   return result as T;
 }
@@ -284,16 +318,23 @@ function cloneMessageForFork(message: Message): Message {
 }
 
 function reviveSession(raw: Session | import("@shared").Session): Session {
-  const messages = (raw.messages ?? []).map((message) => ({
-    ...message,
-    timestamp:
-      message.timestamp instanceof Date
-        ? message.timestamp
-        : new Date(typeof message.timestamp === "number" ? message.timestamp : String(message.timestamp)),
-    toolCalls: Array.isArray(message.toolCalls)
+  // History rows cannot stay "running" forever after process restart / lost end events.
+  // Settle open tools at hydrate so reopening a chat does not show permanent 处理中.
+  const endTime = new Date();
+  const messages = (raw.messages ?? []).map((message) => {
+    const toolCalls = Array.isArray(message.toolCalls)
       ? normalizeToolCallsForRuntime(message.toolCalls)
-      : undefined,
-  }));
+      : undefined;
+    const settled = finalizeOpenToolCallsList(toolCalls, "completed", endTime);
+    return {
+      ...message,
+      timestamp:
+        message.timestamp instanceof Date
+          ? message.timestamp
+          : new Date(typeof message.timestamp === "number" ? message.timestamp : String(message.timestamp)),
+      toolCalls: settled.changed ? settled.next : toolCalls,
+    };
+  });
   return {
     ...raw,
     createdAt: raw.createdAt instanceof Date ? raw.createdAt : new Date(raw.createdAt),
@@ -733,19 +774,44 @@ export const useSessionStore = create<SessionState>((set, get) => {
 
   updateMessage: (sessionId: string, messageId: string, updates: Partial<Message>, opts?: { persist?: boolean }) => {
     const persist = opts?.persist !== false; // 默认 true
-    set(state => ({
-      sessions: state.sessions.map(session =>
-        session.id === sessionId
-          ? {
-              ...session,
-              messages: session.messages.map(msg =>
-                msg.id === messageId ? { ...msg, ...updates } : msg
-              ),
-              updatedAt: new Date()
-            }
-          : session
-      )
-    }));
+    // Preserve session object identity when the target message is unchanged so
+    // sidebar meta selectors do not thrash on no-op stream mirrors.
+    set((state) => {
+      let changed = false;
+      const sessions = state.sessions.map((session) => {
+        if (session.id !== sessionId) return session;
+        let messageChanged = false;
+        const messages = session.messages.map((msg) => {
+          if (msg.id !== messageId) return msg;
+          const next = { ...msg, ...updates };
+          // Only treat pure content/thinking stream mirrors as no-ops when other
+          // message fields are unchanged. planAction/toolCalls always apply.
+          if (
+            next.content === msg.content
+            && next.thinking === msg.thinking
+            && next.generatedUi === msg.generatedUi
+            && next.toolCalls === msg.toolCalls
+            && next.planAction === msg.planAction
+            && next.customCard === msg.customCard
+            && next.parentId === msg.parentId
+          ) {
+            return msg;
+          }
+          messageChanged = true;
+          return next;
+        });
+        if (!messageChanged) return session;
+        changed = true;
+        return {
+          ...session,
+          messages,
+          // Avoid bumping updatedAt on pure content stream mirrors so date
+          // groups / sort order stay stable while tokens arrive.
+          updatedAt: persist ? new Date() : session.updatedAt,
+        };
+      });
+      return changed ? { sessions } : state;
+    });
 
     // 2026-06-06 hotfix: fire-and-forget 持久化 update
     // 注:usePiStream (T6) 会接管高频流式 update 的 debounce,这里先直接调
@@ -828,6 +894,57 @@ export const useSessionStore = create<SessionState>((set, get) => {
         serializeUpdatesForIpc(updates),
       ));
     }
+  },
+
+  finalizeOpenToolCalls: (sessionId, opts) => {
+    const status = opts?.status ?? "completed";
+    const targetMessageId = opts?.messageId ?? null;
+    const persist = opts?.persist !== false;
+    const endTime = new Date();
+    let changed = false;
+    const changedMessages: Array<{ messageId: string; toolCalls: ToolCall[] }> = [];
+
+    set((state) => {
+      const sessions = state.sessions.map((session) => {
+        if (session.id !== sessionId) return session;
+        let sessionChanged = false;
+        const messages = session.messages.map((message) => {
+          if (targetMessageId && message.id !== targetMessageId) return message;
+          const result = finalizeOpenToolCallsList(message.toolCalls, status, endTime);
+          if (!result.changed) return message;
+          sessionChanged = true;
+          changed = true;
+          changedMessages.push({ messageId: message.id, toolCalls: result.next });
+          return {
+            ...message,
+            toolCalls: result.next,
+            updatedAt: endTime,
+          };
+        });
+        if (!sessionChanged) return session;
+        return {
+          ...session,
+          messages,
+          updatedAt: endTime,
+        };
+      });
+      return changed ? { sessions } : state;
+    });
+
+    if (persist && changed) {
+      const piAPI = getPiAPI();
+      if (piAPI?.updateMessage) {
+        for (const item of changedMessages) {
+          observePersistResult(piAPI.updateMessage(
+            sessionId,
+            item.messageId,
+            serializeUpdatesForIpc({ toolCalls: item.toolCalls } as Partial<Message>),
+          ));
+        }
+      }
+    }
+
+    return changed;
   },
 
   getCurrentSession: () => {

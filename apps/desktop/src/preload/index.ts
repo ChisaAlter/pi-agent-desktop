@@ -479,6 +479,7 @@ const piAPI: PiAPI = {
             "permission:respond",
             "desktop-overlay:set-main-context",
             "desktop-overlay:set-window-state",
+            "window:foreground-on-pointer",
         ];
         if (!ALLOWED_SEND.includes(channel)) {
             console.error(`[preload] send blocked: ${channel}`);

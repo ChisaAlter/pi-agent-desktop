@@ -153,6 +153,8 @@ describe("SearchHistory", () => {
         render(<SearchHistory isOpen onClose={onClose} onNavigate={vi.fn()} />);
 
         expect(screen.getByText("输入关键词搜索所有对话")).toBeTruthy();
+        const overlay = screen.getByTestId("search-history-overlay");
+        expect(overlay.className).toContain("z-[300]");
         const close = screen.getByRole("button", { name: "关闭搜索" });
         expect(close.className).toContain("focus-visible:ring-2");
         fireEvent.click(close);

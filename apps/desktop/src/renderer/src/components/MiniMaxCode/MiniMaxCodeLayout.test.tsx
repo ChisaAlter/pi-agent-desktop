@@ -44,15 +44,39 @@ describe("MiniMaxCode window chrome interactivity", () => {
         const closeButton = screen.getByRole("button", { name: "关闭窗口" });
         const titlebarRight = closeButton.closest('[data-mmcode-region="titlebar-right"]');
 
-        expect(titlebarCenter?.className ?? "").not.toContain("app-region-no-drag");
+        expect(titlebar.className).toContain("app-region-drag");
         expect(titlebar.className).not.toContain("app-region-no-drag");
+        expect(titlebarCenter?.className ?? "").not.toContain("app-region-no-drag");
         expect(tablist.className).not.toContain("app-region-no-drag");
         expect(chatTab.className).toContain("app-region-no-drag");
         expect(dragSurface?.className ?? "").toContain("flex-1");
         expect(dragSurface?.className ?? "").toContain("app-region-drag");
         expect(dragSurface?.className ?? "").not.toContain("app-region-no-drag");
         expect(dragSurface?.className ?? "").toContain("touch-none");
+        expect(titlebarRight?.className ?? "").toContain("app-region-no-drag");
         expect(titlebarRight?.className ?? "").toContain("pr-[5px]");
+    });
+
+    it("keeps the titlebar outside overflow-hidden so native window drag hit-tests stay reliable", () => {
+        render(
+            <MiniMaxCodeLayout
+                leftSlot={<div />}
+                centerSlot={<div />}
+                rightSlot={null}
+            />,
+        );
+
+        const frame = document.querySelector('[data-mmcode-layout="window-frame"]');
+        const titlebar = document.querySelector('[data-mmcode-region="titlebar"]');
+        const body = document.querySelector('[data-mmcode-region="body"]');
+
+        expect(frame?.className ?? "").not.toContain("overflow-hidden");
+        expect(titlebar?.className ?? "").toContain("app-region-drag");
+        expect(titlebar?.className ?? "").toContain("rounded-t-[var(--mm-window-radius)]");
+        expect(body?.className ?? "").toContain("overflow-hidden");
+        expect(body?.className ?? "").toContain("rounded-b-[var(--mm-window-radius)]");
+        expect(frame?.contains(titlebar as Node)).toBe(true);
+        expect(body?.contains(titlebar as Node)).toBe(false);
     });
 
     it("keeps the global composer root in the center workspace layout flow", () => {

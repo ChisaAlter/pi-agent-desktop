@@ -7,16 +7,15 @@ import { usePiStream } from '../../hooks/usePiStream';
 import { useSessionStore } from '../../stores/session-store';
 import { useWorkspaceStore } from '../../stores/workspace-store';
 import { useAgentStore } from '../../stores/agent-store';
-import { MessageBubble } from './MessageBubble';
 import { VirtualizedMessageList } from './VirtualizedMessageList';
 import { ChatInput } from './ChatInput';
 import type { GeneratedUiSendRequest } from './GeneratedUiForm';
+import { computeTurnChromeIds } from './turn-chrome';
 import { useI18n } from '../../i18n';
 import { usePlanStore } from '../../stores/plan-store';
 import { useAgentModeStore } from '../../stores/agent-mode-store';
 import { useSettingsStore } from '../../stores/settings-store';
 import { WorkspaceSwitcher } from '../TopTabBar/WorkspaceSwitcher';
-import { SEARCH_FOCUS_CLEAR_DELAY_MS } from './search-focus';
 import type { Message } from '../../stores/session-store';
 import { isIpcError, type AgentMessage, type PiImageContent } from '@shared';
 import { buildPlanExecutionPrompt } from './plan-execution-prompt';
@@ -86,7 +85,7 @@ function resolveTotalTokens(
 /** Token 速度滑动窗口: 只统计最近 5s 内 output token 增量, 避免整段平均被开头/结尾拖慢. */
 const TOKEN_RATE_WINDOW_MS = 5_000;
 /** 窗口跨度低于该值 (秒) 时速度不稳定, 沿用上一个值. */
-const TOKEN_RATE_MIN_SPAN_SEC = 0.3;
+const TOKEN_RATE_MIN_SPAN_SEC = 0.2;
 
 function RightRailToggleIcon({ collapsed }: { collapsed: boolean }): React.JSX.Element {
   return (
@@ -174,6 +173,90 @@ function isCumulativeAssistantUpdate(previous: Message, next: Message): boolean 
   return nextContent !== previousContent && nextContent.startsWith(previousContent);
 }
 
+function mergeToolCalls(
+  left: Message["toolCalls"] | undefined,
+  right: Message["toolCalls"] | undefined,
+): Message["toolCalls"] | undefined {
+  if (!left?.length) return right;
+  if (!right?.length) return left;
+  const byId = new Map<string, NonNullable<Message["toolCalls"]>[number]>();
+  for (const toolCall of left) byId.set(toolCall.id, toolCall);
+  for (const toolCall of right) {
+    const existing = byId.get(toolCall.id);
+    if (!existing) {
+      byId.set(toolCall.id, toolCall);
+      continue;
+    }
+    // Prefer the later terminal status / richer payload.
+    const preferRight =
+      toolCall.status === "completed"
+      || toolCall.status === "error"
+      || (existing.status === "running" || existing.status === "pending");
+    byId.set(toolCall.id, preferRight ? { ...existing, ...toolCall } : { ...toolCall, ...existing });
+  }
+  return [...byId.values()];
+}
+
+function mergeThinkingParts(previous?: string, next?: string): string | undefined {
+  const parts = [previous?.trim(), next?.trim()]
+    .filter((part): part is string => Boolean(part))
+    .filter((part, index, list) => list.findIndex((candidate) => candidate === part) === index);
+  if (parts.length === 0) return undefined;
+  return parts.join("\n\n");
+}
+
+/**
+ * Collapse multi-turn assistant fragments that belong to one user prompt:
+ * identical body, cumulative body, or tool-only continuations right after an
+ * assistant message. Result: one timestamp + one copy control in the UI.
+ */
+function shouldCollapseAssistantFragments(previous: Message, next: Message): boolean {
+  if (previous.role !== "assistant" || next.role !== "assistant") return false;
+  if (previous.generatedUi || next.generatedUi || previous.customCard || next.customCard) return false;
+  if (previous.planAction || next.planAction) return false;
+  const previousContent = visibleText(previous);
+  const nextContent = visibleText(next);
+  if (previousContent && nextContent) {
+    if (previousContent === nextContent) return true;
+    if (nextContent.startsWith(previousContent) || previousContent.startsWith(nextContent)) return true;
+    // Shared first line / opening sentence is common when a multi-turn agent
+    // restates the same diagnosis while tools keep running.
+    const previousLead = previousContent.split("\n").find((line) => line.trim())?.trim() ?? "";
+    const nextLead = nextContent.split("\n").find((line) => line.trim())?.trim() ?? "";
+    if (previousLead.length >= 12 && previousLead === nextLead) return true;
+  }
+  // Tool-only / thinking-only continuation of the same run.
+  if (!nextContent && (Boolean(next.toolCalls?.length) || Boolean(next.thinking?.trim()))) return true;
+  if (!previousContent && previousContent === nextContent && Boolean(next.toolCalls?.length)) return true;
+  return false;
+}
+
+function collapseAssistantFragments(previous: ChatMessage, next: Message): ChatMessage {
+  const previousContent = visibleText(previous);
+  const nextContent = visibleText(next);
+  let content = previous.content;
+  if (nextContent && previousContent) {
+    if (nextContent.startsWith(previousContent)) content = next.content;
+    else if (previousContent.startsWith(nextContent)) content = previous.content;
+    else if (previousContent === nextContent) content = previous.content;
+    else content = `${previous.content.trim()}\n\n${next.content.trim()}`;
+  } else if (nextContent) {
+    content = next.content;
+  }
+  const thinking = mergeThinkingParts(previous.thinking, next.thinking);
+  return {
+    ...previous,
+    content,
+    thinking,
+    thinkingCount:
+      (previous.thinkingCount ?? (previous.thinking?.trim() ? 1 : 0))
+      + (next.thinking?.trim() ? ((next as ChatMessage).thinkingCount ?? 1) : 0),
+    toolCalls: mergeToolCalls(previous.toolCalls, next.toolCalls),
+    // Keep the earliest timestamp so the run has a single stable time label.
+    timestamp: previous.timestamp,
+  };
+}
+
 function mergeAdjacentThinkingMessages(messages: Message[]): ChatMessage[] {
   const merged: ChatMessage[] = [];
   let pendingThinking: string[] = [];
@@ -190,20 +273,8 @@ function mergeAdjacentThinkingMessages(messages: Message[]): ChatMessage[] {
     }
 
     const previous = merged.at(-1);
-    if (previous && isCumulativeAssistantUpdate(previous, message)) {
-      const previousThinking = previous.thinking?.trim();
-      const nextThinking = message.thinking?.trim();
-      merged[merged.length - 1] = {
-        ...previous,
-        ...message,
-        thinking: [previousThinking, nextThinking]
-          .filter((part): part is string => Boolean(part))
-          .filter((part, index, parts) => parts.findIndex((candidate) => candidate === part) === index)
-          .join("\n\n"),
-        thinkingCount:
-          (previous.thinkingCount ?? (previousThinking ? 1 : 0)) +
-          (message.thinking ? 1 : 0),
-      };
+    if (previous && (isCumulativeAssistantUpdate(previous, message) || shouldCollapseAssistantFragments(previous, message))) {
+      merged[merged.length - 1] = collapseAssistantFragments(previous, message);
       continue;
     }
 
@@ -264,7 +335,6 @@ export function ChatView({
   const scrollRegionRef = useRef<HTMLDivElement>(null);
   const autoScrollFrameRef = useRef<number | null>(null);
   const isNearBottomRef = useRef(true);
-  const focusHandledTimerRef = useRef<number | null>(null);
   const currentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace());
   const agents = useAgentStore((state) => state.agents);
   const currentAgentId = useAgentStore((state) => state.currentAgentId);
@@ -286,14 +356,22 @@ export function ChatView({
     clearError,
     error: streamError,
   } = usePiStream(agentId);
-  const { getCurrentSession, createSession, renameSession, setCurrentSession, continueSession } = useSessionStore();
+  const createSession = useSessionStore((state) => state.createSession);
+  const renameSession = useSessionStore((state) => state.renameSession);
+  const setCurrentSession = useSessionStore((state) => state.setCurrentSession);
+  const continueSession = useSessionStore((state) => state.continueSession);
   const updateMessage = useSessionStore((state) => state.updateMessage);
   const settings = useSettingsStore((state) => state.settings);
   const initAgents = useAgentStore((state) => state.init);
   const agentMessages = useAgentStore((state) => agentId ? state.messagesByAgent[agentId] ?? EMPTY_AGENT_MESSAGES : EMPTY_AGENT_MESSAGES);
   const runtimeState = useAgentStore((state) => agentId ? state.runtimeByAgent[agentId] : undefined);
   const { t } = useI18n();
-  const currentSession = getCurrentSession();
+  // Narrow selector: do not subscribe ChatView to the entire session store.
+  const currentSession = useSessionStore((state) =>
+    state.currentSessionId
+      ? state.sessions.find((session) => session.id === state.currentSessionId) ?? null
+      : null,
+  );
   const [sendError, setSendError] = useState<string | null>(null);
   const [sessionActionError, setSessionActionError] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -332,19 +410,36 @@ export function ChatView({
       return;
     }
     autoScrollFrameRef.current = window.requestAnimationFrame(scrollToBottom);
-  }, [agentMessages, currentSession?.messages, focusMessageId]);
+  }, [agentMessages, currentSession?.messages, focusMessageId, isStreaming, streamingMessageId]);
 
   // 输入框被拖高时, 对话区 flex 空间同步收缩; 贴底时把最后一条消息顶上去, 避免
-  // 视觉上"输入框盖在对话下面/中间还露一块对话".
+  // 视觉上"输入框盖在对话下面/中间还露一块对话". Coalesce to one rAF to avoid
+  // layout thrash when height events fire every pointermove during drag.
   useEffect(() => {
+    let frameId: number | null = null;
     const stickToBottomOnComposerResize = (): void => {
       if (focusMessageId || !isNearBottomRef.current) return;
-      const scrollRegion = scrollRegionRef.current;
-      if (!scrollRegion) return;
-      scrollRegion.scrollTo({ top: scrollRegion.scrollHeight, behavior: "auto" });
+      if (frameId !== null) return;
+      const run = (): void => {
+        frameId = null;
+        if (focusMessageId || !isNearBottomRef.current) return;
+        const scrollRegion = scrollRegionRef.current;
+        if (!scrollRegion) return;
+        scrollRegion.scrollTo({ top: scrollRegion.scrollHeight, behavior: "auto" });
+      };
+      if (typeof window.requestAnimationFrame !== "function") {
+        run();
+        return;
+      }
+      frameId = window.requestAnimationFrame(run);
     };
     window.addEventListener("pi:composer-height-change", stickToBottomOnComposerResize);
-    return () => window.removeEventListener("pi:composer-height-change", stickToBottomOnComposerResize);
+    return () => {
+      window.removeEventListener("pi:composer-height-change", stickToBottomOnComposerResize);
+      if (frameId !== null && typeof window.cancelAnimationFrame === "function") {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
   }, [focusMessageId]);
 
   useEffect(() => {
@@ -388,11 +483,12 @@ export function ChatView({
     let stagedMessageId: string | null = null;
     let stagedSessionId: string | null = null;
     try {
-      if (getCurrentSession()?.readOnly) {
+      const latestSession = useSessionStore.getState().getCurrentSession();
+      if (latestSession?.readOnly) {
         setSendError(t("chatView.errors.readOnlyHistory"));
         return;
       }
-      let sessionForSend = getCurrentSession();
+      let sessionForSend = latestSession;
       if (!sessionForSend || sessionForSend.workspaceId !== currentWorkspace.id) {
         sessionForSend = await createSession(currentWorkspace.id);
       }
@@ -560,10 +656,12 @@ export function ChatView({
       setSessionActionError(t("chatView.errors.continueFailed", { message: error instanceof Error ? error.message : String(error) }));
     }
   };
-  const rawMessages = useMemo(() => shouldUseSessionMessages
-    ? currentSession?.messages || []
-    : hasAgent && agentMessages.length > 0
-      ? agentMessages.map((message) => ({
+  const rawMessages = useMemo(() => {
+    if (!shouldUseSessionMessages) {
+      // Blank-slate / new conversation: never paint historical agent buffers.
+      // Only show live stream rows while the current agent is actually streaming.
+      if (!(hasAgent && isStreaming && agentMessages.length > 0)) return [];
+      return agentMessages.map((message) => ({
         id: message.id,
         role: message.role === "assistant" || message.role === "system" || message.role === "user"
           ? message.role
@@ -573,8 +671,41 @@ export function ChatView({
         thinking: message.thinking,
         generatedUi: message.generatedUi,
         planAction: message.planAction,
-      }))
-      : [], [agentMessages, currentSession?.messages, hasAgent, shouldUseSessionMessages]);
+      }));
+    }
+    const sessionMessages = currentSession?.messages || [];
+    // Stream tokens live in agent-store at rAF; session-store is not rewritten every
+    // frame. Overlay the live agent bubble onto session history so the UI still updates.
+    if (!isStreaming || !streamingMessageId || agentMessages.length === 0) {
+      return sessionMessages;
+    }
+    const live = agentMessages.find((message) => message.id === streamingMessageId);
+    if (!live) return sessionMessages;
+    let found = false;
+    const merged = sessionMessages.map((message) => {
+      if (message.id !== streamingMessageId) return message;
+      found = true;
+      return {
+        ...message,
+        content: live.content,
+        thinking: live.thinking ?? message.thinking,
+        generatedUi: live.generatedUi ?? message.generatedUi,
+      };
+    });
+    if (found) return merged;
+    return [
+      ...sessionMessages,
+      {
+        id: live.id,
+        role: live.role === "assistant" || live.role === "system" || live.role === "user" ? live.role : "assistant",
+        content: live.content,
+        timestamp: new Date(live.createdAt),
+        thinking: live.thinking,
+        generatedUi: live.generatedUi,
+        planAction: live.planAction,
+      },
+    ];
+  }, [agentMessages, currentSession?.messages, hasAgent, isStreaming, shouldUseSessionMessages, streamingMessageId]);
   const messages = useMemo(() => {
     const merged = mergeAdjacentThinkingMessages(rawMessages);
     // v1.0.14-fix: 过滤后端偶发的完全空白 assistant 消息(有 content/thinking/card/tools/plan 至少一个才保留)
@@ -595,6 +726,12 @@ export function ChatView({
     });
   }, [rawMessages, isStreaming, streamingMessageId]);
 
+  // One timestamp + copy per user turn (Cindy turnFinal / showActionBar).
+  const chromeMessageIds = useMemo(
+    () => computeTurnChromeIds(messages, { isStreaming, streamingMessageId }),
+    [messages, isStreaming, streamingMessageId],
+  );
+
   useEffect(() => {
     const scrollRegion = scrollRegionRef.current;
     const bottomSentinel = messagesEndRef.current;
@@ -613,27 +750,7 @@ export function ChatView({
     return () => observer.disconnect();
   }, [agentId, currentSession?.id, messages.length]);
 
-  useEffect(() => {
-    if (focusHandledTimerRef.current !== null) {
-      window.clearTimeout(focusHandledTimerRef.current);
-      focusHandledTimerRef.current = null;
-    }
-    if (!focusMessageId) return;
-    if (messages.length > 50) return;
-    const target = document.querySelector<HTMLElement>(`[data-message-id="${focusMessageId}"]`);
-    if (!target) return;
-    target.scrollIntoView({ behavior: "smooth", block: "center" });
-    focusHandledTimerRef.current = window.setTimeout(() => {
-      focusHandledTimerRef.current = null;
-      onFocusMessageHandled?.();
-    }, SEARCH_FOCUS_CLEAR_DELAY_MS);
-    return () => {
-      if (focusHandledTimerRef.current !== null) {
-        window.clearTimeout(focusHandledTimerRef.current);
-        focusHandledTimerRef.current = null;
-      }
-    };
-  }, [focusMessageId, messages, onFocusMessageHandled]);
+  // Focus scrolling is owned by VirtualizedMessageList (always mounted).
   const permissionMode = currentWorkspace?.id
     ? settings.workspacePermissionModes?.[currentWorkspace.id] ?? settings.permissionLevel
     : settings.permissionLevel;
@@ -648,6 +765,7 @@ export function ChatView({
   const modelSummary = runtimeState?.modelId
     ? [runtimeState.modelProvider, runtimeState.modelName ?? runtimeState.modelId].filter(Boolean).join(" / ")
     : [settings.provider, settings.model].filter(Boolean).join(" / ") || t("chatInput.model.notConfigured");
+  // Workspace switcher stays in the empty-state card only (not the top header strip).
   const workspaceControl = <WorkspaceSwitcher variant="inline" />;
   const totalTokens = resolveTotalTokens(currentSession?.usage);
   const toggleRightRailLabel = rightRailCollapsed ? t("chatView.rightRail.expand") : t("chatView.rightRail.collapse");
@@ -718,39 +836,90 @@ export function ChatView({
     };
   }, []);
 
-  // Token 速度采样: usage 每次更新 (updatedAt 变化) 记一个样本, 保留最近 5s 窗口
+  // Token 速度采样:
+  // 1) 优先用 usage.outputTokens / totalTokens 增量
+  // 2) 部分模型流式中不推 usage，回退用当前流式文本长度估算 (≈ chars/4)
+  // 3) 用 interval 采样，避免只在 usage 变更时 effect 才跑导致永远算不出速度
   const currentOutputTokens = currentSession?.usage?.outputTokens ?? 0;
-  const usageUpdatedAt = currentSession?.usage?.updatedAt ?? 0;
+  const currentTotalTokens = currentSession?.usage?.totalTokens ?? 0;
+  const streamingTextLen = useMemo(() => {
+    if (!isStreaming || !streamingMessageId) return 0;
+    const live = messages.find((message) => message.id === streamingMessageId);
+    return (live?.content?.length ?? 0) + (live?.thinking?.length ?? 0);
+  }, [isStreaming, messages, streamingMessageId]);
+  const streamingTextLenRef = useRef(streamingTextLen);
+  const outputTokensRef = useRef(currentOutputTokens);
+  const totalTokensRef = useRef(currentTotalTokens);
+  useEffect(() => {
+    streamingTextLenRef.current = streamingTextLen;
+  }, [streamingTextLen]);
+  useEffect(() => {
+    outputTokensRef.current = currentOutputTokens;
+  }, [currentOutputTokens]);
+  useEffect(() => {
+    totalTokensRef.current = currentTotalTokens;
+  }, [currentTotalTokens]);
+
   useEffect(() => {
     if (tokenRateSessionIdRef.current !== currentSession?.id) {
       tokenRateSessionIdRef.current = currentSession?.id ?? null;
       tokenRateSamplesRef.current = [];
       setTokenRate(null);
     }
+  }, [currentSession?.id]);
+
+  useEffect(() => {
     if (!isStreaming) {
+      // Finalize one last sample, then keep the last known rate visible next to Token.
+      const samples = tokenRateSamplesRef.current;
+      if (samples.length >= 2) {
+        const first = samples[0];
+        const latest = samples[samples.length - 1];
+        const dtSec = (latest.t - first.t) / 1000;
+        const dOutput = latest.output - first.output;
+        if (dtSec > 0 && dOutput > 0) {
+          setTokenRate(dOutput / dtSec);
+        }
+      }
       tokenRateSamplesRef.current = [];
-      setTokenRate(null);
       return;
     }
-    const now = usageUpdatedAt > 0 ? usageUpdatedAt : Date.now();
-    const samples = tokenRateSamplesRef.current;
-    samples.push({ t: now, output: currentOutputTokens });
-    while (samples.length > 1 && now - samples[0].t > TOKEN_RATE_WINDOW_MS) {
-      samples.shift();
-    }
-    if (samples.length >= 2) {
-      const first = samples[0];
-      const last = samples[samples.length - 1];
-      const dtSec = (last.t - first.t) / 1000;
-      const dOutput = last.output - first.output;
-      if (dtSec >= TOKEN_RATE_MIN_SPAN_SEC && dOutput > 0) {
-        setTokenRate(dOutput / dtSec);
-      }
-    }
-  }, [currentSession?.id, currentOutputTokens, usageUpdatedAt, isStreaming]);
 
+    const pushSample = (): void => {
+      const now = Date.now();
+      const usageMetric = outputTokensRef.current > 0
+        ? outputTokensRef.current
+        : totalTokensRef.current > 0
+          ? totalTokensRef.current
+          : Math.max(0, Math.round(streamingTextLenRef.current / 4));
+      const samples = tokenRateSamplesRef.current;
+      const last = samples[samples.length - 1];
+      if (!last || now - last.t >= 200 || last.output !== usageMetric) {
+        samples.push({ t: now, output: usageMetric });
+      }
+      while (samples.length > 1 && now - samples[0].t > TOKEN_RATE_WINDOW_MS) {
+        samples.shift();
+      }
+      if (samples.length >= 2) {
+        const first = samples[0];
+        const latest = samples[samples.length - 1];
+        const dtSec = (latest.t - first.t) / 1000;
+        const dOutput = latest.output - first.output;
+        if (dtSec >= TOKEN_RATE_MIN_SPAN_SEC && dOutput > 0) {
+          setTokenRate(dOutput / dtSec);
+        }
+      }
+    };
+
+    pushSample();
+    const id = window.setInterval(pushSample, 250);
+    return () => window.clearInterval(id);
+  }, [isStreaming]);
+
+  // Keep rate visible after the stream ends (Token: X · Y tok/s). Clear only when
+  // a new session is selected or a new stream starts with no prior samples yet.
   const tokenRateSummary = tokenRate !== null && tokenRate > 0
-    ? `· ${tokenRate >= 10 ? Math.round(tokenRate).toString() : tokenRate.toFixed(1)} tok/s`
+    ? `${tokenRate >= 10 ? Math.round(tokenRate).toString() : tokenRate.toFixed(1)} tok/s`
     : null;
 
   const displayedTotalTokens = totalTokens === undefined && !isStreaming
@@ -928,67 +1097,60 @@ export function ChatView({
         className="grid min-h-[44px] shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-b border-[var(--mm-border)] bg-[var(--mm-bg-input)] pl-12 pr-4 text-[12px]"
       >
         <div className="flex min-w-0 items-center gap-2 overflow-hidden text-[var(--mm-text-primary)]">
-          <div className="shrink-0">{workspaceControl}</div>
+          {/* Keep session title; workspace switcher stays out of this strip (empty-state only). */}
           {messages.length > 0 ? (
-            <>
-              <svg className="h-4 w-4 shrink-0 text-[var(--mm-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
-              </svg>
-              {editingTitle ? (
-                <input
-                  value={titleDraft}
-                  onChange={(event) => setTitleDraft(event.target.value)}
-                  onBlur={commitTitle}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") commitTitle();
-                    if (event.key === "Escape") setEditingTitle(false);
-                  }}
-                  autoFocus
-                  className="h-7 min-w-0 max-w-[420px] flex-1 rounded-[4px] border border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-2 text-[13px] font-medium text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-bg-active)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
-                  aria-label={t("chatView.session.renameAria")}
-                />
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTitleDraft(currentSession?.title || t("chatView.session.untitled"));
-                    setEditingTitle(true);
-                  }}
-                  className="h-7 min-w-0 max-w-[420px] truncate rounded-[4px] px-1.5 text-left text-[13px] font-medium transition-colors hover:bg-[var(--mm-bg-hover)] active:scale-[0.96] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
-                  title={t("chatView.session.renameTitle")}
-                >
-                  {currentSession?.title || t("chatView.session.untitled")}
-                </button>
-              )}
-            </>
+            editingTitle ? (
+              <input
+                value={titleDraft}
+                onChange={(event) => setTitleDraft(event.target.value)}
+                onBlur={commitTitle}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") commitTitle();
+                  if (event.key === "Escape") setEditingTitle(false);
+                }}
+                autoFocus
+                className="h-7 min-w-0 max-w-[420px] flex-1 rounded-[2px] border border-[var(--mm-border)] bg-[var(--mm-bg-input)] px-2 text-[13px] font-medium text-[var(--mm-text-primary)] outline-none focus:border-[var(--mm-bg-active)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
+                aria-label={t("chatView.session.renameAria")}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setTitleDraft(currentSession?.title || t("chatView.session.untitled"));
+                  setEditingTitle(true);
+                }}
+                className="h-7 min-w-0 max-w-[420px] truncate rounded-[2px] px-1.5 text-left text-[13px] font-medium transition-colors hover:bg-[var(--mm-bg-hover)] active:scale-[0.96] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
+                title={t("chatView.session.renameTitle")}
+              >
+                {currentSession?.title || t("chatView.session.untitled")}
+              </button>
+            )
           ) : null}
         </div>
         <div className="pi-motion-status-pill flex h-7 shrink-0 items-center justify-end gap-3 text-[var(--mm-text-secondary)]" data-motion-state={isStreaming ? "running" : isConnected ? "connected" : "disconnected"}>
-          <span className="inline-flex h-7 shrink-0 items-center font-mono tabular-nums leading-none text-[var(--mm-text-primary)]">{usageSummary}</span>
-          {tokenRateSummary ? (
-            <span
-              data-testid="chat-token-rate"
-              className="inline-flex h-7 shrink-0 items-center font-mono tabular-nums leading-none text-[var(--mm-text-secondary)]"
-            >
-              {tokenRateSummary}
-            </span>
-          ) : null}
+          <span className="inline-flex h-7 shrink-0 items-center gap-1.5 font-mono tabular-nums leading-none text-[var(--mm-text-primary)]">
+            <span>{usageSummary}</span>
+            {tokenRateSummary ? (
+              <span data-testid="chat-token-rate" className="text-[var(--mm-text-secondary)]">
+                · {tokenRateSummary}
+              </span>
+            ) : null}
+          </span>
           <span className="inline-flex items-center gap-2">
             <span className={`h-1.5 w-1.5 rounded-full ${isStreaming ? "pi-motion-running-dot bg-[var(--color-success)]" : isConnected ? "bg-[var(--color-success)]" : "bg-[var(--color-error)]"}`} aria-hidden="true" />
             <span key={connectionLabel} className="pi-motion-status-text inline-flex h-7 items-center leading-none" role="status" aria-label={connectionLabel}>{connectionLabel}</span>
           </span>
           {onToggleRightRail ? (
-            <span className="inline-flex translate-y-[0.5px]">
-              <button
-                type="button"
-                onClick={onToggleRightRail}
-                aria-label={toggleRightRailLabel}
-                title={toggleRightRailLabel}
-                className={MINIMAX_CHROME_ICON_BUTTON_CLASSNAME}
-              >
-                <RightRailToggleIcon collapsed={rightRailCollapsed} />
-              </button>
-            </span>
+            <button
+              type="button"
+              onClick={onToggleRightRail}
+              aria-label={toggleRightRailLabel}
+              title={toggleRightRailLabel}
+              className={MINIMAX_CHROME_ICON_BUTTON_CLASSNAME}
+              data-mmcode-region="header-right-toggle"
+            >
+              <RightRailToggleIcon collapsed={rightRailCollapsed} />
+            </button>
           ) : null}
         </div>
       </div>
@@ -1064,31 +1226,18 @@ export function ChatView({
             aria-label={t('chatView.messagesAria')}
             aria-busy={isStreaming}
           >
-            {messages.length > 50 ? (
-              <VirtualizedMessageList
-                messages={messages}
-                isStreaming={isStreaming}
-                streamingMessageId={streamingMessageId}
-                focusMessageId={focusMessageId}
-                onFocusHandled={onFocusMessageHandled}
-                onPlanAction={handlePlanAction}
-                onGeneratedUiSend={handleGeneratedUiSend}
-                generatedUiDisabled={!isConnected || isStreaming || Boolean(currentSession?.readOnly)}
-                scrollElementRef={scrollRegionRef}
-              />
-            ) : (
-            messages.map((message) => (
-              <MessageBubble
-                key={message.id}
-                message={message}
-                isStreaming={isStreaming && message.id === streamingMessageId}
-                isSearchTarget={focusMessageId === message.id}
-                onPlanAction={handlePlanAction}
-                onGeneratedUiSend={handleGeneratedUiSend}
-                generatedUiDisabled={!isConnected || isStreaming || Boolean(currentSession?.readOnly)}
-              />
-            ))
-            )}
+            <VirtualizedMessageList
+              messages={messages}
+              isStreaming={isStreaming}
+              streamingMessageId={streamingMessageId}
+              chromeMessageIds={chromeMessageIds}
+              focusMessageId={focusMessageId}
+              onFocusHandled={onFocusMessageHandled}
+              onPlanAction={handlePlanAction}
+              onGeneratedUiSend={handleGeneratedUiSend}
+              generatedUiDisabled={!isConnected || isStreaming || Boolean(currentSession?.readOnly)}
+              scrollElementRef={scrollRegionRef}
+            />
 
             {/* 流式处理中指示器（仅在没有 assistant 消息占位符时显示） */}
             {isStreaming && !streamingMessageId && !shouldUseGlobalComposer && (

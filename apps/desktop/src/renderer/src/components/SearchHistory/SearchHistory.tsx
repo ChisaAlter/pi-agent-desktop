@@ -60,12 +60,17 @@ function highlightMatch(text: string, matchIndex: number, matchLength: number): 
 }
 
 export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProps): React.JSX.Element | null {
-  const { workspaces, getCurrentWorkspace } = useWorkspaceStore();
-  const currentWorkspace = getCurrentWorkspace();
-  const sessions = useSessionStore((state) => state.sessions);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setQuery("");
+      setSelectedId(null);
+      setSearchResults([]);
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -74,11 +79,15 @@ export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProp
       return;
     }
     const lowerQuery = trimmed.toLowerCase();
+    const workspaceSnapshot = useWorkspaceStore.getState().workspaces;
+    const currentWorkspaceId = useWorkspaceStore.getState().getCurrentWorkspace()?.id;
 
     const buildLocalResults = (): SearchResult[] => {
-      const workspaceNameById = new Map(workspaces.map((workspace) => [workspace.id, workspace.name]));
+      // Snapshot at search time only — do NOT re-run when sessions stream-update.
+      const sessionsSnapshot = useSessionStore.getState().sessions;
+      const workspaceNameById = new Map(workspaceSnapshot.map((workspace) => [workspace.id, workspace.name]));
       const localResults: SearchResult[] = [];
-      for (const session of sessions) {
+      for (const session of sessionsSnapshot) {
         for (const message of session.messages) {
           const messageContent = contentWithGeneratedUiText(message.content, message.generatedUi);
           const content = messageContent.toLowerCase();
@@ -100,7 +109,7 @@ export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProp
           }
         }
       }
-      localResults.sort((a, b) => compareSearchResults(a, b, currentWorkspace?.id));
+      localResults.sort((a, b) => compareSearchResults(a, b, currentWorkspaceId));
       return localResults.slice(0, 20);
     };
 
@@ -117,7 +126,7 @@ export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProp
           return;
         }
         const rows = result as SessionSearchResult[];
-        const workspaceNameById = new Map(workspaces.map((workspace) => [workspace.id, workspace.name]));
+        const workspaceNameById = new Map(workspaceSnapshot.map((workspace) => [workspace.id, workspace.name]));
         // Require the full query as a substring so FTS token hits cannot inflate
         // counts (e.g. "search-floating-needle" must not match "...assistant-reply").
         const phraseMatched = rows.filter((row) =>
@@ -143,7 +152,7 @@ export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProp
             matchLength: trimmed.length,
           };
         });
-        mapped.sort((a, b) => compareSearchResults(a, b, currentWorkspace?.id));
+        mapped.sort((a, b) => compareSearchResults(a, b, currentWorkspaceId));
         setSearchResults(mapped.slice(0, 20));
       }).catch(() => {
         if (!disposed) setSearchResults(buildLocalResults());
@@ -153,7 +162,8 @@ export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProp
       disposed = true;
       window.clearTimeout(timer);
     };
-  }, [currentWorkspace?.id, isOpen, query, sessions, workspaces]);
+    // Intentionally omit `sessions` — stream updates must not re-scan the corpus.
+  }, [isOpen, query]);
 
   const handleSelect = useCallback(
     (result: SearchResult) => {
@@ -166,8 +176,20 @@ export function SearchHistory({ isOpen, onClose, onNavigate }: SearchHistoryProp
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/30 pt-[10vh]">
-      <div className="w-full max-w-[600px] overflow-hidden rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-2xl">
+    <div
+      className="fixed inset-0 z-[300] flex items-start justify-center bg-black/40 pt-[10vh]"
+      data-testid="search-history-overlay"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="w-full max-w-[600px] overflow-hidden rounded-xl border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label="搜索对话历史"
+      >
         <div className="flex items-center gap-3 border-b border-[var(--mm-border)] px-4 py-3">
           <svg className="h-4 w-4 text-[var(--mm-text-tertiary)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />

@@ -210,6 +210,7 @@ describe("preload surface audit", () => {
             "permission:respond",
             "desktop-overlay:set-main-context",
             "desktop-overlay:set-window-state",
+            "window:foreground-on-pointer",
         ];
         for (const channel of allowedSend) {
             vi.mocked(ipcRenderer.send).mockClear();

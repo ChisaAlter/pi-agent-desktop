@@ -92,7 +92,7 @@ export async function openExistingProjectFromUi(
 }
 
 export async function sendProgrammerPrompt(page: Page, app: ElectronApplication): Promise<void> {
-    await page.getByRole("button", { name: "新建对话", exact: true }).click();
+    await page.getByRole("button", { name: "新对话", exact: true }).click();
     const composer = page.getByRole("textbox", { name: "发送" });
     await expect(composer).toBeEnabled();
     await composer.fill(USER_PROMPT);

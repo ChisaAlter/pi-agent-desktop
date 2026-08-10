@@ -73,7 +73,7 @@ export interface SessionRowProps {
   baseIndent?: number;
 }
 
-export function SessionRow({
+function SessionRowImpl({
   session,
   active,
   depth,
@@ -327,3 +327,26 @@ export function SessionRow({
     </div>
   );
 }
+
+function sessionRowPropsEqual(prev: SessionRowProps, next: SessionRowProps): boolean {
+  return (
+    prev.active === next.active
+    && prev.depth === next.depth
+    && prev.archived === next.archived
+    && prev.baseIndent === next.baseIndent
+    && prev.t === next.t
+    && prev.onSelect === next.onSelect
+    && prev.onArchive === next.onArchive
+    && prev.onToggleFavorite === next.onToggleFavorite
+    && prev.onRename === next.onRename
+    && prev.onDelete === next.onDelete
+    && prev.session.id === next.session.id
+    && prev.session.title === next.session.title
+    && prev.session.favorite === next.session.favorite
+    && prev.session.archived === next.session.archived
+    && prev.session.workspaceId === next.session.workspaceId
+    && +new Date(prev.session.updatedAt) === +new Date(next.session.updatedAt)
+  );
+}
+
+export const SessionRow = React.memo(SessionRowImpl, sessionRowPropsEqual);

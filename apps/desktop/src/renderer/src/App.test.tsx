@@ -513,17 +513,45 @@ describe("App sidebar session navigation", () => {
         expect(await screen.findByText("TerminalPanel")).toBeTruthy();
     });
 
-    it("点击侧栏新对话加号会进入新对话并请求聚焦输入框", async () => {
+    it("点击侧栏新对话会进入新对话并请求聚焦输入框", async () => {
         const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+        useSessionStore.setState({
+            sessions: [
+                {
+                    id: "s_1",
+                    title: "旧会话",
+                    workspaceId: "ws_1",
+                    createdAt: new Date(),
+                    updatedAt: new Date(),
+                    messages: [{ id: "m1", role: "user", content: "hi", timestamp: new Date() }],
+                    messageCount: 1,
+                },
+            ],
+            currentSessionId: "s_1",
+            sessionsLoading: false,
+        });
         render(<App />);
 
-        fireEvent.click(screen.getByRole("button", { name: "快速新建对话" }));
+        fireEvent.click(screen.getByRole("button", { name: "新对话" }));
 
         await waitFor(() => {
+            // Must stay on blank slate — must NOT bounce back to the previous session.
             expect(useSessionStore.getState().currentSessionId).toBeNull();
             expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: "chat-input:focus" }));
         });
+        // Workspace auto-select effect must still not restore s_1 after a tick.
+        await waitFor(() => {
+            expect(useSessionStore.getState().currentSessionId).toBeNull();
+        });
         dispatchSpy.mockRestore();
+    });
+
+    it("点击侧栏搜索会打开对话历史搜索", async () => {
+        render(<App />);
+
+        fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+
+        expect(await screen.findByRole("button", { name: "mock-search-hit" })).toBeTruthy();
     });
 
     it("history 路由进入真实 SessionCenter，而不是回退成搜索覆盖层", async () => {

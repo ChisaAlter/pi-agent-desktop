@@ -124,7 +124,12 @@ export function MiniMaxCodeLayout({
     const [isMaximized, setIsMaximized] = useState(false);
     const [isResizingLeft, setIsResizingLeft] = useState(false);
     const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
+    const leftWidthRef = useRef(clampLeftWidth(leftWidth));
+    const leftAsideRef = useRef<HTMLElement | null>(null);
+    const leftResizeFrameRef = useRef<number | null>(null);
+    const pendingLeftWidthRef = useRef<number | null>(null);
     const resolvedLeftWidth = clampLeftWidth(leftWidth);
+    leftWidthRef.current = resolvedLeftWidth;
     const showRightFloating = Boolean(rightSlot && rightFloatingOpen && !rightCollapsed);
     const [renderRightFloating, setRenderRightFloating] = useState(showRightFloating);
     const [rightFloatingMotionState, setRightFloatingMotionState] = useState<"enter" | "exit">("exit");
@@ -137,17 +142,59 @@ export function MiniMaxCodeLayout({
     }, []);
 
     useEffect(() => {
-        const handleMove = (clientX: number): void => {
-            const state = resizeStateRef.current;
-            if (!state || !onLeftWidthChange) return;
-            onLeftWidthChange(clampLeftWidth(state.startWidth + clientX - state.startX));
+        const applyDomWidth = (width: number): number => {
+            const next = clampLeftWidth(width);
+            leftWidthRef.current = next;
+            if (leftAsideRef.current) {
+                leftAsideRef.current.style.width = `${next}px`;
+                leftAsideRef.current.style.opacity = "1";
+            }
+            const titlebarLeft = document.querySelector<HTMLElement>('[data-mmcode-region="titlebar-left"]');
+            if (titlebarLeft) {
+                titlebarLeft.style.width = `${next}px`;
+            }
+            const separator = document.querySelector<HTMLElement>('[data-mmcode-region="left-resize-handle"]');
+            if (separator) {
+                separator.style.left = `${next - 3}px`;
+            }
+            return next;
+        };
+        const flushPending = (): void => {
+            leftResizeFrameRef.current = null;
+            const pending = pendingLeftWidthRef.current;
+            if (pending === null) return;
+            pendingLeftWidthRef.current = null;
+            applyDomWidth(pending);
         };
         const handlePointerMove = (event: PointerEvent): void => {
-            handleMove(event.clientX);
+            const state = resizeStateRef.current;
+            if (!state) return;
+            pendingLeftWidthRef.current = clampLeftWidth(state.startWidth + event.clientX - state.startX);
+            if (leftResizeFrameRef.current !== null) return;
+            if (typeof window.requestAnimationFrame !== "function") {
+                flushPending();
+                return;
+            }
+            leftResizeFrameRef.current = window.requestAnimationFrame(flushPending);
         };
         const handleEnd = (): void => {
+            if (!resizeStateRef.current) {
+                setIsResizingLeft(false);
+                return;
+            }
+            if (leftResizeFrameRef.current !== null && typeof window.cancelAnimationFrame === "function") {
+                window.cancelAnimationFrame(leftResizeFrameRef.current);
+                leftResizeFrameRef.current = null;
+            }
+            if (pendingLeftWidthRef.current !== null) {
+                applyDomWidth(pendingLeftWidthRef.current);
+                pendingLeftWidthRef.current = null;
+            }
+            const finalWidth = leftWidthRef.current;
             resizeStateRef.current = null;
             setIsResizingLeft(false);
+            // Commit React + localStorage once on pointerup only.
+            onLeftWidthChange?.(finalWidth);
         };
         window.addEventListener("pointermove", handlePointerMove);
         window.addEventListener("pointerup", handleEnd);
@@ -156,6 +203,9 @@ export function MiniMaxCodeLayout({
             window.removeEventListener("pointermove", handlePointerMove);
             window.removeEventListener("pointerup", handleEnd);
             window.removeEventListener("pointercancel", handleEnd);
+            if (leftResizeFrameRef.current !== null && typeof window.cancelAnimationFrame === "function") {
+                window.cancelAnimationFrame(leftResizeFrameRef.current);
+            }
         };
     }, [onLeftWidthChange]);
 
@@ -186,7 +236,7 @@ export function MiniMaxCodeLayout({
         if (!onLeftWidthChange) return;
         resizeStateRef.current = {
             startX: clientX,
-            startWidth: resolvedLeftWidth,
+            startWidth: leftWidthRef.current,
         };
         setIsResizingLeft(true);
     };
@@ -216,8 +266,14 @@ export function MiniMaxCodeLayout({
             className={`flex h-screen w-screen overflow-hidden bg-transparent p-0 text-[var(--mm-text-primary)] ${className}`}
             data-mmcode-layout="root"
         >
+            {/*
+              Titlebar must NOT sit inside an overflow-hidden / transform stacking
+              context. Chromium's -webkit-app-region:drag hit-testing on Windows
+              often drops the first press when the drag surface is clipped by a
+              rounded overflow parent — making window move feel "dead" on first click.
+            */}
             <div
-                className={`flex min-h-0 flex-1 flex-col overflow-hidden border border-[var(--mm-border)] bg-[var(--mm-bg-main)] ${
+                className={`flex min-h-0 flex-1 flex-col border border-[var(--mm-border)] bg-[var(--mm-bg-main)] ${
                     isMaximized ? "rounded-none shadow-none" : "rounded-[var(--mm-window-radius)] shadow-[var(--mm-main-window-shadow)]"
                 }`}
                 data-mmcode-layout="window-frame"
@@ -233,7 +289,9 @@ export function MiniMaxCodeLayout({
                 />
 
                 <div
-                    className="relative flex min-h-0 w-full flex-1"
+                    className={`relative flex min-h-0 w-full flex-1 overflow-hidden ${
+                        isMaximized ? "" : "rounded-b-[var(--mm-window-radius)]"
+                    }`}
                     data-mmcode-region="body"
                 >
                     <FloatingToggleButton
@@ -244,6 +302,7 @@ export function MiniMaxCodeLayout({
 
                     {/* 左侧栏 */}
                     <aside
+                        ref={leftAsideRef}
                         className={`pi-motion-rail flex shrink-0 flex-col overflow-hidden bg-[var(--mm-bg-sidebar)] ${isResizingLeft ? "" : "animate-layout"} ${
                             leftCollapsed ? "border-r-0" : "border-r border-[var(--mm-border)]"
                         }`}
@@ -271,6 +330,7 @@ export function MiniMaxCodeLayout({
                             onKeyDown={handleLeftResizeKeyDown}
                             className="absolute bottom-0 top-0 z-50 w-2 touch-none cursor-col-resize"
                             style={{ left: resolvedLeftWidth - 3 }}
+                            data-mmcode-region="left-resize-handle"
                         >
                             <span className="mx-auto block h-full w-px bg-transparent transition-colors hover:bg-[var(--mm-border-strong)]" aria-hidden />
                         </div>

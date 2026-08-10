@@ -220,3 +220,27 @@ export function normalizeToolCallsForPersistence(
         .map((item) => normalizeToolCallForPersistence(item, fallbackStatus))
         .filter((item): item is ToolCall => item !== null);
 }
+
+/** Close tool cards left open after a turn ends (lost end events / stale history). */
+export function finalizeOpenToolCallsList(
+    toolCalls: ToolCall[] | undefined,
+    status: "completed" | "error" = "completed",
+    endTime: Date = new Date(),
+): { next: ToolCall[]; changed: boolean } {
+    if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
+        return { next: toolCalls ?? [], changed: false };
+    }
+    let changed = false;
+    const next = toolCalls.map((toolCall) => {
+        if (toolCall.status !== "running" && toolCall.status !== "pending") {
+            return toolCall;
+        }
+        changed = true;
+        return {
+            ...toolCall,
+            status,
+            endTime: toolCall.endTime ?? endTime,
+        };
+    });
+    return { next, changed };
+}

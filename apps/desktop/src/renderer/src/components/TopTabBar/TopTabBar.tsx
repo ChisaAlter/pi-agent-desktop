@@ -59,6 +59,11 @@ export function TopTabBar({ activeTab, onTabChange, onOpenSettings, rightSlot }:
                     );
                 })}
             </div>
+            {/*
+              Explicit drag filler between tabs and right controls.
+              Parent titlebar is already drag; keep this surface so hit-tests stay
+              continuous even when nested flex children leave empty gaps.
+            */}
             <div
                 className="app-region-drag h-full min-w-[96px] flex-1 touch-none cursor-default"
                 data-mmcode-region="titlebar-drag-surface"
@@ -71,7 +76,7 @@ export function TopTabBar({ activeTab, onTabChange, onOpenSettings, rightSlot }:
                         <button
                             type="button"
                             onClick={onOpenSettings}
-                            className="flex h-7 w-7 items-center justify-center rounded-[4px] text-[var(--mm-text-tertiary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mm-accent-blue)]"
+                            className="app-region-no-drag flex h-7 w-7 items-center justify-center rounded-[4px] text-[var(--mm-text-tertiary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--mm-accent-blue)]"
                             aria-label={t("app.openSettingsAria")}
                             title={t("topbar.settings")}
                         >

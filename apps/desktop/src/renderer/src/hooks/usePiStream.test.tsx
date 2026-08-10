@@ -1744,9 +1744,72 @@ describe("usePiStream", () => {
         expect(session.messages[0].content).toBe("第一段第二段");
     });
 
-    it("correctly resets state when agent_start arrives after turn_end (new turn)", async () => {
+    it("reuses the same assistant bubble across multi-turn tool loops after turn_end", async () => {
         await act(async () => {
             render(<HookHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: {
+                    type: "text_delta",
+                    delta: "根因可能在 Electron 窗口层",
+                },
+            });
+            emitPiEvent?.({
+                type: "tool_execution_start",
+                toolCallId: "tc_turn1",
+                toolName: "read",
+                args: { path: "a.ts" },
+            });
+            emitPiEvent?.({
+                type: "tool_execution_end",
+                toolCallId: "tc_turn1",
+                toolName: "read",
+                isError: false,
+            });
+            emitPiEvent?.({ type: "turn_end" });
+        });
+
+        // Same user prompt continues: next agent_start must NOT create a second bubble.
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: {
+                    type: "text_delta",
+                    delta: "根因可能在 Electron 窗口层，继续排查。",
+                },
+            });
+            emitPiEvent?.({
+                type: "tool_execution_start",
+                toolCallId: "tc_turn2",
+                toolName: "bash",
+                args: { command: "ls" },
+            });
+            emitPiEvent?.({
+                type: "tool_execution_end",
+                toolCallId: "tc_turn2",
+                toolName: "bash",
+                isError: false,
+            });
+            emitPiEvent?.({ type: "agent_end" });
+        });
+
+        const session = useSessionStore.getState().sessions[0];
+        const assistants = session.messages.filter((message) => message.role === "assistant");
+        expect(assistants).toHaveLength(1);
+        expect(assistants[0].content).toBe("根因可能在 Electron 窗口层，继续排查。");
+        expect(assistants[0].toolCalls?.map((toolCall) => toolCall.id)).toEqual(
+            expect.arrayContaining(["tc_turn1", "tc_turn2"]),
+        );
+    });
+
+    it("starts a fresh assistant bubble only after agent_end then a new user prompt stream", async () => {
+        await act(async () => {
+            render(<PlanHookStateHost />);
         });
 
         await act(async () => {
@@ -1758,10 +1821,13 @@ describe("usePiStream", () => {
                     delta: "第一轮",
                 },
             });
-            emitPiEvent?.({ type: "turn_end" });
+            emitPiEvent?.({ type: "agent_end" });
         });
 
-        // After turn_end, isTurnActiveRef is false, so next agent_start should do full reset
+        await act(async () => {
+            screen.getByText("send-plan-task").click();
+        });
+
         await act(async () => {
             emitPiEvent?.({ type: "agent_start" });
             emitPiEvent?.({
@@ -1775,11 +1841,9 @@ describe("usePiStream", () => {
         });
 
         const session = useSessionStore.getState().sessions[0];
-        // First turn's message should exist, and second turn should create a new message
-        // because turn_end cleared messageIdRef (non-agent mode)
-        expect(session.messages.length).toBeGreaterThanOrEqual(1);
-        const lastMsg = session.messages[session.messages.length - 1];
-        expect(lastMsg.content).toBe("第二轮");
+        const assistants = session.messages.filter((message) => message.role === "assistant");
+        expect(assistants.length).toBeGreaterThanOrEqual(2);
+        expect(assistants[assistants.length - 1].content).toBe("第二轮");
     });
 
     it("supplements tool name when tool_execution_start arrives before toolcall_start", async () => {
@@ -1858,6 +1922,150 @@ describe("usePiStream", () => {
             name: "workflow",
             status: "running",
             output: "▶ Design",
+        });
+    });
+
+    it("finalizes open tools and exits streaming on turn_end even without tool_execution_end", async () => {
+        await act(async () => {
+            render(<PlanHookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "tool_execution_start",
+                toolCallId: "tc_long_shell",
+                toolName: "bash",
+                args: { command: "long-running-task" },
+            });
+        });
+
+        expect(screen.getByTestId("streaming").textContent).toBe("true");
+        expect(useSessionStore.getState().sessions[0].messages[0].toolCalls?.[0]?.status).toBe("running");
+
+        // Long shell finished in practice but host never emitted tool_execution_end /
+        // agent_end — turn_end alone must clear 运行中 / 处理中.
+        await act(async () => {
+            emitPiEvent?.({ type: "turn_end" } as PiEvent);
+        });
+
+        expect(screen.getByTestId("streaming").textContent).toBe("false");
+        expect(useSessionStore.getState().sessions[0].messages[0].toolCalls?.[0]).toMatchObject({
+            id: "tc_long_shell",
+            name: "bash",
+            status: "completed",
+        });
+    });
+
+    it("finalizes open session tools even when local stream map is empty", async () => {
+        useSessionStore.setState({
+            currentSessionId: "s1",
+            sessions: [
+                {
+                    id: "s1",
+                    title: "Session",
+                    workspaceId: "ws1",
+                    createdAt: new Date(0),
+                    updatedAt: new Date(0),
+                    messages: [
+                        {
+                            id: "m_stale",
+                            role: "assistant",
+                            content: "stale tools",
+                            timestamp: new Date(0),
+                            toolCalls: [
+                                {
+                                    id: "tc_stale_running",
+                                    name: "bash",
+                                    input: { command: "echo hi" },
+                                    status: "running",
+                                    startTime: new Date(0),
+                                },
+                                {
+                                    id: "tc_stale_pending",
+                                    name: "bash",
+                                    input: { command: "echo pending" },
+                                    status: "pending",
+                                    startTime: new Date(0),
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        });
+
+        await act(async () => {
+            render(<PlanHookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            // No tool_execution_start — local toolCalls map stays empty, but
+            // the session already has open tools from a prior broken turn.
+            emitPiEvent?.({ type: "turn_end" } as PiEvent);
+        });
+
+        const tools = useSessionStore.getState().sessions[0].messages[0].toolCalls ?? [];
+        expect(tools).toEqual(expect.arrayContaining([
+            expect.objectContaining({ id: "tc_stale_running", status: "completed" }),
+            expect.objectContaining({ id: "tc_stale_pending", status: "completed" }),
+        ]));
+        expect(screen.getByTestId("streaming").textContent).toBe("false");
+    });
+
+    it("exits agent streaming on turn_end without waiting for agent_end", async () => {
+        useAgentStore.setState({
+            agents: [{
+                id: "agent_1",
+                workspaceId: "ws1",
+                sessionId: "s1",
+                title: "Agent",
+                status: "running",
+                createdAt: 0,
+                updatedAt: 0,
+            }],
+            currentAgentId: "agent_1",
+            messagesByAgent: {},
+            runtimeByAgent: {},
+            initialized: true,
+        });
+
+        await act(async () => {
+            render(<AgentHookStateHost />);
+        });
+
+        await act(async () => {
+            emitPiEvent?.({ type: "agent_start" });
+            emitPiEvent?.({
+                type: "message_update",
+                assistantMessageEvent: {
+                    type: "text_delta",
+                    delta: "done",
+                },
+            } as PiEvent);
+            emitPiEvent?.({
+                type: "tool_execution_start",
+                toolCallId: "tc_agent_shell",
+                toolName: "bash",
+                args: { command: "sleep 3600" },
+            } as PiEvent);
+        });
+
+        expect(screen.getByTestId("agent-streaming").textContent).toBe("true");
+
+        await act(async () => {
+            emitPiEvent?.({ type: "turn_end" } as PiEvent);
+        });
+
+        // Main process already idles on turn_end; renderer must not stay 运行中
+        // waiting for a missing agent_end after a long shell.
+        expect(screen.getByTestId("agent-streaming").textContent).toBe("false");
+        const session = useSessionStore.getState().sessions[0];
+        const lastAssistant = [...session.messages].reverse().find((message) => message.role === "assistant");
+        expect(lastAssistant?.toolCalls?.[0]).toMatchObject({
+            id: "tc_agent_shell",
+            status: "completed",
         });
     });
 

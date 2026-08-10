@@ -9,6 +9,8 @@ interface VirtualizedMessageListProps {
     messages: ChatMessage[];
     isStreaming: boolean;
     streamingMessageId: string | null;
+    /** Assistant message ids that own turn chrome (time + copy). */
+    chromeMessageIds?: ReadonlySet<string>;
     focusMessageId?: string | null;
     onFocusHandled?: () => void;
     onPlanAction?: (message: ChatMessage, action: "execute" | "refine" | "cancel" | "pause" | "resume", text?: string) => Promise<void>;
@@ -20,12 +22,15 @@ interface VirtualizedMessageListProps {
     scrollElementRef: React.RefObject<HTMLDivElement | null>;
 }
 
-const ESTIMATED_ROW_HEIGHT = 120;
+// Assistant rows are typically taller (markdown/code/tools); under-estimating
+// causes extra measure thrash while scrolling long histories.
+const ESTIMATED_ROW_HEIGHT = 160;
 
 export const VirtualizedMessageList = React.memo(function VirtualizedMessageList({
     messages,
     isStreaming,
     streamingMessageId,
+    chromeMessageIds,
     focusMessageId,
     onFocusHandled,
     onPlanAction,
@@ -112,6 +117,13 @@ export const VirtualizedMessageList = React.memo(function VirtualizedMessageList
                             <MessageBubble
                                 message={message}
                                 isStreaming={isStreaming && message.id === streamingMessageId}
+                                showChrome={
+                                    message.role !== "assistant"
+                                        ? true
+                                        : chromeMessageIds
+                                            ? chromeMessageIds.has(message.id)
+                                            : true
+                                }
                                 isSearchTarget={focusMessageId === message.id}
                                 onPlanAction={onPlanAction}
                                 onGeneratedUiSend={onGeneratedUiSend}

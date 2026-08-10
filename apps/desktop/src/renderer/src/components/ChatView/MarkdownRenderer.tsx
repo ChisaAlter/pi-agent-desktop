@@ -15,15 +15,25 @@ interface MarkdownRendererProps {
 }
 
 export const MarkdownRenderer = React.memo(function MarkdownRenderer({ content, isStreaming = false }: MarkdownRendererProps): React.ReactElement {
-    // 使用 useMemo 缓存渲染结果，避免重复解析相同的 markdown
-    const renderedContent = useMemo(() => (
-        <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={isStreaming ? [] : [rehypeHighlight]}
-        >
-            {content}
-        </ReactMarkdown>
-    ), [content, isStreaming]);
+    // Streaming: plain pre-wrapped text only. Parsing full GFM every rAF frame is the
+    // dominant chat jank source; promote to Markdown once the turn completes.
+    const renderedContent = useMemo(() => {
+        if (isStreaming) {
+            return (
+                <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                    {content}
+                </div>
+            );
+        }
+        return (
+            <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeHighlight]}
+            >
+                {content}
+            </ReactMarkdown>
+        );
+    }, [content, isStreaming]);
 
     return (
         <div className="markdown-body max-w-none" data-streaming={isStreaming ? "true" : "false"}>

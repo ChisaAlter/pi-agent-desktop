@@ -14,6 +14,7 @@
 // Props:
 //  - currentSection: 当前激活项的 section id
 //  - onSectionChange: 点击某项时回调,父级决定路由/视图切换
+//  - onOpenSearchHistory: 打开对话历史搜索覆盖层
 //  - groupMode: 会话列表分组模式 (date/workspace)
 //  - onGroupModeChange: 切换分组模式回调
 //
@@ -32,7 +33,6 @@ import { ProjectGroupedSessionList } from "./ProjectGroupedSessionList";
 import { DateGroupedSessionList } from "./DateGroupedSessionList";
 import { sessionActivityTime, sessionDepth } from "../../utils/session-grouping";
 import { SessionRow } from "./SessionRow";
-import { MINIMAX_CHROME_ICON_BUTTON_CLASSNAME } from "./chromeButton";
 
 // ----------------------------------------------------------------------
 // 类型
@@ -47,24 +47,20 @@ export interface MiniMaxCodeSidebarProps {
     piAgentStatus?: "online" | "offline" | "checking";
     /** 点击某项时回调,父级决定路由切换 */
     onSectionChange: (section: string) => void;
+    /** 打开对话历史搜索（SearchHistory overlay） */
+    onOpenSearchHistory?: () => void;
     /** 会话列表分组模式 */
     groupMode?: "date" | "workspace";
     /** 切换分组模式回调 */
     onGroupModeChange?: (mode: "date" | "workspace") => void;
 }
 
-// ----------------------------------------------------------------------
-// Icons (inline SVG, stroke 1.5, 14x14 视觉)
-// 选用 lucide-react 风格的 outline icon,内联避免新增依赖。
-// ----------------------------------------------------------------------
+const SIDEBAR_ACTION_BUTTON_CLASSNAME =
+    "relative flex h-8 w-full shrink-0 items-center justify-center rounded-[8px] border-0 bg-transparent px-2 text-center text-[12px] font-medium text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]";
 
-function IconPlus(): React.JSX.Element {
-    return (
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 5v14m-7-7h14" />
-        </svg>
-    );
-}
+// Equal-width static rainbow ring via double-background technique (avoids conic corner unevenness).
+const SIDEBAR_NEW_CHAT_BUTTON_CLASSNAME =
+    `${SIDEBAR_ACTION_BUTTON_CLASSNAME} pi-sidebar-new-chat-border`;
 
 interface GroupModeSwitchProps {
     mode: "date" | "workspace";
@@ -206,10 +202,9 @@ function PinnedSessionList({
  * MiniMax Code 风格左侧导航栏.
  *
  * 排版结构:
- *   - 顶部 logo
- *   - 新建对话按钮 + 分组模式切换
+ *   - 顶部竖排：新对话 / 搜索
+ *   - 置顶会话 + 分组模式切换
  *   - 中间 scroll 区: 会话历史列表
- *   - 底部设置按钮
  *
  * 设计约束:
  *   - 所有颜色/字号/圆角走 --mm-* token
@@ -220,6 +215,7 @@ export function MiniMaxCodeSidebar({
     currentSection,
     currentWorkspaceId,
     onSectionChange,
+    onOpenSearchHistory,
     groupMode = "date",
     onGroupModeChange,
 }: MiniMaxCodeSidebarProps): React.JSX.Element {
@@ -245,27 +241,26 @@ export function MiniMaxCodeSidebar({
                 className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1 pb-3 pt-0"
                 aria-label={t("sidebar.sessions.listAria")}
             >
-                <div className="flex min-h-[42px] shrink-0 items-center">
-                    <div className="flex h-7 w-full items-center gap-2">
-                        <button
-                            type="button"
-                            onClick={() => onSectionChange("new-task")}
-                            aria-label={t("sidebar.newConversation")}
-                            aria-current={currentSection === "new-task" ? "page" : undefined}
-                            className="flex h-7 min-w-0 flex-1 items-center rounded-[2px] border border-[var(--mm-border)] bg-[var(--mm-bg-control)] px-2 text-left text-[11px] text-[var(--mm-text-tertiary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-secondary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
-                            data-mmcode-section="new-task"
-                        >
-                            <span className="truncate">{t("sidebar.newConversation")}</span>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => onSectionChange("new-task")}
-                            className={MINIMAX_CHROME_ICON_BUTTON_CLASSNAME}
-                            aria-label={t("sidebar.quickNewConversation")}
-                        >
-                            <IconPlus />
-                        </button>
-                    </div>
+                <div className="flex shrink-0 flex-col gap-1.5 px-0.5 pt-1" data-mmcode-region="sidebar-actions">
+                    <button
+                        type="button"
+                        onClick={() => onSectionChange("new-task")}
+                        aria-label={t("sidebar.newConversation")}
+                        aria-current={currentSection === "new-task" ? "page" : undefined}
+                        className={SIDEBAR_NEW_CHAT_BUTTON_CLASSNAME}
+                        data-mmcode-section="new-task"
+                    >
+                        <span className="truncate">{t("sidebar.newConversation")}</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => onOpenSearchHistory?.()}
+                        aria-label={t("sidebar.search")}
+                        className={SIDEBAR_ACTION_BUTTON_CLASSNAME}
+                        data-mmcode-section="search-history"
+                    >
+                        <span className="truncate">{t("sidebar.search")}</span>
+                    </button>
                 </div>
 
                 <div className="mt-[3px] flex flex-col gap-2">

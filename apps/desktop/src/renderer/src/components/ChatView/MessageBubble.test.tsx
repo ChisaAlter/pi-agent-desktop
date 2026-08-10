@@ -525,23 +525,121 @@ describe("MessageBubble", () => {
       </I18nProvider>,
     );
 
-    expect(screen.getByText("普通助手回复").tagName).toBe("STRONG");
+    // Streaming path is plain text for jank reduction; full markdown after stream ends.
+    expect(screen.getByText("**普通助手回复**")).toBeTruthy();
     expect(document.querySelector('.markdown-body')?.getAttribute("data-streaming")).toBe("true");
   });
 
-  it("keeps Markdown structure readable while assistant content is streaming", () => {
+  it("hides assistant turn chrome when showChrome is false", () => {
+    const message: Message = {
+      id: "m-mid-turn",
+      role: "assistant",
+      content: "中间工具轮说明",
+      timestamp: new Date(0),
+    };
+
+    const { rerender } = render(
+      <I18nProvider>
+        <MessageBubble message={message} showChrome={false} />
+      </I18nProvider>,
+    );
+
+    expect(screen.queryByTestId("message-time")).toBeNull();
+    expect(screen.queryByTestId("message-footer")).toBeNull();
+
+    rerender(
+      <I18nProvider>
+        <MessageBubble message={message} showChrome />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByTestId("message-time")).toBeTruthy();
+    expect(screen.getByTestId("message-footer")).toBeTruthy();
+  });
+
+  it("does not show copy footer while assistant is streaming even with showChrome", () => {
+    const message: Message = {
+      id: "m-stream-chrome",
+      role: "assistant",
+      content: "流式中",
+      timestamp: new Date(0),
+    };
+
+    render(
+      <I18nProvider>
+        <MessageBubble message={message} showChrome isStreaming />
+      </I18nProvider>,
+    );
+
+    expect(screen.queryByTestId("message-footer")).toBeNull();
+    expect(screen.queryByTestId("message-time")).toBeNull();
+  });
+
+  it("does not keep 处理中 for open tools after the stream ends", () => {
+    const message: Message = {
+      id: "m-stale-tools",
+      role: "assistant",
+      content: "工具已结束",
+      timestamp: new Date(0),
+      toolCalls: [
+        {
+          id: "tc1",
+          name: "read",
+          status: "completed",
+          input: { path: "a.ts" },
+          startTime: new Date(0),
+          endTime: new Date(1),
+        },
+        {
+          id: "tc2",
+          name: "bash",
+          status: "running",
+          input: { command: "echo hi" },
+          startTime: new Date(0),
+        },
+        {
+          id: "tc3",
+          name: "bash",
+          status: "pending",
+          input: { command: "echo pending" },
+          startTime: new Date(0),
+        },
+      ],
+    };
+
+    const { rerender } = render(
+      <I18nProvider>
+        <MessageBubble message={message} isStreaming />
+      </I18nProvider>,
+    );
+
+    expect(screen.getByText("处理中")).toBeTruthy();
+
+    rerender(
+      <I18nProvider>
+        <MessageBubble message={message} />
+      </I18nProvider>,
+    );
+
+    expect(screen.queryByText("处理中")).toBeNull();
+    // Summary path uses tool counts; stale open tools should no longer force 处理中.
+    expect(screen.getByText(/使用|运行|读取|工具/)).toBeTruthy();
+  });
+
+  it("renders streaming assistant content as plain text, then markdown after stream ends", () => {
+    const content = [
+      "## 架构分层",
+      "",
+      "- **主进程**：窗口、PTY、IPC",
+      "- **渲染进程**：React、状态管理",
+      "",
+      "```text",
+      "src/renderer/  App / Terminal / Browser / Settings / Agent / stores",
+    ].join("\n");
     const message: Message = {
       id: "m-streaming-markdown",
       role: "assistant",
-      content: [
-        "## 架构分层",
-        "",
-        "- **主进程**：窗口、PTY、IPC",
-        "- **渲染进程**：React、状态管理",
-        "",
-        "```text",
-        "src/renderer/  App / Terminal / Browser / Settings / Agent / stores",
-      ].join("\n"),
+      content,
       timestamp: new Date(0),
     };
 
@@ -551,13 +649,10 @@ describe("MessageBubble", () => {
       </I18nProvider>,
     );
 
-    const streamingHeading = screen.getByRole("heading", { name: "架构分层" });
-    const streamingCodeBlock = container.querySelector("pre");
-    expect(streamingHeading.tagName).toBe("H2");
-    expect(screen.getByText("主进程").tagName).toBe("STRONG");
-    expect(streamingCodeBlock?.textContent).toContain("src/renderer/");
     expect(container.querySelector('.markdown-body')?.getAttribute("data-streaming")).toBe("true");
-    expect(screen.queryByText(/## 架构分层/)).toBeNull();
+    expect(screen.queryByRole("heading", { name: "架构分层" })).toBeNull();
+    expect(container.textContent).toContain("## 架构分层");
+    expect(container.textContent).toContain("src/renderer/");
 
     rerender(
       <I18nProvider>
@@ -565,8 +660,9 @@ describe("MessageBubble", () => {
       </I18nProvider>,
     );
 
-    expect(screen.getByRole("heading", { name: "架构分层" })).toBe(streamingHeading);
-    expect(container.querySelector("pre")).toBe(streamingCodeBlock);
+    expect(screen.getByRole("heading", { name: "架构分层" }).tagName).toBe("H2");
+    expect(screen.getByText("主进程").tagName).toBe("STRONG");
+    expect(container.querySelector("pre")?.textContent).toContain("src/renderer/");
     expect(container.querySelector('.markdown-body')?.getAttribute("data-streaming")).toBe("false");
   });
 

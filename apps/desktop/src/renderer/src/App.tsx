@@ -139,6 +139,35 @@ function requestChatInputFocus(): void {
     }, 0);
 }
 
+function isNativeWindowDragTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof Element)) return false;
+    // Never interrupt -webkit-app-region:drag with focus-steal IPC.
+    if (target.closest("[data-mmcode-region=\"titlebar-drag-surface\"]")) return true;
+    if (target.closest(".app-region-drag")) {
+        // Drag surface itself, or non-interactive chrome inside the titlebar.
+        const interactive = target.closest(
+            "button, a, input, textarea, select, [role='tab'], [role='button'], .app-region-no-drag, [data-window-drag-exclude='true']",
+        );
+        return !interactive;
+    }
+    // Titlebar chrome (logo/title) is drag unless it is a control.
+    if (target.closest("[data-mmcode-region=\"titlebar\"]")) {
+        const interactive = target.closest(
+            "button, a, input, textarea, select, [role='tab'], [role='button'], .app-region-no-drag, [data-window-drag-exclude='true']",
+        );
+        return !interactive;
+    }
+    return false;
+}
+
+function requestWindowForeground(event?: Event): void {
+    // Only ask main to steal focus when the document is actually unfocused.
+    if (typeof document !== "undefined" && document.hasFocus()) return;
+    // Titlebar native drag must not trigger softFocus/webContents thrash mid-press.
+    if (event && isNativeWindowDragTarget(event.target)) return;
+    window.piAPI?.send?.("window:foreground-on-pointer");
+}
+
 async function selectWorkspaceForRoute(path: string): Promise<void> {
     if (!window.piAPI?.selectWorkspace) return;
     try {
@@ -166,6 +195,19 @@ function App(): React.ReactElement {
 
 function AppShell(): React.ReactElement {
     const { t } = useTranslation();
+
+    // Windows first-click: one capture pointerdown is enough. Do not also listen
+    // to mousedown (double IPC) and never steal focus from native titlebar drag.
+    useEffect(() => {
+        const onPointerDown = (event: PointerEvent): void => {
+            requestWindowForeground(event);
+        };
+        window.addEventListener("pointerdown", onPointerDown, true);
+        return () => {
+            window.removeEventListener("pointerdown", onPointerDown, true);
+        };
+    }, []);
+
     const [activeSection, setActiveSection] = useState<SectionId>("chat");
     const [runView, setRunView] = useState<RunView>("tasks");
     const [workbenchView, setWorkbenchView] = useState<WorkbenchView>("files");
@@ -187,14 +229,20 @@ function AppShell(): React.ReactElement {
             : null,
     );
 
-    const { getCurrentWorkspace, workspaces } = useWorkspaceStore();
+    const workspaces = useWorkspaceStore((state) => state.workspaces);
+    const getCurrentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace);
     const currentWorkspace = getCurrentWorkspace();
     const workspacesLoaded = useWorkspaceStore((state) => state.loaded);
     const workspaceError = useWorkspaceStore((state) => state.lastError);
     const clearWorkspaceError = useWorkspaceStore((state) => state.clearError);
-    const { loadPiConfig, settings, rightRailCollapsed, sidebarGroupMode } = useSettingsStore();
-    const { setSidebarGroupMode } = useSettingsStore();
-    const { status, loading: piStatusLoading, refreshStatus } = usePiStatusStore();
+    const loadPiConfig = useSettingsStore((state) => state.loadPiConfig);
+    const settings = useSettingsStore((state) => state.settings);
+    const rightRailCollapsed = useSettingsStore((state) => state.rightRailCollapsed);
+    const sidebarGroupMode = useSettingsStore((state) => state.sidebarGroupMode);
+    const setSidebarGroupMode = useSettingsStore((state) => state.setSidebarGroupMode);
+    const status = usePiStatusStore((state) => state.status);
+    const piStatusLoading = usePiStatusStore((state) => state.loading);
+    const refreshStatus = usePiStatusStore((state) => state.refreshStatus);
     const updaterState = useUpdaterStore((state) => state.state);
     const setupUpdaterListeners = useUpdaterStore((state) => state.setupListeners);
     const cleanupUpdaterListeners = useUpdaterStore((state) => state.cleanupListeners);
@@ -208,7 +256,6 @@ function AppShell(): React.ReactElement {
     );
     const agents = useAgentStore((s) => s.agents);
     const currentAgentId = useAgentStore((s) => s.currentAgentId);
-    const messagesByAgent = useAgentStore((s) => s.messagesByAgent);
     const agentsInitialized = useAgentStore((s) => s.initialized);
     const createAgent = useAgentStore((s) => s.createAgent);
     const pendingPermissions = usePermissionStore((s) => s.pending);
@@ -341,6 +388,7 @@ function AppShell(): React.ReactElement {
         const selected = currentSessionId
             ? sessionsFromStore.find((session) => session.id === currentSessionId)
             : null;
+        // Blank-slate "新对话": never auto-restore the previous session.
         if (!selected && activeSection === "new-task") return;
         if (selected) {
             if (selected.workspaceId === currentWorkspace.id) return;
@@ -353,13 +401,17 @@ function AppShell(): React.ReactElement {
             }
         }
 
+        // No valid selection: pick latest workspace session for normal chat, but
+        // do not steal control while the user intentionally opened a new draft.
+        if (activeSection === "new-task") return;
+
         const nextSession = sessionsFromStore
             .filter((session) => session.workspaceId === currentWorkspace.id && !session.archived)
             .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
         // Use the store action rather than direct setState so persistence /
         // metadata side-effects stay in one place.
         useSessionStore.getState().setDefaultSession(nextSession?.id ?? null);
-        if (activeSection === "chat" || activeSection === "new-task") {
+        if (activeSection === "chat") {
             setActiveSection(nextSession ? "chat" : "new-task");
         }
     }, [activeSection, currentSessionId, currentWorkspace, workspaces]);
@@ -429,11 +481,14 @@ function AppShell(): React.ReactElement {
         () => pendingPermissions.some((request) => !currentWorkspace?.id || !request.workspaceId || request.workspaceId === currentWorkspace.id),
         [currentWorkspace?.id, pendingPermissions],
     );
-    const currentAgentMessageCount = currentWorkspaceAgent
-        ? messagesByAgent[currentWorkspaceAgent.id]?.length ?? 0
-        : 0;
+    // Only the length — avoid subscribing App to full messagesByAgent map (stream thrash).
+    const currentWorkspaceAgentId = currentWorkspaceAgent?.id ?? null;
+    const currentAgentMessageCount = useAgentStore((s) =>
+        currentWorkspaceAgentId ? s.messagesByAgent[currentWorkspaceAgentId]?.length ?? 0 : 0,
+    );
+    const currentSessionMessageCount = currentSession?.messages?.length ?? 0;
     useEffect(() => {
-        const count = Math.max(currentSession?.messages?.length ?? 0, currentAgentMessageCount);
+        const count = Math.max(currentSessionMessageCount, currentAgentMessageCount);
         const hadMessages = prevMessageCountRef.current > 0;
         prevMessageCountRef.current = count;
         if (count > 0 && !hadMessages) {
@@ -441,8 +496,11 @@ function AppShell(): React.ReactElement {
                 useSettingsStore.setState({ rightRailCollapsed: false });
             }
         }
-    }, [currentAgentMessageCount, currentSession?.messages?.length, workspaceHasRoomForRightRail]);
+    }, [currentAgentMessageCount, currentSessionMessageCount, workspaceHasRoomForRightRail]);
 
+    // Leaving blank-slate: first send creates/binds a session via ChatView.
+    // Workspace auto-select is blocked while activeSection === "new-task", so this
+    // only fires for genuine draft → session transitions (not historical restore races).
     useEffect(() => {
         if (activeSection === "new-task" && currentSession) {
             setActiveSection("chat");
@@ -672,6 +730,11 @@ function AppShell(): React.ReactElement {
             return;
         }
         if (section === "new-task") {
+            // Order matters: enter draft mode BEFORE clearing currentSessionId.
+            // Otherwise the workspace session-selection effect still sees activeSection
+            // as "chat" with a null session and immediately re-selects the latest
+            // session (making "新对话" look like a no-op / corrupting the previous chat).
+            setActiveSection("new-task");
             useSessionStore.setState({ currentSessionId: null });
             if (currentWorkspace) {
                 // 复用已有的 workspace 级默认 agent — 曾无条件 createAgent,
@@ -684,7 +747,6 @@ function AppShell(): React.ReactElement {
                     void useAgentStore.getState().createAgent(currentWorkspace.id, `${currentWorkspace.name} Agent`);
                 }
             }
-            setActiveSection("new-task");
             requestChatInputFocus();
             return;
         }
@@ -840,8 +902,10 @@ function AppShell(): React.ReactElement {
             "toggle-terminal": () => routeSection("terminal"),
             "open-settings": () => window.piAPI?.openSettingsWindow(),
             "new-chat": () => {
-                useSessionStore.setState({ currentSessionId: null });
+                // Match routeSection("new-task"): draft section first, then clear session.
                 setActiveSection("new-task");
+                useSessionStore.setState({ currentSessionId: null });
+                requestChatInputFocus();
             },
             "show-shortcuts-question": () => setShowCheatsheet((v) => !v),
             "search-history": () => setShowSearchHistory((v) => !v),
@@ -921,6 +985,7 @@ function AppShell(): React.ReactElement {
                         currentWorkspaceId={currentWorkspace?.id}
                         piAgentStatus={piAgentStatus}
                         onSectionChange={routeSection}
+                        onOpenSearchHistory={() => setShowSearchHistory(true)}
                         groupMode={sidebarGroupMode}
                         onGroupModeChange={setSidebarGroupMode}
                     />

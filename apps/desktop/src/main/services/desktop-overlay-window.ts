@@ -77,7 +77,9 @@ export class DesktopOverlayWindowManager {
             skipTaskbar: true,
             alwaysOnTop: true,
             hasShadow: false,
-            focusable: true,
+            // Windows: an always-on-top focusable overlay can eat the first click
+            // aimed at the main window when the app is in the background.
+            focusable: false,
             webPreferences: {
                 preload: join(__dirname, "../preload/index.js"),
                 sandbox: true,

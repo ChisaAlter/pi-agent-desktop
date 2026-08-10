@@ -8,6 +8,7 @@ function createFakeWindow() {
   const listeners = new Map<string, Array<CloseListener | VoidListener>>();
   let visible = true;
   let minimized = false;
+  let focused = false;
   return {
     on: vi.fn((event: string, listener: CloseListener | VoidListener) => {
       listeners.set(event, [...(listeners.get(event) ?? []), listener]);
@@ -24,22 +25,30 @@ function createFakeWindow() {
     },
     hide: vi.fn(() => {
       visible = false;
+      focused = false;
     }),
     show: vi.fn(() => {
       visible = true;
     }),
-    focus: vi.fn(),
+    focus: vi.fn(() => {
+      focused = true;
+    }),
     restore: vi.fn(() => {
       minimized = false;
     }),
+    setSkipTaskbar: vi.fn(),
+    moveTop: vi.fn(),
+    setAlwaysOnTop: vi.fn(),
     isDestroyed: vi.fn(() => false),
     isVisible: vi.fn(() => visible),
     isMinimized: vi.fn(() => minimized),
+    isFocused: vi.fn(() => focused),
     __setMinimized(next: boolean) {
       minimized = next;
     },
   };
 }
+
 
 function createFakeTray() {
   const listeners = new Map<string, Array<VoidListener>>();
@@ -55,6 +64,7 @@ function createFakeTray() {
     destroy: vi.fn(),
     setToolTip: vi.fn(),
     setContextMenu: vi.fn(),
+    popUpContextMenu: vi.fn(),
   };
 }
 
@@ -84,6 +94,8 @@ describe("createMainWindowLifecycleController", () => {
     mainWindow.__setMinimized(true);
     const tray = createFakeTray();
     const beforeShowMainWindow = vi.fn();
+    const focusApp = vi.fn();
+    const scheduled: Array<{ delayMs: number; callback: () => void }> = [];
     const controller = createMainWindowLifecycleController({
       getMainWindow: () => mainWindow,
       overlay: { refreshVisibility: vi.fn(), destroy: vi.fn() },
@@ -91,16 +103,88 @@ describe("createMainWindowLifecycleController", () => {
       buildTrayMenu: vi.fn(() => ({ items: [] })),
       onQuitRequested: vi.fn(),
       beforeShowMainWindow,
+      focusApp,
+      platform: "win32",
+      schedule: (callback, delayMs = 0) => {
+        scheduled.push({ callback, delayMs });
+      },
     });
 
     controller.attachMainWindow(mainWindow);
     controller.ensureTray("C:/icon.ico");
     tray.emit("click");
 
+    // Synchronous raise while the tray click still holds foreground rights.
     expect(beforeShowMainWindow).toHaveBeenCalled();
     expect(mainWindow.restore).toHaveBeenCalled();
+    expect(mainWindow.setSkipTaskbar).toHaveBeenCalledWith(false);
     expect(mainWindow.show).toHaveBeenCalled();
+    expect(mainWindow.moveTop).toHaveBeenCalled();
+    expect(mainWindow.setAlwaysOnTop).toHaveBeenCalledWith(true);
     expect(mainWindow.focus).toHaveBeenCalled();
+    expect(focusApp).toHaveBeenCalledTimes(1);
+    // only the always-on-top release is deferred
+    expect(scheduled).toHaveLength(1);
+    expect(scheduled[0]?.delayMs).toBe(80);
+
+    scheduled[0]?.callback();
+    expect(mainWindow.setAlwaysOnTop).toHaveBeenCalledWith(false);
+  });
+
+  it("debounces tray click + double-click into a single restore", () => {
+    const mainWindow = createFakeWindow();
+    const tray = createFakeTray();
+    const controller = createMainWindowLifecycleController({
+      getMainWindow: () => mainWindow,
+      createTray: vi.fn(() => tray),
+      buildTrayMenu: vi.fn(() => ({ items: [] })),
+      onQuitRequested: vi.fn(),
+      platform: "win32",
+      schedule: () => undefined,
+    });
+    controller.ensureTray("C:/icon.ico");
+    tray.emit("click");
+    tray.emit("double-click");
+    expect(mainWindow.show).toHaveBeenCalledTimes(1);
+    expect(mainWindow.focus).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides to tray with skipTaskbar so the taskbar button is gone", () => {
+    const mainWindow = createFakeWindow();
+    const controller = createMainWindowLifecycleController({
+      getMainWindow: () => mainWindow,
+      createTray: vi.fn(() => createFakeTray()),
+      buildTrayMenu: vi.fn(() => ({ items: [] })),
+      onQuitRequested: vi.fn(),
+      platform: "win32",
+    });
+    controller.attachMainWindow(mainWindow);
+    const preventDefault = vi.fn();
+    mainWindow.emitClose({ preventDefault });
+    expect(preventDefault).toHaveBeenCalled();
+    expect(mainWindow.setSkipTaskbar).toHaveBeenCalledWith(true);
+    expect(mainWindow.hide).toHaveBeenCalled();
+  });
+
+  it("on Windows does not permanently setContextMenu and pops menu on right-click", () => {
+    const mainWindow = createFakeWindow();
+    const tray = createFakeTray();
+    const menu = { items: ["show", "quit"] };
+    const controller = createMainWindowLifecycleController({
+      getMainWindow: () => mainWindow,
+      createTray: vi.fn(() => tray),
+      buildTrayMenu: vi.fn(() => menu),
+      onQuitRequested: vi.fn(),
+      platform: "win32",
+    });
+
+    controller.ensureTray("C:/icon.ico");
+    expect(tray.setContextMenu).not.toHaveBeenCalled();
+    expect(tray.on).toHaveBeenCalledWith("click", expect.any(Function));
+    expect(tray.on).toHaveBeenCalledWith("right-click", expect.any(Function));
+
+    tray.emit("right-click");
+    expect(tray.popUpContextMenu).toHaveBeenCalledWith(menu);
   });
 
   it("allows explicit quit to destroy tray resources and stop intercepting close", () => {
@@ -229,6 +313,7 @@ describe("createMainWindowLifecycleController", () => {
         return { items: [] };
       }),
       onQuitRequested,
+      platform: "darwin",
     });
 
     controller.ensureTray("C:/icon.ico");
@@ -278,6 +363,7 @@ describe("createMainWindowLifecycleController", () => {
       buildTrayMenu: vi.fn(() => ({ items: [] })),
       onQuitRequested: vi.fn(),
       beforeShowMainWindow,
+      platform: "darwin",
     });
     controller.restoreMainWindow();
     expect(beforeShowMainWindow).toHaveBeenCalledTimes(1);
@@ -442,6 +528,7 @@ describe("createMainWindowLifecycleController", () => {
       buildTrayMenu: vi.fn(() => ({ items: [] })),
       onQuitRequested: vi.fn(),
       beforeShowMainWindow,
+      platform: "darwin",
     });
     controller.restoreMainWindow();
     expect(beforeShowMainWindow).toHaveBeenCalledTimes(1);
@@ -460,6 +547,7 @@ describe("createMainWindowLifecycleController", () => {
       createTray,
       buildTrayMenu: vi.fn(() => ({ items: [] })),
       onQuitRequested: vi.fn(),
+      platform: "darwin",
     });
     const first = controller.ensureTray("C:/icon.ico");
     const second = controller.ensureTray("C:/other.ico");
@@ -499,6 +587,7 @@ describe("createMainWindowLifecycleController", () => {
       createTray: vi.fn(() => createFakeTray()),
       buildTrayMenu: vi.fn(() => ({ items: [] })),
       onQuitRequested: vi.fn(),
+      platform: "darwin",
     });
     controller.restoreMainWindow();
     expect(mainWindow.restore).toHaveBeenCalledTimes(1);
@@ -562,6 +651,7 @@ describe("createMainWindowLifecycleController", () => {
       buildTrayMenu: vi.fn(() => ({ items: [] })),
       onQuitRequested: vi.fn(),
       beforeShowMainWindow,
+      platform: "darwin",
     });
     controller.restoreMainWindow();
     expect(beforeShowMainWindow).toHaveBeenCalledTimes(1);
@@ -602,6 +692,7 @@ describe("createMainWindowLifecycleController", () => {
       createTray,
       buildTrayMenu: vi.fn(() => ({ items: [] })),
       onQuitRequested: vi.fn(),
+      platform: "darwin",
     });
     const t1 = controller.ensureTray("C:/icon.ico");
     const t2 = controller.ensureTray("C:/other.ico");
@@ -720,6 +811,7 @@ describe("createMainWindowLifecycleController", () => {
       createTray,
       buildTrayMenu,
       onQuitRequested: vi.fn(),
+      platform: "win32",
     });
     const first = controller.ensureTray("icon-a");
     const second = controller.ensureTray("icon-b");
@@ -728,9 +820,25 @@ describe("createMainWindowLifecycleController", () => {
     expect(createTray).toHaveBeenCalledWith("icon-a");
     expect(tray.setToolTip).toHaveBeenCalledWith("Pi Desktop");
     expect(buildTrayMenu).toHaveBeenCalledTimes(1);
+    // Windows: permanent setContextMenu swallows first left-click; menu is right-click only.
+    expect(tray.setContextMenu).not.toHaveBeenCalled();
+    expect(tray.on).toHaveBeenCalledWith("click", expect.any(Function));
+    expect(tray.on).toHaveBeenCalledWith("right-click", expect.any(Function));
+    expect(controller.hasTray()).toBe(true);
+  });
+
+  it("on non-Windows still uses permanent setContextMenu", () => {
+    const tray = createFakeTray();
+    const controller = createMainWindowLifecycleController({
+      getMainWindow: () => createFakeWindow(),
+      createTray: vi.fn(() => tray),
+      buildTrayMenu: vi.fn(() => ({ items: 1 })),
+      onQuitRequested: vi.fn(),
+      platform: "darwin",
+    });
+    controller.ensureTray("icon-a");
     expect(tray.setContextMenu).toHaveBeenCalledWith({ items: 1 });
     expect(tray.on).toHaveBeenCalledWith("click", expect.any(Function));
-    expect(controller.hasTray()).toBe(true);
   });
 
   it("close while not quitting preventDefault+hide; requestQuit then close allows exit", () => {
