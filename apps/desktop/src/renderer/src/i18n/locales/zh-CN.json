@@ -444,6 +444,14 @@
     "userAuthor": "你说",
     "piAuthor": "Pi 说"
   },
+  "thinkingBlock": {
+    "thinkingLabel": "思考",
+    "thinkingInProgress": "思考中 {{duration}}",
+    "thinkingCountChars": "思考 {{count}} 次 · {{chars}} 字符",
+    "thinkingCount": "思考 {{count}} 次",
+    "expand": "展开思考",
+    "collapse": "收起思考"
+  },
   "codeBlock": {
     "copy": "复制",
     "copied": "已复制"

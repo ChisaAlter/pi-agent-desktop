@@ -2,7 +2,19 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
+import { I18nProvider } from "../../i18n";
 import { ThinkingBlock, formatDuration, ThinkingText } from "./ThinkingBlock";
+
+type RenderResult = ReturnType<typeof render>;
+
+function renderWithI18n(ui: React.ReactElement): RenderResult {
+    const result = render(<I18nProvider>{ui}</I18nProvider>);
+    return {
+        ...result,
+        rerender: (next: React.ReactNode) =>
+            result.rerender(<I18nProvider>{next}</I18nProvider>),
+    };
+}
 
 describe("ThinkingBlock", () => {
   beforeEach(() => {
@@ -12,16 +24,16 @@ describe("ThinkingBlock", () => {
   });
 
   it("renders nothing when content empty", () => {
-    const { container } = render(<ThinkingBlock content="" />);
+    const { container } = renderWithI18n(<ThinkingBlock content="" />);
     expect(container.textContent).toBe("");
   });
 
   it("default collapsed, toggles expansion with aria-expanded and label", () => {
-    render(<ThinkingBlock content="step one" count={2} />);
-    const btn = screen.getByRole("button", { name: /展开思考|思考 2 次/ });
+    renderWithI18n(<ThinkingBlock content="step one" count={2} />);
+    const btn = screen.getByRole("button", { name: /思考 2 次/ });
     expect(btn.getAttribute("aria-expanded")).toBe("false");
     expect(screen.getByText(/思考 2 次/)).toBeTruthy();
-    // 默认折叠: 内容不可见
+    // 默认折叠: 内容不可见(DOM 卸载)
     expect(screen.queryByText("step one")).toBeNull();
     fireEvent.click(btn);
     expect(btn.getAttribute("aria-expanded")).toBe("true");
@@ -30,15 +42,15 @@ describe("ThinkingBlock", () => {
   });
 
   it("streaming state: 默认折叠 + 计时标签(不展开)", () => {
-    render(<ThinkingBlock content="partial..." isStreaming />);
+    renderWithI18n(<ThinkingBlock content="partial..." isStreaming />);
     expect(screen.getByText(/思考中/)).toBeTruthy();
     // 默认折叠: 流式中内容不可见(长思考不刷屏)
     expect(screen.queryByText("partial...")).toBeNull();
   });
 
   it("persistKey: 展开状态写入 localStorage, 重渲染恢复", () => {
-    const { rerender } = render(<ThinkingBlock content="persisted thinking" persistKey="ts-1" />);
-    const btn = screen.getByRole("button", { name: /展开思考|思考 1 次/ });
+    const { rerender } = renderWithI18n(<ThinkingBlock content="persisted thinking" persistKey="ts-1" />);
+    const btn = screen.getByRole("button", { name: /思考 1 次/ });
     fireEvent.click(btn);
     expect(localStorage.getItem("thinking:ts-1")).toBe("true");
 
@@ -49,15 +61,15 @@ describe("ThinkingBlock", () => {
   });
 
   it("无 persistKey 不写 thinking key", () => {
-    render(<ThinkingBlock content="x" />);
+    renderWithI18n(<ThinkingBlock content="x" />);
     fireEvent.click(screen.getByRole("button"));
     const thinkingKeys = Object.keys(localStorage).filter((k) => k.startsWith("thinking:"));
     expect(thinkingKeys).toHaveLength(0);
   });
 
   it("exposes thinking toggle focus-visible ring for keyboard a11y", () => {
-    render(<ThinkingBlock content="step one" />);
-    expect(screen.getByRole("button", { name: /展开思考|思考 1 次/ }).className).toContain(
+    renderWithI18n(<ThinkingBlock content="step one" />);
+    expect(screen.getByRole("button", { name: /思考 1 次/ }).className).toContain(
       "focus-visible:ring-2",
     );
   });
@@ -76,7 +88,7 @@ describe("formatDuration", () => {
 
 describe("ThinkingText 轻量行内强调", () => {
   it("渲染 **粗体** / *斜体* / `code`", () => {
-    const { container } = render(
+    const { container } = renderWithI18n(
       <ThinkingText content={"有 **粗体** 和 *斜体* 与 `code` 混合"} />,
     );
     expect(container.querySelector("strong")?.textContent).toBe("粗体");

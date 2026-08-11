@@ -1,9 +1,10 @@
 // 可折叠的思考过程显示组件 — Cindy ThinkingCard 式
-// 默认折叠(含流式) + 展开状态 localStorage 持久化 + 流式计时。
+// 默认折叠(含流式) + 展开状态 localStorage 持久化 + 流式计时 + Collapse 动效。
 // 思考内容以纯文本 + 轻量行内强调渲染(ThinkingText)。
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { readBoolFlag, writeBoolFlag } from '../../utils/first-launch';
+import { useI18n } from '../../i18n';
 
 interface ThinkingBlockProps {
     /** 累积的思考文本 */
@@ -12,7 +13,7 @@ interface ThinkingBlockProps {
     count?: number;
     /** 是否仍在流式接收 */
     isStreaming?: boolean;
-    /** 展开状态持久化 key(通常为 startedAt 时间戳)。缺省则不持久化。 */
+    /** 展开状态持久化 key(消息 id, 唯一稳定)。缺省则不持久化。 */
     persistKey?: string;
 }
 
@@ -56,13 +57,52 @@ export function ThinkingText({ content }: { content: string }): React.JSX.Elemen
     return <>{parts}</>;
 }
 
+/** 高度过渡折叠容器(展开/收起带动画; 收起动画结束后卸载, 折叠时 DOM 干净)。 */
+function Collapse({ open, children }: { open: boolean; children: React.ReactNode }): React.JSX.Element | null {
+    const [mounted, setMounted] = useState(open);
+    const [opening, setOpening] = useState(false);
+    const prevOpenRef = useRef(open);
+
+    useEffect(() => {
+        const wasOpen = prevOpenRef.current;
+        prevOpenRef.current = open;
+        if (open && !wasOpen) {
+            // 刚展开: 先挂载(0fr), 下一帧置 opening 触发 0fr→1fr 过渡。
+            setMounted(true);
+            setOpening(false);
+            const raf = requestAnimationFrame(() => setOpening(true));
+            return () => cancelAnimationFrame(raf);
+        }
+        if (!open) {
+            setOpening(false);
+            // 收起动画(1fr→0fr, 200ms)完成后卸载, 折叠时 DOM 不残留内容。
+            const timer = setTimeout(() => setMounted(false), 220);
+            return () => clearTimeout(timer);
+        }
+        return undefined;
+    }, [open]);
+
+    if (!mounted) return null;
+    return (
+        <div
+            className="pi-motion-thinking-content overflow-hidden transition-[grid-template-rows] duration-200 ease-out"
+            data-motion="thinking-content"
+            data-open={opening ? "true" : "false"}
+            style={{ display: "grid", gridTemplateRows: opening ? "1fr" : "0fr" }}
+        >
+            <div className="min-h-0 overflow-hidden">{children}</div>
+        </div>
+    );
+}
+
 export function ThinkingBlock({
     content,
     count = 1,
     isStreaming = false,
     persistKey,
 }: ThinkingBlockProps): React.JSX.Element | null {
-    // 展开状态持久化: key 固定(通常为 startedAt 时间戳), 跨渲染存活。
+    const { t } = useI18n();
+    // 展开状态持久化: key 固定(消息 id), 跨渲染存活。
     const storageKey = persistKey ? `thinking:${persistKey}` : null;
     const [isExpanded, setIsExpanded] = useState<boolean>(() => {
         if (!storageKey) return false;
@@ -88,9 +128,11 @@ export function ThinkingBlock({
     }, [isStreaming, startedAt]);
 
     if (!content) return null;
+    const durationText = formatDuration(elapsedMs);
     const summary = isStreaming
-        ? `思考中 ${formatDuration(elapsedMs)}`
-        : `思考 ${Math.max(1, count)} 次 · ${content.length} 字符`;
+        ? t('thinkingBlock.thinkingInProgress', { duration: durationText })
+        : t('thinkingBlock.thinkingCountChars', { count: Math.max(1, count), chars: content.length });
+    const ariaLabel = isExpanded ? t('thinkingBlock.collapse') : summary;
 
     return (
         <div className="pi-motion-thinking-shell my-1" data-motion="thinking-shell">
@@ -98,14 +140,11 @@ export function ThinkingBlock({
                 type="button"
                 onClick={toggle}
                 aria-expanded={isExpanded}
-                aria-label={isExpanded ? '收起思考' : summary}
+                aria-label={ariaLabel}
                 className="flex w-full items-center justify-between py-1 text-left text-[var(--mm-text-tertiary)] transition-colors duration-150 hover:text-[var(--mm-text-secondary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
             >
                 <div className="flex min-w-0 items-center gap-1.5">
-                    <span className="text-xs">
-                        {isStreaming ? `思考中 ${formatDuration(elapsedMs)}` : `思考 ${Math.max(1, count)} 次`}
-                        {!isStreaming && ` · ${content.length} 字符`}
-                    </span>
+                    <span className="text-xs">{summary}</span>
                     {isStreaming && <StreamingIndicator />}
                 </div>
 
@@ -127,9 +166,9 @@ export function ThinkingBlock({
                 </div>
             </button>
 
-            {/* 展开内容 */}
-            {isExpanded && (
-                <div className="pi-motion-thinking-content border-l border-[var(--mm-border)] py-2 pl-3" data-motion="thinking-content">
+            {/* 展开内容(高度过渡) */}
+            <Collapse open={isExpanded}>
+                <div className="border-l border-[var(--mm-border)] py-2 pl-3">
                     <div className="whitespace-pre-wrap text-xs leading-relaxed text-[var(--mm-text-tertiary)]">
                         <ThinkingText content={content} />
                         {isStreaming && (
@@ -139,7 +178,7 @@ export function ThinkingBlock({
                         )}
                     </div>
                 </div>
-            )}
+            </Collapse>
         </div>
     );
 }

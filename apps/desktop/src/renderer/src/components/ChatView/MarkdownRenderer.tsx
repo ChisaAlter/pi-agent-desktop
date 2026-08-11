@@ -278,10 +278,11 @@ export const MarkdownRenderer = React.memo(function MarkdownRenderer({
 
     // 流式 100ms 节流: 流式期间不每帧全量解析 markdown。
     const throttledContent = useStreamingThrottle(content, isStreaming);
-    // 未闭合语法修复: 仅流式 + 动效开启时(与动效配套, 消除结构翻转源); 终稿恒用原文。
+    // 未闭合语法修复(围栏/强调符/半截图片链接): **只要 isStreaming 就跑**,
+    // 不绑定动效开关 —— 这是流式可读性的核心, 默认路径必须生效; 终稿恒用原文。
     const repairedContent = useMemo(
-        () => (streamFade ? repairStreamingMarkdown(throttledContent) : throttledContent),
-        [streamFade, throttledContent],
+        () => (isStreaming ? repairStreamingMarkdown(throttledContent) : throttledContent),
+        [isStreaming, throttledContent],
     );
     const renderedContent = useMemo(
         () => normalizeMathDelimiters(repairedContent),
@@ -298,6 +299,13 @@ export const MarkdownRenderer = React.memo(function MarkdownRenderer({
         };
     }, [streamFade]);
     const rehypePlugins = wordFade?.plugins ?? REHYPE_PLUGINS;
+    // 流式中摘掉 rehypeHighlight: 增长中的代码块每 chunk 全量 re-tokenize 是
+    // 流式渲染最贵的操作(pi-web CodeBlock 注释同源); 回合结束一次性高亮。
+    const streamingRehypePlugins = useMemo(
+        () => REHYPE_PLUGINS.filter((p) => p !== rehypeHighlight),
+        [],
+    );
+    const activeRehypePlugins = isStreaming ? streamingRehypePlugins : rehypePlugins;
     const handleWordFadeAnimationEnd = useCallback((event: React.AnimationEvent<HTMLDivElement>) => {
         if (wordFade) markSettledFromAnimationEnd(wordFade.state, event.nativeEvent);
     }, [wordFade]);
@@ -331,7 +339,7 @@ export const MarkdownRenderer = React.memo(function MarkdownRenderer({
         >
             <ReactMarkdown
                 remarkPlugins={REMARK_PLUGINS as never}
-                rehypePlugins={rehypePlugins as never}
+                rehypePlugins={activeRehypePlugins as never}
                 components={components}
                 urlTransform={safeUrlTransform}
             >

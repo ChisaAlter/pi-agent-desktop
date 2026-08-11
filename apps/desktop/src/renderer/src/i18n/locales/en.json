@@ -444,6 +444,14 @@
     "userAuthor": "You",
     "piAuthor": "Pi"
   },
+  "thinkingBlock": {
+    "thinkingLabel": "Thinking",
+    "thinkingInProgress": "Thinking {{duration}}",
+    "thinkingCountChars": "Thought {{count}}x · {{chars}} chars",
+    "thinkingCount": "Thought {{count}}x",
+    "expand": "Expand thinking",
+    "collapse": "Collapse thinking"
+  },
   "codeBlock": {
     "copy": "Copy",
     "copied": "Copied"

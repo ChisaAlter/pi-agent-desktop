@@ -973,8 +973,7 @@ code {
 }
 
 /* 复制按钮: hover 显示 */
-.markdown-body .markdown-code-copy {
-  position: absolute;
+.markdown-body .markdown-code-copy {  position: absolute;
   right: 8px;
   top: 8px;
   display: inline-flex;
@@ -998,6 +997,39 @@ code {
   color: var(--mm-text-primary);
   background: var(--mm-bg-control);
 }
+
+/* 浅色主题 hljs 高亮色(github 同源; dark 在 [data-theme="dark"] 段覆盖) */
+.markdown-body .hljs { background: transparent; color: #24292e; }
+.markdown-body .hljs-comment,
+.markdown-body .hljs-quote { color: #6a737d; }
+.markdown-body .hljs-keyword,
+.markdown-body .hljs-selector-tag,
+.markdown-body .hljs-subst { color: #d73a49; }
+.markdown-body .hljs-number,
+.markdown-body .hljs-literal,
+.markdown-body .hljs-variable,
+.markdown-body .hljs-template-variable,
+.markdown-body .hljs-tag .hljs-attr { color: #005cc5; }
+.markdown-body .hljs-string,
+.markdown-body .hljs-doctag { color: #032f62; }
+.markdown-body .hljs-title,
+.markdown-body .hljs-section,
+.markdown-body .hljs-selector-id { color: #6f42c1; }
+.markdown-body .hljs-type,
+.markdown-body .hljs-class .hljs-title { color: #e36209; }
+.markdown-body .hljs-tag,
+.markdown-body .hljs-name,
+.markdown-body .hljs-attribute { color: #22863a; }
+.markdown-body .hljs-regexp,
+.markdown-body .hljs-link { color: #e36209; }
+.markdown-body .hljs-symbol,
+.markdown-body .hljs-bullet { color: #e36209; }
+.markdown-body .hljs-built_in,
+.markdown-body .hljs-title.class_,
+.markdown-body .hljs-function .hljs-title { color: #6f42c1; }
+.markdown-body .hljs-meta { color: #6a737d; }
+.markdown-body .hljs-emphasis { font-style: italic; }
+.markdown-body .hljs-strong { font-weight: 600; }
 
 /* 行内代码 — 增强对比 */
 .markdown-inline-code,

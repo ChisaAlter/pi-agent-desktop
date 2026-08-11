@@ -54,6 +54,26 @@ describe("MarkdownRenderer 全量流式解析", () => {
         expect(container.querySelector(".markdown-code-lang")?.textContent).toBe("js");
     });
 
+    it("流式中代码块不高亮(hljs 摘除), 结束后一次性高亮", () => {
+        const { container, rerender } = renderWithI18n(
+            <MarkdownRenderer content={"```js\nconst x = 1\n```"} isStreaming />,
+        );
+        // 流式中: 无 hljs class(不 re-tokenize)
+        expect(container.querySelector("code")?.className ?? "").not.toContain("hljs");
+
+        rerender(<MarkdownRenderer content={"```js\nconst x = 1\n```"} isStreaming={false} />);
+        // 结束后: hljs 高亮 class 注入
+        expect(container.querySelector("code")?.className ?? "").toContain("hljs");
+    });
+
+    it("repair 默认生效: 流式中未闭合强调符补闭合(不依赖动效开关)", () => {
+        const { container } = renderWithI18n(
+            <MarkdownRenderer content={"这个结果**非常重"} isStreaming />,
+        );
+        // repair 补闭合 → 流式中即渲染为 <strong>
+        expect(container.querySelector("strong")?.textContent).toBe("非常重");
+    });
+
     it("代码块卡片: 语言徽标 + 复制按钮(读 innerText)", async () => {
         const { container } = renderWithI18n(
             <MarkdownRenderer content={"```ts\ntype A = 1\n```"} />,

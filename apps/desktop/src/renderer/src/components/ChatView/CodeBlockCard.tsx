@@ -55,7 +55,7 @@ export const CodeBlockCard = React.memo(function CodeBlockCard({
             )}
             <pre
                 ref={preRef}
-                className={`markdown-code-pre ${className ?? ""}`}
+                className="markdown-code-pre"
                 data-lang={lang ?? ""}
             >
                 <code className={className ?? ""}>{children}</code>
