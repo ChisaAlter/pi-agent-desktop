@@ -178,22 +178,17 @@ export function ThinkingBlock({
     const ariaLabel = isExpanded ? t('thinkingBlock.collapse') : summary;
 
     return (
-        <div className="pi-motion-thinking-shell my-1" data-motion="thinking-shell">
+        <div className="pi-motion-thinking-shell my-1.5 rounded-lg" data-motion="thinking-shell">
             <button
                 type="button"
                 onClick={toggle}
                 aria-expanded={isExpanded}
                 aria-label={ariaLabel}
-                className="flex w-full items-center justify-between py-1 text-left text-[var(--mm-text-tertiary)] transition-colors duration-150 hover:text-[var(--mm-text-secondary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
+                className="flex w-full items-center justify-between gap-2 rounded-lg bg-[var(--mm-bg-panel)] px-2.5 py-1.5 text-left transition-colors duration-150 hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]"
             >
-                <div className="flex min-w-0 items-center gap-1.5">
-                    <span className="text-xs">{summary}</span>
-                    {isStreaming && <StreamingIndicator />}
-                </div>
-
-                <div className="flex items-center gap-2">
+                <div className="flex min-w-0 items-center gap-2">
                     <svg
-                        className={`h-3 w-3 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
+                        className={`h-3.5 w-3.5 shrink-0 text-[var(--mm-text-tertiary)] transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`}
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
@@ -206,12 +201,14 @@ export function ThinkingBlock({
                             d="M9 5l7 7-7 7"
                         />
                     </svg>
+                    <span className="text-xs font-medium text-[var(--mm-text-secondary)]">{summary}</span>
+                    {isStreaming && <StreamingIndicator />}
                 </div>
             </button>
 
             {/* 展开内容(高度过渡) */}
             <Collapse open={isExpanded}>
-                <div className="border-l border-[var(--mm-border)] py-2 pl-3">
+                <div className="ml-[13px] border-l border-[var(--mm-border)] py-2 pl-3">
                     <div className="whitespace-pre-wrap text-xs leading-relaxed text-[var(--mm-text-tertiary)]">
                         <ThinkingText content={content} />
                         {isStreaming && (

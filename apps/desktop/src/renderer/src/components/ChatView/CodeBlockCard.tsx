@@ -48,11 +48,26 @@ export const CodeBlockCard = React.memo(function CodeBlockCard({
 
     return (
         <div className="group relative my-3" data-streaming={isStreaming ? "true" : "false"}>
-            {lang && (
-                <div className="markdown-code-header">
-                    <span className="markdown-code-lang">{lang}</span>
-                </div>
-            )}
+            <div className="markdown-code-header">
+                <span className="markdown-code-lang">{lang || "text"}</span>
+                <button
+                    type="button"
+                    onClick={() => void handleCopy()}
+                    aria-label={copied ? t("codeBlock.copied") : t("codeBlock.copy")}
+                    title={copied ? t("codeBlock.copied") : t("codeBlock.copy")}
+                    className="markdown-code-copy"
+                >
+                    {copied ? (
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                    ) : (
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                    )}
+                </button>
+            </div>
             <pre
                 ref={preRef}
                 className="markdown-code-pre"
@@ -60,23 +75,6 @@ export const CodeBlockCard = React.memo(function CodeBlockCard({
             >
                 <code className={className ?? ""}>{children}</code>
             </pre>
-            <button
-                type="button"
-                onClick={() => void handleCopy()}
-                aria-label={copied ? t("codeBlock.copied") : t("codeBlock.copy")}
-                title={copied ? t("codeBlock.copied") : t("codeBlock.copy")}
-                className="markdown-code-copy"
-            >
-                {copied ? (
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                ) : (
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                )}
-            </button>
         </div>
     );
 });

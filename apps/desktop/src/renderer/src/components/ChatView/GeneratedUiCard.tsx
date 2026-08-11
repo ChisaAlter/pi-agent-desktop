@@ -24,9 +24,10 @@ function toneClass(tone?: GeneratedUiTone): string {
 }
 
 function statusClass(status?: string): string {
-  if (status === "completed" || status === "done" || status === "success" || status === "完成") return "bg-emerald-50 text-emerald-700";
-  if (status === "running" || status === "progress" || status === "进行中") return "bg-blue-50 text-blue-700";
-  if (status === "failed" || status === "error" || status === "失败") return "bg-red-50 text-red-700";
+  // 用 --mm-* 语义 token 而非 Tailwind 硬编码浅色 —— 明暗主题自动适配。
+  if (status === "completed" || status === "done" || status === "success" || status === "完成") return "bg-[var(--mm-status-success-bg)] text-[var(--mm-status-success-fg)]";
+  if (status === "running" || status === "progress" || status === "进行中") return "bg-[var(--mm-status-info-bg)] text-[var(--mm-status-info-fg)]";
+  if (status === "failed" || status === "error" || status === "失败") return "bg-[var(--mm-status-danger-bg)] text-[var(--mm-status-danger-fg)]";
   return "bg-[var(--mm-bg-sidebar)] text-[var(--mm-text-secondary)]";
 }
 
@@ -36,7 +37,14 @@ function ListItems({ items, ordered = false }: { items: GeneratedUiListItem[]; o
     <Tag className={`m-0 space-y-0 p-0 ${ordered ? "list-none" : "list-none"}`}>
       {items.map((item, index) => (
         <li key={item.id} className="grid grid-cols-[20px_minmax(0,1fr)_auto] gap-2 border-b border-[var(--mm-border)] py-2.5 last:border-b-0">
-          <span className="pt-0.5 text-[11px] text-[var(--mm-text-tertiary)]">{ordered ? index + 1 : "•"}</span>
+          <span className="flex justify-center pt-1 text-[11px] leading-none text-[var(--mm-text-tertiary)]" aria-hidden="true">
+            {ordered ? (
+              index + 1
+            ) : (
+              // 圆点用语义色小圆(比文本 • 干净), 与状态色系一致
+              <span className="mt-1 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--mm-border-strong)]" />
+            )}
+          </span>
           <div className="min-w-0">
             <div className="text-xs font-medium text-[var(--mm-text-primary)]">{item.label}</div>
             {item.description ? <p className="m-0 mt-0.5 text-[11px] leading-4 text-[var(--mm-text-secondary)]">{item.description}</p> : null}

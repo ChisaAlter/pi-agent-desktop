@@ -1196,7 +1196,8 @@ describe("ChatView", () => {
 
     const header = screen.getByTestId("chat-conversation-header");
     expect(header.textContent).toContain("Session 1");
-    expect(header.textContent).toContain("Token:");
+    // 无 usage 数据时不显示 "Token: -"(数据空洞), 有数据才渲染。
+    expect(header.textContent).not.toContain("Token:");
     expect(header.textContent).toContain("已连接");
     // Workspace switcher stays out of the chat header strip.
     expect(screen.queryByRole("button", { name: /切换工作区/ })).toBeNull();

@@ -124,6 +124,14 @@
   --mm-border-subtle: #edf0f3;    /* 弱分割线 */
   --mm-border-strong: #c7d2df;    /* 聚焦/悬停强调边框 */
 
+  /* ===== 状态徽章(生成式 UI status pill, 明暗自适应) ===== */
+  --mm-status-success-bg: #e6f6ec;
+  --mm-status-success-fg: #1a7f3c;
+  --mm-status-info-bg: #e3f0fb;
+  --mm-status-info-fg: #0a68c4;
+  --mm-status-danger-bg: #fdeaea;
+  --mm-status-danger-fg: #c03030;
+
   /* ===== Settings surfaces ===== */
   --settings-bg-card: #eeeeee;
   --settings-bg-card-muted: #e9e9e9;
@@ -553,8 +561,7 @@ select:not([data-allow-blue-focus]):focus {
 
 /* Dark theme 代码块卡片 + hljs 高亮色(github-dark 同源) */
 [data-theme="dark"] .markdown-body .markdown-code-header,
-[data-theme="dark"] .markdown-body .markdown-code-pre,
-[data-theme="dark"] .markdown-body .markdown-code-copy {
+[data-theme="dark"] .markdown-body .markdown-code-pre {
   background: #1e2228;
   border-color: #333a44;
 }
@@ -930,10 +937,15 @@ code {
 }
 
 .markdown-body .markdown-code-lang {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
   font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  color: var(--mm-text-tertiary);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--mm-text-secondary);
+  background: var(--mm-bg-control); /* 浅底 chip, header 上一眼可扫 */
   text-transform: lowercase;
   user-select: none;
 }
@@ -972,30 +984,26 @@ code {
   line-height: inherit;
 }
 
-/* 复制按钮: hover 显示 */
-.markdown-body .markdown-code-copy {  position: absolute;
-  right: 8px;
-  top: 8px;
+/* 复制按钮: 常驻在 header 右侧(非 hover-only), 弱显示 hover 加深 */
+.markdown-body .markdown-code-copy {
   display: inline-flex;
-  height: 26px;
-  width: 26px;
+  height: 22px;
+  width: 22px;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  border: 1px solid var(--mm-border);
-  background: var(--mm-bg-panel);
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--mm-text-tertiary);
-  opacity: 0;
-  transition: opacity 150ms;
+  opacity: 0.75;
+  transition: opacity 150ms, background-color 150ms, color 150ms;
   cursor: pointer;
 }
-.markdown-body .group:hover .markdown-code-copy,
-.markdown-body .markdown-code-copy:focus-visible {
-  opacity: 1;
-}
 .markdown-body .markdown-code-copy:hover {
+  opacity: 1;
   color: var(--mm-text-primary);
   background: var(--mm-bg-control);
+  border-color: var(--mm-border);
 }
 
 /* 浅色主题 hljs 高亮色(github 同源; dark 在 [data-theme="dark"] 段覆盖) */
@@ -1049,7 +1057,7 @@ code {
   cursor: pointer;
 }
 
-/* 标题 */
+/* 标题: 色阶拉开(标题更深/正文次级/meta 最浅) */
 .markdown-body h1,
 .markdown-body h2,
 .markdown-body h3,
@@ -1057,9 +1065,9 @@ code {
 .markdown-body h5,
 .markdown-body h6 {
   margin: 18px 0 10px;
-  font-weight: 600;
+  font-weight: 650;
   line-height: 1.3;
-  color: var(--color-text-primary);
+  color: var(--mm-text-primary);
 }
 .markdown-body h1 { font-size: 1.5em; }
 .markdown-body h2 { font-size: 1.3em; }
@@ -1077,15 +1085,17 @@ code {
 /* 段落 */
 .markdown-body p {
   margin: 8px 0;
+  color: var(--mm-text-primary);
 }
 .markdown-body p:first-child { margin-top: 0; }
 .markdown-body p:last-child { margin-bottom: 0; }
 
-/* 列表 */
+/* 列表: 圆点降权(弱化, 不抢正文) */
 .markdown-body ul,
 .markdown-body ol {
   margin: 8px 0;
   padding-left: 1.6em;
+  color: var(--mm-text-primary);
 }
 .markdown-body ul:first-child,
 .markdown-body ol:first-child { margin-top: 0; }
@@ -1093,19 +1103,28 @@ code {
 .markdown-body ol:last-child { margin-bottom: 0; }
 .markdown-body ul { list-style: disc; }
 .markdown-body ol { list-style: decimal; }
+.markdown-body ul li::marker,
+.markdown-body ol li::marker {
+  color: var(--mm-text-tertiary);
+}
 .markdown-body li {
   margin: 4px 0;
 }
 .markdown-body li > ul,
 .markdown-body li > ol { margin: 4px 0; }
 
+/* 引用块: 高 padding + 强左条 + 内容宽度(非扁胶囊) */
 .markdown-body blockquote {
-  padding: 2px 12px;
-  margin: 8px 0;
-  color: var(--color-text-secondary);
-  border-left: 0.25em solid var(--color-border);
-  background: #f9fafb;
+  padding: 12px 16px;
+  margin: 10px 0;
+  color: var(--mm-text-secondary);
+  border-left: 4px solid var(--mm-border-strong);
+  background: var(--mm-bg-panel);
   border-radius: 0 var(--radius-card) var(--radius-card) 0;
+}
+.markdown-body blockquote p {
+  margin: 4px 0;
+  color: var(--mm-text-secondary);
 }
 
 .markdown-body a {
@@ -1124,7 +1143,9 @@ code {
   border: 1px solid var(--color-border);
 }
 
-/* 表格 — 表头底色 + 边框 + 长 token 断行 + 外层横滚兜底 */
+/* 表格 — 闭合外框 + 表头实底 + 行分隔 + 长 token 断行。
+ * 注意 border-collapse: collapse 会吞掉 table 外边框(radius/overflow 失效),
+ * 必须用 separate + border-spacing: 0, 外框由 table 自己画, 内部用单元格底边。 */
 .markdown-body .markdown-table-wrap {
   width: 100%;
   overflow-x: auto;
@@ -1135,8 +1156,9 @@ code {
 
 .markdown-body table {
   width: 100%;
-  border-collapse: collapse;
-  border: 1px solid var(--color-border);
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--mm-border-strong);
   border-radius: var(--radius-card);
   overflow: hidden;
 }
@@ -1144,7 +1166,8 @@ code {
 .markdown-body th,
 .markdown-body td {
   padding: 8px 12px;
-  border: 1px solid var(--color-border);
+  border: none;
+  border-bottom: 1px solid var(--mm-border);
   text-align: left;
   break-words: anywhere;
   overflow-wrap: anywhere; /* 长 token(路径/逗号列表)断行, 不撑爆列 */
@@ -1152,16 +1175,22 @@ code {
 }
 
 .markdown-body th {
-  background: #f9fafb;
-  font-weight: 600;
+  background: var(--mm-bg-panel);
+  font-weight: 650;
+  color: var(--mm-text-primary);
+  border-bottom: 1px solid var(--mm-border-strong);
 }
 
-.markdown-body tr:nth-child(even) {
-  background: #fafafa;
+.markdown-body tr:last-child td {
+  border-bottom: none; /* 外框闭合, 最后一行不露分隔线 */
 }
 
-.markdown-body tr:hover {
-  background: #f5f5f5;
+.markdown-body tr:nth-child(even) td {
+  background: var(--mm-bg-panel);
+}
+
+.markdown-body tr:hover td {
+  background: var(--mm-bg-hover);
 }
 
 .markdown-body hr {
@@ -1851,6 +1880,14 @@ code {
   --mm-border: #343b45;
   --mm-border-subtle: #2a3038;
   --mm-border-strong: #4c5664;
+
+  /* 状态徽章 dark: 深底 + 亮字, 避免浅色残留 */
+  --mm-status-success-bg: #123520;
+  --mm-status-success-fg: #57d58a;
+  --mm-status-info-bg: #12283d;
+  --mm-status-info-fg: #6db6f2;
+  --mm-status-danger-bg: #3a1b1d;
+  --mm-status-danger-fg: #f08686;
   --settings-bg-card: #20242a;
   --settings-bg-card-muted: #171b20;
   --settings-bg-row: #20242a;

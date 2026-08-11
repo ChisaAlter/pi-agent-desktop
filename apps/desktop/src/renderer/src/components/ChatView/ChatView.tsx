@@ -925,8 +925,9 @@ export function ChatView({
   const displayedTotalTokens = totalTokens === undefined && !isStreaming
     ? undefined
     : animatedTotalTokens;
-  const usageSummary = displayedTotalTokens === undefined
-    ? "Token: -"
+  // 无 usage 数据或 0(尚未采样)时不显示 "Token: 0/-"(数据空洞); 有数据才渲染。
+  const usageSummary = !displayedTotalTokens
+    ? null
     : `Token: ${formatTokenSummary(displayedTotalTokens)}`;
 
   useEffect(() => {
@@ -1129,10 +1130,10 @@ export function ChatView({
         </div>
         <div className="pi-motion-status-pill flex h-7 shrink-0 items-center justify-end gap-3 text-[var(--mm-text-secondary)]" data-motion-state={isStreaming ? "running" : isConnected ? "connected" : "disconnected"}>
           <span className="inline-flex h-7 shrink-0 items-center gap-1.5 font-mono tabular-nums leading-none text-[var(--mm-text-primary)]">
-            <span>{usageSummary}</span>
+            {usageSummary ? <span>{usageSummary}</span> : null}
             {tokenRateSummary ? (
               <span data-testid="chat-token-rate" className="text-[var(--mm-text-secondary)]">
-                · {tokenRateSummary}
+                {usageSummary ? "· " : ""}{tokenRateSummary}
               </span>
             ) : null}
           </span>
@@ -1218,9 +1219,9 @@ export function ChatView({
             </div>
           )
         ) : (
-          /* 消息列表 — 底部 pb-8 留白, 最后一条消息与输入框保持间距 */
+          /* 消息列表 — 底部 pb-44 大留白(composer 最高 240px), 长消息不被裁切 */
           <div
-            className="mx-auto flex w-full max-w-[780px] flex-col space-y-5 px-4 pt-5 pb-8 sm:px-6 lg:px-8"
+            className="mx-auto flex w-full max-w-[780px] flex-col space-y-5 px-4 pt-5 pb-44 sm:px-6 lg:px-8"
             role="log"
             aria-live="polite"
             aria-label={t('chatView.messagesAria')}
