@@ -435,6 +435,7 @@ function MessageBubbleImpl({
                     content={thinkingContent}
                     count={thinkingCount}
                     isStreaming={isStreaming && !visibleContent}
+                    persistKey={typeof message.timestamp === "object" && message.timestamp ? String(message.timestamp.getTime()) : String(message.timestamp)}
                   />
                 )}
 

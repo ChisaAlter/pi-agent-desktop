@@ -11,9 +11,10 @@ describe("global interaction styles", () => {
   it("keeps Markdown code blocks readable in narrow chat columns", () => {
     const css = readFileSync(new URL("./globals.css", import.meta.url), "utf8");
 
-    expect(css).toMatch(/\.markdown-body pre\s*\{[^}]*white-space:\s*pre-wrap/s);
-    expect(css).toMatch(/\.markdown-body pre\s*\{[^}]*overflow-wrap:\s*anywhere/s);
-    expect(css).toMatch(/\.markdown-body pre\s*\{[^}]*line-height:\s*1\.75/s);
+    // 代码块卡片(CodeBlockCard)接管 pre, 折行不横滚。
+    expect(css).toMatch(/\.markdown-body \.markdown-code-pre\s*\{[^}]*white-space:\s*pre-wrap/s);
+    expect(css).toMatch(/\.markdown-body \.markdown-code-pre\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+    expect(css).toMatch(/\.markdown-body \.markdown-code-pre\s*\{[^}]*line-height:\s*1\.75/s);
   });
 
   // wave-108 residual
@@ -29,8 +30,8 @@ describe("global interaction styles", () => {
     const css = readFileSync(new URL("./globals.css", import.meta.url), "utf8");
     expect(css).toMatch(/prefers-reduced-motion:\s*reduce/);
     expect(css).toMatch(/\.settings-pressable:active[\s\S]*scale:\s*none/);
-    expect(css).toMatch(/\.markdown-body pre code\s*\{[^}]*white-space:\s*inherit/s);
-    expect(css).toMatch(/\.markdown-body pre code\s*\{[^}]*overflow-wrap:\s*inherit/s);
+    expect(css).toMatch(/\.markdown-body \.markdown-code-pre code\s*\{[^}]*white-space:\s*inherit/s);
+    expect(css).toMatch(/\.markdown-body \.markdown-code-pre code\s*\{[^}]*overflow-wrap:\s*inherit/s);
   });
 
   it("does not keep a hand-rolled composer beam stylesheet (uses official border-beam package)", () => {

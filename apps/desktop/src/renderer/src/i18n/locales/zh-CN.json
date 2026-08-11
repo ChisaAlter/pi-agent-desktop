@@ -1061,6 +1061,10 @@
       "aria": "字体大小",
       "searchLabel": "字体大小"
     },
+    "streamFade": {
+      "label": "流式词级淡入",
+      "description": "流式输出时每个新词以 150ms 淡入浮现（非打字机；系统减弱动效时自动禁用）。"
+    },
     "autoSave": {
       "label": "自动保存"
     },

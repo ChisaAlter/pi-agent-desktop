@@ -1,17 +1,144 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { I18nProvider } from "../../i18n";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+
+type RenderResult = ReturnType<typeof render>;
+
+function renderWithI18n(ui: React.ReactElement): RenderResult {
+    const result = render(<I18nProvider>{ui}</I18nProvider>);
+    return {
+        ...result,
+        rerender: (next: React.ReactNode) =>
+            result.rerender(<I18nProvider>{next}</I18nProvider>),
+    };
+}
+
+// settings-store 需要 mock: streamFadeEnabled 默认关, 保持词级淡入插件不启用。
+vi.mock("../../stores/settings-store", () => ({
+    useSettingsStore: (selector: (s: unknown) => unknown) =>
+        selector({ settings: { streamFadeEnabled: false } } as unknown as never),
+}));
+
+describe("MarkdownRenderer 全量流式解析", () => {
+    beforeEach(() => {
+        localStorage.clear();
+    });
+
+    it("流式中也渲染 h1/pre/code(全量解析, 不再是纯文本)", () => {
+        const { container, rerender } = renderWithI18n(
+            <MarkdownRenderer content={"# Title\n\n```js\nconst x = 1\n```"} isStreaming />,
+        );
+        expect(container.querySelector("h1")).toBeTruthy();
+        expect(container.querySelector("pre")).toBeTruthy();
+        expect(container.querySelector("code")).toBeTruthy();
+        expect(container.textContent ?? "").toContain("Title");
+        expect(container.textContent ?? "").toContain("const x = 1");
+
+        // 终态不变(全量解析, 无跳变)。
+        rerender(<MarkdownRenderer content={"# Title\n\n```js\nconst x = 1\n```"} isStreaming={false} />);
+        expect(container.querySelector("h1")).toBeTruthy();
+        expect(container.querySelector("pre")).toBeTruthy();
+        expect(container.textContent ?? "").toContain("const x = 1");
+    });
+
+    it("流式中未闭合代码围栏也渲染成代码块卡片", () => {
+        const { container } = renderWithI18n(
+            <MarkdownRenderer content={"```js\nconst x = 1"} isStreaming />,
+        );
+        expect(container.querySelector("pre")).toBeTruthy();
+        expect(container.querySelector(".markdown-code-pre")).toBeTruthy();
+        // 语言徽标
+        expect(container.querySelector(".markdown-code-lang")?.textContent).toBe("js");
+    });
+
+    it("代码块卡片: 语言徽标 + 复制按钮(读 innerText)", async () => {
+        const { container } = renderWithI18n(
+            <MarkdownRenderer content={"```ts\ntype A = 1\n```"} />,
+        );
+        const lang = container.querySelector(".markdown-code-lang");
+        expect(lang?.textContent).toBe("ts");
+        const copyBtn = container.querySelector(".markdown-code-copy");
+        expect(copyBtn).toBeTruthy();
+
+        const writeText = vi.fn().mockResolvedValue(undefined);
+        Object.assign(navigator, { clipboard: { writeText } });
+        if (copyBtn) fireEvent.click(copyBtn);
+        await waitFor(() => expect(writeText).toHaveBeenCalled());
+        expect(writeText.mock.calls[0][0]).toContain("type A = 1");
+    });
+
+    it("无语言代码块: 徽标降级为 text, 卡片仍渲染", () => {
+        const { container } = renderWithI18n(
+            <MarkdownRenderer content={"```\nplain\n```"} />,
+        );
+        expect(container.querySelector("pre")).toBeTruthy();
+        expect(container.querySelector(".markdown-code-lang")?.textContent).toBe("text");
+    });
+
+    it("表格: 外层 wrap + 表头 + 单元格断行 class", () => {
+        const { container } = renderWithI18n(
+            <MarkdownRenderer content={"| a | b |\n| --- | --- |\n| 1 | 2 |"} />,
+        );
+        const wrap = container.querySelector(".markdown-table-wrap");
+        expect(wrap).toBeTruthy();
+        const table = wrap?.querySelector("table");
+        expect(table).toBeTruthy();
+        expect(wrap?.querySelector("th")).toBeTruthy();
+        expect(wrap?.querySelector("td")?.textContent).toBe("1");
+    });
+
+    it("KaTeX: $..$ 渲染为 .katex", () => {
+        const { container } = renderWithI18n(
+            <MarkdownRenderer content={"公式 $x^2$ 结束"} />,
+        );
+        expect(container.querySelector(".katex")).toBeTruthy();
+    });
+
+    it("本地路径行内 code 可点(dispatch workspace:open-file)", () => {
+        const dispatch = vi.spyOn(window, "dispatchEvent");
+        const { container } = renderWithI18n(
+            <MarkdownRenderer content={"打开 `src/main/index.ts` 文件"} />,
+        );
+        const pathCode = container.querySelector(".markdown-path-link");
+        expect(pathCode).toBeTruthy();
+        if (pathCode) fireEvent.click(pathCode);
+        expect(dispatch).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "workspace:open-file" }),
+        );
+    });
+
+    it("本地路径链接可点, 外链新窗口", () => {
+        const dispatch = vi.spyOn(window, "dispatchEvent");
+        const { container } = renderWithI18n(
+            <MarkdownRenderer content={"[本地](C:\\repo\\src\\index.ts)\n\n[外链](https://example.com)"} />,
+        );
+        const links = Array.from(container.querySelectorAll("a"));
+        expect(links.length).toBeGreaterThanOrEqual(2);
+        const local = links.find((a) => a.getAttribute("href")?.includes("C:"));
+        const external = links.find((a) => a.getAttribute("href") === "https://example.com");
+        if (local) fireEvent.click(local);
+        expect(dispatch).toHaveBeenCalledWith(
+            expect.objectContaining({ type: "workspace:open-file" }),
+        );
+        expect(external?.getAttribute("target")).toBe("_blank");
+    });
+
+    it("data-streaming 属性保留", () => {
+        const { container, rerender } = renderWithI18n(<MarkdownRenderer content="hello" isStreaming />);
+        expect(container.querySelector(".markdown-body")?.getAttribute("data-streaming")).toBe("true");
+        rerender(<MarkdownRenderer content="hello" isStreaming={false} />);
+        expect(container.querySelector(".markdown-body")?.getAttribute("data-streaming")).toBe("false");
+    });
+});
 
 describe("MarkdownRenderer XSS surface (D-023/E-013)", () => {
     it("does not execute raw HTML script tags from untrusted markdown", () => {
-        render(
+        renderWithI18n(
             <MarkdownRenderer content={'Before <script>window.__xss=1</script><img src=x onerror="window.__xss=1"> after'} />,
         );
-
-        // react-markdown without rehype-raw should treat HTML as text or drop unsafe tags,
-        // never create a live <script> element.
         expect(document.querySelector("script")).toBeNull();
         expect(document.querySelector("img[onerror]")).toBeNull();
         expect((window as typeof window & { __xss?: number }).__xss).toBeUndefined();
@@ -19,7 +146,7 @@ describe("MarkdownRenderer XSS surface (D-023/E-013)", () => {
     });
 
     it("renders fenced code blocks as text without interpreting HTML inside them", () => {
-        const { container } = render(
+        const { container } = renderWithI18n(
             <MarkdownRenderer
                 content={[
                     "```html",
@@ -28,36 +155,12 @@ describe("MarkdownRenderer XSS surface (D-023/E-013)", () => {
                 ].join("\n")}
             />,
         );
-
         expect(document.querySelector("script")).toBeNull();
         expect(container.querySelector("code")?.textContent ?? "").toContain("<script>alert(1)</script>");
     });
 
-    it("sets data-streaming for streaming mode consumers", () => {
-        const { container, rerender } = render(<MarkdownRenderer content="hello" isStreaming />);
-        expect(container.querySelector(".markdown-body")?.getAttribute("data-streaming")).toBe("true");
-        rerender(<MarkdownRenderer content="hello" isStreaming={false} />);
-        expect(container.querySelector(".markdown-body")?.getAttribute("data-streaming")).toBe("false");
-    });
-
-    it("renders streaming content as plain pre-wrapped text without markdown structure", () => {
-        const { container, rerender } = render(
-            <MarkdownRenderer content={"# Title\n\n```js\nconst x = 1\n```"} isStreaming />,
-        );
-        expect(container.querySelector("h1")).toBeNull();
-        expect(container.querySelector("pre")).toBeNull();
-        expect(container.querySelector("code")).toBeNull();
-        expect(container.textContent ?? "").toContain("# Title");
-        expect(container.textContent ?? "").toContain("const x = 1");
-
-        rerender(<MarkdownRenderer content={"# Title\n\n```js\nconst x = 1\n```"} isStreaming={false} />);
-        expect(container.querySelector("h1")).toBeTruthy();
-        expect(container.querySelector("code")).toBeTruthy();
-    });
-
-    // wave-90 residual — broader XSS payload matrix (D-023/E-013)
     it("does not materialize iframe/object/svg script vectors from raw HTML", () => {
-        render(
+        renderWithI18n(
             <MarkdownRenderer
                 content={[
                     '<iframe src="javascript:alert(1)"></iframe>',
@@ -75,7 +178,7 @@ describe("MarkdownRenderer XSS surface (D-023/E-013)", () => {
     });
 
     it("does not create executable javascript: or data: anchors from markdown links", () => {
-        const { container } = render(
+        const { container } = renderWithI18n(
             <MarkdownRenderer
                 content={[
                     "[js](javascript:alert(1))",
@@ -86,7 +189,6 @@ describe("MarkdownRenderer XSS surface (D-023/E-013)", () => {
         );
         for (const a of Array.from(container.querySelectorAll("a"))) {
             const href = (a.getAttribute("href") ?? "").toLowerCase();
-            // react-markdown may drop or neutralize dangerous schemes; never leave a live js/data/vbs href
             expect(href.startsWith("javascript:")).toBe(false);
             expect(href.startsWith("data:")).toBe(false);
             expect(href.startsWith("vbscript:")).toBe(false);
@@ -95,7 +197,7 @@ describe("MarkdownRenderer XSS surface (D-023/E-013)", () => {
     });
 
     it("keeps event-handler attributes from raw HTML from becoming live DOM props", () => {
-        render(
+        renderWithI18n(
             <MarkdownRenderer
                 content={'<a href="https://example.com" onclick="window.__xss=1">click</a><div onmouseover="window.__xss=1">x</div>'}
             />,
@@ -106,7 +208,7 @@ describe("MarkdownRenderer XSS surface (D-023/E-013)", () => {
     });
 
     it("renders markdown tables/lists without injecting raw HTML cells", () => {
-        const { container } = render(
+        const { container } = renderWithI18n(
             <MarkdownRenderer
                 content={[
                     "| a | b |",

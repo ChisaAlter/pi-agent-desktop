@@ -686,6 +686,8 @@ export interface AppSettings {
     showThinking?: boolean;
     /** 思考级别。`none` 仅用于迁移旧版持久化数据。 */
     thinkingLevel?: PiThinkingLevel | "none";
+    /** 流式动效: 词级淡入(默认关, 三条件 AND: isStreaming && !reducedMotion && 此开关)。 */
+    streamFadeEnabled?: boolean;
     /** 用户自定义快捷键覆盖。 */
     shortcutOverrides?: ShortcutOverride[];
     /** 长程能力：MiMoCode 风格 mode/goal/memory/checkpoint/task/max 适配层 */

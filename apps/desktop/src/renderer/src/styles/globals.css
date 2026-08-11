@@ -531,8 +531,9 @@ select:not([data-allow-blue-focus]):focus {
   background: #2a2a2a;
   border-color: var(--color-border);
 }
-[data-theme="dark"] :not(pre) > code {
-  background: #333333;
+[data-theme="dark"] :not(pre) > code,
+[data-theme="dark"] .markdown-inline-code {
+  background: #2b3138;
 }
 
 /* Dark theme Markdown */
@@ -549,6 +550,55 @@ select:not([data-allow-blue-focus]):focus {
 [data-theme="dark"] .markdown-body tr:hover {
   background: #2a2a2a;
 }
+
+/* Dark theme 代码块卡片 + hljs 高亮色(github-dark 同源) */
+[data-theme="dark"] .markdown-body .markdown-code-header,
+[data-theme="dark"] .markdown-body .markdown-code-pre,
+[data-theme="dark"] .markdown-body .markdown-code-copy {
+  background: #1e2228;
+  border-color: #333a44;
+}
+[data-theme="dark"] .markdown-body .markdown-code-lang {
+  color: #9aa4b2;
+}
+[data-theme="dark"] .markdown-body .markdown-code-copy:hover {
+  background: #2b3138;
+  color: var(--mm-text-primary);
+}
+[data-theme="dark"] .markdown-body .hljs {
+  background: transparent;
+  color: #e6edf3;
+}
+[data-theme="dark"] .markdown-body .hljs-comment,
+[data-theme="dark"] .markdown-body .hljs-quote { color: #8b949e; }
+[data-theme="dark"] .markdown-body .hljs-keyword,
+[data-theme="dark"] .markdown-body .hljs-selector-tag,
+[data-theme="dark"] .markdown-body .hljs-subst { color: #ff7b72; }
+[data-theme="dark"] .markdown-body .hljs-number,
+[data-theme="dark"] .markdown-body .hljs-literal,
+[data-theme="dark"] .markdown-body .hljs-variable,
+[data-theme="dark"] .markdown-body .hljs-template-variable,
+[data-theme="dark"] .markdown-body .hljs-tag .hljs-attr { color: #79c0ff; }
+[data-theme="dark"] .markdown-body .hljs-string,
+[data-theme="dark"] .markdown-body .hljs-doctag { color: #a5d6ff; }
+[data-theme="dark"] .markdown-body .hljs-title,
+[data-theme="dark"] .markdown-body .hljs-section,
+[data-theme="dark"] .markdown-body .hljs-selector-id { color: #d2a8ff; }
+[data-theme="dark"] .markdown-body .hljs-type,
+[data-theme="dark"] .markdown-body .hljs-class .hljs-title { color: #ffa657; }
+[data-theme="dark"] .markdown-body .hljs-tag,
+[data-theme="dark"] .markdown-body .hljs-name,
+[data-theme="dark"] .markdown-body .hljs-attribute { color: #7ee787; }
+[data-theme="dark"] .markdown-body .hljs-regexp,
+[data-theme="dark"] .markdown-body .hljs-link { color: #ffa657; }
+[data-theme="dark"] .markdown-body .hljs-symbol,
+[data-theme="dark"] .markdown-body .hljs-bullet { color: #ffa657; }
+[data-theme="dark"] .markdown-body .hljs-built_in,
+[data-theme="dark"] .markdown-body .hljs-title.class_,
+[data-theme="dark"] .markdown-body .hljs-function .hljs-title { color: #d2a8ff; }
+[data-theme="dark"] .markdown-body .hljs-meta { color: #8b949e; }
+[data-theme="dark"] .markdown-body .hljs-emphasis { font-style: italic; }
+[data-theme="dark"] .markdown-body .hljs-strong { font-weight: 600; }
 
 /* ===== Dark Theme — 硬编码颜色覆盖 =====
  * 组件中大量使用了 bg-white, bg-[#f*], text-[#1*], border-[#e*] 等
@@ -834,7 +884,7 @@ select:not([data-allow-blue-focus]):focus {
   border: 0;
 }
 
-/* 代码块 */
+/* 代码块(兜底, 被 .markdown-body .markdown-code-pre 覆盖) */
 pre {
   background: #f8f9fa;
   border: 1px solid var(--color-border);
@@ -859,32 +909,60 @@ code {
   font-size: 0.9em;
 }
 
-/* Markdown 样式 */
+/* Markdown 样式 — Cindy 式排版节奏(块间距 + 首尾归零) */
 .markdown-body {
   min-width: 0;
   color: var(--color-text-primary);
   line-height: 1.65;
+  word-break: normal;
 }
 
-.markdown-body pre {
-  max-width: 100%;
-  margin: 12px 0 16px;
+/* ── 代码块卡片 ─────────────────────────────── */
+.markdown-body .markdown-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  border: 1px solid var(--mm-border);
+  border-bottom: none;
+  border-radius: 10px 10px 0 0;
+  background: var(--mm-bg-panel);
+}
+
+.markdown-body .markdown-code-lang {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--mm-text-tertiary);
+  text-transform: lowercase;
+  user-select: none;
+}
+
+.markdown-body .markdown-code-pre {
+  margin: 0;
   padding: 14px 16px;
+  border: 1px solid var(--mm-border);
+  border-radius: 0 0 10px 10px;
   overflow-x: auto;
-  white-space: pre-wrap;
+  white-space: pre-wrap; /* 折行, 不出横滚条(Cindy CodeBlockPre 同款) */
   overflow-wrap: anywhere;
   word-break: normal;
   tab-size: 2;
   color: var(--mm-text-primary);
-  background: #f4f6f8;
-  border-color: #d6dbe1;
+  background: var(--mm-bg-panel);
+  font-family: var(--font-mono);
   font-size: var(--font-size-md);
   line-height: 1.75;
   letter-spacing: 0;
   font-variant-ligatures: none;
 }
 
-.markdown-body pre code {
+/* 无语言徽标时(纯代码无 lang)直接圆角 */
+.markdown-body .markdown-code-pre:first-child {
+  border-radius: 10px;
+}
+
+.markdown-body .markdown-code-pre code {
   display: block;
   min-width: 0;
   white-space: inherit;
@@ -894,54 +972,106 @@ code {
   line-height: inherit;
 }
 
+/* 复制按钮: hover 显示 */
+.markdown-body .markdown-code-copy {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  display: inline-flex;
+  height: 26px;
+  width: 26px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid var(--mm-border);
+  background: var(--mm-bg-panel);
+  color: var(--mm-text-tertiary);
+  opacity: 0;
+  transition: opacity 150ms;
+  cursor: pointer;
+}
+.markdown-body .group:hover .markdown-code-copy,
+.markdown-body .markdown-code-copy:focus-visible {
+  opacity: 1;
+}
+.markdown-body .markdown-code-copy:hover {
+  color: var(--mm-text-primary);
+  background: var(--mm-bg-control);
+}
+
+/* 行内代码 — 增强对比 */
+.markdown-inline-code,
+.markdown-body :not(pre) > code {
+  background: #e8ecf1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: var(--font-mono);
+}
+
+/* 行内路径可点 */
+.markdown-body .markdown-path-link {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* 标题 */
 .markdown-body h1,
 .markdown-body h2,
 .markdown-body h3,
 .markdown-body h4,
 .markdown-body h5,
 .markdown-body h6 {
-  margin-top: 24px;
-  margin-bottom: 16px;
+  margin: 18px 0 10px;
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.3;
   color: var(--color-text-primary);
 }
+.markdown-body h1 { font-size: 1.5em; }
+.markdown-body h2 { font-size: 1.3em; }
+.markdown-body h3 { font-size: 1.15em; }
+.markdown-body h4 { font-size: 1em; }
+.markdown-body h5 { font-size: 0.95em; }
+.markdown-body h6 { font-size: 0.9em; }
+.markdown-body h1:first-child,
+.markdown-body h2:first-child,
+.markdown-body h3:first-child,
+.markdown-body h4:first-child,
+.markdown-body h5:first-child,
+.markdown-body h6:first-child { margin-top: 0; }
 
-.markdown-body h1 {
-  font-size: 2em;
-  border-bottom: 1px solid var(--color-border);
-  padding-bottom: 0.3em;
-}
-
-.markdown-body h2 {
-  font-size: 1.5em;
-  border-bottom: 1px solid var(--color-border);
-  padding-bottom: 0.3em;
-}
-
-.markdown-body h3 {
-  font-size: 1.25em;
-}
-
+/* 段落 */
 .markdown-body p {
-  margin-bottom: 16px;
+  margin: 8px 0;
 }
+.markdown-body p:first-child { margin-top: 0; }
+.markdown-body p:last-child { margin-bottom: 0; }
 
+/* 列表 */
 .markdown-body ul,
 .markdown-body ol {
-  margin-bottom: 16px;
-  padding-left: 2em;
+  margin: 8px 0;
+  padding-left: 1.6em;
 }
-
+.markdown-body ul:first-child,
+.markdown-body ol:first-child { margin-top: 0; }
+.markdown-body ul:last-child,
+.markdown-body ol:last-child { margin-bottom: 0; }
+.markdown-body ul { list-style: disc; }
+.markdown-body ol { list-style: decimal; }
 .markdown-body li {
-  margin-bottom: 8px;
+  margin: 4px 0;
 }
+.markdown-body li > ul,
+.markdown-body li > ol { margin: 4px 0; }
 
 .markdown-body blockquote {
-  padding: 0 1em;
+  padding: 2px 12px;
+  margin: 8px 0;
   color: var(--color-text-secondary);
   border-left: 0.25em solid var(--color-border);
-  margin-bottom: 16px;
   background: #f9fafb;
   border-radius: 0 var(--radius-card) var(--radius-card) 0;
 }
@@ -962,10 +1092,18 @@ code {
   border: 1px solid var(--color-border);
 }
 
+/* 表格 — 表头底色 + 边框 + 长 token 断行 + 外层横滚兜底 */
+.markdown-body .markdown-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+.markdown-body .markdown-table-wrap:first-child { margin-top: 0; }
+.markdown-body .markdown-table-wrap:last-child { margin-bottom: 0; }
+
 .markdown-body table {
   width: 100%;
   border-collapse: collapse;
-  margin-bottom: 16px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   overflow: hidden;
@@ -976,6 +1114,9 @@ code {
   padding: 8px 12px;
   border: 1px solid var(--color-border);
   text-align: left;
+  break-words: anywhere;
+  overflow-wrap: anywhere; /* 长 token(路径/逗号列表)断行, 不撑爆列 */
+  word-break: break-word;
 }
 
 .markdown-body th {
@@ -989,6 +1130,22 @@ code {
 
 .markdown-body tr:hover {
   background: #f5f5f5;
+}
+
+.markdown-body hr {
+  margin: 16px 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+/* 流式词级淡入动画(stream-word span, 由 rehypeStreamWordFade 生成) */
+@keyframes stream-word-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.markdown-body .stream-word {
+  animation: stream-word-in 150ms ease-out both;
+  animation-delay: var(--wf-delay, 0ms);
 }
 
 /* 动画类 */

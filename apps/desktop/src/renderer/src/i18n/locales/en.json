@@ -1061,6 +1061,10 @@
       "aria": "Font size",
       "searchLabel": "Font size"
     },
+    "streamFade": {
+      "label": "Streaming word fade",
+      "description": "Each new word fades in over 150ms during streaming (not a typewriter; disabled automatically under reduced motion)."
+    },
     "autoSave": {
       "label": "Auto-save"
     },

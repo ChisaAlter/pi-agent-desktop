@@ -1,41 +1,91 @@
 // @vitest-environment jsdom
 
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { ThinkingBlock } from "./ThinkingBlock";
+import { beforeEach, describe, expect, it } from "vitest";
+import { ThinkingBlock, formatDuration, ThinkingText } from "./ThinkingBlock";
 
 describe("ThinkingBlock", () => {
+  beforeEach(() => {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith("thinking:")) localStorage.removeItem(key);
+    }
+  });
+
   it("renders nothing when content empty", () => {
     const { container } = render(<ThinkingBlock content="" />);
     expect(container.textContent).toBe("");
   });
 
-  it("toggles expansion with aria-expanded and label", () => {
+  it("default collapsed, toggles expansion with aria-expanded and label", () => {
     render(<ThinkingBlock content="step one" count={2} />);
-    const btn = screen.getByRole("button", { name: /展开思考/ });
+    const btn = screen.getByRole("button", { name: /展开思考|思考 2 次/ });
     expect(btn.getAttribute("aria-expanded")).toBe("false");
     expect(screen.getByText(/思考 2 次/)).toBeTruthy();
+    // 默认折叠: 内容不可见
+    expect(screen.queryByText("step one")).toBeNull();
     fireEvent.click(btn);
     expect(btn.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByText("step one")).toBeTruthy();
     expect(screen.getByRole("button", { name: /收起思考/ })).toBeTruthy();
   });
 
-  it("shows streaming label and keeps content expanded when defaultExpanded", () => {
-    render(
-      <ThinkingBlock content="partial..." isStreaming defaultExpanded />,
-    );
-    expect(screen.getByText("思考中")).toBeTruthy();
-    expect(screen.getByText("partial...")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /收起思考/ }).getAttribute("aria-expanded")).toBe(
-      "true",
-    );
+  it("streaming state: 默认折叠 + 计时标签(不展开)", () => {
+    render(<ThinkingBlock content="partial..." isStreaming />);
+    expect(screen.getByText(/思考中/)).toBeTruthy();
+    // 默认折叠: 流式中内容不可见(长思考不刷屏)
+    expect(screen.queryByText("partial...")).toBeNull();
+  });
+
+  it("persistKey: 展开状态写入 localStorage, 重渲染恢复", () => {
+    const { rerender } = render(<ThinkingBlock content="persisted thinking" persistKey="ts-1" />);
+    const btn = screen.getByRole("button", { name: /展开思考|思考 1 次/ });
+    fireEvent.click(btn);
+    expect(localStorage.getItem("thinking:ts-1")).toBe("true");
+
+    // 重渲染(同一 persistKey): 恢复展开
+    rerender(<ThinkingBlock content="persisted thinking" persistKey="ts-1" />);
+    expect(screen.getByRole("button", { name: /收起思考/ })).toBeTruthy();
+    expect(screen.getByText("persisted thinking")).toBeTruthy();
+  });
+
+  it("无 persistKey 不写 thinking key", () => {
+    render(<ThinkingBlock content="x" />);
+    fireEvent.click(screen.getByRole("button"));
+    const thinkingKeys = Object.keys(localStorage).filter((k) => k.startsWith("thinking:"));
+    expect(thinkingKeys).toHaveLength(0);
   });
 
   it("exposes thinking toggle focus-visible ring for keyboard a11y", () => {
     render(<ThinkingBlock content="step one" />);
-    expect(screen.getByRole("button", { name: /展开思考/ }).className).toContain(
+    expect(screen.getByRole("button", { name: /展开思考|思考 1 次/ }).className).toContain(
       "focus-visible:ring-2",
     );
+  });
+});
+
+describe("formatDuration", () => {
+  it("short → Xs", () => {
+    expect(formatDuration(500)).toBe("1s");
+    expect(formatDuration(12_000)).toBe("12s");
+  });
+  it("long → Xm Ys", () => {
+    expect(formatDuration(90_000)).toBe("1m 30s");
+    expect(formatDuration(120_000)).toBe("2m");
+  });
+});
+
+describe("ThinkingText 轻量行内强调", () => {
+  it("渲染 **粗体** / *斜体* / `code`", () => {
+    const { container } = render(
+      <ThinkingText content={"有 **粗体** 和 *斜体* 与 `code` 混合"} />,
+    );
+    expect(container.querySelector("strong")?.textContent).toBe("粗体");
+    expect(container.querySelector("em")?.textContent).toBe("斜体");
+    expect(container.querySelector("code")?.textContent).toBe("code");
+  });
+
+  it("普通文本原样保留", () => {
+    const { container } = render(<ThinkingText content={"纯文本 a-b_c"} />);
+    expect(container.textContent).toBe("纯文本 a-b_c");
   });
 });

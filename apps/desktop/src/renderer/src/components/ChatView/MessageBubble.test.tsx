@@ -9,6 +9,11 @@ import { MessageBubble } from "./MessageBubble";
 
 describe("MessageBubble", () => {
   beforeEach(() => {
+    // 只清 thinking 展开持久化 key(避免跨测试 localStorage 污染展开状态);
+    // 不能清整个 localStorage(i18n locale 缓存在里面, 清了 t() 回退 key)。
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith("thinking:")) localStorage.removeItem(key);
+    }
     useSettingsStore.setState({
       settings: {
         ...useSettingsStore.getState().settings,
@@ -310,7 +315,7 @@ describe("MessageBubble", () => {
       </I18nProvider>,
     );
 
-    const toggle = screen.getByRole("button", { name: /展开思考/ });
+    const toggle = screen.getByRole("button", { name: /思考 1 次/ });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(toggle.closest('[data-motion="thinking-shell"]')?.className).toContain("pi-motion-thinking-shell");
     expect(screen.queryByText("可展开的思考内容")).toBeNull();
@@ -344,7 +349,7 @@ describe("MessageBubble", () => {
       </I18nProvider>,
     );
 
-    const thinkingToggle = screen.getByRole("button", { name: /展开思考/ });
+    const thinkingToggle = screen.getByRole("button", { name: /思考 1 次/ });
     const toolSummary = screen.getByText("查看 1 个文件");
     const formalContent = screen.getByText("正式回答");
 
@@ -525,8 +530,8 @@ describe("MessageBubble", () => {
       </I18nProvider>,
     );
 
-    // Streaming path is plain text for jank reduction; full markdown after stream ends.
-    expect(screen.getByText("**普通助手回复**")).toBeTruthy();
+    // Streaming path: full markdown (全量流式解析), strong 已渲染。
+    expect(screen.getByText("普通助手回复").tagName).toBe("STRONG");
     expect(document.querySelector('.markdown-body')?.getAttribute("data-streaming")).toBe("true");
   });
 
@@ -650,9 +655,10 @@ describe("MessageBubble", () => {
     );
 
     expect(container.querySelector('.markdown-body')?.getAttribute("data-streaming")).toBe("true");
-    expect(screen.queryByRole("heading", { name: "架构分层" })).toBeNull();
-    expect(container.textContent).toContain("## 架构分层");
-    expect(container.textContent).toContain("src/renderer/");
+    // 全量流式解析: 流式中就渲染 heading + strong + 代码块卡片。
+    expect(screen.getByRole("heading", { name: "架构分层" }).tagName).toBe("H2");
+    expect(screen.getByText("主进程").tagName).toBe("STRONG");
+    expect(container.querySelector("pre")?.textContent).toContain("src/renderer/");
 
     rerender(
       <I18nProvider>

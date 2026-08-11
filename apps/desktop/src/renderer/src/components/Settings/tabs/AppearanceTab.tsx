@@ -1,9 +1,9 @@
-// 外观 tab — 主题选择 + 字号滑块.
+// 外观 tab — 主题选择 + 字号滑块 + 流式动效开关.
 
 import React from 'react';
 import { useSettingsStore } from '../../../stores/settings-store';
 import { useI18n } from '../../../i18n';
-import { SettingsCard, SettingsPage, FieldRow } from '../_shared';
+import { SettingsCard, SettingsPage, FieldRow, SwitchControl } from '../_shared';
 
 export function AppearanceTab(): React.JSX.Element {
     const { settings, updateSettings } = useSettingsStore();
@@ -54,6 +54,13 @@ export function AppearanceTab(): React.JSX.Element {
                         onChange={(e) => updateNumberSetting('fontSize', e.target.value)}
                         className="w-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]"
                         aria-label={t('settings.fontSize.aria')}
+                    />
+                </FieldRow>
+                <FieldRow anchorId="appearance-stream-fade" label={t('settings.streamFade.label')} description={t('settings.streamFade.description')}>
+                    <SwitchControl
+                        checked={settings.streamFadeEnabled === true}
+                        label={t('settings.streamFade.label')}
+                        onChange={() => updateSettings({ streamFadeEnabled: settings.streamFadeEnabled !== true })}
                     />
                 </FieldRow>
             </SettingsCard>

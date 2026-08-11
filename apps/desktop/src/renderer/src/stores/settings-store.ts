@@ -136,6 +136,7 @@ const defaultSettings: AppSettings = {
   shortcutOverrides: readCachedShortcutOverrides(),
   showThinking: true,
   thinkingLevel: 'medium',
+  streamFadeEnabled: false,
   longHorizon: DEFAULT_LONG_HORIZON_SETTINGS,
 };
 
