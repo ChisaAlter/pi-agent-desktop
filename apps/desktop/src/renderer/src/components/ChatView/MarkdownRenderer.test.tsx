@@ -54,15 +54,15 @@ describe("MarkdownRenderer 全量流式解析", () => {
         expect(container.querySelector(".markdown-code-lang")?.textContent).toBe("js");
     });
 
-    it("流式中代码块不高亮(hljs 摘除), 结束后一次性高亮", () => {
+    it("流式中代码块也高亮(hljs 在链上, Cindy 同款观感)", () => {
         const { container, rerender } = renderWithI18n(
             <MarkdownRenderer content={"```js\nconst x = 1\n```"} isStreaming />,
         );
-        // 流式中: 无 hljs class(不 re-tokenize)
-        expect(container.querySelector("code")?.className ?? "").not.toContain("hljs");
+        // 流式中: hljs class 已注入(代码块生成过程中即高亮)
+        expect(container.querySelector("code")?.className ?? "").toContain("hljs");
 
         rerender(<MarkdownRenderer content={"```js\nconst x = 1\n```"} isStreaming={false} />);
-        // 结束后: hljs 高亮 class 注入
+        // 结束后: hljs 高亮 class 保留
         expect(container.querySelector("code")?.className ?? "").toContain("hljs");
     });
 
@@ -72,6 +72,24 @@ describe("MarkdownRenderer 全量流式解析", () => {
         );
         // repair 补闭合 → 流式中即渲染为 <strong>
         expect(container.querySelector("strong")?.textContent).toBe("非常重");
+    });
+
+    it("流式节流: 内容更新后 100ms 内不立即全量重解析, 结束立即 flush 最终值", async () => {
+        const { container, rerender } = renderWithI18n(
+            <MarkdownRenderer content={"旧内容"} isStreaming />,
+        );
+        // 更新内容(节流窗口内): 旧值仍在
+        rerender(<MarkdownRenderer content={"新内容"} isStreaming />);
+        expect(container.textContent ?? "").toContain("旧内容");
+
+        // 等节流 flush(100ms + 余量)
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        rerender(<MarkdownRenderer content={"新内容"} isStreaming />);
+        expect(container.textContent ?? "").toContain("新内容");
+
+        // 流式结束: 立即 flush 最终值, 不丢最后一帧
+        rerender(<MarkdownRenderer content={"最终内容"} isStreaming={false} />);
+        expect(container.textContent ?? "").toContain("最终内容");
     });
 
     it("代码块卡片: 语言徽标 + 复制按钮(读 innerText)", async () => {

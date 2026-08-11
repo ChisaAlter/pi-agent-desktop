@@ -35,24 +35,67 @@ function StreamingIndicator(): React.JSX.Element {
     );
 }
 
-/** 轻量行内强调: **粗体** / *斜体* / `code` → 元素。 */
+/** 轻量行内强调: **粗体** / *斜体* / `code` → 元素。
+ *  用带状态的扫描器而不是正则:未闭合强调符(流式中思考内容)不崩、不丢文本,
+ *  闭合符到达后正确包裹 —— 与 repairStreamingMarkdown 的保守边界一致。 */
 export function ThinkingText({ content }: { content: string }): React.JSX.Element {
     const parts = useMemo(() => {
-        // 按 反引号/加粗/斜体 拆分(保持纯文本安全性, 不解析 HTML)。
-        return content
-            .split(/(`[^`\n]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*)/g)
-            .map((part, i) => {
-                if (part.startsWith('`') && part.endsWith('`')) {
-                    return <code key={i} className="markdown-inline-code">{part.slice(1, -1)}</code>;
+        const out: React.ReactNode[] = [];
+        let i = 0;
+        let plain = "";
+        const flushPlain = (): void => {
+            if (plain) {
+                out.push(plain);
+                plain = "";
+            }
+        };
+
+        while (i < content.length) {
+            // 反引号 code(优先, 内容里星号不参与强调配对)
+            if (content[i] === "`") {
+                const end = content.indexOf("`", i + 1);
+                if (end === -1) {
+                    // 未闭合 inline code: 保持字面量, 不吞后续内容
+                    plain += content[i];
+                    i += 1;
+                    continue;
                 }
-                if (part.startsWith('**') && part.endsWith('**')) {
-                    return <strong key={i}>{part.slice(2, -2)}</strong>;
+                flushPlain();
+                out.push(<code key={out.length} className="markdown-inline-code">{content.slice(i + 1, end)}</code>);
+                i = end + 1;
+                continue;
+            }
+            // 加粗 **...**
+            if (content.startsWith("**", i)) {
+                const end = content.indexOf("**", i + 2);
+                if (end === -1) {
+                    plain += content[i];
+                    i += 1;
+                    continue;
                 }
-                if (part.startsWith('*') && part.endsWith('*')) {
-                    return <em key={i}>{part.slice(1, -1)}</em>;
+                flushPlain();
+                out.push(<strong key={out.length}>{content.slice(i + 2, end)}</strong>);
+                i = end + 2;
+                continue;
+            }
+            // 斜体 *...*(不成对 ** 时才当作斜体开符)
+            if (content[i] === "*" && content[i + 1] !== "*") {
+                const end = content.indexOf("*", i + 1);
+                if (end === -1 || content[end + 1] === "*") {
+                    plain += content[i];
+                    i += 1;
+                    continue;
                 }
-                return part;
-            });
+                flushPlain();
+                out.push(<em key={out.length}>{content.slice(i + 1, end)}</em>);
+                i = end + 1;
+                continue;
+            }
+            plain += content[i];
+            i += 1;
+        }
+        flushPlain();
+        return out;
     }, [content]);
     return <>{parts}</>;
 }

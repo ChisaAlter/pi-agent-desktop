@@ -97,7 +97,18 @@ describe("ThinkingText 轻量行内强调", () => {
   });
 
   it("普通文本原样保留", () => {
-    const { container } = render(<ThinkingText content={"纯文本 a-b_c"} />);
+    const { container } = renderWithI18n(<ThinkingText content={"纯文本 a-b_c"} />);
     expect(container.textContent).toBe("纯文本 a-b_c");
+  });
+
+  it("未闭合强调符不崩、不丢文本(流式中思考)", () => {
+    const { container } = renderWithI18n(<ThinkingText content={"思考中 **半截强调"} />);
+    expect(container.textContent).toBe("思考中 **半截强调");
+  });
+
+  it("`code` 内容里的星号不参与强调配对", () => {
+    const { container } = renderWithI18n(<ThinkingText content={"`a * b` 后面 *斜体*"} />);
+    expect(container.querySelector("code")?.textContent).toBe("a * b");
+    expect(container.querySelector("em")?.textContent).toBe("斜体");
   });
 });

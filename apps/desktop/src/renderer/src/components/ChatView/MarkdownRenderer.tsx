@@ -107,7 +107,7 @@ export function normalizeMathDelimiters(markdown: string): string {
         const display = inline.replace(
             /^(\s*)\\\[([\s\S]*?)\\\](\s*)$/,
             (_m, lead: string, math: string, trail: string) => (
-                math.trim() ? `${lead}$$$$\n${lead}${math.trim()}\n${lead}$$$${trail}` : _m
+                math.trim() ? `${lead}$$\n${lead}${math.trim()}\n${lead}$$${trail}` : _m
             ),
         );
         out.push(display);
@@ -298,14 +298,10 @@ export const MarkdownRenderer = React.memo(function MarkdownRenderer({
             plugins: [...REHYPE_PLUGINS, [rehypeStreamWordFade, state]],
         };
     }, [streamFade]);
+    // 流式中也保留 rehypeHighlight: 代码块在生成过程中即高亮(Cindy 同款观感)。
+    // 成本由 100ms 节流兜住 —— 每 100ms 一次全量 parse+highlight, 对消息级文本
+    // 可接受; 这是用户要的"流式中看到完整结构"的一部分, 不用 pi-web 的降级。
     const rehypePlugins = wordFade?.plugins ?? REHYPE_PLUGINS;
-    // 流式中摘掉 rehypeHighlight: 增长中的代码块每 chunk 全量 re-tokenize 是
-    // 流式渲染最贵的操作(pi-web CodeBlock 注释同源); 回合结束一次性高亮。
-    const streamingRehypePlugins = useMemo(
-        () => REHYPE_PLUGINS.filter((p) => p !== rehypeHighlight),
-        [],
-    );
-    const activeRehypePlugins = isStreaming ? streamingRehypePlugins : rehypePlugins;
     const handleWordFadeAnimationEnd = useCallback((event: React.AnimationEvent<HTMLDivElement>) => {
         if (wordFade) markSettledFromAnimationEnd(wordFade.state, event.nativeEvent);
     }, [wordFade]);
@@ -339,7 +335,7 @@ export const MarkdownRenderer = React.memo(function MarkdownRenderer({
         >
             <ReactMarkdown
                 remarkPlugins={REMARK_PLUGINS as never}
-                rehypePlugins={activeRehypePlugins as never}
+                rehypePlugins={rehypePlugins as never}
                 components={components}
                 urlTransform={safeUrlTransform}
             >

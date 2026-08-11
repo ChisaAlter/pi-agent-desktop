@@ -1180,6 +1180,12 @@ code {
   animation-delay: var(--wf-delay, 0ms);
 }
 
+/* 列表圆点淡入:li 挂 data-stream-marker 后, ::marker 借用第一个词的 delay */
+.markdown-body li[data-stream-marker]::marker {
+  animation: stream-word-in 150ms ease-out both;
+  animation-delay: var(--wf-delay, 0ms);
+}
+
 /* 动画类 */
 .animate-slide-in {
   animation: slide-in-right var(--motion-overlay) var(--motion-ease);
