@@ -692,6 +692,8 @@ export interface AppSettings {
     shortcutOverrides?: ShortcutOverride[];
     /** 长程能力：MiMoCode 风格 mode/goal/memory/checkpoint/task/max 适配层 */
     longHorizon?: LongHorizonSettings;
+    /** Herdr 控制面布局模式: studio=默认三栏 / mission=任务优先 / terminal=终端优先（UI-REQ-003） */
+    herdrLayoutMode?: "studio" | "mission" | "terminal";
 }
 
 export interface ShortcutOverride {

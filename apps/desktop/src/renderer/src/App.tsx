@@ -25,7 +25,12 @@ import { Onboarding } from "./components/Onboarding/Onboarding";
 import { ChatView } from "./components/ChatView/ChatView";
 import { PermissionRequestStack } from "./components/ChatView/PermissionRequestStack";
 import { RunPanel, type RunView } from "./components/RunPanel/RunPanel";
-import { AgentsPanel } from "./components/Agents/AgentsPanel";
+import { HerdrControlSurface } from "./components/Herdr/HerdrControlSurface";
+import { HerdrContextRail } from "./components/Herdr/HerdrContextRail";
+import { HerdrLayoutSwitcher } from "./components/Herdr/HerdrLayoutSwitcher";
+import { HerdrStatusBar } from "./components/Herdr/HerdrStatusBar";
+import { HerdrTree } from "./components/Herdr/HerdrTree";
+import { MissionCockpit } from "./components/Herdr/MissionCockpit";
 import { SearchHistory } from "./components/SearchHistory/SearchHistory";
 import { SessionCenter } from "./components/SessionCenter/SessionCenter";
 import { TopTabBar } from "./components/TopTabBar/TopTabBar";
@@ -59,7 +64,7 @@ import { applyTheme, watchSystemTheme, type Theme } from "./utils/theme";
 import { addToast } from "./stores/toast-store";
 import { resolveActiveAgent } from "./utils/active-agent";
 
-type MainPanel = "chat" | "agents" | "run" | "workbench" | "skills" | "history";
+type MainPanel = "chat" | "agents" | "mission" | "run" | "workbench" | "skills" | "history";
 
 /**
  * Canonical section identifiers for the center panel router.
@@ -73,7 +78,7 @@ type MainPanel = "chat" | "agents" | "run" | "workbench" | "skills" | "history";
  * "settings" and "search" are intercepted by routeSection() and do not become
  * persistent center-panel sections.
  */
-type SectionId = "chat" | "agents" | "run" | "workbench" | "extensions" | "new-task" | "history";
+type SectionId = "chat" | "agents" | "mission" | "run" | "workbench" | "extensions" | "new-task" | "history";
 
 /**
  * Input type for routeSection() — covers all values that can arrive from
@@ -88,7 +93,7 @@ type FileWorkspaceTarget = { path: string; mode?: "edit" | "diff"; nonce: number
 /** Validate that an unknown section string from a DOM event is a valid SectionId. */
 function isValidSectionId(value: string): value is SectionId {
     switch (value) {
-        case "chat": case "agents": case "run": case "workbench":
+        case "chat": case "agents": case "mission": case "run": case "workbench":
             case "extensions": case "new-task": case "history":
             return true;
         default:
@@ -101,6 +106,20 @@ const DEFAULT_LEFT_SIDEBAR_WIDTH = 190;
 const MIN_LEFT_SIDEBAR_WIDTH = 160;
 const MAX_LEFT_SIDEBAR_WIDTH = 320;
 const RIGHT_RAIL_AUTO_OPEN_MIN_WIDTH = 960;
+
+/** Herdr 布局模式 → 左栏宽度（原型 CSS 变量 studio 270 / mission 220 / terminal 230） */
+const HERDR_LEFT_WIDTH: Record<"studio" | "mission" | "terminal", number> = {
+    studio: 270,
+    mission: 220,
+    terminal: 230,
+};
+
+/** Herdr 布局模式 → 右栏宽度（studio 310 / mission 335 / terminal 270） */
+const HERDR_RIGHT_WIDTH: Record<"studio" | "mission" | "terminal", string> = {
+    studio: "w-[310px]",
+    mission: "w-[335px]",
+    terminal: "w-[270px]",
+};
 
 function clampLeftSidebarWidth(width: number): number {
     return Math.max(MIN_LEFT_SIDEBAR_WIDTH, Math.min(MAX_LEFT_SIDEBAR_WIDTH, Math.round(width)));
@@ -119,6 +138,7 @@ function panelForSection(section: SectionId): MainPanel {
         case "workbench": return "workbench";
         case "extensions": return "skills";
         case "agents": return "agents";
+        case "mission": return "mission";
         case "chat": return "chat";
         case "new-task": return "chat";
         case "history": return "history";
@@ -213,6 +233,9 @@ function AppShell(): React.ReactElement {
     }, []);
 
     const [activeSection, setActiveSection] = useState<SectionId>("chat");
+    // Herdr 控制面 section（智能体/任务编排）：左槽换 HerdrTree、右槽换 ContextRail、
+    // 显示布局切换器与全局状态条（D4/D5）
+    const isHerdrSection = activeSection === "agents" || activeSection === "mission";
     const [runView, setRunView] = useState<RunView>("tasks");
     const [workbenchView, setWorkbenchView] = useState<WorkbenchView>("files");
     const [paletteOpen, setPaletteOpen] = useState(false);
@@ -244,6 +267,7 @@ function AppShell(): React.ReactElement {
     const rightRailCollapsed = useSettingsStore((state) => state.rightRailCollapsed);
     const sidebarGroupMode = useSettingsStore((state) => state.sidebarGroupMode);
     const setSidebarGroupMode = useSettingsStore((state) => state.setSidebarGroupMode);
+    const herdrLayoutMode = useSettingsStore((state) => state.herdrLayoutMode);
     const status = usePiStatusStore((state) => state.status);
     const piStatusLoading = usePiStatusStore((state) => state.loading);
     const refreshStatus = usePiStatusStore((state) => state.refreshStatus);
@@ -708,22 +732,6 @@ function AppShell(): React.ReactElement {
         useSessionStore.getState().setCurrentSession(sessionId);
         setSearchTarget(messageId ? { sessionId, messageId } : null);
     }, []);
-    // Fleet → chat navigation: switch workspace, activate the agent (and its
-    // session when one exists), then route to chat like `session:<id>`.
-    const handleOpenAgentFromFleet = useCallback((agentId: string) => {
-        const agent = useAgentStore.getState().agents.find((item) => item.id === agentId);
-        if (!agent) return;
-        const workspace = useWorkspaceStore.getState().workspaces.find((item) => item.id === agent.workspaceId);
-        if (workspace) {
-            useWorkspaceStore.getState().setCurrentWorkspace(workspace.id);
-            void selectWorkspaceForRoute(workspace.path);
-        }
-        useAgentStore.getState().setCurrentAgent(agentId);
-        if (agent.sessionId) {
-            useSessionStore.getState().setCurrentSession(agent.sessionId);
-        }
-        setActiveSection("chat");
-    }, []);
     const routeSection = useCallback((section: string) => {
         if (section === "settings") {
             window.piAPI?.openSettingsWindow();
@@ -992,25 +1000,51 @@ function AppShell(): React.ReactElement {
                         onOpenSettings={() => void window.piAPI?.openSettingsWindow()}
                     />
                 }
+                statusBarSlot={<HerdrStatusBar />}
                 leftCollapsed={leftCollapsed}
                 rightCollapsed={activePanel !== "chat" || rightRailCollapsed}
-                leftWidth={leftSidebarWidth}
-                rightFloatingOpen={activePanel === "chat"}
-                rightFloatingTopOffset="54px"
-                rightFloatingBottomOffset="calc(var(--pi-global-composer-height,103px) + 12px)"
+                leftWidth={isHerdrSection ? HERDR_LEFT_WIDTH[herdrLayoutMode] : leftSidebarWidth}
+                rightFloatingOpen={activePanel === "chat" || isHerdrSection}
+                rightFloatingTopOffset={isHerdrSection ? "54px" : "54px"}
+                rightFloatingBottomOffset={
+                    isHerdrSection
+                        ? "12px"
+                        : "calc(var(--pi-global-composer-height,103px) + 12px)"
+                }
                 rightFloatingChrome={false}
                 onCollapseLeft={() => setLeftCollapsed((v) => !v)}
-                onLeftWidthChange={setLeftSidebarWidth}
+                onLeftWidthChange={isHerdrSection ? undefined : setLeftSidebarWidth}
                 leftSlot={
-                    <MiniMaxCodeSidebar
-                        currentSection={activeSection}
-                        currentWorkspaceId={currentWorkspace?.id}
-                        piAgentStatus={piAgentStatus}
-                        onSectionChange={routeSection}
-                        onOpenSearchHistory={() => setShowSearchHistory(true)}
-                        groupMode={sidebarGroupMode}
-                        onGroupModeChange={setSidebarGroupMode}
-                    />
+                    isHerdrSection ? (
+                        <HerdrTree />
+                    ) : (
+                        <MiniMaxCodeSidebar
+                            currentSection={activeSection}
+                            currentWorkspaceId={currentWorkspace?.id}
+                            piAgentStatus={piAgentStatus}
+                            onSectionChange={routeSection}
+                            onOpenSearchHistory={() => setShowSearchHistory(true)}
+                            groupMode={sidebarGroupMode}
+                            onGroupModeChange={setSidebarGroupMode}
+                        />
+                    )
+                }
+                rightSlot={
+                    isHerdrSection ? (
+                        <div
+                            className={`overflow-hidden rounded-[8px] border border-[var(--mm-border)] bg-[var(--mm-bg-main)] shadow-[0_18px_48px_rgba(15,23,42,0.13)] ${
+                                HERDR_RIGHT_WIDTH[herdrLayoutMode]
+                            }`}
+                        >
+                            <HerdrContextRail />
+                        </div>
+                    ) : (
+                        <RightRail
+                            workspacePath={currentWorkspace?.path}
+                            workspaceId={currentWorkspace?.id}
+                            tasks={taskProgress.tasks}
+                        />
+                    )
                 }
                 centerSlot={
                     <div className="pi-motion-panel-stack">
@@ -1035,7 +1069,20 @@ function AppShell(): React.ReactElement {
                             >
                                 <ErrorBoundary fallback={panelFallback(t("app.panels.agents"))}>
                                     <div className="flex min-h-0 flex-1 overflow-hidden">
-                                        <AgentsPanel onOpenAgent={handleOpenAgentFromFleet} />
+                                        <HerdrControlSurface />
+                                    </div>
+                                </ErrorBoundary>
+                            </MotionPanelLayer>
+                        )}
+                        {(activePanel === "mission" || visitedPanels.has("mission")) && (
+                            <MotionPanelLayer
+                                active={activePanel === "mission"}
+                                panelId="mission"
+                                enterOnMount={activePanel === "mission" && !visitedPanels.has("mission")}
+                            >
+                                <ErrorBoundary fallback={panelFallback(t("app.panels.mission"))}>
+                                    <div className="flex min-h-0 flex-1 overflow-hidden">
+                                        <MissionCockpit />
                                     </div>
                                 </ErrorBoundary>
                             </MotionPanelLayer>
@@ -1095,16 +1142,10 @@ function AppShell(): React.ReactElement {
                         )}
                     </div>
                 }
-                rightSlot={
-                    activePanel === "chat" ? (
-                        <RightRail
-                            workspacePath={currentWorkspace?.path}
-                            workspaceId={currentWorkspace?.id}
-                            tasks={taskProgress.tasks}
-                        />
-                    ) : null
-                }
             />
+
+            {/* Herdr 布局切换器：仅「智能体/任务编排」section 显示（D4） */}
+            {isHerdrSection ? <HerdrLayoutSwitcher /> : null}
 
             {/* Modal/浮层 全部用 createPortal 挂到 body,绕开 layout overflow:hidden */}
             {portalTarget &&

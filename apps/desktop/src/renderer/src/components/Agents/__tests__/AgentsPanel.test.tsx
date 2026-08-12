@@ -3,220 +3,122 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AgentMessage, AgentRuntimeState, AgentTab, ExtensionUiRequest } from "@shared";
 import { AgentsPanel } from "../AgentsPanel";
 import { I18nProvider } from "../../../i18n";
-import { useAgentStore } from "../../../stores/agent-store";
-import { useSubagentStore } from "../../../stores/subagent-store";
-import { usePermissionStore } from "../../../stores/permission-store";
-import { useWorkspaceStore } from "../../../stores/workspace-store";
-import { usePlanStore } from "../../../stores/plan-store";
-import { useFleetSignalsStore } from "../../../stores/fleet-signals-store";
+import { useHerdrStore, buildHerdrTree } from "../../../stores/herdr-store";
+import { HERDR_MOCK_AGENTS, HERDR_MOCK_SESSION } from "../../../stores/herdr-mock-data";
 
 const renderWithI18n = (ui: React.ReactElement) => render(<I18nProvider>{ui}</I18nProvider>);
 
-function makeAgent(overrides: Partial<AgentTab> = {}): AgentTab {
-    return {
-        id: "agent-1",
-        workspaceId: "ws-1",
-        title: "重构分支",
-        status: "idle",
-        createdAt: 1,
-        updatedAt: 1,
-        ...overrides,
-    };
+/** 种子: mock 模式 + 原型同款数据 */
+function seedMockStore(overrides: Partial<{ server: "connected" | "offline" | "reconnecting"; selected: string }> = {}): void {
+    const { server = "connected", selected = "auth-worker" } = overrides;
+    useHerdrStore.setState({
+        mock: true,
+        server,
+        selectedAgent: selected,
+        stateSeq: 184,
+        agents: HERDR_MOCK_AGENTS,
+        tree: buildHerdrTree(HERDR_MOCK_SESSION, HERDR_MOCK_AGENTS),
+    });
 }
-
-function makeMessage(overrides: Partial<AgentMessage> = {}): AgentMessage {
-    return {
-        id: `m-${Math.random()}`,
-        agentId: "agent-1",
-        role: "assistant",
-        content: "已完成重构",
-        createdAt: 2,
-        ...overrides,
-    };
-}
-
-const unsub = (): void => undefined;
 
 beforeEach(() => {
-    Object.defineProperty(window, "piAPI", {
-        value: {
-            agentsList: vi.fn(async () => []),
-            agentsCreate: vi.fn(async (input: unknown) => makeAgent({ id: "agent-new", title: (input as { title?: string }).title ?? "Agent" })),
-            agentsMessages: vi.fn(async () => []),
-            agentsRuntimeState: vi.fn(async () => ({ agentId: "agent-1", status: "idle", isStreaming: false })),
-            agentsPrompt: vi.fn(async () => undefined),
-            agentsStop: vi.fn(async () => undefined),
-            agentsRestart: vi.fn(async () => makeAgent()),
-            agentsSetCurrent: vi.fn(async () => undefined),
-            subagentListInstances: vi.fn(async () => []),
-            subagentCancel: vi.fn(async () => null),
-            onAgentsState: vi.fn(() => unsub),
-            onAgentMessages: vi.fn(() => unsub),
-            onAgentRuntimeState: vi.fn(() => unsub),
-            onAgentEvent: vi.fn(() => unsub),
-            onSubagentEvent: vi.fn(() => unsub),
-            getGitStatus: vi.fn(async () => null),
-            gitDiff: vi.fn(async () => ""),
-        },
-        configurable: true,
-    });
-    useAgentStore.setState({
-        agents: [],
-        currentAgentId: null,
-        messagesByAgent: {},
-        runtimeByAgent: {},
-        initialized: true,
-    });
-    useSubagentStore.setState({ byAgent: {}, initialized: true });
-    usePermissionStore.setState({ pending: [], mode: "smart" });
-    usePlanStore.setState({ decisionRequest: null });
-    useFleetSignalsStore.setState({ queueBlockedByAgent: {}, approvalByRequest: {}, approvalPendingByWorkspace: {} });
-    useWorkspaceStore.setState({
-        workspaces: [{ id: "ws-1", name: "主项目", path: "C:\\proj", createdAt: 1 }],
-        currentWorkspaceId: "ws-1",
-    });
+    useHerdrStore.getState().reset();
+    vi.restoreAllMocks();
 });
 
-describe("AgentsPanel — 舰队面板", () => {
-    it("空态: 无 agent 时显示引导文案", () => {
-        renderWithI18n(<AgentsPanel onOpenAgent={() => undefined} />);
-        expect(screen.getByText("还没有 Agent")).toBeTruthy();
-        expect(screen.getAllByText("新建 Agent").length).toBeGreaterThanOrEqual(1);
+describe("AgentsPanel — Herdr 舰队视图", () => {
+    it("按 workspace 分组渲染卡片；工作区行显示计数摘要", () => {
+        seedMockStore();
+        renderWithI18n(<AgentsPanel />);
+
+        const groups = screen.getAllByTestId("fleet-workspace-group");
+        expect(groups).toHaveLength(2);
+        expect(groups[0].getAttribute("data-workspace")).toBe("primary");
+        expect(groups[1].getAttribute("data-workspace")).toBe("wt/auth-fix");
+        // primary 摘要: 3 个智能体 · 2 个标签页 · 仓库 pi-desktop
+        expect(groups[0].textContent).toContain("3 个智能体 · 2 个标签页 · 仓库 pi-desktop");
+        // worktree 摘要: 分支 herdr/reviewer
+        expect(groups[1].textContent).toContain("分支 herdr/reviewer");
     });
 
-    it("渲染 agent 卡: 标题 + 工作区 + 空闲徽章", () => {
-        useAgentStore.setState({ agents: [makeAgent()] });
-        renderWithI18n(<AgentsPanel onOpenAgent={() => undefined} />);
-        expect(screen.getByText("重构分支")).toBeTruthy();
-        expect(screen.getAllByText("主项目").length).toBeGreaterThanOrEqual(1);
-        expect(screen.getAllByText("空闲").length).toBeGreaterThanOrEqual(1);
+    it("卡片显示 显示名/kind·窗格/任务/会话/工作树/状态来源 + 状态徽章", () => {
+        seedMockStore();
+        renderWithI18n(<AgentsPanel />);
+
+        expect(screen.getByText("规划智能体")).toBeTruthy();
+        expect(screen.getByText(/Pi · 窗格 p-01 · primary/)).toBeTruthy();
+        expect(screen.getByText("拆解任务并验证任务依赖")).toBeTruthy();
+        expect(screen.getByText("pi-plan.jsonl")).toBeTruthy();
+        expect(screen.getAllByText("Herdr Pi 生命周期钩子").length).toBeGreaterThan(0);
+        // 状态徽章（role=status 非 name-from-content 角色，直接断言文本）
+        expect(screen.getByText("工作中")).toBeTruthy();
     });
 
-    it("running 状态显示「运行中」", () => {
-        useAgentStore.setState({
-            agents: [makeAgent({ status: "running" })],
-            runtimeByAgent: { "agent-1": { agentId: "agent-1", status: "running", isStreaming: true } },
+    it("无彩色侧边框（NL-003 负向）：卡片无 border-l-* 类", () => {
+        seedMockStore();
+        renderWithI18n(<AgentsPanel />);
+        const cards = screen.getAllByTestId("agent-card");
+        for (const card of cards) {
+            expect(card.className).not.toMatch(/border-l-/);
+        }
+    });
+
+    it("done 卡片主 CTA=标记已查看；点击后状态变空闲（seen 语义）", async () => {
+        seedMockStore();
+        renderWithI18n(<AgentsPanel />);
+
+        const doneCard = document.querySelector('[data-agent="tests-worker"]') as HTMLElement;
+        expect(doneCard.textContent).toContain("已完成 · 待查看");
+        const primary = doneCard.querySelector('[data-testid="card-primary-action"]') as HTMLButtonElement;
+        expect(primary.textContent).toContain("标记已查看");
+        fireEvent.click(primary);
+        await waitFor(() => {
+            expect(document.querySelector('[data-agent="tests-worker"]')?.textContent).toContain("空闲");
         });
-        const { container } = renderWithI18n(<AgentsPanel onOpenAgent={() => undefined} />);
-        expect(screen.getAllByText("运行中").length).toBeGreaterThanOrEqual(1);
-        expect(container.querySelectorAll('[data-agent-status="working"]').length).toBeGreaterThanOrEqual(1);
     });
 
-    it("挂起审批 → 阻塞徽章 + 原因「等待审批」", () => {
-        useAgentStore.setState({
-            agents: [makeAgent({ status: "running" })],
-            runtimeByAgent: { "agent-1": { agentId: "agent-1", status: "running", isStreaming: true } },
-        });
-        const pending: ExtensionUiRequest = {
-            requestId: "req-1",
-            agentId: "agent-1",
-            workspaceId: "ws-1",
-            kind: "confirm",
-            source: "permission",
-            title: "允许执行 bash",
-            createdAt: 1,
-        };
-        usePermissionStore.setState({ pending: [pending], mode: "smart" });
-        const { container } = renderWithI18n(<AgentsPanel onOpenAgent={() => undefined} />);
-        expect(screen.getAllByText("阻塞").length).toBeGreaterThanOrEqual(1);
-        expect(screen.getAllByText("等待审批").length).toBeGreaterThanOrEqual(1);
-        expect(container.querySelectorAll('[data-agent-status="blocked"]').length).toBeGreaterThanOrEqual(1);
+    it("blocked 卡片主 CTA=处理阻塞 → 进入 pane 视图；状态由生命周期上报模拟（不伪造批准）", () => {
+        seedMockStore();
+        renderWithI18n(<AgentsPanel />);
+
+        const blockedCard = document.querySelector('[data-agent="auth-worker"]') as HTMLElement;
+        const primary = blockedCard.querySelector('[data-testid="card-primary-action"]') as HTMLButtonElement;
+        expect(primary.textContent).toContain("处理阻塞");
+        fireEvent.click(primary);
+        expect(useHerdrStore.getState().view).toBe("pane");
+        // 原型行为: 在真实 pane 中处理后由生命周期钩子上报「工作中」（mock 模拟上报）;
+        // 关键点: 无 GUI 内「批准」按钮, 动作入口是进入终端
+        expect(useHerdrStore.getState().agents.find((a) => a.name === "auth-worker")?.state).toBe("working");
+        expect(useHerdrStore.getState().stateSeq).toBe(185);
     });
 
-    it("已产出消息的 idle agent → 已完成", () => {
-        useAgentStore.setState({
-            agents: [makeAgent()],
-            messagesByAgent: { "agent-1": [makeMessage()] },
-        });
-        const { container } = renderWithI18n(<AgentsPanel onOpenAgent={() => undefined} />);
-        expect(screen.getAllByText("已完成").length).toBeGreaterThanOrEqual(1);
-        expect(container.querySelectorAll('[data-agent-status="done"]').length).toBeGreaterThanOrEqual(1);
+    it("其他状态卡片主 CTA=打开终端", () => {
+        seedMockStore();
+        renderWithI18n(<AgentsPanel />);
+
+        const idleCard = document.querySelector('[data-agent="reviewer"]') as HTMLElement;
+        const primary = idleCard.querySelector('[data-testid="card-primary-action"]') as HTMLButtonElement;
+        expect(primary.textContent).toContain("打开终端");
+        fireEvent.click(primary);
+        expect(useHerdrStore.getState().view).toBe("pane");
     });
 
-    it("展开卡显示最近消息与子代理", async () => {
-        useAgentStore.setState({
-            agents: [makeAgent()],
-            messagesByAgent: { "agent-1": [makeMessage({ role: "user", content: "帮我重构" }), makeMessage()] },
-        });
-        useSubagentStore.setState({
-            byAgent: {
-                "agent-1": [
-                    {
-                        actorId: "explore-abc123",
-                        agentId: "agent-1",
-                        workspaceId: "ws-1",
-                        subagentType: "explore",
-                        description: "检索 API 文档",
-                        status: "running",
-                        turnCount: 1,
-                        createdAt: 1,
-                    },
-                ],
-            },
-        });
-        renderWithI18n(<AgentsPanel onOpenAgent={() => undefined} />);
-        fireEvent.click(screen.getByText("重构分支"));
-        expect(screen.getAllByText("检索 API 文档").length).toBeGreaterThanOrEqual(1);
-        expect(screen.getByText("子代理")).toBeTruthy();
-        expect(screen.getByText("最近消息")).toBeTruthy();
-        expect(screen.getAllByText("已完成重构").length).toBeGreaterThanOrEqual(1);
+    it("断线 → 卡片 data-state=disconnected，禁陈旧 done", () => {
+        seedMockStore({ server: "offline" });
+        renderWithI18n(<AgentsPanel />);
+
+        const cards = screen.getAllByTestId("agent-card");
+        expect(cards.length).toBeGreaterThan(0);
+        for (const card of cards) {
+            expect(card.getAttribute("data-state")).toBe("disconnected");
+        }
     });
 
-    it("新建弹窗: 选工作区 + 输入描述 → 创建并发送 prompt", async () => {
-        renderWithI18n(<AgentsPanel onOpenAgent={() => undefined} />);
-        fireEvent.click(screen.getAllByText("新建 Agent")[0]);
-        expect(screen.getByTestId("new-agent-dialog")).toBeTruthy();
-
-        fireEvent.change(screen.getByPlaceholderText("描述要它完成的任务（可选，创建后立即执行）"), {
-            target: { value: "重构 App.tsx" },
-        });
-        fireEvent.click(screen.getByText("创建"));
-
-        const createMock = window.piAPI.agentsCreate as ReturnType<typeof vi.fn>;
-        const promptMock = window.piAPI.agentsPrompt as ReturnType<typeof vi.fn>;
-        await waitFor(() => expect(createMock).toHaveBeenCalled());
-        expect(promptMock).toHaveBeenCalled();
-    });
-
-    it("点「打开对话」回调 onOpenAgent", () => {
-        const onOpenAgent = vi.fn();
-        useAgentStore.setState({ agents: [makeAgent()] });
-        renderWithI18n(<AgentsPanel onOpenAgent={onOpenAgent} />);
-        fireEvent.click(screen.getByText("打开对话"));
-        expect(onOpenAgent).toHaveBeenCalledWith("agent-1");
-    });
-
-    it("approval 挂起信号 → 阻塞徽章 + 原因「等待审批」", () => {
-        useAgentStore.setState({
-            agents: [makeAgent({ status: "running" })],
-            runtimeByAgent: { "agent-1": { agentId: "agent-1", status: "running", isStreaming: true } },
-        });
-        useFleetSignalsStore.setState({ approvalPendingByWorkspace: { "ws-1": 1 } });
-        const { container } = renderWithI18n(<AgentsPanel onOpenAgent={() => undefined} />);
-        expect(container.querySelectorAll('[data-agent-status="blocked"]').length).toBeGreaterThanOrEqual(1);
-        expect(screen.getAllByText("等待审批").length).toBeGreaterThanOrEqual(1);
-    });
-
-    it("done 卡显示「收割结果」按钮, 点击展开产出区", () => {
-        useAgentStore.setState({
-            agents: [makeAgent()],
-            messagesByAgent: { "agent-1": [makeMessage()] },
-        });
-        renderWithI18n(<AgentsPanel onOpenAgent={() => undefined} />);
-        const harvestButton = screen.getByTestId("harvest-button");
-        expect(harvestButton).toBeTruthy();
-        fireEvent.click(harvestButton);
-        expect(screen.getByTestId("agent-harvest")).toBeTruthy();
-        // 产出区渲染完整 markdown 消息 (MarkdownRenderer 路径)
-        expect(screen.getAllByText("已完成重构").length).toBeGreaterThanOrEqual(1);
-    });
-
-    it("非 done 卡不显示收割按钮", () => {
-        useAgentStore.setState({ agents: [makeAgent({ status: "running" })] });
-        renderWithI18n(<AgentsPanel onOpenAgent={() => undefined} />);
-        expect(screen.queryByTestId("harvest-button")).toBeNull();
+    it("非 mock（无运行时）→ 空态，不渲染假数据", () => {
+        useHerdrStore.setState({ mock: false, server: "offline", agents: [], tree: { session: "", workspaces: [] } });
+        renderWithI18n(<AgentsPanel />);
+        expect(screen.getByTestId("agents-panel").textContent).toContain("该工作区暂无智能体");
     });
 });

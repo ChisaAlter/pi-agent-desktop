@@ -70,6 +70,8 @@ export default defineConfig({
     },
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
+      // Herdr GUI mock 运行时开关（原型数据驱动，仅开发/测试用；默认关闭）
+      __PI_HERDR_MOCK__: JSON.stringify(process.env.PI_HERDR_MOCK === '1' ? '1' : '0'),
     },
     plugins: [react()],
     resolve: {
