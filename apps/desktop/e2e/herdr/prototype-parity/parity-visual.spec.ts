@@ -16,6 +16,8 @@ import { parityTarget } from './parity-target';
 
 // 基线入库于 docs/verification/baselines（Playwright outputDir 每次运行清空 e2e-output，不能放那里）
 const BASELINE_DIR = path.resolve(__dirname, '../../../../../docs/verification/baselines/herdr');
+// production 截图证据（与门禁记录同源；随 production parity 运行更新）
+const SHOTS_DIR = path.resolve(__dirname, '../../../../../docs/verification/herdr-shots');
 const PROTOTYPE_PATH = path.resolve(__dirname, '../../../../../docs/prototypes/herdr-desktop-ui-prototype.html');
 const VIEWPORT = { width: 1440, height: 960 };
 
@@ -203,16 +205,17 @@ test.describe('parity 视觉对齐（production 对比）', () => {
 
       const baselineFile = path.join(BASELINE_DIR, `${entry.name}.png`);
       expect(fs.existsSync(baselineFile), `基线缺失 ${baselineFile}`).toBe(true);
-      const tmp = path.join(os.tmpdir(), `.herdr-prod-${entry.name}.png`);
-      fs.writeFileSync(tmp, shot);
+      // 证据单一来源：production 截图直接写入 docs/verification/herdr-shots（与记录比值同源，
+      // 避免双管线截图不一致导致门禁记录不可复核；本目录随 production 运行更新）
+      const shotFile = path.join(SHOTS_DIR, `${entry.name}.png`);
+      fs.writeFileSync(shotFile, shot);
       const baseline = loadPng(baselineFile);
-      const current = loadPng(tmp);
+      const current = loadPng(shotFile);
       const threshold = THRESHOLDS[entry.name] ?? 0.1;
       const regions = regionSpecFor(entry.name, PROTOTYPE_CHROME_TOP);
       // terminal 布局按 D4 决策仅比较中心区（生产 rail 保持浅色主题，与原型暗色 rail 有意不同）
       const skip = entry.name.startsWith('terminal-') ? ['left', 'right'] : [];
       const { results, passed, overallRatio } = compareRegions(baseline, current, regions, PROTOTYPE_CHROME_TOP, Math.round(statusBar), threshold, { skip });
-      fs.rmSync(tmp, { force: true });
       console.log(`[parity-visual] ${entry.name} chromeTop=${Math.round(statusBar)}: ${formatRegionReport(results, overallRatio, threshold)}`);
       expect(passed, `视觉对比超差: ${formatRegionReport(results, overallRatio, threshold)}`).toBe(true);
     });

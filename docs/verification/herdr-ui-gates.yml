@@ -76,7 +76,7 @@
 - 设置流 parity：production 走设置窗口（独立 BrowserWindow），选择器接线 data-settings-tab/check-update/verify-update/switch-update
 
 **证据审查（最终 production parity 套件）**：
-- 完整套件 8 passed / 0 failed / 0 flaky（6 交互流含设置流 + 8 视觉矩阵）
+- 完整套件 8 passed / 0 failed / 0 flaky（7 交互流含设置流 + 8 视觉矩阵，10 skipped 为原型目标自检与生产目标基线自检）
 - 仓库门禁：typecheck 0 / lint 0 error / 6317 测试通过；verify:docs PASS；检查器 38 PASS + 负面清单 0
 
 **结论**：G2 PASS（设置导航含 Herdr 运行时；原型设置交互流在生产复现 PASS；双语一致）

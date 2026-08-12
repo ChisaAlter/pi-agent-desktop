@@ -445,7 +445,10 @@ requirements:
       - apps/desktop/src/renderer/src/components/Herdr/HerdrContextRail.tsx
     tests:
       - scripts/verification/check-herdr-ui.cjs
-    evidence: *ref_0
+      - apps/desktop/src/renderer/src/components/Herdr/__tests__/HerdrContextRail.test.tsx
+    evidence:
+      - apps/desktop/src/renderer/src/components/Herdr/__tests__/HerdrContextRail.test.tsx
+      - docs/verification/herdr-ui-gates.yml
   - id: UI-REQ-060
     prototype: settings-nav
     title: HerdrTab 加入设置窗口「智能体」分组（tab-defs + SettingsNav 图标 + i18n 中英）

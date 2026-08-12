@@ -8,8 +8,9 @@ import {
   dagNodeStatuses,
   missionDag,
   missionPanels,
+  useHerdrStore,
 } from '../herdr-store';
-import { HERDR_MOCK_AGENTS } from '../herdr-mock-data';
+import { HERDR_MOCK_AGENTS, HERDR_MOCK_SESSION, HERDR_MOCK_TAB_DISPLAY } from '../herdr-mock-data';
 import type { HerdrAgent } from '../herdr-store';
 
 const agent = (name: string, state: HerdrAgent['state']): HerdrAgent => ({
@@ -34,6 +35,28 @@ describe('displayStateOf（断线禁陈旧 done）', () => {
   });
   it('连接时透传内部状态', () => {
     expect(displayStateOf(agent('a', 'done'), 'connected')).toBe('done');
+  });
+});
+
+describe('重连语义（UI-REQ-027 后半：snapshot 恢复、不重放 prompt）', () => {
+  it('断线→重连：状态从 store 恢复（mock 即 snapshot），terminalLog 不追加（无重放）', () => {
+    useHerdrStore.setState({
+      mock: true,
+      server: 'connected',
+      agents: HERDR_MOCK_AGENTS,
+      tree: buildHerdrTree(HERDR_MOCK_SESSION, HERDR_MOCK_AGENTS, HERDR_MOCK_TAB_DISPLAY),
+      terminalLog: ['line-1'],
+    });
+    const store = useHerdrStore.getState();
+    // 断线：显示态全 disconnected，但内部状态保留（禁陈旧 done 的展示层处理）
+    store.setServer('offline');
+    expect(useHerdrStore.getState().agents[2]?.state).toBe('done'); // 内部状态未丢
+    expect(displayStateOf(useHerdrStore.getState().agents[2]!, 'offline')).toBe('disconnected');
+    // 重连：展示态恢复；terminalLog 无新增（不重放 prompt）
+    store.setServer('connected');
+    const after = useHerdrStore.getState();
+    expect(displayStateOf(after.agents[2]!, 'connected')).toBe('done');
+    expect(after.terminalLog).toEqual(['line-1']);
   });
 });
 

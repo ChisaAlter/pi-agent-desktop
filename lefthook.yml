@@ -7,6 +7,9 @@ pre-commit:
     lint:
       glob: "*.{ts,tsx,js,jsx}"
       run: pnpm -r lint
+    herdr-check:
+      # Herdr 防降级检查器（需求表/证据/负面清单/i18n 同步）；~1s，本地强制（计划 §3.2）
+      run: node scripts/verification/check-herdr-ui.cjs
 
 pre-push:
   commands:
