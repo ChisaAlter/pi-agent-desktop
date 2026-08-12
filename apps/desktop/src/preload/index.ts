@@ -8,6 +8,7 @@ import type {
     IpcError,
     PiInstallProgress,
     ApprovalRequest,
+    ApprovalResolved,
     ApprovalUndone,
     ApprovalCleared,
     DeferredEdit,
@@ -26,6 +27,9 @@ import type {
     AgentRuntimeState,
     AgentPermissionSyncResult,
     AgentTab,
+    SubagentEvent,
+    SubagentInstance,
+    SubagentType,
     CodexImportReport,
     CodexSessionSummary,
     ClaudeImportReport,
@@ -132,6 +136,7 @@ const piAPI: PiAPI = {
     keepApprovalChange: (workspaceId, changeId) =>
         ipcRenderer.invoke("approval:keep-change", { workspaceId, changeId }) as Promise<void | IpcError>,
     onApprovalUndone: (cb) => subscribe<ApprovalUndone>("approval:undone", cb),
+    onApprovalResolved: (cb) => subscribe<ApprovalResolved>("approval:resolved", cb),
     // v1.1: 同步 autoApprove 到主进程
     setAutoApprove: (value: boolean) => {
         ipcRenderer.send("approval:set-auto-approve", value);
@@ -217,6 +222,14 @@ const piAPI: PiAPI = {
         subscribe<{ agentId: string; messages: AgentMessage[] }>("agents:message", cb),
     onAgentEvent: (cb) =>
         subscribe<{ agentId: string; workspaceId: string; event: PiEvent }>("agents:event", cb),
+
+    // Subagents (Phase E): list-types / list-instances / cancel + `subagent:event` broadcast
+    subagentListTypes: () => ipcRenderer.invoke("subagent:list-types") as Promise<SubagentType[] | IpcError>,
+    subagentListInstances: (agentId) =>
+        ipcRenderer.invoke("subagent:list-instances", { agentId }) as Promise<SubagentInstance[] | IpcError>,
+    subagentCancel: (agentId, actorId) =>
+        ipcRenderer.invoke("subagent:cancel", { agentId, actorId }) as Promise<SubagentInstance | null | IpcError>,
+    onSubagentEvent: (cb) => subscribe<SubagentEvent>("subagent:event", cb),
 
     listSlashCommands: (workspaceId, agentId, mode) =>
         ipcRenderer.invoke("pi:list-slash-commands", workspaceId, agentId, mode) as Promise<PiSlashCommand[] | IpcError>,

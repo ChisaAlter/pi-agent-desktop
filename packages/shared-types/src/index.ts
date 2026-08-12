@@ -6,8 +6,8 @@
 export * from "./events";
 export * from "./command-risk";
 import type { PiThinkingLevel } from "./events";
-import type { ApprovalKeepRequest, ApprovalRequest, ApprovalUndoRequest, ApprovalUndone, ApprovalCleared, DeferredEdit, FileReview } from "./approval";
-export type { ApprovalKeepRequest, ApprovalRequest, ApprovalUndoRequest, ApprovalUndone, ApprovalCleared, DeferredEdit, FileReview };
+import type { ApprovalKeepRequest, ApprovalRequest, ApprovalResolved, ApprovalUndoRequest, ApprovalUndone, ApprovalCleared, DeferredEdit, FileReview } from "./approval";
+export type { ApprovalKeepRequest, ApprovalRequest, ApprovalResolved, ApprovalUndoRequest, ApprovalUndone, ApprovalCleared, DeferredEdit, FileReview };
 // 上面 re-export approval.ts 的具体类型 (解决: 后面 PiAPI 用到的 ApprovalRequest 等)
 // 注: 不写 export * from "./approval" 是为了不让外层组件意外引入 ApprovalResponse 等内部细节
 
@@ -1440,6 +1440,8 @@ export interface PiAPI {
     /** 保留一笔已执行的 deferred edit (主进程清理快照但不改文件) */
     keepApprovalChange(workspaceId: string, changeId: string): Promise<void | IpcError>;
     onApprovalUndone(cb: (done: ApprovalUndone) => void): Unsubscribe;
+    /** 审批请求已解决 (响应或超时) — fleet blocked 判定解除挂起用 */
+    onApprovalResolved(cb: (resolved: ApprovalResolved) => void): Unsubscribe;
 
     // Git + Pi stop
     gitUndo(workspacePath: string, filePath: string): Promise<void | IpcError>;
@@ -1539,6 +1541,12 @@ export interface PiAPI {
     onAgentRuntimeState(cb: (states: AgentRuntimeState[]) => void): Unsubscribe;
     onAgentMessages(cb: (payload: { agentId: string; messages: AgentMessage[] }) => void): Unsubscribe;
     onAgentEvent(cb: (payload: { agentId: string; workspaceId: string; event: PiEvent }) => void): Unsubscribe;
+
+    // Subagents (Phase E IPC surface — wired in preload, consumed by agent fleet UI)
+    subagentListTypes(): Promise<SubagentType[] | IpcError>;
+    subagentListInstances(agentId: string): Promise<SubagentInstance[] | IpcError>;
+    subagentCancel(agentId: string, actorId: string): Promise<SubagentInstance | null | IpcError>;
+    onSubagentEvent(cb: (event: SubagentEvent) => void): Unsubscribe;
 
     listSlashCommands(workspaceId: string, agentId?: string, mode?: AgentMode): Promise<PiSlashCommand[] | IpcError>;
     runBuiltinSlashCommand(input: RunBuiltinSlashCommandInput): Promise<SlashCommandRunResult | IpcError>;
@@ -1797,6 +1805,23 @@ export interface SubagentInstance {
     lastTurnTime?: number;
     lastOutcome?: string;
     terminatedAt?: number;
+}
+
+/**
+ * State transition broadcast for a subagent, pushed to the renderer via the
+ * `subagent:event` channel. Mirrors the manager's event shape so preload and
+ * renderer can consume it without importing main-process types. `type` is the
+ * lifecycle discriminant; `status` is the underlying SubagentStatus at emit
+ * time (absent on `spawned` until the session snapshot catches up).
+ */
+export interface SubagentEvent {
+    agentId: string;
+    actorId: string;
+    type: "spawned" | "running" | "terminated" | "gc_collected";
+    status?: SubagentStatus;
+    lastOutcome?: string;
+    subagentType: SubagentTypeID;
+    description: string;
 }
 
 /**

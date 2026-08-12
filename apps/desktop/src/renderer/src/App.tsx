@@ -25,6 +25,7 @@ import { Onboarding } from "./components/Onboarding/Onboarding";
 import { ChatView } from "./components/ChatView/ChatView";
 import { PermissionRequestStack } from "./components/ChatView/PermissionRequestStack";
 import { RunPanel, type RunView } from "./components/RunPanel/RunPanel";
+import { AgentsPanel } from "./components/Agents/AgentsPanel";
 import { SearchHistory } from "./components/SearchHistory/SearchHistory";
 import { SessionCenter } from "./components/SessionCenter/SessionCenter";
 import { TopTabBar } from "./components/TopTabBar/TopTabBar";
@@ -49,6 +50,8 @@ import { useTaskProgress } from "./hooks/useTaskProgress";
 import { ensurePermissionSubscriptions, usePermissionStore } from "./stores/permission-store";
 import { ensurePlanSubscriptions } from "./stores/plan-store";
 import { ensureQueueSubscription } from "./stores/queue-store";
+import { ensureSubagentSubscriptions } from "./stores/subagent-store";
+import { ensureFleetSignalSubscriptions } from "./stores/fleet-signals-store";
 import { useRuntimeFeatureStore } from "./stores/runtime-feature-store";
 import type { TerminalCommandMode } from "./utils/terminal-command";
 import { isIpcError, type DeferredEdit, type SettingsWindowTab } from "@shared";
@@ -56,7 +59,7 @@ import { applyTheme, watchSystemTheme, type Theme } from "./utils/theme";
 import { addToast } from "./stores/toast-store";
 import { resolveActiveAgent } from "./utils/active-agent";
 
-type MainPanel = "chat" | "run" | "workbench" | "skills" | "history";
+type MainPanel = "chat" | "agents" | "run" | "workbench" | "skills" | "history";
 
 /**
  * Canonical section identifiers for the center panel router.
@@ -70,7 +73,7 @@ type MainPanel = "chat" | "run" | "workbench" | "skills" | "history";
  * "settings" and "search" are intercepted by routeSection() and do not become
  * persistent center-panel sections.
  */
-type SectionId = "chat" | "run" | "workbench" | "extensions" | "new-task" | "history";
+type SectionId = "chat" | "agents" | "run" | "workbench" | "extensions" | "new-task" | "history";
 
 /**
  * Input type for routeSection() — covers all values that can arrive from
@@ -85,7 +88,7 @@ type FileWorkspaceTarget = { path: string; mode?: "edit" | "diff"; nonce: number
 /** Validate that an unknown section string from a DOM event is a valid SectionId. */
 function isValidSectionId(value: string): value is SectionId {
     switch (value) {
-        case "chat": case "run": case "workbench":
+        case "chat": case "agents": case "run": case "workbench":
             case "extensions": case "new-task": case "history":
             return true;
         default:
@@ -115,6 +118,7 @@ function panelForSection(section: SectionId): MainPanel {
         case "run": return "run";
         case "workbench": return "workbench";
         case "extensions": return "skills";
+        case "agents": return "agents";
         case "chat": return "chat";
         case "new-task": return "chat";
         case "history": return "history";
@@ -420,6 +424,8 @@ function AppShell(): React.ReactElement {
         ensurePermissionSubscriptions();
         ensurePlanSubscriptions();
         ensureQueueSubscription();
+        ensureSubagentSubscriptions();
+        ensureFleetSignalSubscriptions();
     }, []);
 
     useEffect(() => {
@@ -701,6 +707,22 @@ function AppShell(): React.ReactElement {
         }
         useSessionStore.getState().setCurrentSession(sessionId);
         setSearchTarget(messageId ? { sessionId, messageId } : null);
+    }, []);
+    // Fleet → chat navigation: switch workspace, activate the agent (and its
+    // session when one exists), then route to chat like `session:<id>`.
+    const handleOpenAgentFromFleet = useCallback((agentId: string) => {
+        const agent = useAgentStore.getState().agents.find((item) => item.id === agentId);
+        if (!agent) return;
+        const workspace = useWorkspaceStore.getState().workspaces.find((item) => item.id === agent.workspaceId);
+        if (workspace) {
+            useWorkspaceStore.getState().setCurrentWorkspace(workspace.id);
+            void selectWorkspaceForRoute(workspace.path);
+        }
+        useAgentStore.getState().setCurrentAgent(agentId);
+        if (agent.sessionId) {
+            useSessionStore.getState().setCurrentSession(agent.sessionId);
+        }
+        setActiveSection("chat");
     }, []);
     const routeSection = useCallback((section: string) => {
         if (section === "settings") {
@@ -1005,6 +1027,19 @@ function AppShell(): React.ReactElement {
                                 />
                             </ErrorBoundary>
                         </MotionPanelLayer>
+                        {(activePanel === "agents" || visitedPanels.has("agents")) && (
+                            <MotionPanelLayer
+                                active={activePanel === "agents"}
+                                panelId="agents"
+                                enterOnMount={activePanel === "agents" && !visitedPanels.has("agents")}
+                            >
+                                <ErrorBoundary fallback={panelFallback(t("app.panels.agents"))}>
+                                    <div className="flex min-h-0 flex-1 overflow-hidden">
+                                        <AgentsPanel onOpenAgent={handleOpenAgentFromFleet} />
+                                    </div>
+                                </ErrorBoundary>
+                            </MotionPanelLayer>
+                        )}
                         {(activePanel === "skills" || visitedPanels.has("skills")) && (
                             <MotionPanelLayer
                                 active={activePanel === "skills"}

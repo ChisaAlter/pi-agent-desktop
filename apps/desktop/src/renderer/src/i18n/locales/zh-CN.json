@@ -793,7 +793,11 @@
       "toolRunning": "{{name}} 运行中",
       "toolFailed": "{{name}} 失败",
       "toolCompleted": "{{name}} 完成"
-    }
+    },
+    "agents": "Agents",
+    "agentsEmpty": "当前工作区暂无 Agent",
+    "agentsIdle": "全部空闲",
+    "agentsOpenFleet": "查看全部"
   },
   "toolPermissions": {
     "title": "工具权限",
@@ -1233,7 +1237,8 @@
     "workbench": "工作台",
     "extensions": "扩展",
     "settings": "设置",
-    "ariaLabel": "顶部标签栏"
+    "ariaLabel": "顶部标签栏",
+    "agents": "Agents"
   },
   "runPanel": {
     "ariaLabel": "运行视图",
@@ -1303,7 +1308,80 @@
       "memory": "记忆",
       "history": "会话中心",
       "git": "Git",
-      "files": "文件"
+      "files": "文件",
+      "agents": "Agents"
+    }
+  },
+  "agents": {
+    "untitled": "未命名 Agent",
+    "new": "新建 Agent",
+    "newTitle": "新建 Agent",
+    "workspace": "工作区",
+    "title": "标题",
+    "titlePlaceholder": "给这个 agent 起个名字（可选）",
+    "taskDescription": "任务描述",
+    "taskPlaceholder": "描述要它完成的任务（可选，创建后立即执行）",
+    "create": "创建",
+    "created": "Agent 已创建",
+    "empty": "暂无 Agent",
+    "emptyTitle": "还没有 Agent",
+    "emptyHint": "Agent 是独立的 AI 工作会话。可以创建多个 Agent 并行处理不同任务，或让一个 Agent 派生子代理，像 herdr 一样在面板里统一观察它们的状态。",
+    "currentWorkspace": "当前工作区",
+    "workspaceCount": "{{count}} 个 agent",
+    "status": {
+      "working": "运行中",
+      "blocked": "阻塞",
+      "done": "已完成",
+      "idle": "空闲",
+      "error": "错误",
+      "closed": "已关闭"
+    },
+    "blockedReason": {
+      "permission": "等待审批",
+      "plan": "等待计划确认",
+      "queue": "消息排队中",
+      "approval": "等待审批"
+    },
+    "activity": {
+      "idle": "等待任务"
+    },
+    "actions": {
+      "openChat": "打开对话",
+      "stop": "停止",
+      "restart": "重启",
+      "cancel": "取消",
+      "harvest": "收割结果"
+    },
+    "subagents": {
+      "title": "子代理",
+      "label": "子代理",
+      "none": "暂无子代理",
+      "outcome": "结果"
+    },
+    "subagentStatus": {
+      "pending": "等待中",
+      "running": "运行中",
+      "idle": "已完成",
+      "cancelled": "已取消",
+      "failed": "失败",
+      "timeout": "超时"
+    },
+    "message": {
+      "user": "用户",
+      "assistant": "助手",
+      "tool": "工具",
+      "thinkingOnly": "（仅思考）",
+      "empty": "（空）",
+      "count": "条消息",
+      "recent": "最近消息",
+      "none": "暂无消息",
+      "thinking": "思考"
+    },
+    "harvest": {
+      "title": "产出",
+      "changes": "文件改动",
+      "noChanges": "无文件改动",
+      "detecting": "检测改动中…"
     }
   }
 }

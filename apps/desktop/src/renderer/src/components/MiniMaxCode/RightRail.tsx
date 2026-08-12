@@ -5,7 +5,14 @@ import { useSettingsStore } from "../../stores/settings-store";
 import { useI18n } from "../../i18n";
 import type { TaskProgressItem } from "./TaskProgressPanel";
 import { GitRailControls } from "./GitRailControls";
+import { AgentsRailCard } from "../Agents/AgentsRailCard";
 import type { GitChangedFileRow } from "./GitChangesOverlay";
+import {
+    countDiffStats,
+    readCachedGitSnapshot,
+    writeCachedGitSnapshot,
+    type GitSnapshotCacheEntry,
+} from "../../utils/git-snapshot-cache";
 
 interface RightRailProps {
   workspacePath?: string;
@@ -13,57 +20,7 @@ interface RightRailProps {
   tasks?: TaskProgressItem[];
 }
 
-interface DiffStats {
-  additions: number;
-  deletions: number;
-}
-
-interface GitSnapshotCache {
-  git: GitStatus | null;
-  diffStats: DiffStats;
-  diffText: string;
-  updatedAt: number;
-}
-
-// Survive rail unmount/collapse so reopen does not flash "无 Git" like a cold start.
-const gitSnapshotCache = new Map<string, GitSnapshotCache>();
-// 安全审查/性能: 缓存有界 (LRU, 最多 8 个工作区), 防止跨会话无限增长
-const GIT_SNAPSHOT_CACHE_MAX = 8;
-
-function countDiffStats(diff: string): DiffStats {
-  return diff.split(/\r?\n/).reduce<DiffStats>((acc, line) => {
-    if (line.startsWith("+++") || line.startsWith("---")) return acc;
-    if (line.startsWith("+")) acc.additions += 1;
-    if (line.startsWith("-")) acc.deletions += 1;
-    return acc;
-  }, { additions: 0, deletions: 0 });
-}
-
-function readCachedSnapshot(workspacePath?: string): GitSnapshotCache | null {
-  if (!workspacePath) return null;
-  return gitSnapshotCache.get(workspacePath) ?? null;
-}
-
-function writeCachedSnapshot(
-  workspacePath: string,
-  git: GitStatus | null,
-  diffStats: DiffStats,
-  diffText: string,
-): void {
-  gitSnapshotCache.set(workspacePath, { git, diffStats, diffText, updatedAt: Date.now() });
-  // LRU 淘汰: 超出上限时删除最旧的条目
-  if (gitSnapshotCache.size > GIT_SNAPSHOT_CACHE_MAX) {
-    let oldestKey: string | null = null;
-    let oldestAt = Infinity;
-    for (const [key, entry] of gitSnapshotCache) {
-      if (entry.updatedAt < oldestAt) {
-        oldestAt = entry.updatedAt;
-        oldestKey = key;
-      }
-    }
-    if (oldestKey) gitSnapshotCache.delete(oldestKey);
-  }
-}
+type DiffStats = GitSnapshotCacheEntry["diffStats"];
 
 function statusDot(status: string): string {
   if (status === "completed") return "bg-[#666] text-white";
@@ -95,9 +52,9 @@ function ProgressStatusIcon({ status }: { status: string }): React.JSX.Element {
   );
 }
 
-export function RightRail({ workspacePath }: RightRailProps): React.JSX.Element {
+export function RightRail({ workspacePath, workspaceId }: RightRailProps): React.JSX.Element {
   const { t } = useI18n();
-  const cached = readCachedSnapshot(workspacePath);
+  const cached = readCachedGitSnapshot(workspacePath);
   const [git, setGit] = useState<GitStatus | null>(() => cached?.git ?? null);
   const [diffStats, setDiffStats] = useState<DiffStats>(() => cached?.diffStats ?? { additions: 0, deletions: 0 });
   const [diffText, setDiffText] = useState<string>(() => cached?.diffText ?? "");
@@ -119,7 +76,7 @@ export function RightRail({ workspacePath }: RightRailProps): React.JSX.Element 
 
   // When workspace switches, hydrate from cache immediately (or clear to loading).
   useEffect(() => {
-    const nextCached = readCachedSnapshot(workspacePath);
+    const nextCached = readCachedGitSnapshot(workspacePath);
     if (nextCached) {
       setGit(nextCached.git);
       setDiffStats(nextCached.diffStats);
@@ -139,7 +96,7 @@ export function RightRail({ workspacePath }: RightRailProps): React.JSX.Element 
       return;
     }
     // Only show loading chrome when we have nothing useful to display yet.
-    if (!readCachedSnapshot(workspacePath)) {
+    if (!readCachedGitSnapshot(workspacePath)) {
       setGitLoading(true);
     }
     try {
@@ -163,7 +120,7 @@ export function RightRail({ workspacePath }: RightRailProps): React.JSX.Element 
       setGit(nextGit);
       setDiffStats(nextStats);
       setDiffText(nextDiffText);
-      writeCachedSnapshot(workspacePath, nextGit, nextStats, nextDiffText);
+      writeCachedGitSnapshot(workspacePath, nextGit, nextStats, nextDiffText);
     } finally {
       setGitLoading(false);
     }
@@ -237,6 +194,20 @@ export function RightRail({ workspacePath }: RightRailProps): React.JSX.Element 
             onRefresh={loadGitSnapshot}
           />
         </div>
+      </section>
+
+      <section className="min-h-0 border-t border-[var(--right-rail-divider)] px-0.5 py-3" data-testid="right-rail-agents">
+        <div className="mb-1 flex min-h-9 items-center justify-between px-1.5">
+          <h2 className="m-0 text-[13px] font-normal text-[var(--right-rail-muted)]">{t("rightRail.agents")}</h2>
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("app:switch-section", { detail: { section: "agents" } }))}
+            className="rounded px-1.5 py-0.5 text-[11px] text-[var(--mm-text-tertiary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
+          >
+            {t("rightRail.agentsOpenFleet")}
+          </button>
+        </div>
+        <AgentsRailCard workspaceId={workspaceId} />
       </section>
 
       {showProgress ? (

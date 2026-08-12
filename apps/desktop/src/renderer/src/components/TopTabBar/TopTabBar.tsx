@@ -15,6 +15,7 @@ interface TabDef {
 
 const TAB_DEFS: TabDef[] = [
     { id: "chat", labelKey: "topbar.chat" },
+    { id: "agents", labelKey: "topbar.agents" },
     { id: "run", labelKey: "topbar.run" },
     { id: "workbench", labelKey: "topbar.workbench" },
     { id: "extensions", labelKey: "topbar.extensions" },

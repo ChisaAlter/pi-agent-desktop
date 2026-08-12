@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import type { AgentSession, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type {
+    SubagentEvent,
     SubagentInstance,
     SubagentResult,
     SubagentStatus,
@@ -62,16 +63,8 @@ export type SubagentSessionFactory = (opts: {
     modelRef?: { provider: string; modelId: string };
 }) => Promise<AgentSession>;
 
-/** Event broadcast to the renderer via `subagent:event` IPC (Task 6 wires it). */
-export interface SubagentManagerEvent {
-    agentId: string;
-    actorId: string;
-    type: "spawned" | "running" | "terminated" | "gc_collected";
-    status?: SubagentStatus;
-    lastOutcome?: string;
-    subagentType: SubagentTypeID;
-    description: string;
-}
+/** Event broadcast to the renderer via `subagent:event` IPC — shared shape. */
+export type SubagentManagerEvent = SubagentEvent;
 
 export interface SubagentManagerOpts {
     sessionFactory: SubagentSessionFactory;
