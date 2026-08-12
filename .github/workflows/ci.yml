@@ -57,6 +57,23 @@ jobs:
         shell: pwsh
         run: pnpm verify:docs
 
+      # Herdr GUI 防降级检查: 需求登记表结构/PASS 证据/负面清单/i18n 键集同步。
+      # BLOCKED 需求存在时不视为失败(仅报告"未完成"), 硬违规才失败。
+      - name: Verify herdr UI requirements
+        shell: pwsh
+        run: pnpm verify:herdr
+
+      # Herdr parity 原型目标套件(交互流对齐 + 黄金基线完整性自检)。
+      # 基线已入库 apps/desktop/e2e-output/baselines/herdr, 自检校验 manifest SHA-256,
+      # 可发现基线被篡改/替换/删除。
+      - name: Install Playwright chromium (parity)
+        shell: pwsh
+        run: npx playwright install chromium
+      - name: Parity prototype suite (oracle flows + baseline integrity)
+        shell: pwsh
+        working-directory: apps/desktop
+        run: HERDR_PARITY_TARGET=prototype npx playwright test --config=playwright.parity.config.ts
+
       - name: Build desktop
         shell: pwsh
         run: pnpm --filter @pi-desktop/desktop build
