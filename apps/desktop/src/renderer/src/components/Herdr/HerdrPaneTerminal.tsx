@@ -115,9 +115,9 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
         addToast({ message: t("herdr.toast.promptSent"), tone: "info" });
     };
 
-    const infoRows: Array<{ label: string; value: string; testId?: string }> = [
-        { label: t("herdr.pane.agent"), value: `${agent.displayName} · ${agent.kind}` },
-        { label: t("herdr.pane.paneTerminal"), value: `${agent.pane} / term-${agent.name}` },
+    const infoRows: Array<{ label: string; value: string; testId?: string; strong?: boolean }> = [
+        { label: t("herdr.pane.agent"), value: `${agent.displayName} · ${agent.kind}`, strong: true },
+        { label: t("herdr.pane.paneTerminal"), value: `${agent.pane} / ${agent.terminalId ?? `term-${agent.name}`}` },
         { label: t("herdr.pane.authoritySource"), value: agent.authority },
         { label: t("herdr.pane.stateSeq"), value: String(stateSeq), testId: "state-seq" },
         { label: t("herdr.pane.nativeSession"), value: agent.session },
@@ -128,20 +128,24 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
     return (
         <div
             data-testid="herdr-pane-view"
-            className="overflow-hidden rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-panel)]"
+            className={`overflow-hidden border bg-[var(--mm-bg-panel)] ${
+                hideIdentity
+                    ? "rounded border-[#344156]"
+                    : "rounded-[12px] border-[var(--mm-border)] shadow-[0_12px_35px_rgba(26,39,66,0.08)]"
+            }`}
         >
-            {/* 工具栏：面包屑 + 连接状态 + 远端操作 */}
-            <div className="flex min-h-[45px] items-center gap-2 border-b border-[var(--mm-border)] px-3 py-2">
+            {/* 工具栏：面包屑 + 连接状态 + 远端操作（原型描边按钮形态） */}
+            <div className={`flex min-h-[45px] items-center gap-2 border-b px-3 py-2 ${hideIdentity ? "border-[#344156]" : "border-[var(--mm-border)]"}`}>
                 <span
                     data-testid="pane-crumb"
-                    className="mr-auto min-w-0 truncate font-mono text-[12px] font-semibold text-[var(--mm-text-primary)]"
+                    className="mr-auto min-w-0 truncate text-[13px] font-semibold text-[var(--mm-text-primary)]"
                 >
                     {tree.session} / {agent.workspace} / {agent.tab} / {agent.name}
                 </span>
                 <span
                     data-testid="attach-pill"
                     data-attached={attached}
-                    className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] ${
+                    className={`shrink-0 rounded-full px-2 py-1 text-[11px] ${
                         attached ? "bg-[#e5f5ed] text-[#14734f]" : "bg-[#fff0d9] text-[#96600f]"
                     }`}
                 >
@@ -150,38 +154,38 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
                 <button
                     type="button"
                     onClick={handleAttach}
-                    className="shrink-0 rounded px-2 py-1 text-xs text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
+                    className="shrink-0 rounded-lg border border-[#dfe4eb] bg-white px-2.5 py-[7px] text-[12px] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
                 >
                     {attached ? t("herdr.pane.attach") : t("herdr.pane.reattach")}
                 </button>
                 <button
                     type="button"
                     onClick={() => addToast({ message: t("herdr.toast.focusSent"), tone: "info" })}
-                    className="shrink-0 rounded px-2 py-1 text-xs text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
+                    className="shrink-0 rounded-lg border border-[#dfe4eb] bg-white px-2.5 py-[7px] text-[12px] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
                 >
                     {t("herdr.pane.focus")}
                 </button>
                 <button
                     type="button"
                     onClick={() => addToast({ message: t("herdr.toast.resizeSent"), tone: "info" })}
-                    className="shrink-0 rounded px-2 py-1 text-xs text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
+                    className="shrink-0 rounded-lg border border-[#dfe4eb] bg-white px-2.5 py-[7px] text-[12px] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
                 >
                     {t("herdr.pane.resize")}
                 </button>
                 <button
                     type="button"
                     onClick={() => addToast({ message: t("herdr.toast.keysSent"), tone: "info" })}
-                    className="shrink-0 rounded px-2 py-1 text-xs text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
+                    className="shrink-0 rounded-lg border border-[#dfe4eb] bg-white px-2.5 py-[7px] text-[12px] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
                 >
                     {t("herdr.pane.sendKeys")}
                 </button>
             </div>
 
-            {/* blocked 横幅 — 只在选中 agent 显示态为 blocked 时出现 */}
+            {/* blocked 横幅 — 独立一行（原型 .block-banner 全边框） */}
             {blocked ? (
                 <div
                     data-testid="block-banner"
-                    className="flex min-h-[48px] items-center gap-2.5 border-b border-[#f2c8cc] bg-[#fff0f1] px-3 py-2.5 text-[#922b36]"
+                    className="flex min-h-[48px] items-center gap-2.5 border border-[#f2c8cc] bg-[#fff0f1] px-3 py-[11px] text-[#922b36]"
                 >
                     <b className="shrink-0 text-[13px]">{t("herdr.pane.blockedTitle")}</b>
                     <span className="min-w-0 flex-1 text-xs">{t("herdr.pane.blockedDesc")}</span>
@@ -189,7 +193,7 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
                         type="button"
                         data-testid="resolve-block"
                         onClick={handleResolveBlock}
-                        className="shrink-0 rounded bg-[#2f6fe4] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#2458bd]"
+                        className="shrink-0 rounded bg-[#2563eb] px-3 py-[7px] text-[12px] font-medium text-white transition-colors hover:bg-[#174fc6]"
                     >
                         {t("herdr.pane.resolveBlock")}
                     </button>
@@ -201,7 +205,9 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
                 <div
                     ref={terminalRef}
                     data-testid="pane-terminal"
-                    className={`overflow-y-auto bg-[#101722] p-4 text-[12px] leading-[1.7] text-[#e2eaf5] [font-family:"Cascadia_Code",Consolas,monospace] ${hideIdentity ? "min-h-[calc(100vh-330px)]" : "max-h-[520px] min-h-[450px]"}`}
+                    className={`overflow-y-auto bg-[#101722] p-[18px] leading-[1.7] text-[#e2eaf5] [font-family:"Cascadia_Code",Consolas,monospace] ${
+                        hideIdentity ? "min-h-[calc(100vh-330px)] text-[13px]" : "max-h-[520px] min-h-[450px] text-[12px]"
+                    }`}
                 >
                     {terminalLog.map((line, i) => (
                         <div key={i} className="whitespace-pre-wrap">
@@ -214,36 +220,55 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
                         <div className="mb-2.5 text-[13px] font-bold text-[var(--mm-text-primary)]">
                             {t("herdr.pane.identity")}
                         </div>
-                        {infoRows.map((row) => (
-                            <div key={row.label} className="my-2">
-                                <label className="mb-0.5 block text-[10px] uppercase tracking-wide text-[var(--mm-text-tertiary)]">
-                                    {row.label}
-                                </label>
-                                <span data-testid={row.testId} className="block break-words text-xs text-[var(--mm-text-secondary)]">
-                                    {row.value}
-                                </span>
-                            </div>
-                        ))}
+                    {infoRows.map((row) => (
+                        <div key={row.label} className="my-[9px]">
+                            <label className="mb-0.5 block text-[10px] uppercase tracking-wide text-[var(--mm-text-tertiary)]">
+                                {row.label}
+                            </label>
+                            <span
+                                data-testid={row.testId}
+                                className={`block break-words text-xs ${
+                                    row.strong
+                                        ? "font-semibold text-[var(--mm-text-primary)]"
+                                        : "text-[var(--mm-text-secondary)]"
+                                }`}
+                            >
+                                {row.value}
+                            </span>
+                        </div>
+                    ))}
                     </aside>
                 ) : null}
             </div>
 
-            {/* 底部 prompt 输入行 */}
-            <div className="flex gap-2 border-t border-[var(--mm-border)] bg-[#fafbfd] p-2.5">
+            {/* 底部 prompt 输入行（terminal 布局切暗色表面，原型 .prompt-box 语义） */}
+            <div
+                className={`flex gap-[7px] border-t p-[10px] ${
+                    hideIdentity ? "border-[#344156] bg-[#151e2d]" : "border-[var(--mm-border)] bg-[#fafbfd]"
+                }`}
+            >
                 <textarea
                     data-testid="prompt-input"
                     value={promptText}
                     onChange={(e) => setPromptText(e.target.value)}
                     placeholder={t("herdr.pane.promptPlaceholder")}
                     rows={3}
-                    className="min-h-[58px] flex-1 resize-none rounded-lg border border-[var(--mm-border)] bg-white px-2.5 py-2 text-[13px] text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--mm-accent-blue)]"
+                    className={`min-h-[58px] flex-1 resize-none rounded-lg border px-2.5 py-2 text-[13px] focus:outline-none focus:ring-2 focus:ring-[#2563eb] ${
+                        hideIdentity
+                            ? "border-[#344156] bg-[#101722] text-[#d5dfed] placeholder:text-[#8a96a8]"
+                            : "border-[var(--mm-border)] bg-white text-[var(--mm-text-primary)] placeholder:text-[var(--mm-text-tertiary)]"
+                    }`}
                 />
-                <div className="flex shrink-0 flex-col gap-1.5">
+                <div className="flex shrink-0 flex-col gap-[5px]">
                     <select
                         data-testid="wait-select"
                         value={waitOption}
                         onChange={(e) => setWaitOption(e.target.value as WaitOption)}
-                        className="rounded-lg border border-[var(--mm-border)] bg-white px-2 py-1.5 text-xs text-[var(--mm-text-secondary)] focus:outline-none"
+                        className={`rounded-[7px] border px-2 py-[5px] text-xs focus:outline-none ${
+                            hideIdentity
+                                ? "border-[#344156] bg-[#101722] text-[#d5dfed]"
+                                : "border-[var(--mm-border)] bg-white text-[var(--mm-text-secondary)]"
+                        }`}
                     >
                         {WAIT_OPTIONS.map((option) => (
                             <option key={option} value={option}>
@@ -255,7 +280,7 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
                         type="button"
                         data-testid="send-prompt"
                         onClick={handleSendPrompt}
-                        className="rounded-lg bg-[#2f6fe4] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#2458bd]"
+                        className="rounded-lg bg-[#2563eb] px-3 py-[7px] text-[12px] font-medium text-white transition-colors hover:bg-[#174fc6]"
                     >
                         {t("herdr.pane.sendAndWait")}
                     </button>
@@ -265,7 +290,11 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
                             data-testid="read-history"
                             title={t("herdr.pane.readHistoryHint")}
                             onClick={() => addToast({ message: t("herdr.toast.recentOutput"), tone: "info" })}
-                            className="shrink-0 rounded border border-[var(--mm-border)] bg-white px-2.5 py-1.5 text-xs text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
+                            className={`shrink-0 rounded border px-2.5 py-[5px] text-xs transition-colors ${
+                                hideIdentity
+                                    ? "border-[#344156] bg-transparent text-[#c7d2e2] hover:bg-[#243147]"
+                                    : "border-[var(--mm-border)] bg-white text-[var(--mm-text-secondary)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
+                            }`}
                         >
                             {t("herdr.pane.readHistory")}
                         </button>

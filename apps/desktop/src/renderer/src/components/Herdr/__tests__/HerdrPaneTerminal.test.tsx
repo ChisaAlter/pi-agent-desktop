@@ -48,7 +48,7 @@ describe("HerdrPaneTerminal — 实时终端视图", () => {
         expect(screen.getByText("智能体")).toBeTruthy();
         expect(screen.getByText("认证实现智能体 · Pi")).toBeTruthy();
         expect(screen.getByText("窗格／终端")).toBeTruthy();
-        expect(screen.getByText("p-02 / term-auth-worker")).toBeTruthy();
+        expect(screen.getByText("p-02 / term-7f12")).toBeTruthy();
         expect(screen.getByText("状态权威来源")).toBeTruthy();
         expect(screen.getByText("Herdr Pi 生命周期钩子")).toBeTruthy();
         expect(screen.getByText("状态变更序号")).toBeTruthy();

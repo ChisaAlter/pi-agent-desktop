@@ -452,10 +452,12 @@ describe("App sidebar session navigation", () => {
         });
     });
 
-    it("主导航只保留对话、运行、工作台和扩展，设置使用右侧图标按钮", () => {
+    it("主导航为 6 tab（对话/智能体/任务编排/运行/工作台/扩展），设置使用右侧图标按钮", () => {
         render(<App />);
 
         expect(screen.getByRole("tab", { name: "对话" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "智能体" })).toBeTruthy();
+        expect(screen.getByRole("tab", { name: "任务编排" })).toBeTruthy();
         expect(screen.getByRole("tab", { name: "运行" })).toBeTruthy();
         expect(screen.getByRole("tab", { name: "工作台" })).toBeTruthy();
         expect(screen.getByRole("tab", { name: "扩展" })).toBeTruthy();

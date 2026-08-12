@@ -26,6 +26,7 @@ export const HERDR_MOCK_AGENTS: HerdrAgent[] = [
     kind: 'Pi',
     state: 'blocked',
     pane: 'p-02',
+    terminalId: 'term-7f12',
     tab: 'implementation',
     workspace: 'primary',
     task: '修复认证中间件并补齐错误处理',

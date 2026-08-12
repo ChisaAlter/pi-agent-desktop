@@ -47,7 +47,7 @@ const REVIEW_TITLE_KEY: Record<"rejected" | "revising" | "passed", string> = {
 
 const PANEL_BODY = "grid min-h-[140px] place-items-center text-[13px] text-[var(--mm-text-tertiary)]";
 const PRIMARY_BTN =
-    "rounded-md bg-[var(--mm-accent-blue)] px-3 py-1.5 text-xs font-medium text-white transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#78a5ff]";
+    "rounded-md bg-[#2563eb] px-3 py-[7px] text-[12px] font-medium text-white transition-colors hover:bg-[#174fc6] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#78a5ff]";
 
 export function MissionCockpit(): React.JSX.Element {
     const { t } = useI18n();
@@ -131,7 +131,7 @@ export function MissionCockpit(): React.JSX.Element {
                             addToast(t("herdr.toast.planCreated"), "success");
                         }}
                         disabled={status !== "draft"}
-                        className="rounded-[9px] border border-white/20 bg-[#4a81ee] px-3.5 py-2.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#78a5ff] disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-[9px] border border-white/20 bg-[#4a81ee] px-3.5 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-[#3a6fd8] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#78a5ff] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         {t("herdr.mission.plan")}
                     </button>
@@ -279,22 +279,22 @@ export function MissionCockpit(): React.JSX.Element {
                 视口定位，导致遮罩只覆盖局部区域。 */}
             {mergeOpen && typeof document !== "undefined"
                 ? createPortal(
-                      <div className="fixed inset-0 z-[200] grid place-items-center bg-[#0f172a66] p-4" data-testid="merge-confirm-modal">
-                          <div className="w-[min(520px,calc(100vw-30px))] rounded-[14px] bg-white p-[18px] shadow-[0_24px_70px_rgba(0,0,0,0.25)]">
-                              <h2 className="m-0 mb-2 text-base font-bold text-[var(--mm-text-primary)]">
-                                  {t("herdr.mission.mergeConfirmTitle")}
-                              </h2>
-                              <p className="m-0 text-[13px] leading-[1.55] text-[var(--mm-text-secondary)]">
-                                  {t("herdr.mission.mergeConfirmText")}
-                              </p>
-                              <div className="mt-[18px] flex justify-end gap-2">
-                                  <button
-                                      type="button"
-                                      onClick={closeMergeConfirm}
-                                      className="rounded-md border border-[var(--mm-border)] px-3 py-1.5 text-[13px] text-[var(--mm-text-primary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#78a5ff]"
-                                  >
-                                      {t("herdr.mission.cancel")}
-                                  </button>
+                      <div className="fixed inset-0 z-[200] grid place-items-center bg-[#0f172a66]" data-testid="merge-confirm-modal">
+                      <div className="w-[min(520px,calc(100vw-30px))] rounded-[14px] bg-white p-[18px] shadow-[0_24px_70px_rgba(0,0,0,0.27)]">
+                          <h2 className="m-0 mb-2 text-[16px] font-bold text-[var(--mm-text-primary)]">
+                              {t("herdr.mission.mergeConfirmTitle")}
+                          </h2>
+                          <p className="m-0 text-[14px] leading-[1.55] text-[#687386]">
+                              {t("herdr.mission.mergeConfirmText")}
+                          </p>
+                          <div className="mt-[18px] flex justify-end gap-2">
+                              <button
+                                  type="button"
+                                  onClick={closeMergeConfirm}
+                                  className="rounded-lg border border-[#dfe4eb] bg-white px-2.5 py-[7px] text-[12px] text-[var(--mm-text-primary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#78a5ff]"
+                              >
+                                  {t("herdr.mission.cancel")}
+                              </button>
                                   <button
                                       type="button"
                                       data-testid="merge-confirm-action"

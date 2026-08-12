@@ -41,12 +41,28 @@ export async function openParitySession(): Promise<ParitySession> {
 async function openProductionParitySession(): Promise<ParitySession> {
   // __dirname = apps/desktop/e2e/herdr/prototype-parity → 三级上溯到 apps/desktop
   const entry = path.resolve(__dirname, '../../../out/main/index.js');
-  const userDataDir = path.join(process.env.TEMP ?? '/tmp', `herdr-parity-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  // 冷启动偶发抖动（Electron 渲染器挂起/白屏）：整体启动最多重试 3 次
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      return await launchOnce(entry, attempt);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      console.warn(`[parity] 启动尝试 ${attempt}/3 失败: ${lastError.message.split('\n')[0]}`);
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 3000));
+    }
+  }
+  throw lastError ?? new Error('production parity 启动失败');
+}
+
+async function launchOnce(entry: string, attempt: number): Promise<ParitySession> {
+  const userDataDir = path.join(process.env.TEMP ?? '/tmp', `herdr-parity-${Date.now()}-${attempt}-${Math.random().toString(36).slice(2)}`);
   const app: ElectronApplication = await _electron.launch({
     args: [`--user-data-dir=${userDataDir}`, entry],
     env: { ...process.env, PI_HERDR_MOCK: '1', CI: '1' },
+    timeout: 60_000,
   });
-  const page = await app.firstWindow();
+  const page = await app.firstWindow({ timeout: 45_000 });
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.waitForLoadState('domcontentloaded');
   // 跳过 onboarding（modal 可能延迟挂载，先等 tab 出现再处理）
@@ -60,7 +76,7 @@ async function openProductionParitySession(): Promise<ParitySession> {
   // 进入「智能体」section（mock 舰队）；冷启动时点击可能落在挂载前，重试导航
   await agentsTab.click();
   const surface = page.locator('[data-testid="herdr-control-surface"]');
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let nav = 0; nav < 3; nav++) {
     const visible = await surface.isVisible().catch(() => false);
     if (visible) break;
     await page.waitForTimeout(1500);

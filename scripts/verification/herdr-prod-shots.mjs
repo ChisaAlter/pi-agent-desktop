@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..', '..');
-const OUT = path.join(root, 'apps/desktop/e2e-output/parity-shots');
+const OUT = path.join(root, 'docs/verification/herdr-shots');
 
 const MATRIX = [
   { name: 'studio-fleet', drive: async (p) => {} },

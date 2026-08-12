@@ -40,6 +40,8 @@ export interface HerdrAgent {
   /** 内部状态（不含 disconnected — 由 server 派生，防陈旧 done） */
   state: HerdrAgentState;
   pane: string;
+  /** 终端身份（原型 pane-info 的 窗格／终端 字段） */
+  terminalId?: string;
   tab: string;
   workspace: string;
   task: string;

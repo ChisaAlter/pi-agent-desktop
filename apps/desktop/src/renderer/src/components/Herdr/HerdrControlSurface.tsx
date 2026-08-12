@@ -55,7 +55,7 @@ export function HerdrControlSurface(): React.JSX.Element {
                     );
                 })}
             </div>
-            <div className="min-h-0 flex-1 overflow-hidden">
+            <div className={`min-h-0 flex-1 overflow-hidden ${terminalDark ? "p-2" : "p-[14px] pb-6"}`}>
                 {view === "fleet" ? <AgentsPanel /> : null}
                 {view === "pane" ? <HerdrPaneTerminal hideIdentity={terminalDark} /> : null}
                 {view === "mission" ? <MissionCockpit /> : null}
