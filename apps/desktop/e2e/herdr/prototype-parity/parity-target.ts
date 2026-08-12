@@ -21,6 +21,8 @@ export function parityTarget(): ParityTarget {
 export interface ParitySession {
   page: Page;
   target: ParityTarget;
+  /** 设置窗口（production 独立 BrowserWindow；prototype 无） */
+  settingsWindowPage?: () => Promise<Page | null>;
   close: () => Promise<void>;
 }
 
@@ -83,7 +85,16 @@ async function launchOnce(entry: string, attempt: number): Promise<ParitySession
     await agentsTab.click({ timeout: 10_000 }).catch(() => undefined);
   }
   await surface.waitFor({ state: 'visible', timeout: 15_000 });
-  return { page, target: 'production' as const, close: () => app.close() };
+  return {
+    page,
+    target: 'production' as const,
+    settingsWindowPage: async () => {
+      const windows = app.windows();
+      const settings = windows.find((w) => w.url().includes('settings.html'));
+      return settings ?? null;
+    },
+    close: () => app.close(),
+  };
 }
 
 /**
@@ -190,9 +201,9 @@ const PRODUCTION_SELECTORS: ParitySelectors = {
   mergeBtn: '[data-testid=merge-btn]',
   modalBg: '[data-testid=merge-confirm-modal]',
   modalTitle: '[data-testid=merge-confirm-modal]',
-  // 设置相关在 Phase 2（HerdrTab）接线，当前返回 null → 对应流跳过
-  settingsTab: () => null,
-  updateAction: () => null,
+  // 设置相关（Phase 2 HerdrTab 接线）：production 设置窗口导航 tab（compat 语义映射到 herdr）
+  settingsTab: (tab) => (tab === 'compat' ? '[data-settings-tab="herdr"]' : `[data-settings-tab="${tab}"]`),
+  updateAction: (action) => `[data-testid=${action}]`,
   action: (action) =>
     action === 'plan'
       ? '[data-testid=mission-plan]'
@@ -204,7 +215,9 @@ const PRODUCTION_SELECTORS: ParitySelectors = {
             ? '[data-testid=review-pass-btn]'
             : action === 'merge'
               ? '[data-testid=merge-btn]'
-              : null,
+              : action === 'open-settings'
+                ? '[aria-label="打开设置"] >> nth=0'
+                : null,
   viewTab: (view) => `[data-testid=herdr-view-tab][data-view="${view}"]`,
 };
 

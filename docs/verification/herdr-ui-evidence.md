@@ -28,9 +28,14 @@
 | 组件单测 | Herdr 组件 5 文件 39 项 + Agents 8 项（jsdom，zh-CN） | interaction-test |
 | 门禁 | `docs/verification/herdr-ui-gates.yml` G1 记录；需求表 33 PASS | 门禁 |
 
-## Phase 2 — 设置 tab（待做）
+## Phase 2 — 设置 tab（2026-08-12，G2 PASS）
 
-（待填充）
+| 需求 | 证据 | 类型 |
+|---|---|---|
+| UI-REQ-060~064 | `src/renderer/src/components/Settings/__tests__/HerdrTab.test.tsx` 6 项 + `SettingsContent.test.tsx`/`settings-nav-metadata.test.ts`（四区/更新流程/安全切换模态/诊断） | interaction-test |
+| UI-REQ-060 | `apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts` 设置流 — production 全流程 PASS（打开设置窗口→herdr tab→检查→验证→安全切换模态） | interaction-test |
+| UI-REQ-065 | `scripts/verification/check-herdr-ui.cjs` — NL-065 data-action 模式扫描 0 命中 | negative-check |
+| 门禁 | `docs/verification/herdr-ui-gates.yml` G2 记录；需求表 38 PASS | 门禁 |
 
 ## Phase 3-5 — BLOCKED
 

@@ -138,6 +138,7 @@ describe("SettingsContent", () => {
         expect(screen.getAllByRole("tab", { name: "模型" })).toHaveLength(1);
         expect(screen.getAllByRole("tab", { name: "Pi Code Agent" })).toHaveLength(1);
         expect(screen.getByText("常用")).toBeTruthy();
+        expect(screen.getByText("智能体")).toBeTruthy();
         expect(screen.getByText("进阶")).toBeTruthy();
         expect(screen.getByText("维护")).toBeTruthy();
 
@@ -149,6 +150,7 @@ describe("SettingsContent", () => {
             "界面",
             "权限",
             "用量",
+            "Herdr 运行时",
             "长程能力",
             "快捷键",
             "配置文件",

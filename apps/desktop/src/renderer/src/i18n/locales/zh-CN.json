@@ -885,7 +885,8 @@
       "maintenance": "维护",
       "searchPlaceholder": "搜索设置...",
       "searchResults": "匹配结果",
-      "noResults": "没有匹配项"
+      "noResults": "没有匹配项",
+      "agents": "智能体"
     },
     "tab": {
       "model": "模型",
@@ -897,7 +898,8 @@
       "general": "通用",
       "shortcuts": "快捷键",
       "config": "配置文件",
-      "about": "关于"
+      "about": "关于",
+      "herdr": "Herdr 运行时"
     },
     "tabCaption": {
       "model": "Provider 与模型",
@@ -909,7 +911,8 @@
       "general": "语言与通知",
       "shortcuts": "键盘操作",
       "config": "高级 JSON",
-      "about": "版本信息"
+      "about": "版本信息",
+      "herdr": "来源、更新与启动方式"
     },
     "appearance": {
       "heading": "外观",
@@ -1167,7 +1170,70 @@
     },
     "reset": "恢复默认",
     "resetAria": "恢复默认设置",
-    "closeAria": "关闭设置"
+    "closeAria": "关闭设置",
+    "herdr": {
+      "heading": "Herdr 运行时",
+      "description": "选择 Herdr 来源并控制自动跟随官方更新。",
+      "general": {
+        "sourceLabel": "来源",
+        "sourceDesc": "使用由 Pi Desktop 管理的官方发行版。",
+        "autoCheckLabel": "自动检查更新",
+        "autoCheckDesc": "定期检查官方 Herdr 新版本。",
+        "autoSwitchLabel": "自动切换稳定版",
+        "autoSwitchDesc": "兼容性验证通过后自动切换。"
+      },
+      "compat": {
+        "currentLabel": "当前版本",
+        "currentDesc": "当前运行版本与官方协议的一致性。",
+        "candidateLabel": "候选版本",
+        "candidateDesc": "已下载候选版，不影响当前服务。",
+        "capabilitiesHeading": "能力清单",
+        "capabilitiesDesc": "由握手与契约测试得出，未声明的能力不会在界面中显示。",
+        "checkAction": "检查更新",
+        "verifyAction": "验证候选版",
+        "verified": "已验证",
+        "pending": "待验证"
+      },
+      "update": {
+        "checkHeading": "检查更新",
+        "checkDesc": "官方 Herdr v0.9.1 已下载到候选版本，不影响当前服务。",
+        "candidateVersion": "v0.9.1 · 官方发行版",
+        "candidateMeta": "SHA-256 已校验 · 完整签名",
+        "verifyRow": "兼容性验证",
+        "verifyRowMeta": "运行真实契约冒烟测试",
+        "verifyRowMetaDone": "18/18 项能力契约通过",
+        "switchHeading": "切换策略",
+        "switchDesc": "有智能体正在运行时不会静默重启 Herdr。",
+        "waitPoint": "等待安全切换点",
+        "waitPointDesc": "3 个智能体正在运行",
+        "switchButton": "安全切换",
+        "rollbackLabel": "回滚",
+        "rollbackDesc": "保留上一兼容版本。",
+        "rollbackButton": "回滚",
+        "modalTitle": "等待安全切换点",
+        "modalText": "3 个智能体正在运行。不会静默重启 Herdr 服务，可等待智能体稳定后再切换。",
+        "confirm": "确认",
+        "cancel": "取消"
+      },
+      "diagnostics": {
+        "connectionLabel": "服务连接",
+        "connectionDesc": "server、会话与进程状态。",
+        "piIntegrationLabel": "Pi 集成",
+        "piIntegrationDesc": "herdr:pi 生命周期钩子已安装。",
+        "runtimePolicyHeading": "运行策略",
+        "runtimePolicyDesc": "关闭后保持运行 / 断线自动重连。",
+        "keepRunningLabel": "关闭后保持运行",
+        "keepRunningDesc": "应用关闭后 Herdr server 继续运行。",
+        "reconnectLabel": "断线自动重连",
+        "reconnectDesc": "断线后自动重新获取快照并订阅事件。",
+        "dataDirLabel": "数据目录",
+        "dataDirDesc": "会话 JSONL 与运行时数据。",
+        "ok": "正常",
+        "off": "未连接",
+        "unknown": "未知",
+        "none": "未检测到运行时"
+      }
+    }
   },
   "commonErrors": {
     "piNotConnected": "Pi CLI 未连接",

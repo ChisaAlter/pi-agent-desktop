@@ -206,11 +206,35 @@ export function buildSettingsNavigation(t: Translate): SettingsNavSection[] {
         ],
     );
 
+    // Herdr 运行时（UI-REQ-060）：设置窗口「智能体」分组
+    const herdr = tabDefinition(
+        "herdr",
+        "agents",
+        t("settings.tab.herdr"),
+        t("settings.tabCaption.herdr"),
+        t("settings.herdr.heading"),
+        t("settings.herdr.description"),
+        [
+            field("herdr-source", t("settings.herdr.general.sourceLabel"), t("settings.herdr.general.sourceDesc")),
+            field("herdr-auto-check", t("settings.herdr.general.autoCheckLabel"), t("settings.herdr.general.autoCheckDesc")),
+            field("herdr-auto-switch", t("settings.herdr.general.autoSwitchLabel"), t("settings.herdr.general.autoSwitchDesc")),
+            field("herdr-compat", t("settings.herdr.compat.currentLabel"), t("settings.herdr.compat.currentDesc"), ["version", "api"]),
+            field("herdr-capabilities", t("settings.herdr.compat.capabilitiesHeading")),
+            field("herdr-update", t("settings.herdr.update.checkHeading"), t("settings.herdr.update.checkDesc"), ["update", "release"]),
+            field("herdr-diagnostics", t("settings.herdr.diagnostics.connectionLabel"), t("settings.herdr.diagnostics.connectionDesc")),
+        ],
+    );
+
     return [
         {
             id: "common",
             label: t("settings.nav.common"),
             tabs: [general, model, piAgent, appearance, permissions, usage],
+        },
+        {
+            id: "agents",
+            label: t("settings.nav.agents"),
+            tabs: [herdr],
         },
         {
             id: "advanced",

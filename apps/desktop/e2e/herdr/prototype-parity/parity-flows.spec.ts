@@ -147,23 +147,45 @@ test.describe('parity: 设置更新流（检查→验证→安全切换）', () 
 
   test('兼容性 tab 的更新三步流程', async () => {
     const target = parityTarget();
-    const { page, close } = await openParitySession();
+    const { page, close, settingsWindowPage } = await openParitySession();
     const sel = selectorsFor(target);
-    // settingsTab/updateAction 在 Phase 2（HerdrTab）接线；null 表示生产未就绪
+    // settingsTab/updateAction 由 Phase 2（HerdrTab）接线
     test.skip(sel.settingsTab('compat') === null || sel.updateAction('check-update') === null, `设置选择器未就绪（Phase 2）`);
 
-    await page.click(sel.action('open-settings')!);
-    await page.click(sel.settingsTab('compat')!);
-    // 检查更新 → 候选版本面板出现
-    await page.click(sel.updateAction('check-update')!);
-    await expect(page.locator(sel.updateAction('verify-update')!)).toBeVisible();
-    // 验证候选版 → 已验证
-    await page.click(sel.updateAction('verify-update')!);
-    await expect(page.locator('#compatPill')).toHaveText('完全兼容');
-    // 安全切换 → 等待安全切换点模态（有智能体运行不静默重启）
-    await page.click(sel.updateAction('switch-update')!);
-    await expect(page.locator(sel.modalBg!)).toBeVisible();
-    await expect(page.locator(sel.modalTitle!)).toContainText('等待安全切换点');
+    if (target === 'production') {
+      // production：设置窗口独立 BrowserWindow（异步创建，重试查找）
+      await page.click(sel.action('open-settings')!);
+      let settings: Awaited<ReturnType<NonNullable<typeof settingsWindowPage>>> = null;
+      for (let i = 0; i < 10 && !settings; i++) {
+        settings = (await settingsWindowPage?.()) ?? null;
+        if (!settings) await page.waitForTimeout(1000);
+      }
+      expect(settings, '设置窗口未打开').toBeTruthy();
+      const s = settings!;
+      await s.locator(sel.settingsTab('compat')!).waitFor({ timeout: 15_000 });
+      await s.locator(sel.settingsTab('compat')!).click();
+      // 检查更新 → 候选版本面板出现
+      await s.locator(sel.updateAction('check-update')!).click();
+      await expect(s.locator(sel.updateAction('verify-update')!)).toBeVisible();
+      // 验证候选版 → 已验证（兼容性 pill）
+      await s.locator(sel.updateAction('verify-update')!).click();
+      await expect(s.locator('[data-testid="herdr-compat-pill"]')).toContainText('完全兼容');
+      // 安全切换 → 等待安全切换点模态（有智能体运行不静默重启）
+      await s.locator(sel.updateAction('switch-update')!).click();
+      await expect(s.locator('[data-testid="herdr-switch-modal"]')).toBeVisible();
+      await expect(s.locator('[data-testid="herdr-switch-modal"]')).toContainText('等待安全切换点');
+    } else {
+      // prototype：设置模态
+      await page.click(sel.action('open-settings')!);
+      await page.click(sel.settingsTab('compat')!);
+      await page.click(sel.updateAction('check-update')!);
+      await expect(page.locator(sel.updateAction('verify-update')!)).toBeVisible();
+      await page.click(sel.updateAction('verify-update')!);
+      await expect(page.locator('#compatPill')).toHaveText('完全兼容');
+      await page.click(sel.updateAction('switch-update')!);
+      await expect(page.locator(sel.modalBg!)).toBeVisible();
+      await expect(page.locator(sel.modalTitle!)).toContainText('等待安全切换点');
+    }
     await close();
   });
 });

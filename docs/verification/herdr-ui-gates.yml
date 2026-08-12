@@ -66,3 +66,21 @@
 2. 阈值 6.5-23% 为用户校准值，签署后可收紧（优先 merge 20.9% 与 terminal-fleet 12.7%）
 3. 设置流 production 选择器与断言 → Phase 2（HerdrTab）接线
 4. 主套件 e2e（agents-fleet.spec.ts 已重写为空态语义）→ G1 后随完整 e2e 验证
+
+## G2 — Phase 2 设置 tab（2026-08-12）
+
+**架构审查要点**：
+- HerdrTab 位于设置窗口「智能体」分组（tab-defs 新增 agents section + herdr tab；5 处联动：类型/isSettingsTab/导航元数据/图标/SettingsContent lazy）
+- 四区齐全（通用/兼容性与能力/更新/诊断）；mock 数据带文件头标记；服务连接行读取 herdr-store（非 mock 不伪造）
+- 更新流程状态机（检查→候选→验证→安全切换模态→回滚）语义与原型一致（有智能体排队不静默重启）
+- 设置流 parity：production 走设置窗口（独立 BrowserWindow），选择器接线 data-settings-tab/check-update/verify-update/switch-update
+
+**证据审查（最终 production parity 套件）**：
+- 完整套件 8 passed / 0 failed / 0 flaky（6 交互流含设置流 + 8 视觉矩阵）
+- 仓库门禁：typecheck 0 / lint 0 error / 6317 测试通过；verify:docs PASS；检查器 38 PASS + 负面清单 0
+
+**结论**：G2 PASS（设置导航含 Herdr 运行时；原型设置交互流在生产复现 PASS；双语一致）
+
+**遗留项**：
+1. G1 用户实测签署仍待完成（build:mock 验证 + 阈值收紧）
+2. HerdrTab 的开关/来源选择为 mock 状态（Phase 3 接设置持久化与真实运行时数据）

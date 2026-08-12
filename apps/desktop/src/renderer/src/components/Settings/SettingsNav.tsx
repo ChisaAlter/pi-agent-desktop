@@ -25,6 +25,7 @@ function SettingsNavIcon({ id }: { id: SettingsTab }): React.JSX.Element {
         shortcuts: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M3 12a9 9 0 0 1 15-6.7M21 5v5h-5M21 12a9 9 0 0 1-15 6.7M3 19v-5h5" />,
         config: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M8 4h8l3 3v13H8zM16 4v4h4M4 8h3M4 12h3M4 16h3" />,
         about: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M12 17v-5m0-4h.01M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />,
+        herdr: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.6} d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7zM7.5 7.5h.01M16.5 7.5h.01M7.5 16.5h.01M16.5 16.5h.01" />,
     };
     return (
         <svg className={common} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -50,6 +51,7 @@ function NavTabButton({
             aria-controls={`settings-tabpanel-${tab.id}`}
             aria-label={tab.label}
             id={`settings-tab-${tab.id}`}
+            data-settings-tab={tab.id}
             onClick={onClick}
             className={`settings-pressable flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-[transform,background-color,color,box-shadow] duration-150 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb] ${
                 active

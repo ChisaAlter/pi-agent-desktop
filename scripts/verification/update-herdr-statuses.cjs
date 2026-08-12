@@ -28,7 +28,7 @@ const passIds = [
   'UI-REQ-030', 'UI-REQ-031', 'UI-REQ-033', 'UI-REQ-034', 'UI-REQ-035',
   'UI-REQ-040', 'UI-REQ-041', 'UI-REQ-042', 'UI-REQ-043', 'UI-REQ-044',
   'UI-REQ-050', 'UI-REQ-051', 'UI-REQ-052', 'UI-REQ-053',
-  'UI-REQ-065', 'UI-REQ-070', 'UI-REQ-071',
+  'UI-REQ-060', 'UI-REQ-061', 'UI-REQ-062', 'UI-REQ-063', 'UI-REQ-064', 'UI-REQ-065', 'UI-REQ-070', 'UI-REQ-071',
 ];
 const evidenceByType = {
   'visual-diff': [
