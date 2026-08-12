@@ -121,6 +121,16 @@ const HERDR_RIGHT_WIDTH: Record<"studio" | "mission" | "terminal", string> = {
     terminal: "w-[270px]",
 };
 
+/**
+ * Herdr 布局模式 → 中心内容右内边距（浮层右栏不占位，内容需避开，
+ * 视觉上与原型静态右栏一致——内容止于 1130/1105/1170）。
+ */
+const HERDR_CENTER_PADDING: Record<"studio" | "mission" | "terminal", string> = {
+    studio: "pr-[310px]",
+    mission: "pr-[335px]",
+    terminal: "pr-[270px]",
+};
+
 function clampLeftSidebarWidth(width: number): number {
     return Math.max(MIN_LEFT_SIDEBAR_WIDTH, Math.min(MAX_LEFT_SIDEBAR_WIDTH, Math.round(width)));
 }
@@ -1002,7 +1012,7 @@ function AppShell(): React.ReactElement {
                 }
                 statusBarSlot={<HerdrStatusBar />}
                 leftCollapsed={leftCollapsed}
-                rightCollapsed={activePanel !== "chat" || rightRailCollapsed}
+                rightCollapsed={isHerdrSection ? false : activePanel !== "chat" || rightRailCollapsed}
                 leftWidth={isHerdrSection ? HERDR_LEFT_WIDTH[herdrLayoutMode] : leftSidebarWidth}
                 rightFloatingOpen={activePanel === "chat" || isHerdrSection}
                 rightFloatingTopOffset={isHerdrSection ? "54px" : "54px"}
@@ -1047,7 +1057,10 @@ function AppShell(): React.ReactElement {
                     )
                 }
                 centerSlot={
-                    <div className="pi-motion-panel-stack">
+                    // 右栏为浮层不占位：herdr section 中心内容加右内边距避开（原型静态右栏语义）。
+                    // wrapper 必须是 flex 容器——panel-stack 靠 flex:1 撑高，block 容器会塌陷
+                    <div className={`flex min-h-0 min-w-0 flex-1 flex-col ${isHerdrSection ? HERDR_CENTER_PADDING[herdrLayoutMode] : ""}`}>
+                        <div className="pi-motion-panel-stack">
                         <MotionPanelLayer active={activePanel === "chat"} panelId="chat">
                             <ErrorBoundary fallback={panelFallback(t("app.panels.chat"))}>
                                 <ChatView
@@ -1140,6 +1153,7 @@ function AppShell(): React.ReactElement {
                                 </ErrorBoundary>
                             </MotionPanelLayer>
                         )}
+                        </div>
                     </div>
                 }
             />

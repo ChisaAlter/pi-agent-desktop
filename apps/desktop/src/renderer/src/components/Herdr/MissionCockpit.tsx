@@ -1,5 +1,7 @@
 import React, { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useI18n } from "../../i18n";
+import { useSettingsStore } from "../../stores/settings-store";
 import { addToast } from "../../stores/toast-store";
 import {
     missionDag,
@@ -51,6 +53,7 @@ export function MissionCockpit(): React.JSX.Element {
     const { t } = useI18n();
     const mock = useHerdrStore((s) => s.mock);
     const status = useHerdrStore((s) => s.missionStatus);
+    const layoutMode = useSettingsStore((s) => s.herdrLayoutMode);
     const seq = useHerdrStore((s) => s.missionSeq);
     const attempt = useHerdrStore((s) => s.missionAttempt);
     const goal = useHerdrStore((s) => s.missionGoal);
@@ -171,7 +174,8 @@ export function MissionCockpit(): React.JSX.Element {
             </section>
 
             {/* 三栏: 交付物 | 审查与修订 | 分支整合 */}
-            <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3">
+            {/* 底部三栏：studio 2 列（原型 mission-lower 1fr 1fr）/ mission 布局 3 列 */}
+            <div className={`grid grid-cols-1 gap-2.5 ${layoutMode === "mission" ? "md:grid-cols-3" : "md:grid-cols-2"}`}>
                 <div data-testid="mission-artifacts" className="rounded-[11px] border border-[var(--mm-border)] bg-[var(--mm-bg-panel)] p-3">
                     <h3 className="m-0 mb-2.5 text-[13px] font-semibold text-[var(--mm-text-primary)]">
                         {t("herdr.mission.artifacts")}
@@ -270,39 +274,44 @@ export function MissionCockpit(): React.JSX.Element {
                 </div>
             </div>
 
-            {/* 合入确认模态 — 合入必须用户确认（UI-REQ-044） */}
-            {mergeOpen ? (
-                <div className="fixed inset-0 z-[200] grid place-items-center bg-[#0f172a66] p-4" data-testid="merge-confirm-modal">
-                    <div className="w-[min(520px,calc(100vw-30px))] rounded-[14px] bg-white p-[18px] shadow-[0_24px_70px_rgba(0,0,0,0.25)]">
-                        <h2 className="m-0 mb-2 text-base font-bold text-[var(--mm-text-primary)]">
-                            {t("herdr.mission.mergeConfirmTitle")}
-                        </h2>
-                        <p className="m-0 text-[13px] leading-[1.55] text-[var(--mm-text-secondary)]">
-                            {t("herdr.mission.mergeConfirmText")}
-                        </p>
-                        <div className="mt-[18px] flex justify-end gap-2">
-                            <button
-                                type="button"
-                                onClick={closeMergeConfirm}
-                                className="rounded-md border border-[var(--mm-border)] px-3 py-1.5 text-[13px] text-[var(--mm-text-primary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#78a5ff]"
-                            >
-                                {t("herdr.mission.cancel")}
-                            </button>
-                            <button
-                                type="button"
-                                data-testid="merge-confirm-action"
-                                onClick={() => {
-                                    confirmMerge();
-                                    addToast(t("herdr.toast.mergeConfirmed"), "success");
-                                }}
-                                className={PRIMARY_BTN}
-                            >
-                                {t("herdr.mission.mergeConfirmAction")}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            ) : null}
+            {/* 合入确认模态 — 合入必须用户确认（UI-REQ-044）。
+                portal 到 body：面板栈/动画层有 transform，会破坏 position:fixed 的
+                视口定位，导致遮罩只覆盖局部区域。 */}
+            {mergeOpen && typeof document !== "undefined"
+                ? createPortal(
+                      <div className="fixed inset-0 z-[200] grid place-items-center bg-[#0f172a66] p-4" data-testid="merge-confirm-modal">
+                          <div className="w-[min(520px,calc(100vw-30px))] rounded-[14px] bg-white p-[18px] shadow-[0_24px_70px_rgba(0,0,0,0.25)]">
+                              <h2 className="m-0 mb-2 text-base font-bold text-[var(--mm-text-primary)]">
+                                  {t("herdr.mission.mergeConfirmTitle")}
+                              </h2>
+                              <p className="m-0 text-[13px] leading-[1.55] text-[var(--mm-text-secondary)]">
+                                  {t("herdr.mission.mergeConfirmText")}
+                              </p>
+                              <div className="mt-[18px] flex justify-end gap-2">
+                                  <button
+                                      type="button"
+                                      onClick={closeMergeConfirm}
+                                      className="rounded-md border border-[var(--mm-border)] px-3 py-1.5 text-[13px] text-[var(--mm-text-primary)] transition-colors hover:bg-[var(--mm-bg-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#78a5ff]"
+                                  >
+                                      {t("herdr.mission.cancel")}
+                                  </button>
+                                  <button
+                                      type="button"
+                                      data-testid="merge-confirm-action"
+                                      onClick={() => {
+                                          confirmMerge();
+                                          addToast(t("herdr.toast.mergeConfirmed"), "success");
+                                      }}
+                                      className={PRIMARY_BTN}
+                                  >
+                                      {t("herdr.mission.mergeConfirmAction")}
+                                  </button>
+                              </div>
+                          </div>
+                      </div>,
+                      document.body,
+                  )
+                : null}
         </div>
     );
 }

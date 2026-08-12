@@ -1508,7 +1508,7 @@
       "requestMerge": "Request merge to main",
       "mergeConfirmTitle": "Final merge confirmation",
       "mergeConfirmText": "The reviewer passed and the integration worktree has no conflicts. This operation still requires your explicit confirmation; agents never write to the main branch automatically.",
-      "mergeConfirmAction": "Confirm merge",
+      "mergeConfirmAction": "Confirm",
       "cancel": "Cancel",
       "empty": "No Herdr runtime — mission planning unavailable"
     },

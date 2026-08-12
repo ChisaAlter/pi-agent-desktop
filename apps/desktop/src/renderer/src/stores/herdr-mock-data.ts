@@ -61,6 +61,16 @@ export const HERDR_MOCK_AGENTS: HerdrAgent[] = [
   },
 ];
 
+/**
+ * tab 显示名映射（原型树的标签：任务协调/并行实现/独立审查；
+ * 内部 id 为 coordinator/implementation/审查中）。
+ */
+export const HERDR_MOCK_TAB_DISPLAY: Record<string, string> = {
+  coordinator: '任务协调',
+  implementation: '并行实现',
+  '审查中': '独立审查',
+};
+
 /** 与原型 terminal 初始内容一致。 */
 export const HERDR_MOCK_TERMINAL_LINES: string[] = [
   '❯ pi --session C:\\Users\\…\\pi-sessions\\auth.jsonl',

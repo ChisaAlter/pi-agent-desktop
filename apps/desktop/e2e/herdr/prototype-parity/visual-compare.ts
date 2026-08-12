@@ -79,33 +79,40 @@ export interface RegionResult {
   totalPixels: number;
 }
 
+export interface CompareOptions {
+  /** 跳过的区域（如 terminal 布局的左右栏——D4 决策：生产 rail 保持浅色主题） */
+  skip?: string[];
+}
+
 /**
  * 逐区域对比 baseline 与 production 截图。
+ * baseline 与 production 的 chrome 高度各自实测/固定（内容区对齐，避免整体错位）。
  * 返回每个区域的 diffRatio（0..1）与汇总结果；threshold 内视为通过。
  */
 export function compareRegions(
   baselinePng: PNG,
   productionPng: PNG,
   regions: RegionSpec,
+  /** 原型内容区起点 y（124 = banner26+topbar44+serverbar54） */
+  baselineChromeTop: number,
+  /** 生产内容区起点 y（titlebar+tabbar+statusbar 实测） */
+  productionChromeTop: number,
   threshold: number,
+  options: CompareOptions = {},
 ): { results: RegionResult[]; passed: boolean; overallRatio: number } {
-  const areas: Array<{ name: string; x: number; y: number; w: number; h: number }> = [
-    { name: 'left', x: 0, y: regions.chromeTop, w: regions.leftWidth, h: baselinePng.height - regions.chromeTop },
-    {
-      name: 'center',
-      x: regions.leftWidth,
-      y: regions.chromeTop,
-      w: regions.rightStart - regions.leftWidth,
-      h: baselinePng.height - regions.chromeTop,
-    },
-    { name: 'right', x: regions.rightStart, y: regions.chromeTop, w: regions.rightWidth, h: baselinePng.height - regions.chromeTop },
+  const areas: Array<{ name: string; x: number; w: number; h: number }> = [
+    { name: 'left', x: 0, w: regions.leftWidth, h: baselinePng.height - baselineChromeTop },
+    { name: 'center', x: regions.leftWidth, w: regions.rightStart - regions.leftWidth, h: baselinePng.height - baselineChromeTop },
+    { name: 'right', x: regions.rightStart, w: regions.rightWidth, h: baselinePng.height - baselineChromeTop },
   ];
   const results: RegionResult[] = [];
   let totalDiff = 0;
   let totalPixels = 0;
   for (const area of areas) {
-    const a = cropPng(baselinePng, area.x, area.y, area.w, area.h);
-    const b = cropPng(productionPng, area.x, area.y, area.w, area.h);
+    if (options.skip?.includes(area.name)) continue;
+    // 各自按内容顶裁剪：左侧起点 = 该图 chrome 底部
+    const a = cropPng(baselinePng, area.x, baselineChromeTop, area.w, area.h);
+    const b = cropPng(productionPng, area.x, productionChromeTop, area.w, area.h);
     const diff = new PNG({ width: a.width, height: a.height });
     const diffPixels = pixelmatch(a.data, b.data, diff.data, a.width, a.height, { threshold: 0.15 });
     const ratio = diffPixels / (a.width * a.height);

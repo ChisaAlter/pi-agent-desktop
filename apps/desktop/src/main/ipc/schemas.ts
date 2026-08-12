@@ -133,6 +133,8 @@ const appSettingsSchema = z
             "extensions",
         ]), z.boolean())).optional(),
         longHorizon: longHorizonSchema.optional(),
+        // Herdr 控制面布局模式（UI-REQ-003，与 shared-types AppSettings 同步）
+        herdrLayoutMode: z.enum(["studio", "mission", "terminal"]).optional(),
     })
     .strict();
 

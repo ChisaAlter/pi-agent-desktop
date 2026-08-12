@@ -178,11 +178,11 @@ requirements:
   - id: UI-REQ-021
     prototype: status-badges
     title: 状态徽章 6 态：工作中/已阻塞/已完成·待查看/空闲/状态未知/连接已断开
-    status: NOT_RUN
+    status: IN_PROGRESS
     evidence_class: interaction-test
     forbidden_substitute: 缺失状态集合；断线渲染成 idle
-    files: [apps/desktop/src/renderer/src/components/Agents/AgentStatusBadge.tsx, apps/desktop/src/renderer/src/hooks/useAgentFleet.ts]
-    tests: [apps/desktop/src/renderer/src/hooks/__tests__/useAgentFleet.test.ts]
+    files: [apps/desktop/src/renderer/src/components/Agents/AgentStatusBadge.tsx, apps/desktop/src/renderer/src/stores/herdr-store.ts]
+    tests: [apps/desktop/src/renderer/src/stores/__tests__/herdr-store.test.ts, apps/desktop/src/renderer/src/components/Agents/__tests__/AgentsPanel.test.tsx]
   - id: UI-REQ-022
     prototype: card-no-side-border
     title: 卡片无彩色侧边框；选中用统一蓝色描边
@@ -210,19 +210,19 @@ requirements:
   - id: UI-REQ-025
     prototype: seen-semantics
     title: Done=Idle+unseen；Mark Seen→Idle
-    status: NOT_RUN
+    status: IN_PROGRESS
     evidence_class: interaction-test
     forbidden_substitute: done 语义回到 hasAssistantOutput
-    files: [apps/desktop/src/renderer/src/hooks/useAgentFleet.ts, apps/desktop/src/renderer/src/stores/herdr-store.ts]
-    tests: [apps/desktop/src/renderer/src/hooks/__tests__/useAgentFleet.test.ts]
+    files: [apps/desktop/src/renderer/src/stores/herdr-store.ts, apps/desktop/src/renderer/src/components/Agents/AgentCard.tsx]
+    tests: [apps/desktop/src/renderer/src/stores/__tests__/herdr-store.test.ts, apps/desktop/src/renderer/src/components/Agents/__tests__/AgentsPanel.test.tsx]
   - id: UI-REQ-026
     prototype: priority-rollup
     title: 优先级 Blocked>Done>Working>Idle>Unknown
-    status: NOT_RUN
+    status: IN_PROGRESS
     evidence_class: interaction-test
     forbidden_substitute: 错误优先级（error 最高等旧语义）
-    files: [apps/desktop/src/renderer/src/hooks/useAgentFleet.ts]
-    tests: [apps/desktop/src/renderer/src/hooks/__tests__/useAgentFleet.test.ts]
+    files: [apps/desktop/src/renderer/src/stores/herdr-store.ts]
+    tests: [apps/desktop/src/renderer/src/stores/__tests__/herdr-store.test.ts]
   - id: UI-REQ-027
     prototype: server-disconnect
     title: server 断线→全部 disconnected 禁陈旧 done；重连→snapshot+subscribe 不重放 prompt

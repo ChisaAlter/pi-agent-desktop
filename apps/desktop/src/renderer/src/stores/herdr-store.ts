@@ -18,6 +18,7 @@ import { create } from 'zustand';
 import {
   HERDR_MOCK_AGENTS,
   HERDR_MOCK_MISSION,
+  HERDR_MOCK_TAB_DISPLAY,
   HERDR_MOCK_TERMINAL_LINES,
   HERDR_MOCK_SESSION,
   HERDR_MOCK_SERVER,
@@ -93,6 +94,8 @@ interface HerdrStoreState {
   agents: HerdrAgent[];
   tree: HerdrTreeModel;
   terminalLog: string[];
+  /** prompt 预填草稿（mock 与原型预填一致；真实运行时为空） */
+  promptDraft: string;
   missionStatus: HerdrMissionStatus;
   missionSeq: number;
   missionAttempt: number;
@@ -124,7 +127,7 @@ interface HerdrStoreState {
 }
 
 /** 构建 4 级树（session → workspace → tab → pane），保持原型顺序。 */
-export function buildHerdrTree(session: string, agents: HerdrAgent[]): HerdrTreeModel {
+export function buildHerdrTree(session: string, agents: HerdrAgent[], tabDisplay?: Record<string, string>): HerdrTreeModel {
   const workspaceOrder: string[] = [];
   const map = new Map<string, Map<string, HerdrAgent[]>>();
   for (const agent of agents) {
@@ -142,7 +145,11 @@ export function buildHerdrTree(session: string, agents: HerdrAgent[]): HerdrTree
       id: ws,
       name: ws,
       kind: ws.startsWith('wt/') ? 'worktree' : 'workspace',
-      tabs: [...tabs.entries()].map(([tab, panes]) => ({ id: tab, name: tab, panes })),
+      tabs: [...tabs.entries()].map(([tab, panes]) => ({
+        id: tab,
+        name: tabDisplay?.[tab] ?? tab,
+        panes,
+      })),
     };
   });
   return { session, workspaces };
@@ -239,7 +246,7 @@ const mockActive = typeof __PI_HERDR_MOCK__ !== 'undefined' && __PI_HERDR_MOCK__
 function initialState(): Pick<
   HerdrStoreState,
   | 'mock' | 'server' | 'view' | 'selectedAgent' | 'attached' | 'stateSeq'
-  | 'agents' | 'tree' | 'terminalLog'
+  | 'agents' | 'tree' | 'terminalLog' | 'promptDraft'
   | 'missionStatus' | 'missionSeq' | 'missionAttempt' | 'missionGoal' | 'mergeConfirmOpen'
 > {
   if (mockActive) {
@@ -252,8 +259,9 @@ function initialState(): Pick<
       attached: true,
       stateSeq: 184,
       agents,
-      tree: buildHerdrTree(HERDR_MOCK_SESSION, agents),
+      tree: buildHerdrTree(HERDR_MOCK_SESSION, agents, HERDR_MOCK_TAB_DISPLAY),
       terminalLog: [...HERDR_MOCK_TERMINAL_LINES],
+      promptDraft: '修复认证测试，并在完成后运行相关测试。',
       missionStatus: HERDR_MOCK_MISSION.status,
       missionSeq: HERDR_MOCK_MISSION.seq,
       missionAttempt: HERDR_MOCK_MISSION.attempt,
@@ -272,6 +280,7 @@ function initialState(): Pick<
     agents: [],
     tree: { session: '', workspaces: [] },
     terminalLog: [],
+    promptDraft: '',
     missionStatus: 'draft',
     missionSeq: 0,
     missionAttempt: 1,
@@ -280,8 +289,7 @@ function initialState(): Pick<
   };
 }
 
-export const useHerdrStore = create<HerdrStoreState>()((set) => ({
-  ...initialState(),
+export const useHerdrStore = create<HerdrStoreState>()((set) => ({  ...initialState(),
 
   selectAgent: (name) => set({ selectedAgent: name }),
   setView: (view) => set({ view }),
@@ -353,3 +361,13 @@ export const useHerdrStore = create<HerdrStoreState>()((set) => ({
 
 /** 非 React 环境取快照（i18n/工具函数用）。 */
 export const herdrStoreSnapshot = () => useHerdrStore.getState();
+
+// Mock 测试钩子（仅 mock 模式暴露，parity E2E 驱动断线/重连状态用）：
+// 真实运行时（Phase 3）由 Main 权威连接监督器驱动，无此钩子。
+if (mockActive && typeof window !== "undefined") {
+    (window as unknown as Record<string, unknown>).__herdrMockApi__ = {
+        setServer: (server: HerdrServerState) => useHerdrStore.getState().setServer(server),
+        getState: () => useHerdrStore.getState(),
+        reset: () => useHerdrStore.getState().reset(),
+    };
+}

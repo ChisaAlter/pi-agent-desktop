@@ -11,7 +11,7 @@
 | 治理（全部） | `scripts/verification/check-herdr-ui.cjs --self-test` — 8/8 PASS（T1 假 PASS 必须 FAIL） | negative-check |
 | 治理（全部） | `pnpm verify:herdr` — 41 条校验通过、负面清单 0 命中、BLOCKED 3 条如实报告 | negative-check |
 | 治理（全部） | `docs/verification/herdr-ui-gates.yml` — G0 门禁记录（含独立审查-修复闭环 14 项） | 门禁 |
-| UI-REQ-003/020/070/071 基线 | `apps/desktop/e2e-output/baselines/herdr/*.png` — 9 张黄金基线（1440×960，studio/mission/terminal × fleet/pane/mission + settings + merge），manifest 带 SHA-256 | visual-diff |
+| UI-REQ-003/020/070/071 基线 | `docs/verification/baselines/herdr/*.png` — 9 张黄金基线（1440×960，studio/mission/terminal × fleet/pane/mission + settings + merge），manifest 带 SHA-256 | visual-diff |
 | 治理（全部） | `apps/desktop/e2e/herdr/prototype-parity/` — parity 框架（target 抽象、visual-compare 区域对比按 variant 几何、parity 独立配置） | 框架 |
 | 交互流（原型 oracle） | `npx playwright test --config=playwright.parity.config.ts` — 17/17 PASS（树层级结构/选中联动/blocked 处理/seen/断线/mission 闭环/设置更新流/基线自检 9 项 + manifest 哈希） | interaction-test |
 | 原型修复 | `docs/prototypes/herdr-desktop-ui-prototype.html` PROTOTYPE-FIX-001（事件委托修复加载崩溃）+ PROTOTYPE-FIX-002（row/card 顶层化修复更新面板）— 零视觉改动 | 修复记录 |

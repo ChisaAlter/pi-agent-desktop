@@ -73,7 +73,7 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
     const openPaneForBlocked = useHerdrStore((s) => s.openPaneForBlocked);
     const addToast = useToastStore((s) => s.addToast);
 
-    const [promptText, setPromptText] = useState("");
+    const [promptText, setPromptText] = useState(useHerdrStore.getState().promptDraft);
     const [waitOption, setWaitOption] = useState<WaitOption>("waitIdle");
     const terminalRef = useRef<HTMLDivElement>(null);
 
@@ -201,7 +201,7 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
                 <div
                     ref={terminalRef}
                     data-testid="pane-terminal"
-                    className={`overflow-y-auto bg-[#101722] p-4 font-mono text-[12px] leading-[1.7] text-[#e2eaf5] ${hideIdentity ? "min-h-[calc(100vh-330px)]" : "max-h-[520px] min-h-[450px]"}`}
+                    className={`overflow-y-auto bg-[#101722] p-4 text-[12px] leading-[1.7] text-[#e2eaf5] [font-family:"Cascadia_Code",Consolas,monospace] ${hideIdentity ? "min-h-[calc(100vh-330px)]" : "max-h-[520px] min-h-[450px]"}`}
                 >
                     {terminalLog.map((line, i) => (
                         <div key={i} className="whitespace-pre-wrap">
@@ -263,14 +263,12 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
                         <button
                             type="button"
                             data-testid="read-history"
+                            title={t("herdr.pane.readHistoryHint")}
                             onClick={() => addToast({ message: t("herdr.toast.recentOutput"), tone: "info" })}
-                            className="shrink-0 rounded px-2 py-1 text-xs text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
+                            className="shrink-0 rounded border border-[var(--mm-border)] bg-white px-2.5 py-1.5 text-xs text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
                         >
                             {t("herdr.pane.readHistory")}
                         </button>
-                        <span className="text-[10px] leading-3 text-[var(--mm-text-tertiary)]">
-                            {t("herdr.pane.readHistoryHint")}
-                        </span>
                     </div>
                 </div>
             </div>

@@ -39,8 +39,8 @@ describe("AgentsPanel — Herdr 舰队视图", () => {
         expect(groups[1].getAttribute("data-workspace")).toBe("wt/auth-fix");
         // primary 摘要: 3 个智能体 · 2 个标签页 · 仓库 pi-desktop
         expect(groups[0].textContent).toContain("3 个智能体 · 2 个标签页 · 仓库 pi-desktop");
-        // worktree 摘要: 分支 herdr/reviewer
-        expect(groups[1].textContent).toContain("分支 herdr/reviewer");
+        // worktree 摘要: 分支 herdr/auth-fix（从 worktree 名推导，与原型一致）
+        expect(groups[1].textContent).toContain("分支 herdr/auth-fix");
     });
 
     it("卡片显示 显示名/kind·窗格/任务/会话/工作树/状态来源 + 状态徽章", () => {

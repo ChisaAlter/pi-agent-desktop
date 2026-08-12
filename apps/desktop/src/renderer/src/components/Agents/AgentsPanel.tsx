@@ -42,7 +42,7 @@ export function AgentsPanel(): React.JSX.Element {
                                 <h3 className="m-0 min-w-0 truncate text-[14px] font-semibold text-[var(--mm-text-primary)]">{workspace.name}</h3>
                                 <span className="ml-auto shrink-0 text-[11px] text-[var(--mm-text-tertiary)]">
                                     {isWorktree
-                                        ? t("herdr.fleet.branch", { branch: `herdr/${panes[0]?.name ?? ""}` })
+                                        ? t("herdr.fleet.branch", { branch: `herdr/${workspace.name.replace(/^wt\//, "")}` })
                                         : t("herdr.fleet.agentCount", {
                                               count: panes.length,
                                               tabs: workspace.tabs.length,

@@ -1508,7 +1508,7 @@
       "requestMerge": "请求合入主分支",
       "mergeConfirmTitle": "最终合入确认",
       "mergeConfirmText": "审查智能体已通过，整合工作树无冲突。此操作仍需要用户明确确认，不会由智能体自动写入主分支。",
-      "mergeConfirmAction": "确认合入",
+      "mergeConfirmAction": "确认",
       "cancel": "取消",
       "empty": "未连接 Herdr 运行时 — 任务编排不可用"
     },
