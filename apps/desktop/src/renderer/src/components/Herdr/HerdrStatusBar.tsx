@@ -13,8 +13,8 @@ import { useHerdrStore, type HerdrServerState } from '../../stores/herdr-store';
  * snapshot+seq 前) — 非 mock 一律不伪造数据 (D6/NL-010): server=offline 且非 mock
  * 时显示断线文案 + herdr.tree.empty 空态提示。
  *
- * 负向清单 (NL-002/NL-065): 不提供 检查更新/验证/切换 任何操作, 只保留
- * 连接状态 + 会话/进程、来源 + 版本、兼容性、⚙ 设置入口。
+ * 负向清单 (NL-002/NL-065): 本栏只保留 连接状态 + 会话/进程、来源 + 版本、
+ * 兼容性、⚙ 设置入口；其余运行时操作一律收敛到设置窗口（见 check-herdr-ui.cjs）。
  */
 const DOT_STYLE: Record<HerdrServerState, string> = {
   // 原型 .status-dot: 9px 圆点 + 4px 光晕 (绿 #16845b / 灰 #7c8798 / 琥珀 #b56a0b)

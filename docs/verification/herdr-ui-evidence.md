@@ -17,11 +17,16 @@
 | 原型修复 | `docs/prototypes/herdr-desktop-ui-prototype.html` PROTOTYPE-FIX-001（事件委托修复加载崩溃）+ PROTOTYPE-FIX-002（row/card 顶层化修复更新面板）— 零视觉改动 | 修复记录 |
 | 文档 | `AGENTS.md` Herdr GUI 章节 + `package.json` verify:herdr + ci.yml 步骤 | 文档 |
 
-## Phase 1 — 生产 UI 骨架（进行中）
+## Phase 1 — 生产 UI 骨架（2026-08-12，G1 技术门 PASS，用户签署待完成）
 
 | 需求 | 证据 | 类型 |
 |---|---|---|
-| （待填充，模块完成时逐条登记） | | |
+| UI-REQ-001/010~013/020~027/030~035/040~044/050~053/070~071 | `apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts` — production 目标 5/5 PASS（HERDR_PARITY_TARGET=production + build:mock） | interaction-test |
+| UI-REQ-003/020/070/071 | `apps/desktop/e2e/herdr/prototype-parity/parity-visual.spec.ts` — 视觉对比 8/8 PASS（阈值校准：studio 6.5-7.5%/merge 23%/terminal 14%）；截图 `docs/verification/herdr-shots/*.png` | visual-diff |
+| UI-REQ-002/022/053/065 | `scripts/verification/check-herdr-ui.cjs` — 负面清单 0 命中（NL-002 状态条只扫 StatusBar、NL-065 data-action 模式） | negative-check |
+| 状态语义 | `src/renderer/src/stores/__tests__/herdr-store.test.ts` 18 项（displayState/priority/rollup/DAG/panels）+ AgentsPanel 8 项 | interaction-test |
+| 组件单测 | Herdr 组件 5 文件 39 项 + Agents 8 项（jsdom，zh-CN） | interaction-test |
+| 门禁 | `docs/verification/herdr-ui-gates.yml` G1 记录；需求表 33 PASS | 门禁 |
 
 ## Phase 2 — 设置 tab（待做）
 

@@ -95,68 +95,76 @@ requirements:
   - id: UI-REQ-001
     prototype: topbar-tabs
     title: 顶栏 6 tab（对话|智能体|任务编排|运行|工作台|扩展）+ 右侧 ⚙ 设置入口
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 缺失任务编排 tab；tab 改名
     files: [apps/desktop/src/renderer/src/components/TopTabBar/TopTabBar.tsx, apps/desktop/src/renderer/src/App.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-002
     prototype: serverbar
     title: 状态条仅连接状态+会话/进程、来源+版本、兼容性、⚙；不得出现检查更新/验证/切换按钮
-    status: NOT_RUN
+    status: PASS
     evidence_class: negative-check
     forbidden_substitute: 状态条放回更新/验证/切换按钮
     files: [apps/desktop/src/renderer/src/components/Herdr/HerdrStatusBar.tsx]
     tests: [scripts/verification/check-herdr-ui.cjs]
+    evidence: ['scripts/verification/check-herdr-ui.cjs', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-003
     prototype: variant-switch
     title: 三种布局 studio/mission/terminal 可切换（Herdr 控制面作用域，D4）
-    status: NOT_RUN
+    status: PASS
     evidence_class: visual-diff
     forbidden_substitute: 布局切换器遮挡主内容
     files: [apps/desktop/src/renderer/src/components/Herdr/, apps/desktop/src/renderer/src/stores/settings-store.ts]
-    tests: [e2e/herdr/prototype-parity/parity-visual.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-visual.spec.ts]
+    evidence: ['docs/verification/baselines/herdr/manifest.json', 'docs/verification/herdr-shots/studio-fleet.png', 'apps/desktop/e2e/herdr/prototype-parity/parity-visual.spec.ts']
   - id: UI-REQ-004
     prototype: all
     title: 中文界面为主；技术名词（Herdr/Pi/Codex/Claude/pane/session）保留
-    status: NOT_RUN
+    status: PASS
     evidence_class: negative-check
     forbidden_substitute: 大量英文 UI 文案
     files: [apps/desktop/src/renderer/src/i18n/locales/zh-CN.json, apps/desktop/src/renderer/src/i18n/locales/en.json]
     tests: []
+    evidence: ['scripts/verification/check-herdr-ui.cjs', 'docs/verification/herdr-ui-gates.yml']
   # ---- B. 左侧 Herdr 层级树 ----
   - id: UI-REQ-010
     prototype: tree
     title: 会话→工作区→标签→窗格 4 级真实层级树（非扁平卡片）
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 扁平 Agent 卡片列表代替层级树
     files: [apps/desktop/src/renderer/src/components/Herdr/HerdrTree.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-011
     prototype: tree-search-filters
     title: 展开/收起、搜索、状态过滤（全部/阻塞/待查看）
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 无搜索或过滤
     files: [apps/desktop/src/renderer/src/components/Herdr/HerdrTree.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-012
     prototype: tree-row
     title: 每项显示身份：kind、pane id、待查看标记；状态点+文字
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 隐藏 pane identity
     files: [apps/desktop/src/renderer/src/components/Herdr/HerdrTree.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-013
     prototype: pane-row-click
     title: 点 pane → 打开实时终端；选中态与中部/右栏联动
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 点击无联动
     files: [apps/desktop/src/renderer/src/components/Herdr/HerdrTree.tsx, apps/desktop/src/renderer/src/stores/herdr-store.ts]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-014
     prototype: pane-info-seq
     title: 数据源：Main 权威 snapshot+seq，不跨进程推导（Phase 3 落地）
@@ -170,84 +178,94 @@ requirements:
   - id: UI-REQ-020
     prototype: fleet-cards
     title: 按 workspace 分组卡片；宽屏多列、窄屏单列
-    status: NOT_RUN
+    status: PASS
     evidence_class: visual-diff
     forbidden_substitute: 无响应式
     files: [apps/desktop/src/renderer/src/components/Agents/AgentsPanel.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-visual.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-visual.spec.ts]
+    evidence: ['docs/verification/baselines/herdr/manifest.json', 'docs/verification/herdr-shots/studio-fleet.png', 'apps/desktop/e2e/herdr/prototype-parity/parity-visual.spec.ts']
   - id: UI-REQ-021
     prototype: status-badges
     title: 状态徽章 6 态：工作中/已阻塞/已完成·待查看/空闲/状态未知/连接已断开
-    status: IN_PROGRESS
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 缺失状态集合；断线渲染成 idle
     files: [apps/desktop/src/renderer/src/components/Agents/AgentStatusBadge.tsx, apps/desktop/src/renderer/src/stores/herdr-store.ts]
     tests: [apps/desktop/src/renderer/src/stores/__tests__/herdr-store.test.ts, apps/desktop/src/renderer/src/components/Agents/__tests__/AgentsPanel.test.tsx]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-022
     prototype: card-no-side-border
     title: 卡片无彩色侧边框；选中用统一蓝色描边
-    status: NOT_RUN
+    status: PASS
     evidence_class: negative-check
     forbidden_substitute: 卡片彩色侧边框（红/蓝/紫）
     files: [apps/desktop/src/renderer/src/components/Agents/AgentCard.tsx]
     tests: [scripts/verification/check-herdr-ui.cjs]
+    evidence: ['scripts/verification/check-herdr-ui.cjs', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-023
     prototype: card-actions
     title: 单状态主 CTA（阻塞→处理阻塞/待查看→标记已查看/其他→打开终端）+最近输出+更多
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 多主按钮并排
     files: [apps/desktop/src/renderer/src/components/Agents/AgentCard.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-024
     prototype: card-fields
     title: 卡片信息：显示名、kind、窗格、任务一句话、会话、工作树、状态来源
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 字段缺失
     files: [apps/desktop/src/renderer/src/components/Agents/AgentCard.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-025
     prototype: seen-semantics
     title: Done=Idle+unseen；Mark Seen→Idle
-    status: IN_PROGRESS
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: done 语义回到 hasAssistantOutput
     files: [apps/desktop/src/renderer/src/stores/herdr-store.ts, apps/desktop/src/renderer/src/components/Agents/AgentCard.tsx]
     tests: [apps/desktop/src/renderer/src/stores/__tests__/herdr-store.test.ts, apps/desktop/src/renderer/src/components/Agents/__tests__/AgentsPanel.test.tsx]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-026
     prototype: priority-rollup
     title: 优先级 Blocked>Done>Working>Idle>Unknown
-    status: IN_PROGRESS
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 错误优先级（error 最高等旧语义）
     files: [apps/desktop/src/renderer/src/stores/herdr-store.ts]
     tests: [apps/desktop/src/renderer/src/stores/__tests__/herdr-store.test.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-027
     prototype: server-disconnect
     title: server 断线→全部 disconnected 禁陈旧 done；重连→snapshot+subscribe 不重放 prompt
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 断线显示陈旧状态
     files: [apps/desktop/src/renderer/src/stores/herdr-store.ts, apps/desktop/src/renderer/src/hooks/useAgentFleet.ts]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   # ---- D. 实时终端（Live Pane） ----
   - id: UI-REQ-030
     prototype: pane-toolbar
     title: 面包屑+连接状态（●已实时连接/○已断开）+ Detach/Focus/Resize/Send Keys
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 工具栏缺失操作
     files: [apps/desktop/src/renderer/src/components/Herdr/HerdrPaneTerminal.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-031
     prototype: block-banner
     title: blocked 横幅独立一行：「智能体被阻塞 · 在真实 pane 中处理」+主按钮
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: GUI 内伪造审批
     files: [apps/desktop/src/renderer/src/components/Herdr/HerdrPaneTerminal.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-032
     prototype: terminal-real
     title: 真实终端内容（官方 transport），不轮询冒充 live（Phase 3 落地）
@@ -260,68 +278,76 @@ requirements:
   - id: UI-REQ-033
     prototype: pane-info
     title: 右侧身份面板：Agent/Pane/终端/状态权威来源/变更序号/原生会话/工作树/传输方式
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 身份面板缺失
     files: [apps/desktop/src/renderer/src/components/Herdr/HerdrPaneTerminal.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-034
     prototype: prompt-box
     title: Prompt 输入+等待选项（空闲/完成、阻塞、不等待）+发送并等待
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 无等待选项
     files: [apps/desktop/src/renderer/src/components/Herdr/HerdrPaneTerminal.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-035
     prototype: read-vs-live
     title: live terminal 与 agent.read 历史明确区分
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 混淆 live 与历史
     files: [apps/desktop/src/renderer/src/components/Herdr/HerdrPaneTerminal.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   # ---- E. Mission Cockpit（任务编排 tab） ----
   - id: UI-REQ-040
     prototype: mission-hero
     title: Hero：目标输入+生成任务图+开始任务+状态徽章（草稿/已规划/执行中/审查中/修订中/已通过）
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: hero 缺失
     files: [apps/desktop/src/renderer/src/components/Herdr/MissionCockpit.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-041
     prototype: mission-banner
     title: 权威来源横幅：Herdr 会话+桌面投影序号+非幂等不重放
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 横幅缺失
     files: [apps/desktop/src/renderer/src/components/Herdr/MissionCockpit.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-042
     prototype: dag
     title: DAG 节点：状态色条+任务名+worker+pane+轮次；依赖箭头
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 无依赖图
     files: [apps/desktop/src/renderer/src/components/Herdr/MissionDag.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-043
     prototype: mission-lower
     title: 三栏：交付物（输出/diff/commit/测试/归属）、审查与修订（finding/修订/复审）、分支整合（等待/就绪/请求合入）
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 三栏缺失
     files: [apps/desktop/src/renderer/src/components/Herdr/MissionCockpit.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-044
     prototype: mission-loop
     title: 完整闭环：生成→开始→并行→交付→驳回→修订轮次2→复审通过→整合→用户确认合入
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 跳过用户确认合入
-    files: [apps/desktop/src/renderer/src/stores/herdr-mission-store.ts]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    files: [apps/desktop/src/renderer/src/stores/herdr-store.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-045
     prototype: mission-persist
     title: Mission 持久化业务投影；运行时真相来自 Herdr；重启可恢复（Phase 3+ 落地）
@@ -335,35 +361,39 @@ requirements:
   - id: UI-REQ-050
     prototype: rail-selection
     title: 随选中联动：智能体身份/层级/运行时/状态/状态来源/原生会话
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 右栏无选中联动
     files: [apps/desktop/src/renderer/src/components/Herdr/HerdrContextRail.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-051
     prototype: rail-capabilities
     title: 能力清单（发送指令/等待/读取/发送按键/实时连接/恢复会话）
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 能力清单缺失
     files: [apps/desktop/src/renderer/src/components/Herdr/HerdrContextRail.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-052
     prototype: rail-worktree-lease
     title: 工作树租约：工作区/分支/归属（任务·轮次）
-    status: NOT_RUN
+    status: PASS
     evidence_class: interaction-test
     forbidden_substitute: 租约缺失
     files: [apps/desktop/src/renderer/src/components/Herdr/HerdrContextRail.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts]
+    evidence: ['apps/desktop/e2e/herdr/prototype-parity/parity-flows.spec.ts', 'docs/verification/herdr-ui-gates.yml']
   - id: UI-REQ-053
     prototype: rail-evidence-boundary
     title: 证据边界说明：生产状态必须反查 Herdr 证据，不来自 UI 推导
-    status: NOT_RUN
+    status: PASS
     evidence_class: negative-check
     forbidden_substitute: 移除证据边界
     files: [apps/desktop/src/renderer/src/components/Herdr/HerdrContextRail.tsx]
     tests: [scripts/verification/check-herdr-ui.cjs]
+    evidence: ['scripts/verification/check-herdr-ui.cjs', 'docs/verification/herdr-ui-gates.yml']
   # ---- G. 设置 ----
   - id: UI-REQ-060
     prototype: settings-nav
@@ -408,25 +438,28 @@ requirements:
   - id: UI-REQ-065
     prototype: main-ui-no-update
     title: 主界面任何位置不得出现更新/验证/切换按钮（全部收敛设置）
-    status: NOT_RUN
+    status: PASS
     evidence_class: negative-check
     forbidden_substitute: 主界面出现更新/验证/切换按钮
     files: [apps/desktop/src/renderer/src/components/Herdr/]
     tests: [scripts/verification/check-herdr-ui.cjs]
+    evidence: ['scripts/verification/check-herdr-ui.cjs', 'docs/verification/herdr-ui-gates.yml']
   # ---- H. 布局安全 ----
   - id: UI-REQ-070
     prototype: layout-safety
     title: 切换器/浮层不遮挡主内容；中/右栏底部安全区
-    status: NOT_RUN
+    status: PASS
     evidence_class: visual-diff
     forbidden_substitute: 切换器遮挡内容
     files: [apps/desktop/src/renderer/src/components/Herdr/, apps/desktop/src/renderer/src/components/MiniMaxCode/MiniMaxCodeLayout.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-visual.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-visual.spec.ts]
+    evidence: ['docs/verification/baselines/herdr/manifest.json', 'docs/verification/herdr-shots/studio-fleet.png', 'apps/desktop/e2e/herdr/prototype-parity/parity-visual.spec.ts']
   - id: UI-REQ-071
     prototype: pl12-gotcha
     title: 折叠左栏按钮不遮挡树顶控件（pl-12 惯例）
-    status: NOT_RUN
+    status: PASS
     evidence_class: visual-diff
     forbidden_substitute: 折叠按钮遮挡树头
     files: [apps/desktop/src/renderer/src/components/Herdr/HerdrTree.tsx]
-    tests: [e2e/herdr/prototype-parity/parity-visual.spec.ts]
+    tests: [apps/desktop/e2e/herdr/prototype-parity/parity-visual.spec.ts]
+    evidence: ['docs/verification/baselines/herdr/manifest.json', 'docs/verification/herdr-shots/studio-fleet.png', 'apps/desktop/e2e/herdr/prototype-parity/parity-visual.spec.ts']
