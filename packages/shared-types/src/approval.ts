@@ -11,6 +11,17 @@ export interface ApprovalRequest {
     method: "confirm" | "select";
     title: string;
     message?: string;
+    /** 所属 workspace (approval-bridge 发送时附带, 用于 per-workspace 隔离与挂起跟踪) */
+    workspaceId?: string;
+}
+
+/**
+ * 审批请求已解决 (响应或超时) — main 侧 resolveApprovalRequest / 超时
+ * 分支发送, 供 renderer 解除挂起状态 (fleet blocked 判定用).
+ */
+export interface ApprovalResolved {
+    requestId: string;
+    workspaceId?: string;
 }
 
 /** Renderer 对审批的响应 */

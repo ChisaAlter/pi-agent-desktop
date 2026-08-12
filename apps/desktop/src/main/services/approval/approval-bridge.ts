@@ -106,6 +106,12 @@ export function requestApproval(req: ApprovalRequestPayload): Promise<boolean> {
         const timer = setTimeout(() => {
             map.delete(requestId);
             resolve(false); // 超时默认拒绝 (安全侧)
+            // 通知 renderer 解除挂起状态 (fleet blocked 判定)
+            try {
+                sender.send("approval:resolved", { requestId, workspaceId });
+            } catch {
+                // window 已销毁 — 无接收方, 忽略
+            }
         }, req.timeoutMs ?? 60_000);
 
         map.set(requestId, { resolve, timer, sender });
@@ -136,6 +142,12 @@ export function resolveApprovalRequest(requestId: string, approved: boolean, sen
     clearTimeout(pending.timer);
     map.delete(requestId);
     pending.resolve(approved);
+    // 通知 renderer 解除挂起状态 (fleet blocked 判定)
+    try {
+        pending.sender.send("approval:resolved", { requestId });
+    } catch {
+        // 发送方已销毁 — 忽略
+    }
 }
 
 /** 清空所有 pending (e.g. window 关闭时) */

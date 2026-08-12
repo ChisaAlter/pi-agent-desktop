@@ -1,0 +1,99 @@
+{
+  "viewport": {
+    "width": 1440,
+    "height": 960
+  },
+  "generated": "2026-08-12T08:35:41.126Z",
+  "entries": [
+    {
+      "name": "studio-fleet",
+      "variant": "studio",
+      "view": "fleet",
+      "plan": false,
+      "mergeFlow": false,
+      "settings": false,
+      "bytes": 144690,
+      "sha256": "29c56da60ca2efd0cd580bb25d5884dcf545d2c5524bc1096780ce5d12348791"
+    },
+    {
+      "name": "studio-pane",
+      "variant": "studio",
+      "view": "pane",
+      "plan": false,
+      "mergeFlow": false,
+      "settings": false,
+      "bytes": 138149,
+      "sha256": "0bf6f05fcd610c260eecef0c95edb4427d79778b4e135c259cc1944edeb99730"
+    },
+    {
+      "name": "studio-mission-planned",
+      "variant": "studio",
+      "view": "mission",
+      "plan": true,
+      "mergeFlow": false,
+      "settings": false,
+      "bytes": 181392,
+      "sha256": "4a0055b0654e67a8f3ab08116db489af661be89cb422864e659b59208577f2e5"
+    },
+    {
+      "name": "studio-settings",
+      "variant": "studio",
+      "view": "fleet",
+      "plan": false,
+      "mergeFlow": false,
+      "settings": true,
+      "bytes": 136994,
+      "sha256": "e7d23e2465e017b1db1caa514377706ba8886aa4c3874732e2404b1834fb2faa"
+    },
+    {
+      "name": "studio-mission-merge",
+      "variant": "studio",
+      "view": "mission",
+      "plan": false,
+      "mergeFlow": true,
+      "settings": false,
+      "bytes": 166455,
+      "sha256": "93c96736e261599b394e044177d32dcf789c5d865bfef73f531ca205a204ca1d"
+    },
+    {
+      "name": "mission-mission-planned",
+      "variant": "mission",
+      "view": "mission",
+      "plan": true,
+      "mergeFlow": false,
+      "settings": false,
+      "bytes": 182218,
+      "sha256": "33cded7c8bb04ecd8e1850ff1d6078c6d1c7e4752af56a53fddad449957bd29a"
+    },
+    {
+      "name": "mission-fleet",
+      "variant": "mission",
+      "view": "fleet",
+      "plan": false,
+      "mergeFlow": false,
+      "settings": false,
+      "bytes": 148673,
+      "sha256": "6dfd3ed566e764c8809f92e2ae0a00cd1931f051b3ddc1db8edd200c3fb5b4fa"
+    },
+    {
+      "name": "terminal-pane",
+      "variant": "terminal",
+      "view": "pane",
+      "plan": false,
+      "mergeFlow": false,
+      "settings": false,
+      "bytes": 122331,
+      "sha256": "d13089e53ed543b33d3daedc844c8fe83143ce08efb9b87eef9f4078d5d29838"
+    },
+    {
+      "name": "terminal-fleet",
+      "variant": "terminal",
+      "view": "fleet",
+      "plan": false,
+      "mergeFlow": false,
+      "settings": false,
+      "bytes": 145745,
+      "sha256": "7d9dd35cde18c69832e5a39601e2bd9210ebd3fa3bb151c6b837d58ddee1a418"
+    }
+  ]
+}

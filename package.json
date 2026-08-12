@@ -48,6 +48,7 @@
     "clean": "pnpm -r run clean",
     "typecheck": "pnpm -r run typecheck",
     "verify:docs": "node scripts/verify-doc-facts.cjs",
+    "verify:herdr": "node scripts/verification/check-herdr-ui.cjs",
     "prepare": "lefthook install"
   },
   "devDependencies": {

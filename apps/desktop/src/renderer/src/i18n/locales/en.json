@@ -793,7 +793,11 @@
       "toolRunning": "{{name}} running",
       "toolFailed": "{{name}} failed",
       "toolCompleted": "{{name}} completed"
-    }
+    },
+    "agents": "Agents",
+    "agentsEmpty": "No agents in this workspace",
+    "agentsIdle": "All idle",
+    "agentsOpenFleet": "View all"
   },
   "toolPermissions": {
     "title": "Tool permissions",
@@ -1233,7 +1237,8 @@
     "workbench": "Workbench",
     "extensions": "Extensions",
     "settings": "Settings",
-    "ariaLabel": "Top tab bar"
+    "ariaLabel": "Top tab bar",
+    "agents": "Agents"
   },
   "runPanel": {
     "ariaLabel": "Run views",
@@ -1303,7 +1308,80 @@
       "memory": "Memory",
       "history": "Sessions",
       "git": "Git",
-      "files": "Files"
+      "files": "Files",
+      "agents": "Agents"
+    }
+  },
+  "agents": {
+    "untitled": "Untitled agent",
+    "new": "New agent",
+    "newTitle": "New agent",
+    "workspace": "Workspace",
+    "title": "Title",
+    "titlePlaceholder": "Name this agent (optional)",
+    "taskDescription": "Task description",
+    "taskPlaceholder": "Describe the task (optional — runs immediately after creation)",
+    "create": "Create",
+    "created": "Agent created",
+    "empty": "No agents",
+    "emptyTitle": "No agents yet",
+    "emptyHint": "An agent is an independent AI working session. Create multiple agents to work in parallel, or let one agent spawn subagents — then watch them all from this fleet view, herdr-style.",
+    "currentWorkspace": "Current workspace",
+    "workspaceCount": "{{count}} agents",
+    "status": {
+      "working": "Working",
+      "blocked": "Blocked",
+      "done": "Done",
+      "idle": "Idle",
+      "error": "Error",
+      "closed": "Closed"
+    },
+    "blockedReason": {
+      "permission": "Awaiting approval",
+      "plan": "Awaiting plan confirmation",
+      "queue": "Messages queued",
+      "approval": "Awaiting approval"
+    },
+    "activity": {
+      "idle": "Awaiting task"
+    },
+    "actions": {
+      "openChat": "Open chat",
+      "stop": "Stop",
+      "restart": "Restart",
+      "cancel": "Cancel",
+      "harvest": "Harvest"
+    },
+    "subagents": {
+      "title": "Subagents",
+      "label": "subagents",
+      "none": "No subagents",
+      "outcome": "Result"
+    },
+    "subagentStatus": {
+      "pending": "Pending",
+      "running": "Running",
+      "idle": "Done",
+      "cancelled": "Cancelled",
+      "failed": "Failed",
+      "timeout": "Timeout"
+    },
+    "message": {
+      "user": "User",
+      "assistant": "Assistant",
+      "tool": "Tool",
+      "thinkingOnly": "(thinking only)",
+      "empty": "(empty)",
+      "count": "messages",
+      "recent": "Recent messages",
+      "none": "No messages yet",
+      "thinking": "thinking"
+    },
+    "harvest": {
+      "title": "Output",
+      "changes": "File changes",
+      "noChanges": "No file changes",
+      "detecting": "Detecting changes…"
     }
   }
 }

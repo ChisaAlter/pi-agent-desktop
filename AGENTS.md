@@ -137,19 +137,20 @@ The active desktop session/message repository is `node:sqlite` through `SqliteSe
 
 ```
 ┌────────────────── TitleBar (32px) ──────────────────────────┐
-│  TopTabBar (36px): 对话 | 运行 | 工作台 | 扩展        [设置] │
+│  TopTabBar (36px): 对话 | Agents | 运行 | 工作台 | 扩展 [设置] │
 ├──────────┬───────────────────────────┬──────────────────────┤
 │ Left     │ Center (flex-1)           │ Right Rail (280px)   │
 │ 190px+   │                           │ default: collapsed   │
 │          │                           │                      │
-│ 新对话    │ ChatView / RunPanel /     │ Usage, Permissions,  │
-│ 分组切换  │ WorkbenchPanel /          │ Thinking, Env,       │
+│ 新对话    │ ChatView / AgentsPanel /  │ Usage, Permissions,  │
+│ 分组切换  │ RunPanel / WorkbenchPanel │ Thinking, Env,       │
 │ 会话列表  │ SkillsPanel               │ Progress, Tools      │
 │ (date/ws)│                           │                      │
 └──────────┴───────────────────────────┴──────────────────────┘
 ```
 
-- **TopTabBar** (`components/TopTabBar/`): 4 tabs driven by `activeSection`: `chat`, `run`, `workbench`, `extensions`. Settings is a right-side icon that opens the independent settings window.
+- **TopTabBar** (`components/TopTabBar/`): 5 tabs driven by `activeSection`: `chat`, `agents`, `run`, `workbench`, `extensions`. Settings is a right-side icon that opens the independent settings window.
+- **AgentsPanel** (`components/Agents/AgentsPanel.tsx`): herdr 式多 agent 舰队视图 — 按 workspace 分组 + working/blocked/done/idle/error 生命周期徽章（`hooks/useAgentFleet.ts` 合成：blocked = 权限/计划/审批/队列挂起，严格语义；挂起信号由 `stores/fleet-signals-store.ts` 单例订阅 `agents:event` + `approval:request/resolved` 共享，面板与右栏卡同源）、每卡可展开完整消息流（复用 `MarkdownRenderer` 管线）与子代理（`subagent:event` 广播桥 + `subagent-store`），done 卡有「收割结果」（产出全文 + git 改动预览，复用 `utils/git-snapshot-cache.ts` 共享缓存）。新建弹窗走 `agentsCreate` + 可选 `sendPrompt`。RightRail 的 Agents 卡（`AgentsRailCard.tsx`）显示当前 workspace 的 rollup，点击跳转舰队视图。E2E: `e2e/agents-fleet.spec.ts`。注意: 面板顶部行需 `pl-12` 给「折叠左侧栏」浮层按钮让位（见 memory overlay-obscures-rendering-gotcha）。
 - **Route aliases**: legacy section ids stay supported in `App.tsx`: `tasks` / `memory` → `run`, `files` / `git` / `terminal` → `workbench`, and `tools` / `skills` → `extensions`.
 - **RunPanel** (`components/RunPanel/RunPanel.tsx`): secondary tabs `tasks` and `memory`; reuses `TaskOverviewPanel` and `MemoryPanel`.
 - **WorkbenchPanel** (`components/Workbench/WorkbenchPanel.tsx`): secondary tabs `files`, `git`, and `terminal`; the terminal uses the full-height embedded display mode.
@@ -167,6 +168,15 @@ The active desktop session/message repository is `node:sqlite` through `SqliteSe
 - **MemoryPanel** (`components/LongHorizon/MemoryPanel.tsx`): complete implementation backed by `window.piAPI.memorySearch` / `memoryListRecent`; rendered inside `RunPanel`.
 - **TaskOverviewPanel** (`components/LongHorizon/TaskOverviewPanel.tsx`): complete implementation reading `useTaskProgress` / `usePlanStore`; rendered inside `RunPanel`.
 
+### Herdr GUI（套壳 + 能力注入层，feature/herdr-gui-*）
+
+- **定位**：Pi Desktop 是 Herdr 的 GUI 套壳与能力注入层（不是仿制运行时）。「智能体」tab = Herdr 原生控制面（session→workspace→tab→pane + 状态 + 介入）的 GUI 投影；「任务编排」tab = Desktop 注入的持久化业务编排（任务 DAG、轮次、审查、交付物、合入）。运行时真相永远在 Herdr；计划语义永远在 Desktop。契约：`docs/compose/specs/2026-08-12-herdr-ui-prototype-approved.md`（语义）+ `docs/prototypes/herdr-desktop-ui-prototype.html`（视觉唯一权威，已批准）。
+- **组件落点（Phase 1）**：`components/Herdr/`（`HerdrStatusBar` 全局状态条、`HerdrTree` 4 级层级树、`HerdrPaneTerminal` 实时终端、`MissionCockpit`+`MissionDag` 任务驾驶舱、`HerdrContextRail` 选中联动右栏）+ `stores/herdr-mock-store.ts`（PROTOTYPE_MOCK 标记，仅 `PI_HERDR_MOCK=1` 激活）+ `stores/herdr-mission-store.ts`。agents/mission section 左槽位换 HerdrTree、右槽位换 ContextRail；三布局切换器（studio/mission/terminal）仅在这两个 tab 显示。`TopTabBar` 6 tab（对话|智能体|任务编排|运行|工作台|扩展）。
+- **状态语义（原型为准，禁止回退）**：6 态 = working/blocked/done/idle/unknown/disconnected；`done = idle + unseen`，Mark Seen → idle；优先级 `Blocked > Done-unseen > Working > Idle > Unknown`（注意与旧 useAgentFleet 的 error 最高语义不同，error/closed 输入映射 unknown）；断线 → 全部 disconnected，重连 → snapshot+subscribe 不重放 prompt。blocked 审批在真实 pane 内处理，GUI 不伪造。
+- **数据源契约（Phase 3 落地）**：Main 权威 snapshot+seq（UI-REQ-014），不跨进程推导；preload invoke/send 白名单是新增 IPC 硬门。运行时契约：`docs/compose/specs/2026-08-12-real-herdr-integration.md`（待产出，Phase 3 前置交付物）。
+- **防降级治理（机器可执行）**：需求登记表 `docs/verification/herdr-ui-requirements.yml`（41 条，status/evidence/负面清单项/映射决策）；检查器 `scripts/verification/check-herdr-ui.cjs`（`pnpm verify:herdr`：需求 ID 集合一致性、PASS 证据文件存在且非空、负面清单源码扫描、i18n 键集同步；BLOCKED≥1 报告「未完成」；`--self-test` 8 条内部断言；`--strict` BLOCKED 视为失败）。黄金基线 `apps/desktop/e2e-output/baselines/herdr/`（原型 1440×960 全矩阵，由 `scripts/verification/herdr-golden-baseline.mjs` 生成）；parity 对齐 `apps/desktop/e2e/herdr/prototype-parity/`（`HERDR_PARITY_TARGET=prototype|production` 同一条流跑 oracle 与生产；visual-compare.ts 按左/中/右区域 pixelmatch，避开 app chrome）。门禁记录 `docs/verification/herdr-ui-gates.yml`，证据清单 `docs/verification/herdr-ui-evidence.md`。
+- **当前阶段**：Phase 0（治理基线）已完成；Phase 1（生产 UI 骨架，mock 驱动）开发中；Phase 2（设置 HerdrTab）待做；Phase 3-5（真实运行时/换真实数据/打包验收）BLOCKED — 依赖官方 Herdr 二进制与运行时契约，不得以 mock 冒充交付。
+
 ## Key Files
 
 - **Main entry**: `apps/desktop/src/main/index.ts`
@@ -178,6 +188,9 @@ The active desktop session/message repository is `node:sqlite` through `SqliteSe
 - **IPC Zod schemas**: `apps/desktop/src/main/ipc/schemas.ts`
 - **Vitest config**: `apps/desktop/vitest.config.ts`
 - **Playwright config**: `apps/desktop/playwright.config.ts`
+- **Parity config**: `apps/desktop/playwright.parity.config.ts` — 原型目标对齐测试（无需 Electron 构建）
+- **Herdr 检查器**: `scripts/verification/check-herdr-ui.cjs` + 需求登记表 `docs/verification/herdr-ui-requirements.yml`
+- **黄金基线生成**: `scripts/verification/herdr-golden-baseline.mjs`
 - **Electron Vite config**: `apps/desktop/electron.vite.config.ts`
 - **Electron Builder config**: `apps/desktop/electron-builder.yml`
 - **ESLint flat config**: `apps/desktop/eslint.config.js`

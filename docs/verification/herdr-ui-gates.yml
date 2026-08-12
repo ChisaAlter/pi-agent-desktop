@@ -1,0 +1,43 @@
+# Herdr GUI 阶段门禁记录
+
+> 每个阶段结束由独立审查员（架构审查 + 证据审查，独立于实现者）复核，
+> 结论写入本文件。格式：gate → 结论 → 证据 → 遗留项。
+> 审查发现必须修复后才记录 PASS；未修复项必须登记为遗留项并说明责任模块。
+
+## G0 — Phase 0 治理基线（2026-08-12，含独立审查-修复闭环）
+
+**独立审查发现（架构审查子代理，见会话记录）**：
+- B1（严重）基线未入库（e2e-output 被 gitignore）→ **已修复**：.gitignore 例外放行 `baselines/**`，9 张基线 + manifest 入库
+- F1（严重）self-test T1/T3 真空（fixture 缺 canonical 导致"需求缺失"噪音掩盖被测检查）→ **已修复**：fixture 生成全量 41 条 canonical，新增 T3b/T9 断言（BLOCKED 带理由不误报、门开文件缺失必 FAIL）
+- F5（严重）parity 不进 CI → **已修复**：ci.yml 新增 chromium 安装 + parity 原型套件步骤
+- A2（中）单词扫描可绕过（data-action 等价形式、文件缺失静默放行）→ **已修复**：data-action 等价命中、NL-003/NL-005/NL-012 文件缺失必 FAIL
+- A3（中）PASS 证据仅查非空 → **已修复**：≥64 bytes 最小体积
+- B2（中）区域几何与 variant 布局冲突（mission/terminal 变体宽度不同）→ **已修复**：visual-compare 按条目 variant 解析区域（220/335、230/270、270/310）
+- B3（中）manifest 无校验力 → **已修复**：manifest 记录每张基线 SHA-256，parity 自检校验哈希
+- B5（中）toast 时序依赖 → **已修复**：截图前等待 toast 窗口结束（2400ms）；自检覆盖全 9 张
+- C2（中）层级断言不验证层级 → **已修复**：indent1/2/3 结构断言
+- C3（中）mission/优先级语义零覆盖 → **部分修复**：新增 mission 全流程闭环流 + 设置更新流（oracle）；优先级 rollup 与 useAgentFleet 旧语义测试由 Phase 1 M5 重写时修正
+- D1（低）bindSettingsActions 与委托双触发 → **已修复**：移除直接绑定
+- D2（中）设置动态绑定零覆盖 → **已修复**：parity 新增设置更新三步流
+- F2（中）settings 基线（modal 形态）与 NL-006 矛盾 → **登记**：settings 基线作为内容布局 oracle；production 对比在 M11 按设置窗口内容区映射
+- F3（中）运行时契约文档断链（evidence/AGENTS 声称初稿存在）→ **已修复**：措辞改为"待产出"
+- F4（中）files/tests 引用不验证 → **已修复**：IN_PROGRESS/PASS 需求的 files/tests 必须真实存在
+- C4/漏洞：基线自检无法发现"原型被编辑后重新生成基线" → **登记**：原型变更必须走变更控制 + 重新批准（计划 §3.5），manifest 哈希校验基线完整性
+- 原型额外缺陷 PROTOTYPE-FIX-002（renderUpdatePanel 引用 setSettingsTab 局部函数 card → 更新面板从未工作）→ **已修复**：row/card 顶层化
+
+**证据审查（修复后复验）**：
+- checker --self-test 11/11 PASS（T1 假 PASS、T2 删除需求、T3 无理由 BLOCKED、T4/T4b 负面清单、T5/T6/T7、T8 门控、T9 文件缺失、T3b 不误报）
+- `pnpm verify:herdr` exit 0（41 条校验、负面清单 0 命中、3 条 BLOCKED 如实报告未完成）；`--strict` exit 1
+- parity 原型套件 17/17 PASS（5 交互流 + mission 闭环 + 设置更新流 + 9 基线自检 + manifest 哈希校验），1 skip（production 对比，Phase 1）
+- `pnpm verify:docs` PASS；基线 manifest 9 条 SHA-256 入库
+
+**结论**：G0 PASS（审查发现全部修复或登记为带责任模块的遗留项）
+
+**遗留项（责任模块）**：
+1. NL-005（TopTabBar mission tab）→ Phase 1 M3 关闭（当前 NOT_RUN 门控不误报）
+2. production 视觉对比阈值 0.03 初始值 → Phase 1 M11 首次实测校准
+3. useAgentFleet.test.ts 断言旧优先级语义（error 最高）→ Phase 1 M5 状态模型重写时同步修正
+4. production parity 选择器全 null（测试 skip）→ Phase 1 M11 填充 data-testid 契约
+5. settings 基线对 production 的映射方式 → Phase 1 M11（设置窗口内容区）
+6. --strict（G5 完成门）为人工门，无 CI 接线 → Phase 5
+7. 36 个 acceptance PNG（1.5x 重导出）未纳入基线，保留工作树 → 待用户处置
