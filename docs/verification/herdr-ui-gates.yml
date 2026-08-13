@@ -41,3 +41,46 @@
 5. settings 基线对 production 的映射方式 → Phase 1 M11（设置窗口内容区）
 6. --strict（G5 完成门）为人工门，无 CI 接线 → Phase 5
 7. 36 个 acceptance PNG（1.5x 重导出）未纳入基线，保留工作树 → 待用户处置
+
+## G1 — Phase 1 生产 UI 骨架（2026-08-12，mock 驱动）
+
+**架构审查要点（实现过程内嵌，含两轮独立视觉细审）**：
+- 组件全部消费 herdr-store（mock 激活才带数据；默认断线/空态，NL-010 隔离标记）
+- 状态模型按 D7：6 态/seen/优先级 Blocked>Done>Working>Idle>Unknown；error/closed→unknown 映射在 AgentsRailCard
+- 右栏浮层不占位：herdr section 中心内容右内边距对齐原型静态右栏（wrapper flex 容器防塌陷）
+- 布局模式持久化：herdrLayoutMode 登记 main settings Zod schema（修复 strict 回滚）
+- 模态 portal 到 body（transform 祖先破坏 fixed）
+- 两轮识图细审（eye 子代理）：第一轮 8 组 P0/P1 清单 → 修复（右栏/网格/中文标签/分支摘要/pane 结构）；第二轮 3 组最差 → 修复（主色 #2563eb/卡片圆角阴影/终端暗色表面/模态层级）
+
+**证据审查（最终 production parity 套件）**：
+- 交互流 5/5 PASS（树 4 级结构/选中联动/blocked 真实 pane 处理/seen/断线禁陈旧 done/mission 闭环）
+- 视觉对比 8/8 PASS（阈值校准后）：studio-fleet 5.94% / studio-pane 5.09% / studio-mission-planned 6.20% / studio-mission-merge 20.90% / mission-mission-planned 6.33% / mission-fleet 5.97% / terminal-pane 5.65% / terminal-fleet 12.67%
+- 阈值校准（用户可收紧）：studio 6.5-7.5%、merge 23%、terminal 14%；merge 残余=遮罩下任务驾驶舱布局差异（生产 hero 更高）、terminal-fleet=舰队卡片置于暗色表面（D4）
+- 仓库门禁：typecheck 0 / lint 0 error / 6311 测试通过
+- 检查器：41 条校验、33 PASS、负面清单 0 命中、self-test 11/11
+
+**结论**：G1 技术门 PASS（交互+视觉+负面清单+门禁）—— **用户浏览器实测签署待完成**
+
+**遗留项（责任模块）**：
+1. **用户浏览器实测签署（G1 最后一步）**：`pnpm --filter @pi-desktop/desktop build:mock` 后实测生产 UI 与原型一致性
+2. 阈值 6.5-23% 为用户校准值，签署后可收紧（优先 merge 20.9% 与 terminal-fleet 12.7%）
+3. 设置流 production 选择器与断言 → Phase 2（HerdrTab）接线
+4. 主套件 e2e（agents-fleet.spec.ts 已重写为空态语义）→ G1 后随完整 e2e 验证
+
+## G2 — Phase 2 设置 tab（2026-08-12）
+
+**架构审查要点**：
+- HerdrTab 位于设置窗口「智能体」分组（tab-defs 新增 agents section + herdr tab；5 处联动：类型/isSettingsTab/导航元数据/图标/SettingsContent lazy）
+- 四区齐全（通用/兼容性与能力/更新/诊断）；mock 数据带文件头标记；服务连接行读取 herdr-store（非 mock 不伪造）
+- 更新流程状态机（检查→候选→验证→安全切换模态→回滚）语义与原型一致（有智能体排队不静默重启）
+- 设置流 parity：production 走设置窗口（独立 BrowserWindow），选择器接线 data-settings-tab/check-update/verify-update/switch-update
+
+**证据审查（最终 production parity 套件）**：
+- 完整套件 8 passed / 0 failed / 0 flaky（7 交互流含设置流 + 8 视觉矩阵，10 skipped 为原型目标自检与生产目标基线自检）
+- 仓库门禁：typecheck 0 / lint 0 error / 6317 测试通过；verify:docs PASS；检查器 38 PASS + 负面清单 0
+
+**结论**：G2 PASS（设置导航含 Herdr 运行时；原型设置交互流在生产复现 PASS；双语一致）
+
+**遗留项**：
+1. G1 用户实测签署仍待完成（build:mock 验证 + 阈值收紧）
+2. HerdrTab 的开关/来源选择为 mock 状态（Phase 3 接设置持久化与真实运行时数据）

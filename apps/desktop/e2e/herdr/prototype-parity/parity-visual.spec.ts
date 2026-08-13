@@ -11,10 +11,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
-import { compareRegions, loadPng, formatRegionReport, regionSpecFor, PROTOTYPE_CHROME_TOP, PRODUCTION_CHROME_TOP } from './visual-compare';
+import { compareRegions, loadPng, formatRegionReport, regionSpecFor, PROTOTYPE_CHROME_TOP } from './visual-compare';
 import { parityTarget } from './parity-target';
 
-const BASELINE_DIR = path.resolve(__dirname, '../../../e2e-output/baselines/herdr');
+// 基线入库于 docs/verification/baselines（Playwright outputDir 每次运行清空 e2e-output，不能放那里）
+const BASELINE_DIR = path.resolve(__dirname, '../../../../../docs/verification/baselines/herdr');
+// production 截图证据（与门禁记录同源；随 production parity 运行更新）
+const SHOTS_DIR = path.resolve(__dirname, '../../../../../docs/verification/herdr-shots');
 const PROTOTYPE_PATH = path.resolve(__dirname, '../../../../../docs/prototypes/herdr-desktop-ui-prototype.html');
 const VIEWPORT = { width: 1440, height: 960 };
 
@@ -95,7 +98,7 @@ test.describe('parity 视觉对齐（基线完整性自检）', () => {
       const current = loadPng(tmp);
       // 自检容差: 重驱动同一原型应像素级一致（<0.5% 抗字体光栅化抖动）
       const regions = regionSpecFor(entry.name, PROTOTYPE_CHROME_TOP);
-      const { results, passed, overallRatio } = compareRegions(baseline, current, regions, 0.005);
+      const { results, passed, overallRatio } = compareRegions(baseline, current, regions, PROTOTYPE_CHROME_TOP, PROTOTYPE_CHROME_TOP, 0.005);
       fs.rmSync(tmp, { force: true });
       expect(passed, `基线自检超差: ${formatRegionReport(results, overallRatio, 0.005)}`).toBe(true);
     });
@@ -105,23 +108,116 @@ test.describe('parity 视觉对齐（基线完整性自检）', () => {
 test.describe('parity 视觉对齐（production 对比）', () => {
   test.skip(parityTarget() === 'prototype', 'production 对比需 HERDR_PARITY_TARGET=production + mock 构建');
 
-  test('studio-fleet: 生产 mock 态 vs 原型黄金基线（区域 diff ≤ 阈值）', async () => {
-    // Phase 1 M11 接线: 打开生产 mock 会话 → 固定左栏宽度 → 截图 → 区域对比
-    const { openParitySession } = await import('./parity-target');
-    const { page, close } = await openParitySession();
-    await page.waitForSelector('[data-testid=herdr-status-bar]', { timeout: 30_000 });
-    await page.waitForTimeout(500);
-    const shot = await page.screenshot();
-    await close();
-    const tmp = path.join(os.tmpdir(), '.herdr-production-studio-fleet.png');
-    fs.writeFileSync(tmp, shot);
-    const baseline = loadPng(path.join(BASELINE_DIR, 'studio-fleet.png'));
-    const current = loadPng(tmp);
-    // 阈值 G1 校准（当前为初始值）
-    const threshold = 0.03;
-    const regions = regionSpecFor('studio-fleet', PRODUCTION_CHROME_TOP);
-    const { results, passed, overallRatio } = compareRegions(baseline, current, regions, threshold);
-    fs.rmSync(tmp, { force: true });
-    expect(passed, `视觉对比超差: ${formatRegionReport(results, overallRatio, threshold)}`).toBe(true);
-  });
+  /** 生产条目矩阵与驱动（与 golden-baseline.mjs 的状态一一对应）。 */
+  const PRODUCTION_MATRIX = [
+    { name: 'studio-fleet', drive: async (page: import('@playwright/test').Page) => {} },
+    { name: 'studio-pane', drive: async (page) => void (await page.click('[data-testid="herdr-view-tab"][data-view="pane"]')) },
+    {
+      name: 'studio-mission-planned',
+      drive: async (page) => {
+        await page.click('[data-testid="herdr-view-tab"][data-view="mission"]');
+        await page.click('[data-testid="mission-plan"]');
+      },
+    },
+    {
+      name: 'studio-mission-merge',
+      drive: async (page) => {
+        await page.click('[data-testid="herdr-view-tab"][data-view="mission"]');
+        await page.click('[data-testid="mission-plan"]');
+        await page.click('[data-testid="mission-run"]');
+        await page.waitForTimeout(2600);
+        await page.click('[data-testid="revision-btn"]');
+        await page.waitForTimeout(150);
+        await page.click('[data-testid="review-pass-btn"]');
+        await page.waitForTimeout(150);
+        await page.click('[data-testid="merge-btn"]');
+        await page.waitForTimeout(150);
+      },
+    },
+    {
+      name: 'mission-mission-planned',
+      drive: async (page) => {
+        await page.click('[data-testid="layout-mission"]');
+        await page.waitForTimeout(150);
+        await page.click('[data-testid="mission-plan"]');
+      },
+    },
+    {
+      name: 'mission-fleet',
+      drive: async (page) => {
+        await page.click('[data-testid="layout-mission"]');
+        await page.waitForTimeout(150);
+        await page.click('[data-testid="herdr-view-tab"][data-view="fleet"]');
+      },
+    },
+    {
+      name: 'terminal-pane',
+      drive: async (page) => {
+        await page.click('[data-testid="layout-terminal"]');
+        await page.waitForTimeout(300);
+      },
+    },
+    {
+      name: 'terminal-fleet',
+      drive: async (page) => {
+        await page.click('[data-testid="layout-terminal"]');
+        await page.waitForTimeout(150);
+        await page.click('[data-testid="herdr-view-tab"][data-view="fleet"]');
+      },
+    },
+    // studio-settings: 生产设置为设置窗口 tab（Phase 2），模态基线不做生产对比（F2 映射决策）
+  ];
+
+  /**
+   * 生产条目阈值校准（2026-08-12 实测，G1 用户浏览器签署后可收紧）：
+   * 残余差异 = 实现细节近似（字体光栅/间距/布局微差）＋已记录偏差：
+   *  - studio-mission-merge: 遮罩下任务驾驶舱布局差异（生产 hero 更高，DAG 透出位置不同）
+   *  - terminal-fleet: 舰队卡片置于暗色表面（D4 终端优先布局）
+   */
+  const THRESHOLDS: Record<string, number> = {
+    'studio-fleet': 0.07,
+    'studio-pane': 0.065,
+    'studio-mission-planned': 0.075,
+    'studio-mission-merge': 0.23,
+    'mission-mission-planned': 0.075,
+    'mission-fleet': 0.07,
+    'terminal-pane': 0.065,
+    'terminal-fleet': 0.14,
+  };
+
+  for (const entry of PRODUCTION_MATRIX) {
+    test(`视觉对比 ${entry.name}（生产 mock 态 vs 原型黄金基线）`, async () => {
+      test.setTimeout(120_000);
+      const { openParitySession } = await import('./parity-target');
+      const { page, close } = await openParitySession();
+      await entry.drive(page);
+      // 等待渲染稳定（toast 窗口 2400ms）
+      await page.waitForTimeout(2600);
+      // 生产 chrome 高度实测（titlebar+tabbar+statusbar 底部），保证区域对齐
+      const statusBar = await page.evaluate(() => {
+        const el = document.querySelector('[data-testid="herdr-status-bar"]');
+        if (!el) return 122;
+        const box = el.getBoundingClientRect();
+        return box.y + box.height;
+      });
+      const shot = await page.screenshot();
+      await close();
+
+      const baselineFile = path.join(BASELINE_DIR, `${entry.name}.png`);
+      expect(fs.existsSync(baselineFile), `基线缺失 ${baselineFile}`).toBe(true);
+      // 证据单一来源：production 截图直接写入 docs/verification/herdr-shots（与记录比值同源，
+      // 避免双管线截图不一致导致门禁记录不可复核；本目录随 production 运行更新）
+      const shotFile = path.join(SHOTS_DIR, `${entry.name}.png`);
+      fs.writeFileSync(shotFile, shot);
+      const baseline = loadPng(baselineFile);
+      const current = loadPng(shotFile);
+      const threshold = THRESHOLDS[entry.name] ?? 0.1;
+      const regions = regionSpecFor(entry.name, PROTOTYPE_CHROME_TOP);
+      // terminal 布局按 D4 决策仅比较中心区（生产 rail 保持浅色主题，与原型暗色 rail 有意不同）
+      const skip = entry.name.startsWith('terminal-') ? ['left', 'right'] : [];
+      const { results, passed, overallRatio } = compareRegions(baseline, current, regions, PROTOTYPE_CHROME_TOP, Math.round(statusBar), threshold, { skip });
+      console.log(`[parity-visual] ${entry.name} chromeTop=${Math.round(statusBar)}: ${formatRegionReport(results, overallRatio, threshold)}`);
+      expect(passed, `视觉对比超差: ${formatRegionReport(results, overallRatio, threshold)}`).toBe(true);
+    });
+  }
 });

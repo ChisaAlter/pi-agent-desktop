@@ -885,7 +885,8 @@
       "maintenance": "维护",
       "searchPlaceholder": "搜索设置...",
       "searchResults": "匹配结果",
-      "noResults": "没有匹配项"
+      "noResults": "没有匹配项",
+      "agents": "智能体"
     },
     "tab": {
       "model": "模型",
@@ -897,7 +898,8 @@
       "general": "通用",
       "shortcuts": "快捷键",
       "config": "配置文件",
-      "about": "关于"
+      "about": "关于",
+      "herdr": "Herdr 运行时"
     },
     "tabCaption": {
       "model": "Provider 与模型",
@@ -909,7 +911,8 @@
       "general": "语言与通知",
       "shortcuts": "键盘操作",
       "config": "高级 JSON",
-      "about": "版本信息"
+      "about": "版本信息",
+      "herdr": "来源、更新与启动方式"
     },
     "appearance": {
       "heading": "外观",
@@ -1167,7 +1170,70 @@
     },
     "reset": "恢复默认",
     "resetAria": "恢复默认设置",
-    "closeAria": "关闭设置"
+    "closeAria": "关闭设置",
+    "herdr": {
+      "heading": "Herdr 运行时",
+      "description": "选择 Herdr 来源并控制自动跟随官方更新。",
+      "general": {
+        "sourceLabel": "来源",
+        "sourceDesc": "使用由 Pi Desktop 管理的官方发行版。",
+        "autoCheckLabel": "自动检查更新",
+        "autoCheckDesc": "定期检查官方 Herdr 新版本。",
+        "autoSwitchLabel": "自动切换稳定版",
+        "autoSwitchDesc": "兼容性验证通过后自动切换。"
+      },
+      "compat": {
+        "currentLabel": "当前版本",
+        "currentDesc": "当前运行版本与官方协议的一致性。",
+        "candidateLabel": "候选版本",
+        "candidateDesc": "已下载候选版，不影响当前服务。",
+        "capabilitiesHeading": "能力清单",
+        "capabilitiesDesc": "由握手与契约测试得出，未声明的能力不会在界面中显示。",
+        "checkAction": "检查更新",
+        "verifyAction": "验证候选版",
+        "verified": "已验证",
+        "pending": "待验证"
+      },
+      "update": {
+        "checkHeading": "检查更新",
+        "checkDesc": "官方 Herdr v0.9.1 已下载到候选版本，不影响当前服务。",
+        "candidateVersion": "v0.9.1 · 官方发行版",
+        "candidateMeta": "SHA-256 已校验 · 完整签名",
+        "verifyRow": "兼容性验证",
+        "verifyRowMeta": "运行真实契约冒烟测试",
+        "verifyRowMetaDone": "18/18 项能力契约通过",
+        "switchHeading": "切换策略",
+        "switchDesc": "有智能体正在运行时不会静默重启 Herdr。",
+        "waitPoint": "等待安全切换点",
+        "waitPointDesc": "3 个智能体正在运行",
+        "switchButton": "安全切换",
+        "rollbackLabel": "回滚",
+        "rollbackDesc": "保留上一兼容版本。",
+        "rollbackButton": "回滚",
+        "modalTitle": "等待安全切换点",
+        "modalText": "3 个智能体正在运行。不会静默重启 Herdr 服务，可等待智能体稳定后再切换。",
+        "confirm": "确认",
+        "cancel": "取消"
+      },
+      "diagnostics": {
+        "connectionLabel": "服务连接",
+        "connectionDesc": "server、会话与进程状态。",
+        "piIntegrationLabel": "Pi 集成",
+        "piIntegrationDesc": "herdr:pi 生命周期钩子已安装。",
+        "runtimePolicyHeading": "运行策略",
+        "runtimePolicyDesc": "关闭后保持运行 / 断线自动重连。",
+        "keepRunningLabel": "关闭后保持运行",
+        "keepRunningDesc": "应用关闭后 Herdr server 继续运行。",
+        "reconnectLabel": "断线自动重连",
+        "reconnectDesc": "断线后自动重新获取快照并订阅事件。",
+        "dataDirLabel": "数据目录",
+        "dataDirDesc": "会话 JSONL 与运行时数据。",
+        "ok": "正常",
+        "off": "未连接",
+        "unknown": "未知",
+        "none": "未检测到运行时"
+      }
+    }
   },
   "commonErrors": {
     "piNotConnected": "Pi CLI 未连接",
@@ -1238,7 +1304,8 @@
     "extensions": "扩展",
     "settings": "设置",
     "ariaLabel": "顶部标签栏",
-    "agents": "Agents"
+    "agents": "智能体",
+    "mission": "任务编排"
   },
   "runPanel": {
     "ariaLabel": "运行视图",
@@ -1309,7 +1376,8 @@
       "history": "会话中心",
       "git": "Git",
       "files": "文件",
-      "agents": "Agents"
+      "agents": "智能体",
+      "mission": "任务编排"
     }
   },
   "agents": {
@@ -1382,6 +1450,189 @@
       "changes": "文件改动",
       "noChanges": "无文件改动",
       "detecting": "检测改动中…"
+    }
+  },
+  "herdr": {
+    "statusBar": {
+      "connected": "Herdr 已连接",
+      "offline": "Herdr 已断开",
+      "reconnecting": "Herdr 正在重连",
+      "sessionProcess": "会话：{{session}} · 进程 {{pid}}",
+      "managedByDesktop": "Desktop 托管",
+      "systemInstalled": "系统安装",
+      "compatible": "完全兼容",
+      "incompatible": "不兼容",
+      "compatUnknown": "兼容性未知",
+      "version": "v{{version}}",
+      "openSettings": "打开设置"
+    },
+    "tree": {
+      "title": "Herdr 运行时",
+      "create": "创建",
+      "searchPlaceholder": "搜索终端窗格、智能体或工作区",
+      "filterAll": "全部",
+      "filterBlocked": "阻塞",
+      "filterDone": "待查看",
+      "workspace": "工作区",
+      "worktree": "工作树",
+      "session": "会话",
+      "empty": "未检测到 Herdr 运行时"
+    },
+    "view": {
+      "fleet": "智能体总览",
+      "pane": "实时终端",
+      "mission": "任务驾驶舱"
+    },
+    "status": {
+      "working": "工作中",
+      "blocked": "已阻塞",
+      "done": "已完成 · 待查看",
+      "idle": "空闲",
+      "unknown": "状态未知",
+      "disconnected": "连接已断开"
+    },
+    "fleet": {
+      "agentCount": "{{count}} 个智能体 · {{tabs}} 个标签页 · 仓库 {{repo}}",
+      "branch": "分支 {{branch}}"
+    },
+    "card": {
+      "pane": "窗格 {{pane}}",
+      "session": "会话",
+      "worktree": "工作树",
+      "authority": "状态来源",
+      "openTerminal": "打开终端",
+      "handleBlocked": "处理阻塞",
+      "markSeen": "标记已查看",
+      "recentOutput": "最近输出",
+      "more": "更多 ⋯",
+      "empty": "该工作区暂无智能体"
+    },
+    "pane": {
+      "attached": "● 已实时连接",
+      "detached": "○ 已断开",
+      "attach": "断开连接",
+      "reattach": "重新连接",
+      "focus": "聚焦",
+      "resize": "调整尺寸",
+      "sendKeys": "发送按键",
+      "blockedTitle": "智能体被阻塞",
+      "blockedDesc": "Pi 正在等待命令执行审批；请在真实终端窗格中处理。",
+      "resolveBlock": "进入终端并批准",
+      "identity": "运行时身份",
+      "agent": "智能体",
+      "paneTerminal": "窗格／终端",
+      "authoritySource": "状态权威来源",
+      "stateSeq": "状态变更序号",
+      "nativeSession": "原生会话",
+      "worktree": "工作树",
+      "transport": "传输方式",
+      "transportLive": "二进制客户端 · 实时",
+      "promptPlaceholder": "向真实终端中的智能体发送指令…",
+      "waitIdle": "等待空闲／完成",
+      "waitBlocked": "等待阻塞",
+      "waitNone": "不等待",
+      "sendAndWait": "发送并等待",
+      "readHistory": "读取历史输出",
+      "readHistoryHint": "agent.read 历史 — 与实时连接的终端明确区分",
+      "empty": "未连接 Herdr 运行时 — 实时终端不可用"
+    },
+    "mission": {
+      "title": "任务控制中心",
+      "subtitle": "桌面端注入任务语义；智能体、终端窗格、PTY 和生命周期仍由官方 Herdr 管理。",
+      "statusDraft": "草稿",
+      "statusPlanned": "已规划",
+      "statusRunning": "执行中",
+      "statusReview": "审查中",
+      "statusRevision": "修订中",
+      "statusPassed": "已通过",
+      "goalPlaceholder": "输入总任务目标…",
+      "plan": "生成任务图",
+      "run": "开始任务",
+      "authorityPrefix": "运行状态的唯一真相来源：",
+      "authoritySession": "Herdr 会话 {{session}}",
+      "authorityProjection": "桌面投影序号 {{seq}}",
+      "authorityNoReplay": "非幂等操作不会在重连后自动重放",
+      "dagEmpty": "输入目标并生成任务图，查看规划智能体如何将工作注入真实 Herdr 执行智能体。",
+      "nodeReady": "就绪",
+      "nodeRunning": "执行中",
+      "nodePassed": "已通过",
+      "nodeRejected": "未通过",
+      "round": "轮次 {{n}}",
+      "artifacts": "交付物",
+      "review": "审查与修订",
+      "integration": "分支整合",
+      "artifactsWaiting": "等待执行智能体交付",
+      "reviewWaiting": "等待审查智能体",
+      "integrationWaiting": "等待通过审查的提交",
+      "artifactCommit": "提交 {{commit}} · 测试 {{tests}}",
+      "reviewRejected": "审查未通过",
+      "reviewRevising": "正在执行修订",
+      "reviewPassed": "审查已通过",
+      "createRevision": "创建修订轮次 2",
+      "reviewPassAction": "完成修订并复审",
+      "integrationReady": "已进入待整合工作树",
+      "requestMerge": "请求合入主分支",
+      "mergeConfirmTitle": "最终合入确认",
+      "mergeConfirmText": "审查智能体已通过，整合工作树无冲突。此操作仍需要用户明确确认，不会由智能体自动写入主分支。",
+      "mergeConfirmAction": "确认",
+      "cancel": "取消",
+      "empty": "未连接 Herdr 运行时 — 任务编排不可用"
+    },
+    "rail": {
+      "title": "上下文详情",
+      "currentPane": "当前终端窗格",
+      "agent": "智能体",
+      "hierarchy": "层级",
+      "runtime": "运行时",
+      "status": "状态",
+      "authority": "状态来源",
+      "nativeSession": "原生会话引用",
+      "runtimeConnected": "官方 Herdr · 已连接",
+      "runtimeOffline": "官方 Herdr · 已断开",
+      "runtimeReconnecting": "官方 Herdr · 正在重连",
+      "capabilities": "可用能力",
+      "capSendPrompt": "发送指令",
+      "capWait": "等待",
+      "capRead": "读取",
+      "capSendKeys": "发送按键",
+      "capLiveAttach": "实时连接",
+      "capResume": "恢复会话",
+      "worktreeLease": "工作树租约",
+      "leaseWorkspace": "工作区",
+      "leaseBranch": "分支",
+      "leaseOwner": "归属",
+      "leaseOwnerText": "任务/auth-hardening · 轮次 {{n}}",
+      "evidenceBoundary": "证据边界",
+      "evidenceText": "生产版必须从 Herdr 快照、事件序号、窗格／终端身份及 Git 提交反查，不能从界面卡片推导运行状态。",
+      "empty": "选中智能体后显示上下文"
+    },
+    "layout": {
+      "label": "布局",
+      "studio": "智能体工作台",
+      "mission": "任务优先",
+      "terminal": "终端优先",
+      "title": "切换布局"
+    },
+    "empty": {
+      "title": "未连接 Herdr 运行时",
+      "hint": "配置运行时后，此处将显示 Herdr 控制面。"
+    },
+    "toast": {
+      "markSeen": "{{name}}：待查看状态已清除，已完成 → 空闲",
+      "resolveBlock": "审批在真实 Herdr 终端窗格内完成，生命周期钩子上报「工作中」",
+      "recentOutput": "读取 agent.read 历史；与实时连接的终端 明确分离",
+      "more": "将通过官方 Herdr agent.{{action}} 接口操作 {{pane}}",
+      "promptSent": "指令生效序号已前进；开始等待空闲／完成",
+      "planCreated": "规划智能体已生成 4 个任务节点；尚未启动执行智能体",
+      "runFirst": "请先生成任务图",
+      "revisionCreated": "已通过 Herdr 启动／指令接口 创建修订轮次 2",
+      "reviewPassed": "真实审查智能体二次审查通过",
+      "mergeConfirmed": "已记录用户合入确认",
+      "focusSent": "已调用 Herdr agent.focus 并标记已查看",
+      "resizeSent": "已通过官方终端传输协议 发送 142×38 尺寸调整事件",
+      "keysSent": "发送按键面板：Ctrl+C / 回车 / 自定义键序列",
+      "attached": "已通过官方二进制传输协议建立实时连接",
+      "detached": "客户端已断开；Herdr 终端窗格继续运行"
     }
   }
 }

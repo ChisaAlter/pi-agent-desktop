@@ -1,12 +1,23 @@
 import React from "react";
 import { useI18n } from "../../i18n";
 import { useAgentFleet } from "../../hooks/useAgentFleet";
+import type { FleetAgentStatus } from "../../hooks/useAgentFleet";
+import type { HerdrDisplayState } from "../../stores/herdr-store";
 import { AgentStatusBadge } from "./AgentStatusBadge";
 
 /**
  * Compact agents rollup card for the chat right rail: for the current
  * workspace, show working/blocked/done counts and jump to the fleet view.
+ * 注: chat 右栏沿用旧派生（真实 Pi 数据）；error/closed 按 D7 映射为「状态未知」，
+ * 徽章与 Herdr 控制面同源。Phase 4 接线真实运行时后统一。
  */
+
+/** D7 映射: 旧 fleet 状态 → Herdr 6 态展示（error/closed → unknown） */
+function toHerdrDisplay(status: FleetAgentStatus): HerdrDisplayState {
+    if (status === "error" || status === "closed") return "unknown";
+    return status;
+}
+
 export function AgentsRailCard({ workspaceId }: { workspaceId?: string }): React.JSX.Element | null {
     const { t } = useI18n();
     const { groups } = useAgentFleet();
@@ -37,7 +48,7 @@ export function AgentsRailCard({ workspaceId }: { workspaceId?: string }): React
                             className="flex items-center gap-1 rounded-full bg-[var(--mm-bg-sidebar)] px-1.5 py-0.5 transition-colors hover:bg-[var(--mm-bg-hover)]"
                             title={t("rightRail.agentsOpenFleet")}
                         >
-                            <AgentStatusBadge status={status} />
+                            <AgentStatusBadge status={toHerdrDisplay(status)} />
                             <span className="text-[12px] leading-4 text-[var(--mm-text-secondary)]">{counts?.[status] ?? 0}</span>
                         </button>
                     ))}

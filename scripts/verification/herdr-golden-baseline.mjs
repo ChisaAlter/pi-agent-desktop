@@ -25,7 +25,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..', '..');
 const PROTOTYPE = path.join(root, 'docs/prototypes/herdr-desktop-ui-prototype.html');
-const OUT_DIR = path.join(root, 'apps/desktop/e2e-output/baselines/herdr');
+// 基线入库位置（Playwright outputDir 每次运行会清空 e2e-output，不能放那里）
+const OUT_DIR = path.join(root, 'docs/verification/baselines/herdr');
 
 const VIEWPORT = { width: 1440, height: 960 };
 

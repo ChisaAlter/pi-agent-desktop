@@ -19,6 +19,7 @@ const PiConfigEditor = lazy(() => import('./tabs/PiConfigEditor').then((module) 
 const UsageTab = lazy(() => import('./tabs/UsageTab').then((module) => ({ default: module.UsageTab })));
 const LongHorizonTab = lazy(() => import('./tabs/LongHorizonTab').then((module) => ({ default: module.LongHorizonTab })));
 const ShortcutsSettings = lazy(() => import('./ShortcutsSettings/ShortcutsSettings').then((module) => ({ default: module.ShortcutsSettings })));
+const HerdrTab = lazy(() => import('./tabs/HerdrTab').then((module) => ({ default: module.HerdrTab })));
 
 interface SettingsContentProps {
     onClose?: () => void;
@@ -109,6 +110,7 @@ export function SettingsContent({ onClose }: SettingsContentProps = {}): React.J
             case 'config': return <PiConfigEditor />;
             case 'shortcuts': return <ShortcutsSettings />;
             case 'about': return <AboutTab />;
+            case 'herdr': return <HerdrTab />;
         }
     })();
 

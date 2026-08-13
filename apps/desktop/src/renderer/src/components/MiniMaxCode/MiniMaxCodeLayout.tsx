@@ -62,6 +62,8 @@ export interface MiniMaxCodeLayoutProps {
     onLeftWidthChange?: (width: number) => void;
     /** 标题栏下方的 tab 栏 slot */
     topBarSlot?: React.ReactNode;
+    /** 标题栏与 body 之间的状态条 slot（HerdrStatusBar 等全宽条） */
+    statusBarSlot?: React.ReactNode;
     /** 整体容器的额外 className */
     className?: string;
 }
@@ -109,6 +111,7 @@ export function MiniMaxCodeLayout({
     centerSlot,
     rightSlot,
     topBarSlot,
+    statusBarSlot,
     leftCollapsed = false,
     rightCollapsed = false,
     leftWidth = DEFAULT_LEFT_WIDTH,
@@ -287,6 +290,8 @@ export function MiniMaxCodeLayout({
                     navigationSlot={topBarSlot}
                     leftWidth={resolvedLeftWidth}
                 />
+
+                {statusBarSlot}
 
                 <div
                     className={`relative flex min-h-0 w-full flex-1 overflow-hidden ${

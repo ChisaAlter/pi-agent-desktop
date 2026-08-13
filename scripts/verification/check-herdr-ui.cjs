@@ -128,20 +128,32 @@ function scanNegativeList(opts = {}) {
   const allActive = opts.allActive ?? false;
   const gate = (reqId) => (allActive ? true : isActive(statusById, reqId));
 
-  // NL-002 / NL-065: 状态条与主界面不得出现 检查更新/验证/切换 按钮
-  // （中文文案或等价 data-action 属性均可命中，防英文/属性形式绕过）
+  // NL-002: 状态条不得出现 检查更新/验证/切换 按钮（只扫 HerdrStatusBar ——
+  // 裸词「切换」在布局/视图切换语境是合法文案，不在此扫描）。
+  // NL-065: 主界面不得出现更新/验证/切换类操作 —— 用 data-action 模式（含
+  // switch-update 覆盖「切换」语义）+ 检查更新/验证 两个歧义较低的词。
+  // 排除 HerdrLayoutSwitcher（UI-REQ-003 要求的布局切换控件，语义无关）。
   if (gate('UI-REQ-002')) {
-    const herdrSources = collectSources(herdrDir, 'Herdr');
+    const statusBar = path.join(herdrDir, 'HerdrStatusBar.tsx');
+    const sbContent = readFile(statusBar);
+    if (sbContent !== null) {
+      for (const word of ['检查更新', '验证', '切换']) {
+        if (sbContent.includes(word)) {
+          fail(`NL-002 命中: HerdrStatusBar.tsx 出现「${word}」（状态条禁止更新/验证/切换按钮）`);
+        }
+      }
+    }
+    const herdrSources = collectSources(herdrDir, 'Herdr').filter(({ label }) => !/HerdrLayoutSwitcher\.tsx$/.test(label));
     const actionPattern = /data-action="(check-update|verify-update|switch-update)"/;
     for (const { label, content } of herdrSources) {
-      for (const word of ['检查更新', '验证', '切换']) {
+      for (const word of ['检查更新', '验证']) {
         if (content.includes(word)) {
-          fail(`NL-002/NL-065 命中: ${label} 出现「${word}」（主界面禁止更新/验证/切换按钮，收敛设置）`);
+          fail(`NL-065 命中: ${label} 出现「${word}」（主界面禁止更新/验证按钮，收敛设置）`);
         }
       }
       const m = content.match(actionPattern);
       if (m) {
-        fail(`NL-002/NL-065 命中: ${label} 出现 data-action="${m[1]}"（等价更新/验证/切换操作，收敛设置）`);
+        fail(`NL-065 命中: ${label} 出现 data-action="${m[1]}"（等价更新/验证/切换操作，收敛设置）`);
       }
     }
   }

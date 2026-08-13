@@ -16,7 +16,10 @@
     "test": "vitest --run",
     "test:coverage": "vitest --run --coverage",
     "e2e": "playwright test",
-    "e2e:build": "electron-vite build && playwright test"
+    "e2e:build": "electron-vite build && playwright test",
+    "build:mock": "cross-env PI_HERDR_MOCK=1 electron-vite build",
+    "e2e:parity": "playwright test e2e/herdr/prototype-parity",
+    "e2e:parity:production": "cross-env HERDR_PARITY_TARGET=production playwright test e2e/herdr/prototype-parity"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.78.1",
@@ -67,6 +70,7 @@
     "@vitest/coverage-v8": "4.1.8",
     "autoprefixer": "^10.4.0",
     "axe-core": "^4.11.4",
+    "cross-env": "^10.1.0",
     "electron": "41.2.0",
     "electron-builder": "^26.15.3",
     "electron-builder-squirrel-windows": "^26.15.3",

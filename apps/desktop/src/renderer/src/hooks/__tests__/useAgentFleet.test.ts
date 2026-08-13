@@ -1,3 +1,8 @@
+// 遗留语义声明：本测试覆盖 chat 右栏 rollup（AgentsRailCard）的旧派生模型（error/closed 透传、
+// error 优先）—— 与 Herdr 控制面 D7 模型（6 态/seen/Blocked>Done>Working>Idle>Unknown）
+// 不同；控制面语义由 herdr-store.test.ts 覆盖。Phase 4 真实运行时接线时统一两套模型
+// （见 docs/verification/herdr-ui-gates.yml G1 遗留项）。
+
 import { describe, expect, it } from "vitest";
 import type { AgentRuntimeState, AgentTab } from "@shared";
 import { computeFleetStatus, extractFleetSummary, emptyFleetCounts, type FleetBlockedSignals } from "../useAgentFleet";

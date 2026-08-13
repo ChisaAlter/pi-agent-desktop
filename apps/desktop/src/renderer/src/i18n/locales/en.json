@@ -885,7 +885,8 @@
       "maintenance": "Maintenance",
       "searchPlaceholder": "Search settings...",
       "searchResults": "Matches",
-      "noResults": "No matching settings"
+      "noResults": "No matching settings",
+      "agents": "Agents"
     },
     "tab": {
       "model": "Model",
@@ -897,7 +898,8 @@
       "general": "General",
       "shortcuts": "Shortcuts",
       "config": "Config files",
-      "about": "About"
+      "about": "About",
+      "herdr": "Herdr runtime"
     },
     "tabCaption": {
       "model": "Providers and models",
@@ -909,7 +911,8 @@
       "general": "Language and alerts",
       "shortcuts": "Keyboard controls",
       "config": "Advanced JSON",
-      "about": "Version info"
+      "about": "Version info",
+      "herdr": "Source, updates & launch"
     },
     "appearance": {
       "heading": "Appearance",
@@ -1167,7 +1170,70 @@
     },
     "reset": "Reset to defaults",
     "resetAria": "Reset to defaults",
-    "closeAria": "Close settings"
+    "closeAria": "Close settings",
+    "herdr": {
+      "heading": "Herdr runtime",
+      "description": "Choose the Herdr source and control automatic update following.",
+      "general": {
+        "sourceLabel": "Source",
+        "sourceDesc": "Use the official release managed by Pi Desktop.",
+        "autoCheckLabel": "Check for updates automatically",
+        "autoCheckDesc": "Periodically check for new official Herdr releases.",
+        "autoSwitchLabel": "Auto-switch to stable",
+        "autoSwitchDesc": "Switch automatically after compatibility verification passes."
+      },
+      "compat": {
+        "currentLabel": "Current version",
+        "currentDesc": "Running version and API alignment with the official protocol.",
+        "candidateLabel": "Candidate version",
+        "candidateDesc": "Downloaded candidate, does not affect the current service.",
+        "capabilitiesHeading": "Capabilities",
+        "capabilitiesDesc": "Derived from handshake and contract tests; undeclared capabilities are never shown.",
+        "checkAction": "Check for updates",
+        "verifyAction": "Verify candidate",
+        "verified": "Verified",
+        "pending": "Pending verification"
+      },
+      "update": {
+        "checkHeading": "Check for updates",
+        "checkDesc": "The official Herdr v0.9.1 is downloaded as a candidate without affecting the current service.",
+        "candidateVersion": "v0.9.1 · official release",
+        "candidateMeta": "SHA-256 verified · full signature",
+        "verifyRow": "Compatibility verification",
+        "verifyRowMeta": "Run real contract smoke tests",
+        "verifyRowMetaDone": "18/18 capability contracts passed",
+        "switchHeading": "Switch strategy",
+        "switchDesc": "The Herdr server is never restarted silently while agents are running.",
+        "waitPoint": "Wait for a safe switch point",
+        "waitPointDesc": "3 agents are running",
+        "switchButton": "Switch safely",
+        "rollbackLabel": "Rollback",
+        "rollbackDesc": "Keep the previous compatible version.",
+        "rollbackButton": "Rollback",
+        "modalTitle": "Waiting for a safe switch point",
+        "modalText": "3 agents are running. The Herdr server will not be restarted silently; you can wait until agents are stable before switching.",
+        "confirm": "Confirm",
+        "cancel": "Cancel"
+      },
+      "diagnostics": {
+        "connectionLabel": "Service connection",
+        "connectionDesc": "Server, session and process status.",
+        "piIntegrationLabel": "Pi integration",
+        "piIntegrationDesc": "herdr:pi lifecycle hooks installed.",
+        "runtimePolicyHeading": "Runtime policy",
+        "runtimePolicyDesc": "Keep running when closing / reconnect on disconnect.",
+        "keepRunningLabel": "Keep running on close",
+        "keepRunningDesc": "The Herdr server keeps running when the app closes.",
+        "reconnectLabel": "Reconnect on disconnect",
+        "reconnectDesc": "Automatically re-snapshot and resubscribe after a disconnect.",
+        "dataDirLabel": "Data directory",
+        "dataDirDesc": "Session JSONL and runtime data.",
+        "ok": "OK",
+        "off": "Offline",
+        "unknown": "Unknown",
+        "none": "No runtime detected"
+      }
+    }
   },
   "commonErrors": {
     "piNotConnected": "Pi CLI not connected",
@@ -1238,7 +1304,8 @@
     "extensions": "Extensions",
     "settings": "Settings",
     "ariaLabel": "Top tab bar",
-    "agents": "Agents"
+    "agents": "Agents",
+    "mission": "Mission"
   },
   "runPanel": {
     "ariaLabel": "Run views",
@@ -1309,7 +1376,8 @@
       "history": "Sessions",
       "git": "Git",
       "files": "Files",
-      "agents": "Agents"
+      "agents": "Agents",
+      "mission": "Mission"
     }
   },
   "agents": {
@@ -1382,6 +1450,189 @@
       "changes": "File changes",
       "noChanges": "No file changes",
       "detecting": "Detecting changes…"
+    }
+  },
+  "herdr": {
+    "statusBar": {
+      "connected": "Herdr connected",
+      "offline": "Herdr disconnected",
+      "reconnecting": "Herdr reconnecting",
+      "sessionProcess": "Session: {{session}} · PID {{pid}}",
+      "managedByDesktop": "Desktop-managed",
+      "systemInstalled": "System install",
+      "compatible": "Fully compatible",
+      "incompatible": "Incompatible",
+      "compatUnknown": "Compatibility unknown",
+      "version": "v{{version}}",
+      "openSettings": "Open settings"
+    },
+    "tree": {
+      "title": "Herdr runtime",
+      "create": "Create",
+      "searchPlaceholder": "Search panes, agents or workspaces",
+      "filterAll": "All",
+      "filterBlocked": "Blocked",
+      "filterDone": "Unseen",
+      "workspace": "workspace",
+      "worktree": "worktree",
+      "session": "session",
+      "empty": "No Herdr runtime detected"
+    },
+    "view": {
+      "fleet": "Agent overview",
+      "pane": "Live terminal",
+      "mission": "Mission cockpit"
+    },
+    "status": {
+      "working": "Working",
+      "blocked": "Blocked",
+      "done": "Done · unseen",
+      "idle": "Idle",
+      "unknown": "Unknown",
+      "disconnected": "Disconnected"
+    },
+    "fleet": {
+      "agentCount": "{{count}} agents · {{tabs}} tabs · repo {{repo}}",
+      "branch": "branch {{branch}}"
+    },
+    "card": {
+      "pane": "pane {{pane}}",
+      "session": "Session",
+      "worktree": "Worktree",
+      "authority": "Status source",
+      "openTerminal": "Open terminal",
+      "handleBlocked": "Handle blocked",
+      "markSeen": "Mark as seen",
+      "recentOutput": "Recent output",
+      "more": "More ⋯",
+      "empty": "No agents in this workspace"
+    },
+    "pane": {
+      "attached": "● Live attached",
+      "detached": "○ Detached",
+      "attach": "Detach",
+      "reattach": "Reattach",
+      "focus": "Focus",
+      "resize": "Resize",
+      "sendKeys": "Send keys",
+      "blockedTitle": "Agent blocked",
+      "blockedDesc": "Pi is waiting for command approval; handle it in the real terminal pane.",
+      "resolveBlock": "Open terminal and approve",
+      "identity": "Runtime identity",
+      "agent": "Agent",
+      "paneTerminal": "Pane / terminal",
+      "authoritySource": "Status authority",
+      "stateSeq": "State change seq",
+      "nativeSession": "Native session",
+      "worktree": "Worktree",
+      "transport": "Transport",
+      "transportLive": "Binary client · live",
+      "promptPlaceholder": "Send instructions to the agent in the real terminal…",
+      "waitIdle": "Wait for idle/done",
+      "waitBlocked": "Wait for blocked",
+      "waitNone": "Do not wait",
+      "sendAndWait": "Send and wait",
+      "readHistory": "Read history output",
+      "readHistoryHint": "agent.read history — separate from the live terminal",
+      "empty": "No Herdr runtime — live terminal unavailable"
+    },
+    "mission": {
+      "title": "Mission control center",
+      "subtitle": "Desktop injects mission semantics; agents, panes, PTY and lifecycle stay managed by official Herdr.",
+      "statusDraft": "Draft",
+      "statusPlanned": "Planned",
+      "statusRunning": "Running",
+      "statusReview": "Under review",
+      "statusRevision": "Revising",
+      "statusPassed": "Passed",
+      "goalPlaceholder": "Enter the mission goal…",
+      "plan": "Generate task graph",
+      "run": "Start mission",
+      "authorityPrefix": "The single source of truth for runtime state:",
+      "authoritySession": "Herdr session {{session}}",
+      "authorityProjection": "desktop projection seq {{seq}}",
+      "authorityNoReplay": "non-idempotent operations are not replayed after reconnect",
+      "dagEmpty": "Enter a goal and generate the task graph to see how the planner agent injects work into real Herdr workers.",
+      "nodeReady": "Ready",
+      "nodeRunning": "Running",
+      "nodePassed": "Passed",
+      "nodeRejected": "Rejected",
+      "round": "round {{n}}",
+      "artifacts": "Deliverables",
+      "review": "Review & revision",
+      "integration": "Branch integration",
+      "artifactsWaiting": "Waiting for workers to deliver",
+      "reviewWaiting": "Waiting for the reviewer agent",
+      "integrationWaiting": "Waiting for approved commits",
+      "artifactCommit": "commit {{commit}} · tests {{tests}}",
+      "reviewRejected": "Review failed",
+      "reviewRevising": "Revision in progress",
+      "reviewPassed": "Review passed",
+      "createRevision": "Create revision round 2",
+      "reviewPassAction": "Finish revision and re-review",
+      "integrationReady": "Ready in integration worktree",
+      "requestMerge": "Request merge to main",
+      "mergeConfirmTitle": "Final merge confirmation",
+      "mergeConfirmText": "The reviewer passed and the integration worktree has no conflicts. This operation still requires your explicit confirmation; agents never write to the main branch automatically.",
+      "mergeConfirmAction": "Confirm",
+      "cancel": "Cancel",
+      "empty": "No Herdr runtime — mission planning unavailable"
+    },
+    "rail": {
+      "title": "Context details",
+      "currentPane": "Current terminal pane",
+      "agent": "Agent",
+      "hierarchy": "Hierarchy",
+      "runtime": "Runtime",
+      "status": "Status",
+      "authority": "Status source",
+      "nativeSession": "Native session reference",
+      "runtimeConnected": "Official Herdr · connected",
+      "runtimeOffline": "Official Herdr · disconnected",
+      "runtimeReconnecting": "Official Herdr · reconnecting",
+      "capabilities": "Available capabilities",
+      "capSendPrompt": "Send instructions",
+      "capWait": "Wait",
+      "capRead": "Read",
+      "capSendKeys": "Send keys",
+      "capLiveAttach": "Live attach",
+      "capResume": "Resume session",
+      "worktreeLease": "Worktree lease",
+      "leaseWorkspace": "Workspace",
+      "leaseBranch": "Branch",
+      "leaseOwner": "Owned by",
+      "leaseOwnerText": "mission/auth-hardening · round {{n}}",
+      "evidenceBoundary": "Evidence boundary",
+      "evidenceText": "In production, status must be traced back to Herdr snapshots, event seqs, pane/terminal identity and Git commits — never derived from UI cards.",
+      "empty": "Select an agent to see context"
+    },
+    "layout": {
+      "label": "Layout",
+      "studio": "Studio",
+      "mission": "Mission-first",
+      "terminal": "Terminal-first",
+      "title": "Switch layout"
+    },
+    "empty": {
+      "title": "Herdr runtime not connected",
+      "hint": "The Herdr control plane will appear here once the runtime is configured."
+    },
+    "toast": {
+      "markSeen": "{{name}}: unseen cleared, done → idle",
+      "resolveBlock": "Approval completed inside the real Herdr terminal; lifecycle hook reports “working”",
+      "recentOutput": "Reading agent.read history — kept separate from the live terminal",
+      "more": "Will operate {{pane}} via the official Herdr agent.{{action}} API",
+      "promptSent": "Instruction seq advanced; waiting for idle/done",
+      "planCreated": "Planner generated 4 task nodes; workers not started yet",
+      "runFirst": "Generate the task graph first",
+      "revisionCreated": "Created revision round 2 via Herdr start/instruction API",
+      "reviewPassed": "Real reviewer agent passed the second review",
+      "mergeConfirmed": "User merge confirmation recorded",
+      "focusSent": "Called Herdr agent.focus and marked as seen",
+      "resizeSent": "Sent 142×38 resize event via official terminal transport",
+      "keysSent": "Key panel: Ctrl+C / Enter / custom sequences",
+      "attached": "Live connection established via official binary transport",
+      "detached": "Client detached; the Herdr terminal pane keeps running"
     }
   }
 }

@@ -11,8 +11,8 @@ const t = (key: string): string => key;
 describe("settings-nav-metadata", () => {
   const sections = buildSettingsNavigation(t);
 
-  it("builds three nav sections with expected tabs", () => {
-    expect(sections.map((s) => s.id)).toEqual(["common", "advanced", "maintenance"]);
+  it("builds four nav sections with expected tabs（含智能体分组 herdr）", () => {
+    expect(sections.map((s) => s.id)).toEqual(["common", "agents", "advanced", "maintenance"]);
     const tabs = flattenSettingsTabs(sections).map((tab) => tab.id);
     expect(tabs).toEqual([
       "general",
@@ -21,6 +21,7 @@ describe("settings-nav-metadata", () => {
       "appearance",
       "permissions",
       "usage",
+      "herdr",
       "longHorizon",
       "shortcuts",
       "config",
@@ -55,7 +56,7 @@ describe("settings-nav-metadata", () => {
     const ids = tabs.map((t) => t.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(tabs.every((t) => t.searchEntries.length > 0)).toBe(true);
-    expect(tabs.every((t) => t.sectionId === "common" || t.sectionId === "advanced" || t.sectionId === "maintenance")).toBe(true);
+    expect(tabs.every((t) => t.sectionId === "common" || t.sectionId === "agents" || t.sectionId === "advanced" || t.sectionId === "maintenance")).toBe(true);
   });
 
   it("search is case-insensitive and ranks exact label ahead of partial", () => {
@@ -154,6 +155,7 @@ describe("settings-nav-metadata", () => {
         "shortcuts",
         "config",
         "about",
+        "herdr",
       ] as const;
       for (const id of ids) {
         expect(getDefaultSettingsAnchor(id)).toBe(`page-${id}`);
@@ -162,8 +164,8 @@ describe("settings-nav-metadata", () => {
       const expected = sections.reduce((n, s) => n + s.tabs.length, 0);
       expect(flat).toHaveLength(expected);
       expect(new Set(flat.map((t) => t.id)).size).toBe(flat.length);
-      // section order: common → advanced → maintenance
-      expect(sections.map((s) => s.id)).toEqual(["common", "advanced", "maintenance"]);
+      // section order: common → agents → advanced → maintenance
+      expect(sections.map((s) => s.id)).toEqual(["common", "agents", "advanced", "maintenance"]);
     });
 
     it("searchSettings result description is entry.description; id format tabId:anchor", () => {

@@ -38,6 +38,8 @@ interface SettingsState {
   lastWriteError: IpcError | string | null;
   rightRailCollapsed: boolean;
   sidebarGroupMode: 'date' | 'workspace';
+  /** Herdr 控制面布局模式（UI-REQ-003，持久化） */
+  herdrLayoutMode: 'studio' | 'mission' | 'terminal';
 
   // Actions
   updateSettings: (updates: Partial<AppSettings>) => void;
@@ -51,6 +53,7 @@ interface SettingsState {
   setTheme: (theme: Theme) => void;
   toggleRightRail: () => void;
   setSidebarGroupMode: (mode: 'date' | 'workspace') => void;
+  setHerdrLayoutMode: (mode: 'studio' | 'mission' | 'terminal') => void;
   /** 加载 settings + 注册 settings:changed / pi-config:changed 监听器 (idempotent) */
   init: () => void;
   /** 卸载监听器 (HMR / 测试 / unmount 清理) */
@@ -133,6 +136,7 @@ const defaultSettings: AppSettings = {
   workspaceToolDefaults: {},
   workspacePermissionModes: {},
   sidebarGroupMode: 'date',
+  herdrLayoutMode: 'studio',
   shortcutOverrides: readCachedShortcutOverrides(),
   showThinking: true,
   thinkingLevel: 'medium',
@@ -273,6 +277,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
           set({
             settings: previousSettings,
             sidebarGroupMode: previousSettings.sidebarGroupMode ?? 'date',
+            herdrLayoutMode: previousSettings.herdrLayoutMode ?? 'studio',
             lastWriteError: result,
           });
         } else {
@@ -299,6 +304,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
         set({
           settings: previousSettings,
           sidebarGroupMode: previousSettings.sidebarGroupMode ?? 'date',
+          herdrLayoutMode: previousSettings.herdrLayoutMode ?? 'studio',
           lastWriteError: reportWriteError(e),
         });
       } else {
@@ -348,7 +354,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
         applyAndCacheTheme(next.theme as Theme);
         applyAndCacheFontSize(next.fontSize);
         cacheShortcutOverrides(next.shortcutOverrides);
-        set({ settings: next, sidebarGroupMode: next.sidebarGroupMode ?? 'date' });
+        set({ settings: next, sidebarGroupMode: next.sidebarGroupMode ?? 'date', herdrLayoutMode: next.herdrLayoutMode ?? 'studio' });
       }
     } catch (e) {
       logger.error('[settings-store] Failed to load settings:', e);
@@ -361,6 +367,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
     lastWriteError: null,
     rightRailCollapsed: true,
     sidebarGroupMode: defaultSettings.sidebarGroupMode ?? 'date',
+    herdrLayoutMode: defaultSettings.herdrLayoutMode ?? 'studio',
 
     // 从 Pi CLI 加载本地配置
     loadPiConfig: async () => {
@@ -518,6 +525,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
       set({ sidebarGroupMode: mode });
       get().updateSettings({ sidebarGroupMode: mode });
     },
+    setHerdrLayoutMode: (mode: 'studio' | 'mission' | 'terminal') => {
+      set({ herdrLayoutMode: mode });
+      get().updateSettings({ herdrLayoutMode: mode });
+    },
 
     init: () => {
       if (settingsInitStarted) return;
@@ -538,6 +549,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
           set({
             settings: reconciled,
             sidebarGroupMode: reconciled.sidebarGroupMode ?? 'date',
+            herdrLayoutMode: reconciled.herdrLayoutMode ?? 'studio',
             lastWriteError: null,
           });
         });

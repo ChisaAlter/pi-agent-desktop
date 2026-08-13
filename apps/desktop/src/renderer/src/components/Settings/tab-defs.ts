@@ -1,6 +1,6 @@
 // Settings tab 类型定义 — 供 SettingsContent / SettingsNav 共享.
 
-export type SettingsTab = 'model' | 'piagent' | 'permissions' | 'usage' | 'longHorizon' | 'appearance' | 'general' | 'shortcuts' | 'config' | 'about';
+export type SettingsTab = 'model' | 'piagent' | 'permissions' | 'usage' | 'longHorizon' | 'appearance' | 'general' | 'shortcuts' | 'config' | 'about' | 'herdr';
 
 export interface SettingsSearchEntry {
     anchor: string;
@@ -11,7 +11,7 @@ export interface SettingsSearchEntry {
 
 export interface SettingsTabDefinition {
     id: SettingsTab;
-    sectionId: 'common' | 'advanced' | 'maintenance';
+    sectionId: 'common' | 'advanced' | 'maintenance' | 'agents';
     label: string;
     caption: string;
     pageTitle: string;
@@ -20,7 +20,7 @@ export interface SettingsTabDefinition {
 }
 
 export interface SettingsNavSection {
-    id: 'common' | 'advanced' | 'maintenance';
+    id: 'common' | 'advanced' | 'maintenance' | 'agents';
     label: string;
     tabs: ReadonlyArray<SettingsTabDefinition>;
 }
@@ -45,5 +45,6 @@ export function isSettingsTab(value: unknown): value is SettingsTab {
         value === 'general' ||
         value === 'shortcuts' ||
         value === 'config' ||
-        value === 'about';
+        value === 'about' ||
+        value === 'herdr';
 }
