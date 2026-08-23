@@ -64,7 +64,7 @@ jobs:
         run: pnpm verify:herdr
 
       # Herdr parity 原型目标套件(交互流对齐 + 黄金基线完整性自检)。
-      # 基线已入库 apps/desktop/e2e-output/baselines/herdr, 自检校验 manifest SHA-256,
+      # 基线已入库 docs/verification/baselines/herdr, 自检校验 manifest SHA-256,
       # 可发现基线被篡改/替换/删除。
       - name: Install Playwright chromium (parity)
         shell: pwsh

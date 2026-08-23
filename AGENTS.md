@@ -73,7 +73,7 @@ pnpm --filter @pi-desktop/desktop package      # Build NSIS Windows installer
 pnpm -r typecheck && pnpm -r lint && pnpm -r test
 ```
 
-The current CI job runs the same three checks on `windows-latest`. It does not run the full Electron E2E suite or NSIS install/upgrade/uninstall isolation. Run the read-only documentation check separately when current facts change:
+The current CI job on `windows-latest` runs the full gate: typecheck → lint → test → coverage → `pnpm verify:docs` → `pnpm verify:herdr` → Herdr parity prototype suite (`HERDR_PARITY_TARGET=prototype`, `playwright.parity.config.ts`) → desktop build → main-runtime smoke (`node scripts/smoke-main-runtime.cjs`). It does not run the full Electron E2E suite or NSIS install/upgrade/uninstall isolation — those remain separate evidence layers. Run the read-only documentation check locally when current facts change:
 
 ```bash
 pnpm verify:docs
@@ -137,7 +137,7 @@ The active desktop session/message repository is `node:sqlite` through `SqliteSe
 
 ```
 ┌────────────────── TitleBar (32px) ──────────────────────────┐
-│  TopTabBar (36px): 对话 | Agents | 运行 | 工作台 | 扩展 [设置] │
+│ TopTabBar (36px): 对话|智能体|任务编排|运行|工作台|扩展 [设置] │
 ├──────────┬───────────────────────────┬──────────────────────┤
 │ Left     │ Center (flex-1)           │ Right Rail (280px)   │
 │ 190px+   │                           │ default: collapsed   │
@@ -149,7 +149,7 @@ The active desktop session/message repository is `node:sqlite` through `SqliteSe
 └──────────┴───────────────────────────┴──────────────────────┘
 ```
 
-- **TopTabBar** (`components/TopTabBar/`): 5 tabs driven by `activeSection`: `chat`, `agents`, `run`, `workbench`, `extensions`. Settings is a right-side icon that opens the independent settings window.
+- **TopTabBar** (`components/TopTabBar/`): 6 tabs driven by `activeSection`: `chat`, `agents`, `mission`, `run`, `workbench`, `extensions` (对话|智能体|任务编排|运行|工作台|扩展). Settings is a right-side icon that opens the independent settings window.
 - **AgentsPanel** (`components/Agents/AgentsPanel.tsx`): herdr 式多 agent 舰队视图 — 按 workspace 分组 + working/blocked/done/idle/error 生命周期徽章（`hooks/useAgentFleet.ts` 合成：blocked = 权限/计划/审批/队列挂起，严格语义；挂起信号由 `stores/fleet-signals-store.ts` 单例订阅 `agents:event` + `approval:request/resolved` 共享，面板与右栏卡同源）、每卡可展开完整消息流（复用 `MarkdownRenderer` 管线）与子代理（`subagent:event` 广播桥 + `subagent-store`），done 卡有「收割结果」（产出全文 + git 改动预览，复用 `utils/git-snapshot-cache.ts` 共享缓存）。新建弹窗走 `agentsCreate` + 可选 `sendPrompt`。RightRail 的 Agents 卡（`AgentsRailCard.tsx`）显示当前 workspace 的 rollup，点击跳转舰队视图。E2E: `e2e/agents-fleet.spec.ts`。注意: 面板顶部行需 `pl-12` 给「折叠左侧栏」浮层按钮让位（见 memory overlay-obscures-rendering-gotcha）。
 - **Route aliases**: legacy section ids stay supported in `App.tsx`: `tasks` / `memory` → `run`, `files` / `git` / `terminal` → `workbench`, and `tools` / `skills` → `extensions`.
 - **RunPanel** (`components/RunPanel/RunPanel.tsx`): secondary tabs `tasks` and `memory`; reuses `TaskOverviewPanel` and `MemoryPanel`.

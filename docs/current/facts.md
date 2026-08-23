@@ -12,7 +12,7 @@
 | Package manager | `pnpm@9.0.0` |
 | Supported product target | Windows 10/11 x64; the v1 line is Windows-only |
 | IPC handler modules | 24 files under the main-process IPC surface |
-| CI verification job | `typecheck` → `lint` → `test` → coverage → docs facts → desktop build → main smoke on `windows-latest` |
+| CI verification job | `typecheck` → `lint` → `test` → coverage → docs facts → herdr requirements → parity prototype suite → desktop build → main smoke on `windows-latest` |
 | Session persistence | `node:sqlite` `DatabaseSync` through `SqliteSessionRepository` |
 
 The root package and `apps/desktop/package.json` carry the same application version. Electron is declared by the desktop package. These values are source facts; release tags and published assets are separate release-state facts.
@@ -73,15 +73,21 @@ See [../security/PERMISSION-MATRIX.md](../security/PERMISSION-MATRIX.md) for the
 
 ## Verification and release boundaries
 
-The repository CI gate currently runs only:
+The repository CI gate (`.github/workflows/ci.yml`, `windows-latest`) currently runs, in order:
 
 ```text
 pnpm -r typecheck
 pnpm -r lint
 pnpm -r test
+pnpm --filter @pi-desktop/desktop test:coverage
+pnpm verify:docs
+pnpm verify:herdr
+HERDR_PARITY_TARGET=prototype npx playwright test --config=playwright.parity.config.ts
+pnpm --filter @pi-desktop/desktop build
+node scripts/smoke-main-runtime.cjs
 ```
 
-The release workflow additionally builds the desktop bundle, runs the main-runtime smoke check, packages the Windows NSIS installer, and verifies release artifact names. Electron E2E, packaging, and isolated install/upgrade/uninstall checks are separate evidence layers; a green CI gate does not imply all of them passed.
+The release workflow additionally packages the Windows NSIS installer and verifies release artifact names. Full Electron E2E, packaging, and isolated install/upgrade/uninstall checks are separate evidence layers; a green CI gate does not imply all of them passed.
 
 The NSIS isolation gate is currently blocked on the maintained test host: it is not elevated, Windows Sandbox is unavailable, Docker is unavailable, and the host already contains a Pi Desktop installation. Do not run installer, uninstall, or upgrade experiments on that host. Use an isolated Windows Sandbox, disposable VM, or equivalent administrator-controlled environment.
 
