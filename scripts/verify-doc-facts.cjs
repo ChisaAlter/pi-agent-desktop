@@ -86,6 +86,9 @@ for (const command of [
   'pnpm -r test',
   'pnpm --filter @pi-desktop/desktop test:coverage',
   'pnpm verify:docs',
+  'pnpm verify:herdr',
+  'HERDR_PARITY_TARGET=prototype',
+  'playwright.parity.config.ts',
   'pnpm --filter @pi-desktop/desktop build',
   'node scripts/smoke-main-runtime.cjs',
 ]) {
