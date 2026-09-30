@@ -275,51 +275,58 @@ export function HerdrTree(): React.JSX.Element {
   };
 
   const sessionOpen = isOpen('session');
+  const hasTree = tree.workspaces.length > 0;
 
   return (
     <div data-testid="herdr-tree" style={ROOT}>
       <div style={HEADER}>
         <span>{t('herdr.tree.title')}</span>
         <span style={{ marginLeft: 'auto' }} />
-        <button
-          type="button"
-          title={t('herdr.tree.create')}
-          aria-label={t('herdr.tree.create')}
-          className="hover:bg-[#f8fafc]"
-          style={CREATE_BTN}
-        >
-          ＋
-        </button>
-      </div>
-
-      <input
-        data-testid="herdr-tree-search"
-        type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder={t('herdr.tree.searchPlaceholder')}
-        className="focus:border-[#78a5ff]"
-        style={SEARCH}
-      />
-
-      <div style={FILTERS_BAR}>
-        {FILTERS.map((f) => (
+        {hasTree ? (
           <button
-            key={f}
             type="button"
-            data-testid="herdr-filter"
-            data-filter={f}
-            onClick={() => setFilter(f)}
-            className={filter === f ? 'active' : undefined}
-            style={filter === f ? FILTER_BTN_ACTIVE : FILTER_BTN}
+            title={t('herdr.tree.create')}
+            aria-label={t('herdr.tree.create')}
+            className="hover:bg-[#f8fafc]"
+            style={CREATE_BTN}
           >
-            {t(`herdr.tree.filter${f[0].toUpperCase()}${f.slice(1)}`)}
+            ＋
           </button>
-        ))}
+        ) : null}
       </div>
+
+      {hasTree ? (
+        <>
+          <input
+            data-testid="herdr-tree-search"
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t('herdr.tree.searchPlaceholder')}
+            className="focus:border-[#78a5ff]"
+            style={SEARCH}
+          />
+
+          <div style={FILTERS_BAR}>
+            {FILTERS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                data-testid="herdr-filter"
+                data-filter={f}
+                onClick={() => setFilter(f)}
+                className={filter === f ? 'active' : undefined}
+                style={filter === f ? FILTER_BTN_ACTIVE : FILTER_BTN}
+              >
+                {t(`herdr.tree.filter${f[0].toUpperCase()}${f.slice(1)}`)}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
 
       <div style={TREE_BODY}>
-        {tree.workspaces.length === 0 ? (
+        {!hasTree ? (
           <div data-testid="herdr-tree-empty" style={EMPTY}>
             {t('herdr.tree.empty')}
           </div>

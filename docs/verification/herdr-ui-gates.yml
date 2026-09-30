@@ -84,3 +84,25 @@
 **遗留项**：
 1. G1 用户实测签署仍待完成（build:mock 验证 + 阈值收紧）
 2. HerdrTab 的开关/来源选择为 mock 状态（Phase 3 接设置持久化与真实运行时数据）
+
+## G3A — 真实 Herdr 控制面（2026-08-13）
+
+**架构审查要点**：
+- Desktop 连接官方 Windows preview `herdr.exe`；JSON API 走 named-pipe，one-request-per-connection，subscribe 独占长连接
+- Main 权威投影：event 只触发 debounce snapshot；`revision` 是 Desktop 自有序号，不伪造 Herdr event cursor
+- typed IPC only：无 `herdr:request` 透传；`server.stop` / `integration.install pi` 必须 confirmed
+- Desktop 退出只 dispose 客户端/订阅，不 stop persistent server
+- CI/E2E 默认不 attach 用户 default session；隔离真机必须设 `HERDR_SESSION` 或 `HERDR_SOCKET_PATH`
+
+**证据审查**：
+- 低层/桥/IPC/renderer 定向单测通过
+- 隔离真实 `herdr.exe` 集成测试 PASS：snapshot 投影一致，dispose 后 server 仍可 ping
+- UI-REQ-014 改为 PASS；UI-REQ-032 / UI-REQ-045 继续 BLOCKED
+
+**结论**：G3A 技术门 PASS（控制面垂直切片）。**不得**据此宣布整个 Herdr 集成完成。
+
+**遗留项**：
+1. G3B 官方实时终端 transport（UI-REQ-032）
+2. G3C missions.db 持久化编排（UI-REQ-045）
+3. 生产打包 + 截图 eye 三审仍待本会话收尾
+4. Playwright `g3a-runtime.spec.ts` 依赖已构建 `out/main/index.js` + 本机官方 herdr.exe

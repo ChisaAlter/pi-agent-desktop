@@ -3,6 +3,7 @@
 import React, { useEffect } from 'react';
 import type { SettingsWindowTab } from '@shared';
 import { useSettingsStore } from './stores/settings-store';
+import { ensureHerdrSubscriptions } from './stores/herdr-store';
 import { I18nProvider, useI18n } from './i18n';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { SettingsContent } from './components/Settings/SettingsContent';
@@ -70,6 +71,12 @@ function SettingsShell(): React.JSX.Element {
     useEffect(() => {
         useSettingsStore.getState().init();
         return () => useSettingsStore.getState().dispose();
+    }, []);
+
+    // Herdr 设置页读取 Main 权威投影：设置窗口必须订阅 herdr:state-changed，
+    // 否则连接/停止后状态条不会更新（独立 BrowserWindow 不会自动收到广播）。
+    useEffect(() => {
+        ensureHerdrSubscriptions();
     }, []);
 
     useEffect(() => {

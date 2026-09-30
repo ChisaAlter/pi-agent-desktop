@@ -92,7 +92,7 @@ describe('HerdrStatusBar — 运行时状态栏', () => {
   });
 
   it('非 mock 连接态: 不伪造 pid/来源/版本数据', () => {
-    useHerdrStore.setState({ mock: false, server: 'connected', tree: { session: 'pi-desktop', workspaces: [] } });
+    useHerdrStore.setState({ mock: false, server: 'connected', runtimeStatus: null, tree: { session: 'pi-desktop', workspaces: [] } });
     renderWithI18n(<HerdrStatusBar />);
 
     expect(screen.getByText('Herdr 已连接')).toBeTruthy();
@@ -100,6 +100,33 @@ describe('HerdrStatusBar — 运行时状态栏', () => {
     expect(screen.queryByText('Desktop 托管')).toBeNull();
     expect(screen.queryByText('v0.9.0')).toBeNull();
     expect(screen.queryByTestId('compat-pill')).toBeNull();
+  });
+
+  it('非 mock 连接态: 只展示 Main 投影里的真实运行时元数据', () => {
+    useHerdrStore.setState({
+      mock: false,
+      server: 'connected',
+      tree: { session: 'pi-e2e', workspaces: [] },
+      runtimeStatus: {
+        connection: 'connected',
+        source: 'external',
+        version: '0.8.0-preview',
+        protocol: 19,
+        pid: null,
+        owned: false,
+        compatibility: 'compatible',
+        error: null,
+      },
+    });
+    renderWithI18n(<HerdrStatusBar />);
+
+    expect(screen.getByText('Herdr 已连接')).toBeTruthy();
+    expect(screen.getByText('会话：pi-e2e · 进程 —')).toBeTruthy();
+    expect(screen.getByText('系统安装')).toBeTruthy();
+    expect(screen.getByText('v0.8.0-preview')).toBeTruthy();
+    expect(screen.getByText('完全兼容')).toBeTruthy();
+    expect(screen.queryByText('v0.9.0')).toBeNull();
+    expect(screen.queryByText('Desktop 托管')).toBeNull();
   });
 
   it('负向断言 (NL-002/NL-065): 无 检查更新/验证/切换 按钮, 唯一按钮是 ⚙', () => {

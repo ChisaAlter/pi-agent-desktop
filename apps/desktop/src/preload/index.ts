@@ -82,6 +82,15 @@ import type {
     GoalEvaluationEvent,
     SettingsWindowTab,
     DiagnosticExportResult,
+    HerdrFocusAgentInput,
+    HerdrInstallIntegrationInput,
+    HerdrPromptAgentInput,
+    HerdrReadAgentOutputInput,
+    HerdrReadAgentOutputResult,
+    HerdrRuntimeProjection,
+    HerdrRuntimeStatus,
+    HerdrSendAgentKeysInput,
+    HerdrStopServerInput,
 } from "@shared";
 
 // 内部 helper: 把 ipcRenderer.on 的 (_event, payload) 签名转成 (payload)
@@ -122,6 +131,26 @@ const piAPI: PiAPI = {
     onUpdaterStateChanged: (cb) => subscribe<AppUpdaterState>("updater:state-changed", cb),
     diagnosticsExport: () =>
         ipcRenderer.invoke("diagnostics:export") as Promise<DiagnosticExportResult | IpcError>,
+
+    herdrGetStatus: () =>
+        ipcRenderer.invoke("herdr:get-status") as Promise<HerdrRuntimeStatus | IpcError>,
+    herdrGetSnapshot: () =>
+        ipcRenderer.invoke("herdr:get-snapshot") as Promise<HerdrRuntimeProjection | IpcError>,
+    herdrReadAgentOutput: (input: HerdrReadAgentOutputInput) =>
+        ipcRenderer.invoke("herdr:read-agent-output", input) as Promise<HerdrReadAgentOutputResult | IpcError>,
+    herdrFocusAgent: (input: HerdrFocusAgentInput) =>
+        ipcRenderer.invoke("herdr:focus-agent", input) as Promise<HerdrRuntimeProjection | IpcError>,
+    herdrPromptAgent: (input: HerdrPromptAgentInput) =>
+        ipcRenderer.invoke("herdr:prompt-agent", input) as Promise<HerdrRuntimeProjection | IpcError>,
+    herdrSendAgentKeys: (input: HerdrSendAgentKeysInput) =>
+        ipcRenderer.invoke("herdr:send-agent-keys", input) as Promise<void | IpcError>,
+    herdrStartServer: () =>
+        ipcRenderer.invoke("herdr:start-server") as Promise<HerdrRuntimeProjection | IpcError>,
+    herdrStopServer: (input: HerdrStopServerInput) =>
+        ipcRenderer.invoke("herdr:stop-server", input) as Promise<void | IpcError>,
+    herdrInstallIntegration: (input: HerdrInstallIntegrationInput) =>
+        ipcRenderer.invoke("herdr:install-integration", input) as Promise<void | IpcError>,
+    onHerdrStateChanged: (cb) => subscribe<HerdrRuntimeProjection>("herdr:state-changed", cb),
 
     // M1: Approval flow
     respondApproval: (requestId, approved) => {

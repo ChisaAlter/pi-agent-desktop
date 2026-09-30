@@ -57,6 +57,7 @@ import { ensurePlanSubscriptions } from "./stores/plan-store";
 import { ensureQueueSubscription } from "./stores/queue-store";
 import { ensureSubagentSubscriptions } from "./stores/subagent-store";
 import { ensureFleetSignalSubscriptions } from "./stores/fleet-signals-store";
+import { ensureHerdrSubscriptions } from "./stores/herdr-store";
 import { useRuntimeFeatureStore } from "./stores/runtime-feature-store";
 import type { TerminalCommandMode } from "./utils/terminal-command";
 import { isIpcError, type DeferredEdit, type SettingsWindowTab } from "@shared";
@@ -460,6 +461,7 @@ function AppShell(): React.ReactElement {
         ensureQueueSubscription();
         ensureSubagentSubscriptions();
         ensureFleetSignalSubscriptions();
+        ensureHerdrSubscriptions();
     }, []);
 
     useEffect(() => {
@@ -1010,12 +1012,12 @@ function AppShell(): React.ReactElement {
                         onOpenSettings={() => void window.piAPI?.openSettingsWindow()}
                     />
                 }
-                statusBarSlot={<HerdrStatusBar />}
+                statusBarSlot={isHerdrSection ? <HerdrStatusBar /> : null}
                 leftCollapsed={leftCollapsed}
                 rightCollapsed={isHerdrSection ? false : activePanel !== "chat" || rightRailCollapsed}
                 leftWidth={isHerdrSection ? HERDR_LEFT_WIDTH[herdrLayoutMode] : leftSidebarWidth}
                 rightFloatingOpen={activePanel === "chat" || isHerdrSection}
-                rightFloatingTopOffset={isHerdrSection ? "54px" : "54px"}
+                rightFloatingTopOffset={isHerdrSection ? "54px" : "12px"}
                 rightFloatingBottomOffset={
                     isHerdrSection
                         ? "12px"

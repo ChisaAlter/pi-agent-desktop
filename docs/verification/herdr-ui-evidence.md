@@ -37,11 +37,16 @@
 | UI-REQ-065 | `scripts/verification/check-herdr-ui.cjs` — NL-065 data-action 模式扫描 0 命中 | negative-check |
 | 门禁 | `docs/verification/herdr-ui-gates.yml` G2 记录；需求表 38 PASS | 门禁 |
 
-## Phase 3-5 — BLOCKED
+## G3A — 真实 Herdr 控制面（2026-08-13）
 
 | 需求 | 证据 | 类型 |
 |---|---|---|
-| UI-REQ-014/032/045 | BLOCKED — 前置依赖：运行时契约文档 `docs/compose/specs/2026-08-12-real-herdr-integration.md`（**待产出**，Phase 3 前置交付物）与官方 Herdr 二进制（可用性未验证） | real-runtime |
+| UI-REQ-014 | `apps/desktop/src/main/services/herdr/` + typed IPC/preload + renderer 非 mock 投影订阅 | real-runtime |
+| UI-REQ-014 | `apps/desktop/src/main/services/herdr/__tests__/real-runtime.integration.test.ts` — 隔离官方 `herdr.exe` snapshot 投影；Desktop dispose 不 stop persistent server | real-runtime |
+| UI-REQ-014 | `apps/desktop/e2e/herdr/g3a-runtime.spec.ts` — 隔离 session/socket 的生产 GUI 树验收（需官方 herdr.exe + 已构建 out/） | real-runtime |
+| 运行时契约 | `docs/compose/specs/2026-08-12-real-herdr-integration.md` — 已按官方 preview v19 / one-request-per-connection / 无公开 event seq 修订 | 文档 |
+| UI-REQ-032 | 仍 BLOCKED — 官方 `herdr-client.sock` + xterm.js 未接入；GUI 只允许标「历史输出」 | real-runtime |
+| UI-REQ-045 | 仍 BLOCKED — missions.db 未落地 | real-runtime |
 
 ## 已知问题与残余风险
 

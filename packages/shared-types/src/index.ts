@@ -1408,6 +1408,123 @@ export interface AgentPermissionSyncResult {
     deniedTools: string[];
 }
 
+// ── Herdr runtime projection (G3A) ─────────────────────────────────
+// Herdr remains the runtime authority. The Electron main process normalizes
+// official socket snapshots into this renderer-safe projection and increments
+// `revision` whenever that authoritative projection is replaced.
+export type HerdrRuntimeConnectionState = "connected" | "offline" | "reconnecting";
+export type HerdrRuntimeSource = "external" | "env" | "path" | "managed" | "development" | "unknown";
+export type HerdrRuntimeCompatibility = "compatible" | "incompatible" | "unknown";
+export type HerdrRuntimeAgentState = "idle" | "working" | "blocked" | "done" | "unknown";
+export type HerdrRuntimeDisplayState = HerdrRuntimeAgentState | "disconnected";
+
+export interface HerdrRuntimeStatus {
+    connection: HerdrRuntimeConnectionState;
+    source: HerdrRuntimeSource;
+    version: string | null;
+    protocol: number | null;
+    pid: number | null;
+    owned: boolean;
+    compatibility: HerdrRuntimeCompatibility;
+    error: string | null;
+}
+
+export interface HerdrRuntimeAgentProjection {
+    /** Stable renderer identity (the public Herdr pane id). */
+    id: string;
+    /** Safe target for agent.* requests; always the pane id, never a guessed display label. */
+    target: string;
+    name: string;
+    displayName: string;
+    kind: string;
+    state: HerdrRuntimeAgentState;
+    displayState: HerdrRuntimeDisplayState;
+    pane: string;
+    terminalId: string;
+    tab: string;
+    tabId: string;
+    workspace: string;
+    workspaceId: string;
+    task: string;
+    session: string;
+    worktree: string;
+    authority: string;
+    stateChangeSeq: number;
+    revision: number;
+    focused: boolean;
+}
+
+export interface HerdrRuntimeTreeTab {
+    id: string;
+    name: string;
+    rollup: HerdrRuntimeDisplayState;
+    panes: HerdrRuntimeAgentProjection[];
+}
+
+export interface HerdrRuntimeTreeWorkspace {
+    id: string;
+    name: string;
+    kind: "workspace" | "worktree";
+    rollup: HerdrRuntimeDisplayState;
+    tabs: HerdrRuntimeTreeTab[];
+}
+
+export interface HerdrRuntimeTree {
+    session: string;
+    workspaces: HerdrRuntimeTreeWorkspace[];
+}
+
+export interface HerdrRuntimeProjection {
+    /** Desktop-owned projection revision; not an invented Herdr event cursor. */
+    revision: number;
+    status: HerdrRuntimeStatus;
+    agents: HerdrRuntimeAgentProjection[];
+    tree: HerdrRuntimeTree;
+}
+
+export type HerdrReadSource = "visible" | "recent" | "recent_unwrapped" | "detection";
+
+export interface HerdrReadAgentOutputInput {
+    target: string;
+    source?: HerdrReadSource;
+    lines?: number;
+}
+
+export interface HerdrReadAgentOutputResult {
+    paneId: string;
+    workspaceId: string;
+    tabId: string;
+    source: HerdrReadSource;
+    text: string;
+    revision: number;
+    truncated: boolean;
+}
+
+export interface HerdrFocusAgentInput {
+    target: string;
+}
+
+export interface HerdrPromptAgentInput {
+    target: string;
+    text: string;
+    until?: HerdrRuntimeAgentState[];
+    timeoutMs?: number;
+}
+
+export interface HerdrSendAgentKeysInput {
+    target: string;
+    keys: string[];
+}
+
+export interface HerdrStopServerInput {
+    confirmed: true;
+}
+
+export interface HerdrInstallIntegrationInput {
+    target: "pi";
+    confirmed: true;
+}
+
 export interface PiAPI {
     // Pi Driver
     sendPrompt(workspaceId: string, message: string, options?: SendPromptOptions): Promise<unknown>;
@@ -1428,6 +1545,18 @@ export interface PiAPI {
     updaterInstall(): Promise<AppUpdaterState | IpcError>;
     onUpdaterStateChanged(cb: (state: AppUpdaterState) => void): Unsubscribe;
     diagnosticsExport(): Promise<DiagnosticExportResult | IpcError>;
+
+    // Herdr official runtime (G3A — typed IPC only; no arbitrary method passthrough)
+    herdrGetStatus(): Promise<HerdrRuntimeStatus | IpcError>;
+    herdrGetSnapshot(): Promise<HerdrRuntimeProjection | IpcError>;
+    herdrReadAgentOutput(input: HerdrReadAgentOutputInput): Promise<HerdrReadAgentOutputResult | IpcError>;
+    herdrFocusAgent(input: HerdrFocusAgentInput): Promise<HerdrRuntimeProjection | IpcError>;
+    herdrPromptAgent(input: HerdrPromptAgentInput): Promise<HerdrRuntimeProjection | IpcError>;
+    herdrSendAgentKeys(input: HerdrSendAgentKeysInput): Promise<void | IpcError>;
+    herdrStartServer(): Promise<HerdrRuntimeProjection | IpcError>;
+    herdrStopServer(input: HerdrStopServerInput): Promise<void | IpcError>;
+    herdrInstallIntegration(input: HerdrInstallIntegrationInput): Promise<void | IpcError>;
+    onHerdrStateChanged(cb: (projection: HerdrRuntimeProjection) => void): Unsubscribe;
 
     // Approval flow (M1)
     respondApproval(requestId: string, approved: boolean): void;

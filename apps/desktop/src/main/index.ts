@@ -29,6 +29,7 @@ import { setupDesktopOverlayIpc } from './ipc/desktop-overlay.ipc';
 import { setupUpdaterIpc } from './ipc/updater.ipc';
 import { setupDiagnosticsIpc } from './ipc/diagnostics.ipc';
 import { setupWindowIpc, setupWindowEvents } from './ipc/window.ipc';
+import { setupHerdrIpc } from './ipc/herdr.ipc';
 import { setupWorkspaceIpc } from './ipc/workspace.ipc';
 import { setupProjectShellIpc } from './ipc/project-shell.ipc';
 import { setupWorkbenchIpc } from './ipc/workbench.ipc';
@@ -76,6 +77,16 @@ import { SqliteSessionRepository } from './services/sqlite-session-repository';
 import { ensureSessionAttachmentRoot, SessionAttachmentStore } from './services/session-attachment-store';
 import { resolveMainWindowChromeOptions, resolveMainWindowPerformancePreferences } from './services/main-window-options';
 import { createWindowsFirstClickController } from './services/windows-first-click';
+import { HerdrRuntimeLocator } from './services/herdr/runtime-locator';
+import { HerdrRuntimeSupervisor } from './services/herdr/runtime-supervisor';
+import { HerdrStateBridge } from './services/herdr/state-bridge';
+import {
+  herdrServerChildEnv,
+  resolveHerdrApiSocketMarkerPath,
+  resolveHerdrManagedDir,
+  resolveHerdrSessionName,
+  shouldAutoAttachHerdrRuntime,
+} from './services/herdr/session-paths';
 import { createMutationQueue, createKeyedMutator, type KeyedStore } from './utils/mutation-queue';
 import { getSettingsWindow as getSharedSettingsWindow } from './ipc/settings-window.ipc';
 import type { PiAgentConfig } from './types';
@@ -475,6 +486,8 @@ let taskService: TaskService | null = null;
 let markdownMemoryService: MarkdownMemoryService | null = null;
 let sessionSummaryService: SessionSummaryService | null = null;
 let autoScheduler: AutoScheduler | null = null;
+let herdrSupervisor: HerdrRuntimeSupervisor | null = null;
+let herdrStateBridge: HerdrStateBridge | null = null;
 
 function refreshPiAgentConfig(configManager: ConfigManager): PiAgentConfig | null {
   piAgentConfig = configManager.loadPiAgentConfig();
@@ -1044,6 +1057,32 @@ function setupIPC(updaterService: AppUpdaterService): void {
     getWorkspace: (id: string) => store.get('workspaces').find((w) => w.id === id),
   });
 
+  const herdrSessionName = resolveHerdrSessionName();
+  const herdrSocketMarker = resolveHerdrApiSocketMarkerPath();
+  herdrSupervisor ??= new HerdrRuntimeSupervisor({
+    socketPath: herdrSocketMarker,
+    locator: new HerdrRuntimeLocator({
+      managedDir: resolveHerdrManagedDir(app.getPath('userData')),
+    }),
+    serverEnv: herdrServerChildEnv(process.env, herdrSessionName, herdrSocketMarker),
+  });
+  herdrStateBridge ??= new HerdrStateBridge({
+    supervisor: herdrSupervisor,
+    sessionName: herdrSessionName,
+    onProjection: (projection) => sendToRenderer('herdr:state-changed', projection),
+  });
+  setupHerdrIpc({
+    bridge: herdrStateBridge,
+    supervisor: herdrSupervisor,
+  });
+  if (shouldAutoAttachHerdrRuntime()) {
+    void herdrStateBridge.start().catch((error) => {
+      log.warn('[Main] Herdr runtime attach failed:', error);
+    });
+  } else {
+    log.info('[Main] Skipping automatic Herdr attach in isolated test/CI default session');
+  }
+
   // Task IPC (Phase B Task 4) — task:create/list/get/start/block/unblock/done/abandon/rename
   // workspace-only callers keep the legacy resolver; explicit sessionId callers
   // are routed to the supplied native session identity and never reinterpret a
@@ -1114,6 +1153,22 @@ function cleanupAllServices(): void {
     markdownMemoryService?.close();
   } catch (e) {
     log.error("markdownMemoryService close failed:", e);
+  }
+  // Herdr is a persistent server. Desktop exit only closes our client and
+  // subscription; it must never send server.stop or kill pane processes.
+  try {
+    herdrStateBridge?.dispose();
+  } catch (e) {
+    log.error("herdrStateBridge dispose failed:", e);
+  } finally {
+    herdrStateBridge = null;
+  }
+  try {
+    herdrSupervisor?.dispose();
+  } catch (e) {
+    log.error("herdrSupervisor dispose failed:", e);
+  } finally {
+    herdrSupervisor = null;
   }
   try {
     memoryService?.close()?.catch((e: unknown) => log.error("memoryService close failed:", e));

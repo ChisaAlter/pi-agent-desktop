@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import {
+  applyHerdrProjection,
   buildHerdrTree,
   displayStateOf,
   priorityOf,
@@ -10,6 +11,7 @@ import {
   missionPanels,
   useHerdrStore,
 } from '../herdr-store';
+import type { HerdrRuntimeProjection } from '@shared';
 import { HERDR_MOCK_AGENTS, HERDR_MOCK_SESSION, HERDR_MOCK_TAB_DISPLAY } from '../herdr-mock-data';
 import type { HerdrAgent } from '../herdr-store';
 
@@ -124,6 +126,95 @@ describe('mission DAG（与原型 renderDag 一致）', () => {
     expect(dag[3].attempt).toBe(2);
     expect(dag[0].attempt).toBe(1);
     expect(dag[2].attempt).toBe(1);
+  });
+});
+
+describe('applyHerdrProjection（Main 权威投影）', () => {
+  it('maps official projection agents/tree/status and drops stale selection', () => {
+    const projection: HerdrRuntimeProjection = {
+      revision: 12,
+      status: {
+        connection: 'connected',
+        source: 'external',
+        version: '0.8.0-preview',
+        protocol: 19,
+        pid: null,
+        owned: false,
+        compatibility: 'compatible',
+        error: null,
+      },
+      agents: [{
+        id: 'pane-1',
+        target: 'pane-1',
+        name: 'pane-1',
+        displayName: 'Pi Worker',
+        kind: 'pi',
+        state: 'working',
+        displayState: 'working',
+        pane: 'pane-1',
+        terminalId: 'term-1',
+        tab: 'Implementation',
+        tabId: 'tab-1',
+        workspace: 'primary',
+        workspaceId: 'ws-1',
+        task: 'Implement auth',
+        session: 'auth.jsonl',
+        worktree: 'C:\\repo',
+        authority: 'herdr',
+        stateChangeSeq: 4,
+        revision: 7,
+        focused: true,
+      }],
+      tree: {
+        session: 'pi-e2e',
+        workspaces: [{
+          id: 'ws-1',
+          name: 'primary',
+          kind: 'workspace',
+          rollup: 'working',
+          tabs: [{
+            id: 'tab-1',
+            name: 'Implementation',
+            rollup: 'working',
+            panes: [{
+              id: 'pane-1',
+              target: 'pane-1',
+              name: 'pane-1',
+              displayName: 'Pi Worker',
+              kind: 'pi',
+              state: 'working',
+              displayState: 'working',
+              pane: 'pane-1',
+              terminalId: 'term-1',
+              tab: 'Implementation',
+              tabId: 'tab-1',
+              workspace: 'primary',
+              workspaceId: 'ws-1',
+              task: 'Implement auth',
+              session: 'auth.jsonl',
+              worktree: 'C:\\repo',
+              authority: 'herdr',
+              stateChangeSeq: 4,
+              revision: 7,
+              focused: true,
+            }],
+          }],
+        }],
+      },
+    };
+
+    const next = applyHerdrProjection({ selectedAgent: 'gone', attached: true }, projection);
+    expect(next.server).toBe('connected');
+    expect(next.stateSeq).toBe(12);
+    expect(next.selectedAgent).toBeNull();
+    expect(next.tree.session).toBe('pi-e2e');
+    expect(next.agents[0]).toMatchObject({
+      name: 'pane-1',
+      displayName: 'Pi Worker',
+      target: 'pane-1',
+      state: 'working',
+    });
+    expect(displayStateOf(next.agents[0]!, next.server)).toBe('working');
   });
 });
 

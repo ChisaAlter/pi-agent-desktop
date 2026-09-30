@@ -11,7 +11,7 @@
 | Node.js engine | `>=22.19.0` |
 | Package manager | `pnpm@9.0.0` |
 | Supported product target | Windows 10/11 x64; the v1 line is Windows-only |
-| IPC handler modules | 24 files under the main-process IPC surface |
+| IPC handler modules | 25 files under the main-process IPC surface |
 | CI verification job | `typecheck` → `lint` → `test` → coverage → docs facts → desktop build → main smoke on `windows-latest` |
 | Session persistence | `node:sqlite` `DatabaseSync` through `SqliteSessionRepository` |
 
@@ -25,7 +25,7 @@ Pi Desktop is an Electron application with three process-facing layers:
 2. **Preload** exposes the typed `window.piAPI`/`window.nodeAPI` bridges through `contextBridge`. It does not give the renderer a general Node.js API.
 3. **Renderer** is the React UI. It uses the typed bridge and renderer stores for chat, workspaces, sessions, settings, approvals, workbench surfaces, and updater state.
 
-The 24 main-process IPC modules are the current count. Additions must be wired through shared types, a main handler, the preload bridge, and renderer usage as appropriate.
+The 25 main-process IPC modules are the current count, including the typed Herdr G3A surface. Additions must be wired through shared types, a main handler, the preload bridge, and renderer usage as appropriate.
 
 ## Sessions and workspaces
 

@@ -66,11 +66,15 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
     const tree = useHerdrStore((s) => s.tree);
     const server = useHerdrStore((s) => s.server);
     const terminalLog = useHerdrStore((s) => s.terminalLog);
+    const historyOutput = useHerdrStore((s) => s.historyOutput);
     const attached = useHerdrStore((s) => s.attached);
     const stateSeq = useHerdrStore((s) => s.stateSeq);
     const attach = useHerdrStore((s) => s.attach);
     const prompt = useHerdrStore((s) => s.prompt);
     const openPaneForBlocked = useHerdrStore((s) => s.openPaneForBlocked);
+    const markSeen = useHerdrStore((s) => s.markSeen);
+    const readRecentOutput = useHerdrStore((s) => s.readRecentOutput);
+    const sendKeys = useHerdrStore((s) => s.sendKeys);
     const addToast = useToastStore((s) => s.addToast);
 
     const [promptText, setPromptText] = useState(useHerdrStore.getState().promptDraft);
@@ -84,9 +88,9 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
     useEffect(() => {
         const el = terminalRef.current;
         if (el) el.scrollTop = el.scrollHeight;
-    }, [terminalLog.length]);
+    }, [terminalLog.length, historyOutput]);
 
-    if (!mock || !agent) {
+    if (!agent) {
         return (
             <div
                 data-testid="herdr-pane-view"
@@ -100,6 +104,10 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
     const blocked = displayState === "blocked";
 
     const handleAttach = (): void => {
+        if (!mock) {
+            addToast({ message: t("herdr.toast.liveUnavailable"), tone: "info" });
+            return;
+        }
         const next = !attached;
         attach();
         addToast({ message: t(next ? "herdr.toast.attached" : "herdr.toast.detached"), tone: next ? "success" : "info" });
@@ -107,12 +115,40 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
 
     const handleResolveBlock = (): void => {
         openPaneForBlocked();
-        addToast({ message: t("herdr.toast.resolveBlock"), tone: "success" });
+        addToast({
+            message: t(mock ? "herdr.toast.resolveBlock" : "herdr.toast.openRealPane"),
+            tone: "success",
+        });
     };
 
     const handleSendPrompt = (): void => {
-        prompt(promptText);
+        prompt(promptText, waitOption);
         addToast({ message: t("herdr.toast.promptSent"), tone: "info" });
+    };
+
+    const handleFocus = (): void => {
+        markSeen(agent.name);
+        addToast({ message: t("herdr.toast.focusSent"), tone: "info" });
+    };
+
+    const handleSendKeys = (): void => {
+        if (mock) {
+            addToast({ message: t("herdr.toast.keysSent"), tone: "info" });
+            return;
+        }
+        void sendKeys(agent.name, ["enter"]).then((ok) => {
+            addToast({
+                message: t(ok ? "herdr.toast.keysSent" : "herdr.toast.keysFailed"),
+                tone: ok ? "info" : "error",
+            });
+        });
+    };
+
+    const handleReadHistory = (): void => {
+        if (!mock) {
+            void readRecentOutput(agent.name);
+        }
+        addToast({ message: t("herdr.toast.recentOutput"), tone: "info" });
     };
 
     const infoRows: Array<{ label: string; value: string; testId?: string; strong?: boolean }> = [
@@ -122,7 +158,7 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
         { label: t("herdr.pane.stateSeq"), value: String(stateSeq), testId: "state-seq" },
         { label: t("herdr.pane.nativeSession"), value: agent.session },
         { label: t("herdr.pane.worktree"), value: agent.worktree },
-        { label: t("herdr.pane.transport"), value: t("herdr.pane.transportLive") },
+        { label: t("herdr.pane.transport"), value: t(mock ? "herdr.pane.transportLive" : "herdr.pane.transportHistory") },
     ];
 
     return (
@@ -160,21 +196,21 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
                 </button>
                 <button
                     type="button"
-                    onClick={() => addToast({ message: t("herdr.toast.focusSent"), tone: "info" })}
+                    onClick={handleFocus}
                     className="shrink-0 rounded-lg border border-[#dfe4eb] bg-white px-2.5 py-[7px] text-[12px] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
                 >
                     {t("herdr.pane.focus")}
                 </button>
                 <button
                     type="button"
-                    onClick={() => addToast({ message: t("herdr.toast.resizeSent"), tone: "info" })}
+                    onClick={() => addToast({ message: t(mock ? "herdr.toast.resizeSent" : "herdr.toast.liveUnavailable"), tone: "info" })}
                     className="shrink-0 rounded-lg border border-[#dfe4eb] bg-white px-2.5 py-[7px] text-[12px] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
                 >
                     {t("herdr.pane.resize")}
                 </button>
                 <button
                     type="button"
-                    onClick={() => addToast({ message: t("herdr.toast.keysSent"), tone: "info" })}
+                    onClick={handleSendKeys}
                     className="shrink-0 rounded-lg border border-[#dfe4eb] bg-white px-2.5 py-[7px] text-[12px] text-[var(--mm-text-secondary)] transition-colors hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text-primary)]"
                 >
                     {t("herdr.pane.sendKeys")}
@@ -209,11 +245,20 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
                         hideIdentity ? "min-h-[calc(100vh-330px)] text-[13px]" : "max-h-[520px] min-h-[450px] text-[12px]"
                     }`}
                 >
-                    {terminalLog.map((line, i) => (
+                    {mock ? terminalLog.map((line, i) => (
                         <div key={i} className="whitespace-pre-wrap">
                             <Line line={line} />
                         </div>
-                    ))}
+                    )) : (
+                        <>
+                            <div className="whitespace-pre-wrap text-[#ffcc76]">{t("herdr.pane.historyOnly")}</div>
+                            {(historyOutput ?? t("herdr.pane.noHistory")).split("\n").map((line, i) => (
+                                <div key={i} className="whitespace-pre-wrap">
+                                    <Line line={line} />
+                                </div>
+                            ))}
+                        </>
+                    )}
                 </div>
                 {!hideIdentity ? (
                     <aside data-testid="pane-info" className="border-l border-[var(--mm-border)] bg-[#fafbfd] p-3">
@@ -289,7 +334,7 @@ export function HerdrPaneTerminal({ hideIdentity = false }: { hideIdentity?: boo
                             type="button"
                             data-testid="read-history"
                             title={t("herdr.pane.readHistoryHint")}
-                            onClick={() => addToast({ message: t("herdr.toast.recentOutput"), tone: "info" })}
+                            onClick={handleReadHistory}
                             className={`shrink-0 rounded border px-2.5 py-[5px] text-xs transition-colors ${
                                 hideIdentity
                                     ? "border-[#344156] bg-transparent text-[#c7d2e2] hover:bg-[#243147]"

@@ -14,7 +14,7 @@ $sc = $ws.CreateShortcut($lnkPath)
 $sc.TargetPath = $exePath
 $sc.WorkingDirectory = 'C:\Ai\pi-desktop\apps\desktop\dist\win-unpacked'
 $sc.IconLocation = "$exePath,0"
-$sc.Description = 'Pi Desktop (Herdr mock build)'
+	$sc.Description = 'Pi Desktop'
 $sc.Save()
 
 Write-Host "Shortcut refreshed: $lnkPath"

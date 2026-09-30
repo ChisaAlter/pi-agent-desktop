@@ -140,17 +140,16 @@ test.describe('parity: mission 全流程闭环（生成→开始→驳回→修�
   });
 });
 
-test.describe('parity: 设置更新流（检查→验证→安全切换）', () => {
+test.describe('parity: 设置管理流（连接状态/操作/能力）', () => {
   test.beforeEach(() => {
     if (parityTarget() === 'production') test.setTimeout(120_000);
   });
 
-  test('兼容性 tab 的更新三步流程', async () => {
+  test('设置页展示真实管理内容，不再有假更新流程', async () => {
     const target = parityTarget();
     const { page, close, settingsWindowPage } = await openParitySession();
     const sel = selectorsFor(target);
-    // settingsTab/updateAction 由 Phase 2（HerdrTab）接线
-    test.skip(sel.settingsTab('compat') === null || sel.updateAction('check-update') === null, `设置选择器未就绪（Phase 2）`);
+    test.skip(sel.settingsTab('compat') === null, `设置选择器未就绪（Phase 2）`);
 
     if (target === 'production') {
       // production：设置窗口独立 BrowserWindow（异步创建，重试查找）
@@ -164,18 +163,16 @@ test.describe('parity: 设置更新流（检查→验证→安全切换）', () 
       const s = settings!;
       await s.locator(sel.settingsTab('compat')!).waitFor({ timeout: 15_000 });
       await s.locator(sel.settingsTab('compat')!).click();
-      // 检查更新 → 候选版本面板出现
-      await s.locator(sel.updateAction('check-update')!).click();
-      await expect(s.locator(sel.updateAction('verify-update')!)).toBeVisible();
-      // 验证候选版 → 已验证（兼容性 pill）
-      await s.locator(sel.updateAction('verify-update')!).click();
-      await expect(s.locator('[data-testid="herdr-compat-pill"]')).toContainText('完全兼容');
-      // 安全切换 → 等待安全切换点模态（有智能体运行不静默重启）
-      await s.locator(sel.updateAction('switch-update')!).click();
-      await expect(s.locator('[data-testid="herdr-switch-modal"]')).toBeVisible();
-      await expect(s.locator('[data-testid="herdr-switch-modal"]')).toContainText('等待安全切换点');
+      // 真实管理内容：连接状态、来源、能力清单（不点假按钮）
+      await expect(s.locator('[data-testid="herdr-diag-connection"]')).toBeVisible();
+      await expect(s.locator('[data-testid="herdr-source-pill"]')).toBeVisible();
+      await expect(s.locator('[data-testid="herdr-connect"]')).toBeVisible();
+      // 假更新流程已删除
+      await expect(s.locator('[data-testid="check-update"]')).toHaveCount(0);
+      await expect(s.locator('[data-testid="verify-update"]')).toHaveCount(0);
+      await expect(s.locator('[data-testid="switch-update"]')).toHaveCount(0);
     } else {
-      // prototype：设置模态
+      // prototype：设置模态（原型仍保留更新三步流）
       await page.click(sel.action('open-settings')!);
       await page.click(sel.settingsTab('compat')!);
       await page.click(sel.updateAction('check-update')!);

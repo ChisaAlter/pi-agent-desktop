@@ -7,18 +7,17 @@ import { AgentCard } from "./AgentCard";
  * AgentsPanel — Herdr 舰队视图（UI-REQ-020），与已批准原型 1:1：
  * 按 workspace 分组（宽屏多列 grid auto-fit 290px / 窄屏单列），
  * 工作区标题行 = 图标 + 名称 + 计数摘要；worktree 显示分支。
- * 数据源 = herdr-store（Phase 1 mock / Phase 4 真实 snapshot+seq）。
+ * 数据源 = herdr-store（mock 仅 visual parity；生产路径吃 Main 权威投影）。
  */
 
 export function AgentsPanel(): React.JSX.Element {
     const { t } = useI18n();
-    const mock = useHerdrStore((s) => s.mock);
     const tree = useHerdrStore((s) => s.tree);
     const server = useHerdrStore((s) => s.server);
     const selectedAgent = useHerdrStore((s) => s.selectedAgent);
     const selectAgent = useHerdrStore((s) => s.selectAgent);
 
-    if (!mock || tree.workspaces.length === 0) {
+    if (tree.workspaces.length === 0) {
         return (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-center" data-testid="agents-panel">
                 <p className="m-0 text-[13px] text-[var(--mm-text-secondary)]">{t("herdr.card.empty")}</p>

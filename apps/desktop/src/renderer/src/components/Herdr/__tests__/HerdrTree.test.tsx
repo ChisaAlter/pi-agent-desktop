@@ -175,12 +175,15 @@ describe('HerdrTree — 4 级层级树', () => {
     expect(screen.queryAllByTestId('herdr-pane-row')).toHaveLength(0);
   });
 
-  it('空树（非 mock）→ 显示 herdr.tree.empty 空态', () => {
+  it('空树（非 mock）→ 显示 herdr.tree.empty 空态，且不渲染搜索/过滤/创建等无对象控件', () => {
     useHerdrStore.setState({ server: 'offline', agents: [], tree: { session: '', workspaces: [] } });
     renderTree();
     expect(screen.getByTestId('herdr-tree-empty')).toBeTruthy();
     expect(screen.getByText('未检测到 Herdr 运行时')).toBeTruthy();
     expect(screen.queryAllByTestId('herdr-pane-row')).toHaveLength(0);
     expect(screen.queryAllByTestId('herdr-ws-row')).toHaveLength(0);
+    expect(screen.queryByTestId('herdr-tree-search')).toBeNull();
+    expect(screen.queryByTestId('herdr-filter')).toBeNull();
+    expect(screen.queryByRole('button', { name: '创建' })).toBeNull();
   });
 });

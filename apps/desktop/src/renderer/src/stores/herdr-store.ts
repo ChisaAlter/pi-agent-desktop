@@ -1,11 +1,9 @@
 /**
  * herdr-store — Herdr 控制面（智能体/任务编排 tab）的单一数据源。
  *
- * 数据源契约（UI-REQ-014）：运行时真相最终必须来自 Main 权威 snapshot+seq
- * （Phase 3 落地）。当前实现：
- *   - __PI_HERDR_MOCK__='1' → 原型同款模拟数据（herdr-mock-data.ts，仅开发/parity，
- *     该文件头部带 mock 隔离标记，grep 可定位全部 mock）
- *   - 否则（默认）→ 无运行时：server=offline、agents=[]，UI 显示断线/空态
+ * 数据源契约（UI-REQ-014）：运行时真相来自 Main 权威 snapshot + Desktop 投影 revision。
+ *   - __PI_HERDR_MOCK__='1' → 原型同款模拟数据（herdr-mock-data.ts，仅开发/parity）
+ *   - 否则订阅 `herdr:state-changed`，并用 typed IPC 调用真实 Herdr
  * mock 关闭时禁止假数据（D6/NL-010）。
  *
  * 状态语义（原型为准，D7）：
@@ -15,6 +13,9 @@
  *   blocked 审批必须在真实 pane 内处理（resolveBlock 只切换视图，不伪造批准）
  */
 import { create } from 'zustand';
+import { isIpcError, type HerdrRuntimeProjection, type HerdrRuntimeStatus } from '@shared';
+import { createSubscriptionManager } from '../utils/subscription-manager';
+import { logger } from '../utils/logger';
 import {
   HERDR_MOCK_AGENTS,
   HERDR_MOCK_MISSION,
@@ -27,7 +28,7 @@ import {
 export type HerdrServerState = 'connected' | 'offline' | 'reconnecting';
 export type HerdrAgentState = 'working' | 'blocked' | 'done' | 'idle' | 'unknown';
 export type HerdrDisplayState = HerdrAgentState | 'disconnected';
-export type HerdrAgentKind = 'Pi' | 'Codex' | 'Claude';
+export type HerdrAgentKind = string;
 export type HerdrView = 'fleet' | 'pane' | 'mission';
 export type HerdrLayoutMode = 'studio' | 'mission' | 'terminal';
 export type HerdrMissionStatus = 'draft' | 'planned' | 'running' | 'review' | 'revision' | 'passed';
@@ -39,7 +40,11 @@ export interface HerdrAgent {
   kind: HerdrAgentKind;
   /** 内部状态（不含 disconnected — 由 server 派生，防陈旧 done） */
   state: HerdrAgentState;
+  /** Main 权威展示态；缺省时由 displayStateOf 按 server 派生。 */
+  displayState?: HerdrDisplayState;
   pane: string;
+  /** Safe target for official agent.* requests (public pane id). */
+  target?: string;
   /** 终端身份（原型 pane-info 的 窗格／终端 字段） */
   terminalId?: string;
   tab: string;
@@ -91,11 +96,14 @@ interface HerdrStoreState {
   view: HerdrView;
   selectedAgent: string | null;
   attached: boolean;
-  /** 状态变更序号（Phase 3 由 Main 权威序列取代） */
+  /** Desktop 投影 revision；不是伪造的 Herdr event cursor。 */
   stateSeq: number;
   agents: HerdrAgent[];
   tree: HerdrTreeModel;
   terminalLog: string[];
+  /** G3A 历史输出（agent.read），不得冒充 live 终端。 */
+  historyOutput: string | null;
+  runtimeStatus: HerdrRuntimeStatus | null;
   /** prompt 预填草稿（mock 与原型预填一致；真实运行时为空） */
   promptDraft: string;
   missionStatus: HerdrMissionStatus;
@@ -113,7 +121,10 @@ interface HerdrStoreState {
   openPaneForBlocked(): void;
   setServer(server: HerdrServerState): void;
   attach(): void;
-  prompt(text: string): void;
+  prompt(text: string, wait?: 'waitIdle' | 'waitBlocked' | 'waitNone'): void;
+  applyProjection(projection: HerdrRuntimeProjection): void;
+  readRecentOutput(name: string): Promise<string | null>;
+  sendKeys(name: string, keys: string[]): Promise<boolean>;
   setMissionGoal(goal: string): void;
   planMission(): void;
   runMission(): void;
@@ -160,7 +171,7 @@ export function buildHerdrTree(session: string, agents: HerdrAgent[], tabDisplay
 /** 展示状态：server 断线 → 全部 disconnected（禁陈旧 done）；否则内部状态。 */
 export function displayStateOf(agent: HerdrAgent, server: HerdrServerState): HerdrDisplayState {
   if (server !== 'connected') return 'disconnected';
-  return agent.state;
+  return agent.displayState ?? agent.state;
 }
 
 /** 优先级（UI-REQ-026）：Blocked(4) > Done-unseen(3) > Working(2) > Idle(1) > Unknown(0)。 */
@@ -248,7 +259,7 @@ const mockActive = typeof __PI_HERDR_MOCK__ !== 'undefined' && __PI_HERDR_MOCK__
 function initialState(): Pick<
   HerdrStoreState,
   | 'mock' | 'server' | 'view' | 'selectedAgent' | 'attached' | 'stateSeq'
-  | 'agents' | 'tree' | 'terminalLog' | 'promptDraft'
+  | 'agents' | 'tree' | 'terminalLog' | 'historyOutput' | 'runtimeStatus' | 'promptDraft'
   | 'missionStatus' | 'missionSeq' | 'missionAttempt' | 'missionGoal' | 'mergeConfirmOpen'
 > {
   if (mockActive) {
@@ -263,6 +274,8 @@ function initialState(): Pick<
       agents,
       tree: buildHerdrTree(HERDR_MOCK_SESSION, agents, HERDR_MOCK_TAB_DISPLAY),
       terminalLog: [...HERDR_MOCK_TERMINAL_LINES],
+      historyOutput: null,
+      runtimeStatus: null,
       promptDraft: '修复认证测试，并在完成后运行相关测试。',
       missionStatus: HERDR_MOCK_MISSION.status,
       missionSeq: HERDR_MOCK_MISSION.seq,
@@ -282,6 +295,8 @@ function initialState(): Pick<
     agents: [],
     tree: { session: '', workspaces: [] },
     terminalLog: [],
+    historyOutput: null,
+    runtimeStatus: null,
     promptDraft: '',
     missionStatus: 'draft',
     missionSeq: 0,
@@ -291,41 +306,204 @@ function initialState(): Pick<
   };
 }
 
-export const useHerdrStore = create<HerdrStoreState>()((set) => ({  ...initialState(),
+function agentTarget(agent: HerdrAgent | undefined): string | null {
+  return agent?.target ?? agent?.pane ?? agent?.name ?? null;
+}
+
+function waitUntilFor(wait?: 'waitIdle' | 'waitBlocked' | 'waitNone'): Array<'idle' | 'done' | 'blocked'> | undefined {
+  if (wait === 'waitBlocked') return ['blocked'];
+  if (wait === 'waitNone') return undefined;
+  return ['idle', 'done'];
+}
+
+export function applyHerdrProjection(
+  current: Pick<HerdrStoreState, 'selectedAgent' | 'attached'>,
+  projection: HerdrRuntimeProjection,
+): Pick<HerdrStoreState, 'server' | 'stateSeq' | 'agents' | 'tree' | 'selectedAgent' | 'runtimeStatus' | 'attached'> {
+  const agents = projection.agents.map((agent) => ({
+    name: agent.name,
+    displayName: agent.displayName,
+    kind: agent.kind,
+    state: agent.state,
+    displayState: agent.displayState,
+    pane: agent.pane,
+    target: agent.target,
+    terminalId: agent.terminalId,
+    tab: agent.tab,
+    workspace: agent.workspace,
+    task: agent.task,
+    session: agent.session,
+    worktree: agent.worktree,
+    authority: agent.authority,
+  } satisfies HerdrAgent));
+  const selectedStillExists = current.selectedAgent
+    ? agents.some((agent) => agent.name === current.selectedAgent)
+    : false;
+  return {
+    server: projection.status.connection,
+    stateSeq: projection.revision,
+    agents,
+    tree: {
+      session: projection.tree.session,
+      workspaces: projection.tree.workspaces.map((workspace) => ({
+        id: workspace.id,
+        name: workspace.name,
+        kind: workspace.kind,
+        tabs: workspace.tabs.map((tab) => ({
+          id: tab.id,
+          name: tab.name,
+          panes: tab.panes.map((pane) => ({
+            name: pane.name,
+            displayName: pane.displayName,
+            kind: pane.kind,
+            state: pane.state,
+            displayState: pane.displayState,
+            pane: pane.pane,
+            target: pane.target,
+            terminalId: pane.terminalId,
+            tab: pane.tab,
+            workspace: pane.workspace,
+            task: pane.task,
+            session: pane.session,
+            worktree: pane.worktree,
+            authority: pane.authority,
+          })),
+        })),
+      })),
+    },
+    selectedAgent: selectedStillExists ? current.selectedAgent : null,
+    runtimeStatus: projection.status,
+    attached: projection.status.connection === 'connected' ? current.attached : false,
+  };
+}
+
+export const useHerdrStore = create<HerdrStoreState>()((set, get) => ({  ...initialState(),
 
   selectAgent: (name) => set({ selectedAgent: name }),
   setView: (view) => set({ view }),
 
-  markSeen: (name) =>
-    set((state) => ({
-      agents: state.agents.map((a) => (a.name === name && a.state === 'done' ? { ...a, state: 'idle' as const } : a)),
-      tree: buildHerdrTree(state.tree.session, state.agents.map((a) => (a.name === name && a.state === 'done' ? { ...a, state: 'idle' as const } : a))),
-    })),
+  markSeen: (name) => {
+    const state = get();
+    if (state.mock) {
+      set({
+        agents: state.agents.map((a) => (a.name === name && a.state === 'done' ? { ...a, state: 'idle' as const } : a)),
+        tree: buildHerdrTree(state.tree.session, state.agents.map((a) => (a.name === name && a.state === 'done' ? { ...a, state: 'idle' as const } : a))),
+      });
+      return;
+    }
+    const target = agentTarget(state.agents.find((agent) => agent.name === name));
+    if (!target || !window.piAPI?.herdrFocusAgent) return;
+    void window.piAPI.herdrFocusAgent({ target }).then((result) => {
+      if (isIpcError(result)) {
+        logger.error('[herdr-store] focus/markSeen failed:', result.fallback);
+        return;
+      }
+      get().applyProjection(result);
+    }).catch((error: unknown) => {
+      logger.error('[herdr-store] focus/markSeen failed:', error);
+    });
+  },
 
-  openPaneForBlocked: () =>
-    set((state) => {
-      const selected = state.selectedAgent ? state.agents.find((a) => a.name === state.selectedAgent) : null;
-      if (selected?.state !== 'blocked') return state;
-      // 在真实 pane 中处理 → 模拟生命周期上报（mock 专用；生产由 Herdr hook 上报）
+  openPaneForBlocked: () => {
+    const state = get();
+    const selected = state.selectedAgent ? state.agents.find((a) => a.name === state.selectedAgent) : null;
+    if (selected?.state !== 'blocked') {
+      set({ view: 'pane' });
+      return;
+    }
+    if (state.mock) {
       const nextSeq = state.stateSeq + 1;
-      return {
+      set({
         view: 'pane' as const,
         stateSeq: nextSeq,
         agents: state.agents.map((a) => (a.name === selected.name ? { ...a, state: 'working' as const } : a)),
         tree: buildHerdrTree(state.tree.session, state.agents.map((a) => (a.name === selected.name ? { ...a, state: 'working' as const } : a))),
         terminalLog: [...state.terminalLog, '✓ 已在终端窗格中批准', '● 正在运行 pnpm test auth…'],
-      };
-    }),
+      });
+      return;
+    }
+    set({ view: 'pane' });
+    const target = agentTarget(selected);
+    if (!target || !window.piAPI?.herdrFocusAgent) return;
+    void window.piAPI.herdrFocusAgent({ target }).then((result) => {
+      if (isIpcError(result)) {
+        logger.error('[herdr-store] openPaneForBlocked focus failed:', result.fallback);
+        return;
+      }
+      get().applyProjection(result);
+    }).catch((error: unknown) => {
+      logger.error('[herdr-store] openPaneForBlocked focus failed:', error);
+    });
+  },
 
   setServer: (server) => set({ server }),
 
   attach: () => set((state) => ({ attached: !state.attached })),
 
-  prompt: (text) =>
-    set((state) => ({
-      terminalLog: [...state.terminalLog, '', `❯ 通过 agent.prompt 注入指令`, text, '● 工作中…'],
-      stateSeq: state.stateSeq + 1,
-    })),
+  applyProjection: (projection) => {
+    set((state) => applyHerdrProjection(state, projection));
+  },
+
+  prompt: (text, wait) => {
+    const state = get();
+    if (state.mock) {
+      set({
+        terminalLog: [...state.terminalLog, '', `❯ 通过 agent.prompt 注入指令`, text, '● 工作中…'],
+        stateSeq: state.stateSeq + 1,
+      });
+      return;
+    }
+    const target = agentTarget(state.agents.find((agent) => agent.name === state.selectedAgent));
+    if (!target || !window.piAPI?.herdrPromptAgent) return;
+    void window.piAPI.herdrPromptAgent({
+      target,
+      text,
+      until: waitUntilFor(wait),
+    }).then((result) => {
+      if (isIpcError(result)) {
+        logger.error('[herdr-store] prompt failed:', result.fallback);
+        return;
+      }
+      get().applyProjection(result);
+    }).catch((error: unknown) => {
+      logger.error('[herdr-store] prompt failed:', error);
+    });
+  },
+
+  readRecentOutput: async (name) => {
+    const state = get();
+    const target = agentTarget(state.agents.find((agent) => agent.name === name));
+    if (!target || !window.piAPI?.herdrReadAgentOutput) return null;
+    try {
+      const result = await window.piAPI.herdrReadAgentOutput({ target, source: 'recent' });
+      if (isIpcError(result)) {
+        logger.error('[herdr-store] read failed:', result.fallback);
+        return null;
+      }
+      set({ historyOutput: result.text });
+      return result.text;
+    } catch (error) {
+      logger.error('[herdr-store] read failed:', error);
+      return null;
+    }
+  },
+
+  sendKeys: async (name, keys) => {
+    const state = get();
+    const target = agentTarget(state.agents.find((agent) => agent.name === name));
+    if (!target || !window.piAPI?.herdrSendAgentKeys) return false;
+    try {
+      const result = await window.piAPI.herdrSendAgentKeys({ target, keys });
+      if (isIpcError(result)) {
+        logger.error('[herdr-store] sendKeys failed:', result.fallback);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      logger.error('[herdr-store] sendKeys failed:', error);
+      return false;
+    }
+  },
 
   setMissionGoal: (goal) => set({ missionGoal: goal }),
 
@@ -364,8 +542,33 @@ export const useHerdrStore = create<HerdrStoreState>()((set) => ({  ...initialSt
 /** 非 React 环境取快照（i18n/工具函数用）。 */
 export const herdrStoreSnapshot = () => useHerdrStore.getState();
 
+const { ensure: ensureHerdrRuntime, cleanup: cleanupHerdrRuntime } = createSubscriptionManager();
+
+export function ensureHerdrSubscriptions(): void {
+  if (mockActive || typeof window === "undefined" || !window.piAPI?.onHerdrStateChanged) return;
+  ensureHerdrRuntime(() => {
+    const off = window.piAPI!.onHerdrStateChanged((projection) => {
+      useHerdrStore.getState().applyProjection(projection);
+    });
+    void window.piAPI!.herdrGetSnapshot().then((result) => {
+      if (isIpcError(result)) {
+        logger.error("[herdr-store] initial snapshot failed:", result.fallback);
+        return;
+      }
+      useHerdrStore.getState().applyProjection(result);
+    }).catch((error: unknown) => {
+      logger.error("[herdr-store] initial snapshot failed:", error);
+    });
+    return typeof off === "function" ? off : undefined;
+  });
+}
+
+export function cleanupHerdrSubscriptions(): void {
+  cleanupHerdrRuntime();
+}
+
 // Mock 测试钩子（仅 mock 模式暴露，parity E2E 驱动断线/重连状态用）：
-// 真实运行时（Phase 3）由 Main 权威连接监督器驱动，无此钩子。
+// 真实运行时由 Main 权威连接监督器驱动，无此钩子。
 if (mockActive && typeof window !== "undefined") {
     (window as unknown as Record<string, unknown>).__herdrMockApi__ = {
         setServer: (server: HerdrServerState) => useHerdrStore.getState().setServer(server),

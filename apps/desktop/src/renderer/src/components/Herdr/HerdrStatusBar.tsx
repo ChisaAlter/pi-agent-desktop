@@ -9,9 +9,8 @@ import { useHerdrStore, type HerdrServerState } from '../../stores/herdr-store';
  *   [●状态点] Herdr 已连接     [pill: Desktop 托管] v0.9.0    [pill: 完全兼容]     [⚙]
  *          会话：pi-desktop · 进程 18420
  *
- * 数据源: herdr-store。当前仅有 mock 模式携带运行时数据 (Phase 3 接入 Main 权威
- * snapshot+seq 前) — 非 mock 一律不伪造数据 (D6/NL-010): server=offline 且非 mock
- * 时显示断线文案 + herdr.tree.empty 空态提示。
+ * 数据源: herdr-store 的 Main 权威投影。只在智能体/任务编排 tab 挂载，
+ * 不打断对话页。非 mock 一律不伪造数据 (D6/NL-010)。
  *
  * 负向清单 (NL-002/NL-065): 本栏只保留 连接状态 + 会话/进程、来源 + 版本、
  * 兼容性、⚙ 设置入口；其余运行时操作一律收敛到设置窗口（见 check-herdr-ui.cjs）。
@@ -42,17 +41,22 @@ export function HerdrStatusBar(): React.JSX.Element {
   const mock = useHerdrStore((s) => s.mock);
   const server = useHerdrStore((s) => s.server);
   const session = useHerdrStore((s) => s.tree.session);
+  const runtimeStatus = useHerdrStore((s) => s.runtimeStatus);
 
   const statusText = t(`herdr.statusBar.${server}`);
   const settingsTitle = t('herdr.statusBar.openSettings');
 
   // 空态: server=offline 且非 mock → 断线文案 + herdr.tree.empty 提示, 无假数据
   const empty = server === 'offline' && !mock;
-  // 运行时元数据 (会话/进程、来源+版本、兼容性) 仅 mock 模式且有连接时展示
-  const showRuntime = mock && server !== 'offline';
+  // mock 仍用原型固定值；真实路径只展示 Main 投影里的运行时元数据，禁止伪造
+  const showRuntime = server !== 'offline' && (mock || runtimeStatus !== null);
+  const pid = mock ? MOCK_HERDR_PID : runtimeStatus?.pid;
+  const version = mock ? MOCK_HERDR_VERSION : runtimeStatus?.version;
+  const compat = mock ? MOCK_COMPAT : (runtimeStatus?.compatibility ?? 'unknown');
+  const sourceOwned = mock || runtimeStatus?.owned === true;
   const sessionLine =
     showRuntime && session
-      ? t('herdr.statusBar.sessionProcess', { session, pid: String(MOCK_HERDR_PID) })
+      ? t('herdr.statusBar.sessionProcess', { session, pid: pid == null ? '—' : String(pid) })
       : null;
 
   return (
@@ -82,11 +86,13 @@ export function HerdrStatusBar(): React.JSX.Element {
       {showRuntime ? (
         <div className="flex items-center gap-[7px] text-[#687386]">
           <span className="inline-flex items-center gap-[5px] whitespace-nowrap rounded-full bg-[#eaf1ff] px-2 py-1 text-[11px] text-[#2458bd]">
-            {t('herdr.statusBar.managedByDesktop')}
+            {t(sourceOwned ? 'herdr.statusBar.managedByDesktop' : 'herdr.statusBar.systemInstalled')}
           </span>
-          <span className="whitespace-nowrap text-[11px]">
-            {t('herdr.statusBar.version', { version: MOCK_HERDR_VERSION })}
-          </span>
+          {version ? (
+            <span className="whitespace-nowrap text-[11px]">
+              {t('herdr.statusBar.version', { version })}
+            </span>
+          ) : null}
         </div>
       ) : null}
 
@@ -94,9 +100,9 @@ export function HerdrStatusBar(): React.JSX.Element {
         <div className="flex items-center gap-[7px] text-[#687386]">
           <span
             data-testid="compat-pill"
-            className={`inline-flex items-center gap-[5px] whitespace-nowrap rounded-full px-2 py-1 text-[11px] ${COMPAT_PILL_STYLE[MOCK_COMPAT]}`}
+            className={`inline-flex items-center gap-[5px] whitespace-nowrap rounded-full px-2 py-1 text-[11px] ${COMPAT_PILL_STYLE[compat]}`}
           >
-            {t(`herdr.statusBar.${MOCK_COMPAT}`)}
+            {t(`herdr.statusBar.${compat === 'unknown' ? 'compatUnknown' : compat}`)}
           </span>
         </div>
       ) : null}

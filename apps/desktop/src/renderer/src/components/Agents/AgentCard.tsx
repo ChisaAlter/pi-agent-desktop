@@ -26,6 +26,8 @@ export function AgentCard({ agent, selected, onSelect }: AgentCardProps): React.
     const setView = useHerdrStore((s) => s.setView);
     const markSeen = useHerdrStore((s) => s.markSeen);
     const openPaneForBlocked = useHerdrStore((s) => s.openPaneForBlocked);
+    const readRecentOutput = useHerdrStore((s) => s.readRecentOutput);
+    const mock = useHerdrStore((s) => s.mock);
 
     const displayState: HerdrDisplayState = displayStateOf(agent, server);
 
@@ -43,11 +45,13 @@ export function AgentCard({ agent, selected, onSelect }: AgentCardProps): React.
 
     const handleRecentOutput = (): void => {
         selectAgent(agent.name);
+        if (!mock) void readRecentOutput(agent.name);
         addToast({ message: t("herdr.toast.recentOutput"), tone: "info" });
     };
 
     const handleMore = (): void => {
         selectAgent(agent.name);
+        if (!mock) void readRecentOutput(agent.name);
         addToast({ message: t("herdr.toast.more", { pane: agent.pane, action: "read" }), tone: "info" });
     };
 

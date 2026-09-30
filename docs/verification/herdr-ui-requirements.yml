@@ -5,7 +5,7 @@ decisions:
     source: 设计契约 §7 + 实现计划 Phase 3；deep-dive spike §8 底座原语仅作协议理解参考
   - id: D2
     title: 本会话范围
-    value: Phase 0→2 完整执行 + real-herdr-integration 运行时契约初稿；Phase 3-5 标记 BLOCKED
+    value: Phase 0→2 + G3A 真实控制面已落地；G3B 实时终端与 G3C missions.db 仍 BLOCKED
   - id: D3
     title: 工作树基线
     value: 现有工作树提交为基线 commit（阶段分支内，不碰 master）；docs/compose/acceptance PNG 为真实内容差异（1.5x 重导出），未纳入基线，保留工作树待用户处置
@@ -14,7 +14,7 @@ decisions:
     value: studio/mission/terminal 切换器仅在「智能体/任务编排」tab 显示（浮左下）；terminal 暗色只作用于 Herdr 控制面区域
   - id: D5
     title: 状态条
-    value: 全局常显（原型一致）；无检查更新/验证/切换按钮
+    value: 仅在智能体/任务编排 tab 显示（对话页不打断主界面）；无检查更新/验证/切换按钮
   - id: D6
     title: Mock 激活
     value: PI_HERDR_MOCK=1 env 激活；mock store 文件头 PROTOTYPE_MOCK 标记；mock 关闭且无运行时 → 空态/断线态
@@ -69,7 +69,7 @@ negative_list:
     check: Phase 3+ 事件流必须走 Main 权威（UI-REQ-014 证据）
   - id: NL-015
     text: 未实现真实运行时前，把 mock 渲染标成「已完成 Herdr 接入」
-    check: UI-REQ-032/045/014 等 real-runtime 类需求在 Phase 3 前必须 BLOCKED，不得 PASS
+    check: UI-REQ-032/045 在 G3B/G3C 完成前必须 BLOCKED；不得用 mock 证据把整个 G3 标成完成
 requirements:
   - id: UI-REQ-001
     prototype: topbar-tabs
@@ -171,14 +171,24 @@ requirements:
     evidence: *ref_1
   - id: UI-REQ-014
     prototype: pane-info-seq
-    title: 数据源：Main 权威 snapshot+seq，不跨进程推导（Phase 3 落地）
-    status: BLOCKED
-    blocked_reason: 运行时契约文档（real-herdr-integration 规格）与官方 Herdr 二进制未就绪；Phase 3 实现
+    title: 数据源：Main 权威 snapshot + Desktop 投影 revision，不跨进程推导（G3A 落地）
+    status: PASS
     evidence_class: real-runtime
     forbidden_substitute: renderer store 推导 Herdr 状态
     files:
       - apps/desktop/src/main/services/herdr/
-    tests: []
+      - apps/desktop/src/main/ipc/herdr.ipc.ts
+      - apps/desktop/src/preload/index.ts
+      - apps/desktop/src/renderer/src/stores/herdr-store.ts
+    tests:
+      - apps/desktop/src/main/services/herdr/__tests__/state-bridge.test.ts
+      - apps/desktop/src/main/services/herdr/__tests__/real-runtime.integration.test.ts
+      - apps/desktop/src/main/ipc/__tests__/herdr.ipc.test.ts
+      - apps/desktop/e2e/herdr/g3a-runtime.spec.ts
+    evidence:
+      - apps/desktop/src/main/services/herdr/__tests__/real-runtime.integration.test.ts
+      - apps/desktop/e2e/herdr/g3a-runtime.spec.ts
+      - docs/compose/specs/2026-08-12-real-herdr-integration.md
   - id: UI-REQ-020
     prototype: fleet-cards
     title: 按 workspace 分组卡片；宽屏多列、窄屏单列
@@ -298,7 +308,7 @@ requirements:
     prototype: terminal-real
     title: 真实终端内容（官方 transport），不轮询冒充 live（Phase 3 落地）
     status: BLOCKED
-    blocked_reason: 依赖 named-pipe 官方传输与真实 pane PTY，运行时契约未就绪；Phase 3 实现
+    blocked_reason: G3B 未完成 — 官方 herdr-client.sock 二进制帧协议 v19 与 xterm.js 实时终端尚未接入；当前 agent.read 只允许标成历史输出
     evidence_class: real-runtime
     forbidden_substitute: 轮询冒充 live；mock 冒充真实
     files:
@@ -396,7 +406,7 @@ requirements:
     prototype: mission-persist
     title: Mission 持久化业务投影；运行时真相来自 Herdr；重启可恢复（Phase 3+ 落地）
     status: BLOCKED
-    blocked_reason: 依赖 missions.db 持久化服务与真实运行时证据链，Phase 3+ 实现
+    blocked_reason: G3C 未完成 — Main 侧 missions.db 与真实 DAG/轮次/审查/合入尚未落地；生产路径不得用 renderer 内存 mock 冒充持久化编排
     evidence_class: real-runtime
     forbidden_substitute: renderer 内存态冒充持久化
     files:

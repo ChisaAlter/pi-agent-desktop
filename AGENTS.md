@@ -119,7 +119,7 @@ Lefthook pre-commit runs typecheck + lint in parallel (no test).
 4. Expose in preload: `apps/desktop/src/preload/index.ts`
 5. Use in renderer via `window.piAPI`
 
-There are 24 IPC handler files. Each exports a `setup*()` function taking dependencies via typed opts object.
+There are 25 IPC handler files. Each exports a `setup*()` function taking dependencies via typed opts object. The Herdr G3A surface lives in `herdr.ipc.ts` and is typed-only.
 
 ### Multi-workspace Session Architecture
 
@@ -171,11 +171,11 @@ The active desktop session/message repository is `node:sqlite` through `SqliteSe
 ### Herdr GUI（套壳 + 能力注入层，feature/herdr-gui-*）
 
 - **定位**：Pi Desktop 是 Herdr 的 GUI 套壳与能力注入层（不是仿制运行时）。「智能体」tab = Herdr 原生控制面（session→workspace→tab→pane + 状态 + 介入）的 GUI 投影；「任务编排」tab = Desktop 注入的持久化业务编排（任务 DAG、轮次、审查、交付物、合入）。运行时真相永远在 Herdr；计划语义永远在 Desktop。契约：`docs/compose/specs/2026-08-12-herdr-ui-prototype-approved.md`（语义）+ `docs/prototypes/herdr-desktop-ui-prototype.html`（视觉唯一权威，已批准）。
-- **组件落点（Phase 1）**：`components/Herdr/`（`HerdrStatusBar` 全局状态条、`HerdrTree` 4 级层级树、`HerdrPaneTerminal` 实时终端、`MissionCockpit`+`MissionDag` 任务驾驶舱、`HerdrContextRail` 选中联动右栏）+ `stores/herdr-mock-data.ts`（PROTOTYPE_MOCK 标记，仅 `PI_HERDR_MOCK=1` 激活）+ `stores/herdr-store.ts`。agents/mission section 左槽位换 HerdrTree、右槽位换 ContextRail；三布局切换器（studio/mission/terminal）仅在这两个 tab 显示。`TopTabBar` 6 tab（对话|智能体|任务编排|运行|工作台|扩展）。
-- **状态语义（原型为准，禁止回退）**：6 态 = working/blocked/done/idle/unknown/disconnected；`done = idle + unseen`，Mark Seen → idle；优先级 `Blocked > Done-unseen > Working > Idle > Unknown`（注意与旧 useAgentFleet 的 error 最高语义不同，error/closed 输入映射 unknown）；断线 → 全部 disconnected，重连 → snapshot+subscribe 不重放 prompt。blocked 审批在真实 pane 内处理，GUI 不伪造。
-- **数据源契约（Phase 3 落地）**：Main 权威 snapshot+seq（UI-REQ-014），不跨进程推导；preload invoke/send 白名单是新增 IPC 硬门。运行时契约：`docs/compose/specs/2026-08-12-real-herdr-integration.md`（待产出，Phase 3 前置交付物）。
+- **组件落点（Phase 1）**：`components/Herdr/`（`HerdrStatusBar` 仅智能体/任务编排显示、`HerdrTree` 4 级层级树、`HerdrPaneTerminal` 实时终端、`MissionCockpit`+`MissionDag` 任务驾驶舱、`HerdrContextRail` 选中联动右栏）+ `stores/herdr-mock-data.ts`（PROTOTYPE_MOCK 标记，仅 `PI_HERDR_MOCK=1` 激活）+ `stores/herdr-store.ts`。agents/mission section 左槽位换 HerdrTree、右槽位换 ContextRail；三布局切换器（studio/mission/terminal）仅在这两个 tab 显示。`TopTabBar` 6 tab（对话|智能体|任务编排|运行|工作台|扩展）。
+- **状态语义（原型为准，禁止回退）**：6 态 = working/blocked/done/idle/unknown/disconnected；`done = idle + unseen`，Mark Seen → idle；优先级 `Blocked > Done-unseen > Working > Idle > Unknown`（注意与旧 useAgentFleet 的 error 最高语义不同，error/closed 输入映射 unknown）；断线 → 全部 disconnected，重连 → snapshot+subscribe 不重放 prompt。blocked 审批在真实 pane 内处理，GUI 不伪造。Herdr 状态条只挂在智能体/任务编排，不打断对话页。
+- **数据源契约（G3A 已落地）**：Main 权威 snapshot + Desktop 投影 revision（UI-REQ-014），不跨进程推导；typed IPC only，禁止通用 `herdr:request` 透传。运行时契约：`docs/compose/specs/2026-08-12-real-herdr-integration.md`。官方 wire event 无公开 seq，Main 用全量 snapshot 校正，event 只作 refresh 提示。
 - **防降级治理（机器可执行）**：需求登记表 `docs/verification/herdr-ui-requirements.yml`（41 条，status/evidence/负面清单项/映射决策）；检查器 `scripts/verification/check-herdr-ui.cjs`（`pnpm verify:herdr`：需求 ID 集合一致性、PASS 证据文件存在且非空、负面清单源码扫描、i18n 键集同步；BLOCKED≥1 报告「未完成」；`--self-test` 11 条内部断言；`--strict` BLOCKED 视为失败）。黄金基线 `docs/verification/baselines/herdr/`（原型 1440×960 全矩阵，由 `scripts/verification/herdr-golden-baseline.mjs` 生成；注意 Playwright outputDir 每次运行清空 e2e-output，基线必须留在 docs 下）；parity 对齐 `apps/desktop/e2e/herdr/prototype-parity/`（`HERDR_PARITY_TARGET=prototype|production` 同一条流跑 oracle 与生产；visual-compare.ts 按左/中/右区域 pixelmatch，避开 app chrome；production 目标需 `pnpm --filter @pi-desktop/desktop build:mock`）。门禁记录 `docs/verification/herdr-ui-gates.yml`，证据清单 `docs/verification/herdr-ui-evidence.md`。
-- **当前阶段**：Phase 0（治理基线）已完成；Phase 1（生产 UI 骨架，mock 驱动）开发中；Phase 2（设置 HerdrTab）待做；Phase 3-5（真实运行时/换真实数据/打包验收）BLOCKED — 依赖官方 Herdr 二进制与运行时契约，不得以 mock 冒充交付。
+- **当前阶段**：Phase 0–2 与 G3A（真实控制面）已落地。G3B（官方 `herdr-client.sock` + xterm.js 实时终端，UI-REQ-032）与 G3C（missions.db，UI-REQ-045）仍 BLOCKED。Desktop 退出不得 stop persistent Herdr server。不得以 mock 或历史输出冒充 live / 整个集成完成。
 
 ## Key Files
 

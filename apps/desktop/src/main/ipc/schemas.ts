@@ -516,6 +516,42 @@ export const agentsSetModeSchema = z.tuple([
     agentModeSchema,
 ]);
 
+// ── Herdr official runtime IPC schemas (G3A) ────────────────
+// Agent targets are public Herdr pane IDs/names, never filesystem paths.
+const herdrTargetSchema = z.string().min(1).max(256);
+const herdrAgentStateSchema = z.enum(["idle", "working", "blocked", "done", "unknown"]);
+
+export const herdrReadAgentOutputSchema = z.object({
+    target: herdrTargetSchema,
+    source: z.enum(["visible", "recent", "recent_unwrapped", "detection"]).optional(),
+    lines: z.number().int().min(1).max(5000).optional(),
+}).strict();
+
+export const herdrFocusAgentSchema = z.object({
+    target: herdrTargetSchema,
+}).strict();
+
+export const herdrPromptAgentSchema = z.object({
+    target: herdrTargetSchema,
+    text: z.string().min(1).max(200_000),
+    until: z.array(herdrAgentStateSchema).min(1).max(5).optional(),
+    timeoutMs: z.number().int().min(1_000).max(30 * 60 * 1000).optional(),
+}).strict();
+
+export const herdrSendAgentKeysSchema = z.object({
+    target: herdrTargetSchema,
+    keys: z.array(z.string().min(1).max(64)).min(1).max(200),
+}).strict();
+
+export const herdrStopServerSchema = z.object({
+    confirmed: z.literal(true),
+}).strict();
+
+export const herdrInstallIntegrationSchema = z.object({
+    target: z.literal("pi"),
+    confirmed: z.literal(true),
+}).strict();
+
 export const permissionSetModeSchema = z.tuple([
     permissionModeSchema,
     z.string().min(1, "workspaceId must be a non-empty string").optional(),
